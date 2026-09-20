@@ -49,7 +49,8 @@ Không nhập token vào chat hoặc commit credential. Bốn profile dùng cùn
 | `pi-background` | 0.84.4 | Parent Astra high, 872K, background tasks |
 | `pi-advisor` | 0.86.0 | Executor **GPT-5.6 Sol high**; advisor **GPT-6 Astra high, 872K**, consultation mặc định tắt |
 
-Main/goal có bốn role `researcher`, `worker`, `debugger`, `reviewer` dùng **GPT-5.6 Sol high, 872K**, context riêng, 12 turns với grace 2; mỗi pool foreground/background giới hạn 2. Researcher/reviewer chỉ đọc; researcher có Firecrawl; worker/debugger có shell và ghi file qua permission gate. Không bật nested delegation, workflow hay worktree tự động. Compat 0.84.4 nạp định nghĩa Astra từ catalog Pi 0.86.0 qua `models.json` (asset `astra-compat.json`); đã có kiểm thử offline resolver, thinking và request payload. Goal/background dùng đăng nhập Codex chung, không cần Claude. Đây không phải nghiệm thu inference Astra thật trên compat.
+Main/goal dùng bốn role theo công việc: **researcher → GLM-5.3-Flash max**, chỉ đọc và thu thập bằng chứng; **worker/debugger/reviewer → GPT-5.6 Sol high**. Reviewer chỉ đọc. Parent Astra/high giữ thiết kế và nghiệm thu. Mỗi role có context riêng, 12 turns với grace 2; mỗi pool foreground/background giới hạn 2. Không có role hậu tố model, nested delegation, workflow hay worktree tự động. Astra/Sol giữ context 872K; compat 0.84.4 dùng định nghĩa Astra từ catalog 0.86.0 đã kiểm resolver/payload offline.
+
 
 | Thành phần | Phiên bản |
 |---|---|
@@ -83,7 +84,7 @@ Main dùng **Rosé Pine Moon**, các profile khác Rosé Pine; có thêm Dawn. F
 
 `pi-doctor` kiểm dependency/bản vá/config tại máy, không gọi model. `pi-models` xem model từng profile. `/model`, `/thinking`, `/usage`, `/mcp`, `/lens-health`, `/open-tui` dùng trong Pi. Các lệnh đặc thù goal/background/advisor ở profile tương ứng.
 
-Main/goal giao việc trực tiếp bằng `Agent` của `@tintinweb/pi-subagents`. Bốn role mặc định giữ Sol/high. Khi chọn GLM/max trực tiếp qua OpenCode Go trong Pi, dùng `researcher-glm`, `worker-glm` hoặc `debugger-glm`; reviewer vẫn Sol. Dùng `/agents` để quản lý. Xem [hướng dẫn giao việc](docs/subagents.md).
+Main/goal giao việc trực tiếp bằng `Agent` của `@tintinweb/pi-subagents`. Bạn chọn công việc; model được ghim trong role. `@researcher` dùng GLM/max trực tiếp qua OpenCode Go; `@worker`, `@debugger`, `@reviewer` dùng Sol/high. Dùng `/agents` để quản lý. Xem [hướng dẫn giao việc](docs/subagents.md).
 
 MCP filesystem chỉ expose công cụ đọc và dùng cwd của project. LSP Go/Rust/Python cần language server riêng của project/máy; installer không hứa cài mọi toolchain ngôn ngữ. Permission extension là lớp kiểm soát tool, không phải OS sandbox. Một repo được trust hoặc lệnh shell được duyệt vẫn cần được xem xét phù hợp.
 

@@ -27,10 +27,10 @@ for(const [name,p] of Object.entries(profiles)){
   for(const pkg of s.packages)if(typeof pkg==='string'&&!fs.existsSync(pkg))errors.push(`Thiếu package: ${name}`);
   if(s.extensions?.some(value=>typeof value==='string'&&value.includes('pi-dispatch-router')))errors.push(`${name}: còn extension dispatcher đã gỡ`);
   if(['main','goal'].includes(name)){
-    for(const role of ['researcher','worker','debugger','reviewer','researcher-glm','worker-glm','debugger-glm']){
+    for(const role of ['researcher','worker','debugger','reviewer']){
       if(!fs.existsSync(path.join(p.agentDir,'agents',role+'.md')))errors.push(`${name}: thiếu role ${role}`);
     }
-    console.log(`${name}: giao việc bằng Agent; role Sol/high và GLM/max`);
+    console.log(`${name}: Agent: researcher GLM/max, worker/debugger/reviewer Sol/high`);
   }
   if(s.modelThinkingLevels?.['opencode-go/glm-5.3-flash']!=='max')errors.push(`${name}: GLM effort phải max`);
   if(s.packages.some(pkg=>typeof pkg==='string'&&pkg.replaceAll('\\','/').endsWith('/compact-adviser')))errors.push(`${name}: bỏ compact-adviser khỏi packages trong settings tùy chỉnh; extension đã gỡ`);

@@ -33,7 +33,7 @@ for (const name of ["settings.json", "models.json", "advisor.json", "subagents.j
   if (fs.existsSync(path.join(configuration.agentDir, name))) fs.copyFileSync(path.join(configuration.agentDir, name), path.join(agentDir, name));
 }
 fs.mkdirSync(path.join(agentDir, "agents"));
-for (const name of ["researcher", "worker", "debugger", "reviewer", "researcher-glm", "worker-glm", "debugger-glm"]) {
+for (const name of ["researcher", "worker", "debugger", "reviewer"]) {
   const role = fs.readFileSync(path.join(configuration.agentDir, "agents", `${name}.md`), "utf8");
   fs.writeFileSync(path.join(agentDir, "agents", `${name}.md`), role);
 }
@@ -158,32 +158,35 @@ await check('native Agent registered; custom dispatcher and routing command abse
   assert.ok(!names.includes('dispatch_task'));
   assert.equal(session.extensionRunner.getCommand('routing'),undefined);
 });
-await check('default researcher uses Sol/high and separate context',async()=>{
+await check('researcher uses GLM/max and separate context',async()=>{
   const out=await run('sol',invocation('sol'),[[tool('read',{path:'safe.txt'})],final('CHILD_OK')]);
   assert.equal(out[0]?.isError,false,JSON.stringify(out));
   const child=control.seen.filter(x=>x.key==='child_sol');assert.ok(child.length>0);
-  assert.ok(child.every(x=>x.model==='gpt-5.6-sol'&&x.options.reasoning==='high'));
+  assert.ok(child.every(x=>x.model==='glm-5.3-flash'&&x.options.reasoning==='max'));
   assert.ok(!JSON.stringify(child).includes('CASE:parent_sol'));
   assert.match(JSON.stringify(child.at(-1).messages),/SAFE_CONTENT/);
 });
-for(const role of ['researcher','worker','debugger']) {
-  await check(`native ${role}-glm uses GLM/max; role settings outrank conflicting tool parameters`,async()=>{
-    const id=role+'-glm';
-    const out=await run(id,invocation(id,{subagent_type:id,model:'openai-codex/gpt-5.6-sol',thinking:'off',inherit_context:true,isolated:true,max_turns:999}));
+for(const role of ['researcher','worker','debugger','reviewer']) {
+  await check(`native ${role} keeps its configured model/effort despite conflicting tool parameters`,async()=>{
+    const id='configured-'+role;
+    const expectedModel=role==='researcher'?'glm-5.3-flash':'gpt-5.6-sol';
+    const expectedEffort=role==='researcher'?'max':'high';
+    const opposite=role==='researcher'?'openai-codex/gpt-5.6-sol':'opencode-go/glm-5.3-flash';
+    const out=await run(id,invocation(id,{subagent_type:role,model:opposite,thinking:'off',inherit_context:true,isolated:true,max_turns:999}));
     assert.equal(out[0]?.isError,false,JSON.stringify(out));
     const seen=control.seen.filter(x=>x.key==='child_'+id);
-    assert.ok(seen.length>0);assert.ok(seen.every(x=>x.model==='glm-5.3-flash'&&x.options.reasoning==='max'));
+    assert.ok(seen.length>0);assert.ok(seen.every(x=>x.model===expectedModel&&x.options.reasoning===expectedEffort));
     assert.ok(!JSON.stringify(seen).includes('CASE:parent_'+id));
   });
 }
 await check('GLM researcher remains read-only',async()=>{
-  const out=await run('readonly',invocation('readonly',{subagent_type:'researcher-glm'}),[[tool('write',{path:'forbidden.txt',content:'should-not-exist'})],final('BLOCKED')]);
+  const out=await run('readonly',invocation('readonly',{subagent_type:'researcher'}),[[tool('write',{path:'forbidden.txt',content:'should-not-exist'})],final('BLOCKED')]);
   assert.equal(out[0]?.isError,false,JSON.stringify(out));assert.equal(fs.existsSync(path.join(cwd,'forbidden.txt')),false);
   assert.ok(control.seen.filter(x=>x.key==='child_readonly').at(-1).messages.some(m=>m.role==='toolResult'&&m.isError));
 });
-await check('GLM worker retains permission gate even when isolated=true was requested',async()=>{
+await check('Sol worker retains permission gate even when isolated=true was requested',async()=>{
   const before=prompts.length;
-  const out=await run('permission',invocation('permission',{subagent_type:'worker-glm',isolated:true}),
+  const out=await run('permission',invocation('permission',{subagent_type:'worker',isolated:true}),
     [[tool('read',{path:'.env'})],[tool('bash',{command:'printf native-agent-permission-ok',timeout:10})],final('CHECKED')]);
   assert.equal(out[0]?.isError,false,JSON.stringify(out));
   const messages=control.seen.filter(x=>x.key==='child_permission').at(-1).messages;
@@ -191,19 +194,19 @@ await check('GLM worker retains permission gate even when isolated=true was requ
   assert.ok(!JSON.stringify(messages).includes('must-not-be-read'));
   assert.match(JSON.stringify(messages),/native-agent-permission-ok/);assert.ok(prompts.length>before);
 });
-await check('GLM worker can make an authorized file edit',async()=>{
-  const out=await run('write',invocation('write',{subagent_type:'worker-glm'}),[[tool('write',{path:'result.txt',content:'NATIVE_WRITE_OK'})],final('DONE')]);
+await check('Sol worker can make an authorized file edit',async()=>{
+  const out=await run('write',invocation('write',{subagent_type:'worker'}),[[tool('write',{path:'result.txt',content:'NATIVE_WRITE_OK'})],final('DONE')]);
   assert.equal(out[0]?.isError,false,JSON.stringify(out));
   assert.equal(fs.readFileSync(path.join(cwd,'result.txt'),'utf8'),'NATIVE_WRITE_OK');
 });
-await check('reviewer remains Sol/high despite a GLM tool argument',async()=>{
-  const out=await run('review',invocation('review',{subagent_type:'reviewer',model:'opencode-go/glm-5.3-flash',thinking:'max'}));
-  assert.equal(out[0]?.isError,false,JSON.stringify(out));
-  const seen=control.seen.filter(x=>x.key==='child_review');assert.ok(seen.length>0);
-  assert.ok(seen.every(x=>x.model==='gpt-5.6-sol'&&x.options.reasoning==='high'));
+await check('retired model-suffixed role does not spawn a child',async()=>{
+  const out=await run('retired-role',invocation('retired-role',{subagent_type:'worker-glm'}));
+  assert.ok(out.length>0);
+  assert.ok(!control.seen.some(x=>x.key==='child_retired-role'));
+  assert.ok(!JSON.stringify(out).includes('CHILD_OK'));
 });
 await check('foreground completion returns inline without another parent generation',async()=>{
-  const out=await run('completion',invocation('completion',{subagent_type:'worker-glm'}));
+  const out=await run('completion',invocation('completion',{subagent_type:'worker'}));
   assert.equal(out[0]?.isError,false,JSON.stringify(out));assert.match(JSON.stringify(out),/CHILD_OK/);
   await delay(200);
   assert.equal(control.seen.filter(x=>x.key==='parent_completion').length,2);

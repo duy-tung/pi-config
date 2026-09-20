@@ -56,19 +56,18 @@ for (const platform of ["darwin", "linux", "win32"]) {
       if (["main", "goal"].includes(name)) {
       for (const role of ["researcher", "worker", "debugger", "reviewer"]) {
         const agent = read(p.join(profile.agentDir, "agents", `${role}.md`)).replaceAll("\r\n", "\n");
-        assert.match(agent, /^model: openai-codex\/gpt-5\.6-sol$/mu);
-        assert.match(agent, /^thinking: high$/mu);
+        if (role === "researcher") {
+          assert.match(agent, /^model: opencode-go\/glm-5\.3-flash$/mu);
+          assert.match(agent, /^thinking: max$/mu);
+        } else {
+          assert.match(agent, /^model: openai-codex\/gpt-5\.6-sol$/mu);
+          assert.match(agent, /^thinking: high$/mu);
+        }
         assert.match(agent, /^inherit_context: false$/mu);
         assert.match(agent, /^isolated: false$/mu);
         assert.match(agent, /^max_turns: 12$/mu);
       }
-      for (const role of ["researcher-glm", "worker-glm", "debugger-glm"]) {
-        const agent = read(p.join(profile.agentDir, "agents", `${role}.md`)).replaceAll("\r\n", "\n");
-        assert.ok(agent.includes("model: opencode-go/glm-5.3-flash\n"));
-        assert.ok(agent.includes("thinking: max\n"));
-        for (const line of ["inherit_context: false", "isolated: false", "max_turns: 12"]) assert.ok(agent.includes(line));
-        if (role === "researcher-glm") assert.ok(!agent.includes("write, edit, bash"));
-      }
+      assert.equal(files.filter(file=>file.path.startsWith(p.join(profile.agentDir,"agents")+p.sep)).length,4);
       } else {
         assert.ok(!files.some(file => file.path.startsWith(p.join(profile.agentDir,"agents")+p.sep)));
       }
