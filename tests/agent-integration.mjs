@@ -8,12 +8,12 @@ import { syncBuiltinESMExports } from "node:module";
 import assert from "node:assert/strict";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-// CLI: node tests/router-integration.mjs <installRoot> <profile>
+// CLI: node tests/agent-integration.mjs <installRoot> <profile>
 // Only installed configuration on the explicit root is used. The test copies
 // a fixed whitelist into a disposable agent, never auth/history/cache/secrets.
 const [installArg, profile] = process.argv.slice(2);
 if (!installArg || !["main", "goal"].includes(profile)) {
-  throw new Error("Cách dùng: node tests/router-integration.mjs <installRoot> <main|goal|background|advisor>");
+  throw new Error("Cách dùng: node tests/agent-integration.mjs <installRoot> <main|goal>");
 }
 let activePhase = "khởi tạo runtime";
 const watchdog = setTimeout(() => {
@@ -33,37 +33,24 @@ for (const name of ["settings.json", "models.json", "advisor.json", "subagents.j
   fs.copyFileSync(path.join(configuration.agentDir, name), path.join(agentDir, name));
 }
 fs.mkdirSync(path.join(agentDir, "agents"));
-for (const name of ["researcher", "worker", "debugger", "reviewer"]) {
+for (const name of ["researcher", "worker", "debugger", "reviewer", "researcher-glm", "worker-glm", "debugger-glm"]) {
   const role = fs.readFileSync(path.join(configuration.agentDir, "agents", `${name}.md`), "utf8");
   fs.writeFileSync(path.join(agentDir, "agents", `${name}.md`), role);
 }
-const compactFile = path.join(agentDir, "compact-adviser.json");
-writeJson(compactFile, { version: 1, mode: "off", minContextTokens: 40000, autoAcknowledged: false,
-  logRequests: false, typesafeApiKey: "synthetic-adviser-key-not-a-secret" });
 const permissionDir = path.join(agentDir, "extensions", "pi-permission-system");
 fs.mkdirSync(permissionDir, { recursive: true });
 const permission = readJson(path.join(configuration.agentDir, "extensions", "pi-permission-system", "config.json"));
-permission.permission.path[compactFile.replaceAll("\\", "/")] = "deny";
-permission.permission.dispatch_task = "allow";
-permission.permission.path["**/routing.json"] = "deny";
-permission.permission.path["**/routing-state/**"] = "deny";
 writeJson(path.join(permissionDir, "config.json"), permission);
 const settings = readJson(path.join(agentDir, "settings.json"));
 Object.assign(settings, {
   defaultProvider: "config-test", defaultModel: "parent", defaultThinkingLevel: "off",
   enabledModels: ["config-test/parent", "openai-codex/gpt-5.6-sol", "opencode-go/glm-5.3-flash"],
-  extensions: [fileURLToPath(new URL("./router-provider.ts", import.meta.url)), fileURLToPath(new URL("../assets/extensions/pi-dispatch-router/index.ts", import.meta.url))],
+  extensions: [fileURLToPath(new URL("./agent-provider.ts", import.meta.url))],
   compaction: { enabled: false }, retry: { enabled: false }, skills: [], cacheWarming: "off",
 });
 if (settings.workspaceHistory) settings.workspaceHistory.storageDir = path.join(fixture, "history");
 writeJson(path.join(agentDir, "settings.json"), settings);
 writeJson(path.join(agentDir, "auth.json"), {});
-if (profile === "advisor") {
-  const advisorFile = path.join(agentDir, "advisor.json");
-  const advisor = readJson(advisorFile);
-  Object.assign(advisor, { executor: "config-test/parent", advisor: "config-test/worker", alwaysOn: true });
-  writeJson(advisorFile, advisor);
-}
 // Explicitly replace web config rather than copying a live credential command.
 writeJson(path.join(agentDir, "web-search.json"), {
   provider: "firecrawl", workflow: "none", firecrawlApiKey: "fixture-never-used",
@@ -125,8 +112,6 @@ const sdk = await import(pathToFileURL(path.join(modules, "@earendil-works", "pi
 const control = { plans: {}, seen: [] };
 globalThis[Symbol.for("pi-config:test")] = control;
 const errors = [], prompts = [], notices = [], results = [];
-const routerPolicy = {version:2,mode:"manual",allowExplicitGlm:true,timeoutMs:30000};
-writeJson(path.join(agentDir,"routing.json"),routerPolicy);
 const loader = new sdk.DefaultResourceLoader({ cwd, agentDir });
 await loader.reload();
 assert.deepEqual(loader.getExtensions().errors, []);
@@ -149,13 +134,14 @@ await session.bindExtensions({ uiContext: ui, mode: "rpc", onError: (error) => e
   commandContextActions: { waitForIdle: () => session.waitForIdle(), navigateTree: (id, options) => session.navigateTree(id, options) } });
 await session.setModel(runtime.getModel("config-test", "parent"));
 let sequence = 0;
-const tool = (name, args) => ({ type: 'toolCall', id: `router-${sequence++}`, name, arguments: args });
+const tool = (name, args) => ({ type: 'toolCall', id: `agent-${sequence++}`, name, arguments: args });
 const final = text => [{type:'text',text}];
 const delay = ms => new Promise(resolve=>setTimeout(resolve,ms));
-const dispatch = (id, extra={}) => ({requestId:id,role:'researcher',taskClass:'lookup',candidate:'auto',brief:`CASE:child_${id} Đọc safe.txt, báo nội dung, không sửa.`,acceptance:'Nội dung phải khớp file và chỉ đọc.',...extra});
+const invocation = (id, extra={}) => ({subagent_type:'researcher',description:'Native Agent fixture',
+  prompt:`CASE:child_${id} Đọc safe.txt và báo bằng chứng; chỉ làm phạm vi được giao.`,run_in_background:false,...extra});
 async function run(id, args, childSteps=[final('CHILD_OK')]) {
   const parentKey=`parent_${id}`,childKey=`child_${id}`;
-  control.plans[parentKey]=[[tool('dispatch_task',args)],final('PARENT_ACCEPTED')];
+  control.plans[parentKey]=[[tool('Agent',args)],final('PARENT_ACCEPTED')];
   control.plans[childKey]=childSteps;control.fallbackKey=parentKey;
   const before=session.messages.length;
   await session.prompt(`CASE:${parentKey}`);
@@ -163,90 +149,65 @@ async function run(id, args, childSteps=[final('CHILD_OK')]) {
   return session.messages.slice(before).filter(m=>m.role==='toolResult');
 }
 async function check(name,fn) {
-  activePhase=name;console.log(`Router ${profile}: ${name}`);
+  activePhase=name;console.log(`Agent ${profile}: ${name}`);
   try {await fn();results.push({name,status:'PASS'});}catch(error){results.push({name,status:'FAIL',error:error.stack});}
 }
-await check('manual keeps Sol/high with separate context; no Jev',async()=>{
-  const out=await run('baseline',dispatch('baseline'));
+await check('native Agent registered; custom dispatcher and routing command absent',async()=>{
+  const names=session.getAllTools().map(tool=>tool.name);
+  assert.ok(names.includes('Agent'));
+  assert.ok(!names.includes('dispatch_task'));
+  assert.equal(session.extensionRunner.getCommand('routing'),undefined);
+});
+await check('default researcher uses Sol/high and separate context',async()=>{
+  const out=await run('sol',invocation('sol'),[[tool('read',{path:'safe.txt'})],final('CHILD_OK')]);
   assert.equal(out[0]?.isError,false,JSON.stringify(out));
-  assert.equal(out[0].details.model,'openai-codex/gpt-5.6-sol');assert.equal(out[0].details.thinking,'high');
-  const child=control.seen.find(x=>x.key==='child_baseline');assert.equal(child.model,'gpt-5.6-sol');
-  assert.equal(child.options.reasoning,'high');assert.ok(!JSON.stringify(child.messages).includes('CASE:parent_baseline'));
-  assert.equal(networkAttempts.length,0);
+  const child=control.seen.filter(x=>x.key==='child_sol');assert.ok(child.length>0);
+  assert.ok(child.every(x=>x.model==='gpt-5.6-sol'&&x.options.reasoning==='high'));
+  assert.ok(!JSON.stringify(child).includes('CASE:parent_sol'));
+  assert.match(JSON.stringify(child.at(-1).messages),/SAFE_CONTENT/);
 });
-await check('legacy record config and command remain compatible',async()=>{
-  writeJson(path.join(agentDir,'routing.json'),{...routerPolicy,version:1,mode:'record'});
-  const out=await run('legacy',dispatch('legacy'));assert.equal(out[0]?.isError,false,JSON.stringify(out));
-  assert.equal(out[0].details.model,'openai-codex/gpt-5.6-sol');assert.equal(networkAttempts.length,0);
-  const command=session.extensionRunner.getCommand('routing');
-  await command.handler('record',session.extensionRunner.createCommandContext());
-  assert.equal(readJson(path.join(agentDir,'routing.json')).mode,'manual');
+for(const role of ['researcher','worker','debugger']) {
+  await check(`native ${role}-glm uses GLM/max; role settings outrank conflicting tool parameters`,async()=>{
+    const id=role+'-glm';
+    const out=await run(id,invocation(id,{subagent_type:id,model:'openai-codex/gpt-5.6-sol',thinking:'off',inherit_context:true,isolated:true,max_turns:999}));
+    assert.equal(out[0]?.isError,false,JSON.stringify(out));
+    const seen=control.seen.filter(x=>x.key==='child_'+id);
+    assert.ok(seen.length>0);assert.ok(seen.every(x=>x.model==='glm-5.3-flash'&&x.options.reasoning==='max'));
+    assert.ok(!JSON.stringify(seen).includes('CASE:parent_'+id));
+  });
+}
+await check('GLM researcher remains read-only',async()=>{
+  const out=await run('readonly',invocation('readonly',{subagent_type:'researcher-glm'}),[[tool('write',{path:'forbidden.txt',content:'should-not-exist'})],final('BLOCKED')]);
+  assert.equal(out[0]?.isError,false,JSON.stringify(out));assert.equal(fs.existsSync(path.join(cwd,'forbidden.txt')),false);
+  assert.ok(control.seen.filter(x=>x.key==='child_readonly').at(-1).messages.some(m=>m.role==='toolResult'&&m.isError));
 });
-await check('legacy Jev configuration is ignored; research modes cannot be activated',async()=>{
-  const cardFile=path.join(agentDir,'routing-capabilities.json'),ledgerFile=path.join(agentDir,'routing-state','jev-budget.json');
-  fs.writeFileSync(cardFile,'invalid retired data');fs.writeFileSync(ledgerFile,'invalid retired ledger');
-  for(const mode of ['shadow','balanced']) {
-    writeJson(path.join(agentDir,'routing.json'),{...routerPolicy,version:1,mode,jev:{enabled:true,budgetUsd:10,maxCalls:1000},typesafeKeyFile:'/must-not-read'});
-    const out=await run(`legacy-${mode}`,dispatch(`legacy-${mode}`,{taskClass:undefined}));assert.equal(out[0]?.isError,false,JSON.stringify(out));
-    assert.equal(out[0].details.model,'openai-codex/gpt-5.6-sol');assert.equal(networkAttempts.length,0);
-  }
-  const command=session.extensionRunner.getCommand('routing');
-  await command.handler('manual',session.extensionRunner.createCommandContext());
-  assert.deepEqual(readJson(path.join(agentDir,'routing.json')),routerPolicy);
-  await command.handler('',session.extensionRunner.createCommandContext());
-  assert.match(notices.at(-1).message,/manual.*Sol/u);
-  for(const mode of ['shadow','balanced']) {
-    await command.handler(mode,session.extensionRunner.createCommandContext());
-    assert.match(notices.at(-1).message,/Jev đã gỡ/u);
-    assert.deepEqual(readJson(path.join(agentDir,'routing.json')),routerPolicy);
-  }
-  assert.equal(fs.readFileSync(ledgerFile,'utf8'),'invalid retired ledger');
-  fs.unlinkSync(cardFile);fs.unlinkSync(ledgerFile);
-});
-await check('explicit native GLM uses max and reads file through permission layer',async()=>{
-  const out=await run('glm',dispatch('glm',{candidate:'glm'}),[[tool('read',{path:'safe.txt'})],final('CHILD_OK')]);
-  assert.equal(out[0]?.isError,false,JSON.stringify(out));assert.equal(out[0].details.model,'opencode-go/glm-5.3-flash');
-  assert.equal(control.seen.find(x=>x.key==='child_glm').options.reasoning,'max');
-  const seen=control.seen.filter(x=>x.key==='child_glm').at(-1);assert.match(JSON.stringify(seen.messages),/SAFE_CONTENT/);
-});
-await check('duplicate request returns previous result, does not spawn',async()=>{
-  const count=control.seen.filter(x=>x.key==='child_glm').length;
-  const out=await run('repeat',dispatch('glm',{candidate:'glm'}));
-  assert.equal(out[0]?.isError,false,JSON.stringify(out));assert.equal(control.seen.filter(x=>x.key==='child_glm').length,count);
-});
-await check('reviewer cannot be downgraded to explicit GLM',async()=>{
-  const out=await run('review',dispatch('review',{candidate:'glm',role:'reviewer'}));assert.equal(out[0]?.isError,true);
-  assert.ok(!control.seen.some(x=>x.key==='child_review'));
-});
-await check('worker permissions deny .env; no child bypass',async()=>{
-  const out=await run('deny',dispatch('deny',{candidate:'glm',role:'worker',taskClass:'mechanical'}),[[tool('read',{path:'.env'})],final('BLOCKED_AS_EXPECTED')]);
+await check('GLM worker retains permission gate even when isolated=true was requested',async()=>{
+  const before=prompts.length;
+  const out=await run('permission',invocation('permission',{subagent_type:'worker-glm',isolated:true}),
+    [[tool('read',{path:'.env'})],[tool('bash',{command:'printf native-agent-permission-ok',timeout:10})],final('CHECKED')]);
   assert.equal(out[0]?.isError,false,JSON.stringify(out));
-  const child=control.seen.filter(x=>x.key==='child_deny').at(-1);
-  assert.ok(child.messages.some(m=>m.role==='toolResult'&&m.isError));
-  assert.ok(!JSON.stringify(child.messages).includes('must-not-be-read'));
+  const messages=control.seen.filter(x=>x.key==='child_permission').at(-1).messages;
+  assert.ok(messages.some(m=>m.role==='toolResult'&&m.isError));
+  assert.ok(!JSON.stringify(messages).includes('must-not-be-read'));
+  assert.match(JSON.stringify(messages),/native-agent-permission-ok/);assert.ok(prompts.length>before);
 });
-await check('worker cannot change routing policy',async()=>{
-  const before=fs.readFileSync(path.join(agentDir,'routing.json'),'utf8');
-  const out=await run('policy',dispatch('policy',{candidate:'glm',role:'worker',taskClass:'mechanical'}),[[tool('write',{path:path.join(agentDir,'routing.json'),content:'{}'})],final('BLOCKED_AS_EXPECTED')]);
+await check('GLM worker can make an authorized file edit',async()=>{
+  const out=await run('write',invocation('write',{subagent_type:'worker-glm'}),[[tool('write',{path:'result.txt',content:'NATIVE_WRITE_OK'})],final('DONE')]);
   assert.equal(out[0]?.isError,false,JSON.stringify(out));
-  assert.equal(fs.readFileSync(path.join(agentDir,'routing.json'),'utf8'),before);
-  assert.ok(control.seen.filter(x=>x.key==='child_policy').at(-1).messages.some(m=>m.role==='toolResult'&&m.isError));
+  assert.equal(fs.readFileSync(path.join(cwd,'result.txt'),'utf8'),'NATIVE_WRITE_OK');
 });
-await check('scope and project role drift fail before spawning',async()=>{
-  fs.mkdirSync(path.join(cwd,'.pi'),{recursive:true});writeJson(path.join(cwd,'.pi','settings.json'),{enabledModels:['openai-codex/gpt-5.6-sol']});
-  const out=await run('scope',dispatch('scope',{candidate:'glm'}));assert.equal(out[0]?.isError,true);
-  assert.ok(!control.seen.some(x=>x.key==='child_scope'));
-  fs.unlinkSync(path.join(cwd,'.pi','settings.json'));
-  fs.mkdirSync(path.join(cwd,'.pi','agents'));fs.writeFileSync(path.join(cwd,'.pi','agents','researcher.md'),fs.readFileSync(path.join(agentDir,'agents','researcher.md'),'utf8').replace('inherit_context: false','inherit_context: true'));
-  const drift=await run('drift',dispatch('drift',{candidate:'glm'}));assert.equal(drift[0]?.isError,true);
+await check('reviewer remains Sol/high despite a GLM tool argument',async()=>{
+  const out=await run('review',invocation('review',{subagent_type:'reviewer',model:'opencode-go/glm-5.3-flash',thinking:'max'}));
+  assert.equal(out[0]?.isError,false,JSON.stringify(out));
+  const seen=control.seen.filter(x=>x.key==='child_review');assert.ok(seen.length>0);
+  assert.ok(seen.every(x=>x.model==='gpt-5.6-sol'&&x.options.reasoning==='high'));
 });
-await check('project cannot substitute executable subagent loader code',async()=>{
-  const fake=path.join(cwd,'fake-node_modules','@tintinweb','pi-subagents');fs.mkdirSync(path.join(fake,'src'),{recursive:true});
-  writeJson(path.join(fake,'package.json'),{name:'@tintinweb/pi-subagents',version:'0.19.0'});
-  const marker=path.join(cwd,'untrusted-loader-executed');
-  fs.writeFileSync(path.join(fake,'src/custom-agents.ts'),`import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(marker)},'bad'); export function loadCustomAgents(){return new Map()}`);
-  writeJson(path.join(cwd,'.pi','settings.json'),{packages:[fake]});
-  const out=await run('loader',dispatch('loader',{candidate:'glm'}));assert.equal(out[0]?.isError,true);assert.equal(fs.existsSync(marker),false);
+await check('foreground completion returns inline without another parent generation',async()=>{
+  const out=await run('completion',invocation('completion',{subagent_type:'worker-glm'}));
+  assert.equal(out[0]?.isError,false,JSON.stringify(out));assert.match(JSON.stringify(out),/CHILD_OK/);
+  await delay(200);
+  assert.equal(control.seen.filter(x=>x.key==='parent_completion').length,2);
+  assert.equal(session.isStreaming,false);assert.equal(session.pendingMessageCount,0);
 });
 await session.extensionRunner.emit({type:'session_shutdown',reason:'quit'});session.dispose();
 const failed=results.some(r=>r.status==='FAIL')||errors.length>0||networkAttempts.length>0;

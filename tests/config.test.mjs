@@ -44,7 +44,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.equal(settings.modelThinkingLevels["openai-codex/gpt-5.6-sol"], "high");
       assert.equal(settings.shellPath, options.shellPath);
       assert.equal(settings.skills.length, 3);
-      assert.equal(settings.extensions.length, ["main", "goal"].includes(name) ? 3 : 2);
+      assert.equal(settings.extensions.length, 2);
       assert.equal(settings.extensions[0], `-${p.join(profile.agentDir, "extensions", "statusline.ts")}`);
       assert.ok(settings.packages.every((entry) => entry.startsWith(p.join(options.root, "runtimes", profile.runtime, "node_modules"))));
       const overrides = json(p.join(profile.agentDir, "models.json")).providers["openai-codex"].modelOverrides;
@@ -52,16 +52,21 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.equal(overrides["gpt-6-astra"].contextWindow, 872000);
       assert.deepEqual(settings.enabledModels, ["openai-codex/gpt-6-astra", "openai-codex/gpt-5.6-sol", "opencode-go/glm-5.3-flash"]);
       assert.equal(settings.modelThinkingLevels["opencode-go/glm-5.3-flash"], "max");
-      assert.equal(json(p.join(profile.agentDir, "routing.json")).mode, "off");
-      assert.equal(json(p.join(profile.agentDir, "routing.json")).jev, undefined);
-      assert.equal(settings.extensions.some(value => value.includes("pi-dispatch-router")), ["main", "goal"].includes(name));
+      assert.equal(settings.extensions.some(value => value.includes("pi-dispatch-router")), false);
       for (const role of ["researcher", "worker", "debugger", "reviewer"]) {
-        const agent = read(p.join(profile.agentDir, "agents", `${role}.md`));
+        const agent = read(p.join(profile.agentDir, "agents", `${role}.md`)).replaceAll("\r\n", "\n");
         assert.match(agent, /^model: openai-codex\/gpt-5\.6-sol$/mu);
         assert.match(agent, /^thinking: high$/mu);
         assert.match(agent, /^inherit_context: false$/mu);
         assert.match(agent, /^isolated: false$/mu);
         assert.match(agent, /^max_turns: 12$/mu);
+      }
+      for (const role of ["researcher-glm", "worker-glm", "debugger-glm"]) {
+        const agent = read(p.join(profile.agentDir, "agents", `${role}.md`)).replaceAll("\r\n", "\n");
+        assert.ok(agent.includes("model: opencode-go/glm-5.3-flash\n"));
+        assert.ok(agent.includes("thinking: max\n"));
+        for (const line of ["inherit_context: false", "isolated: false", "max_turns: 12"]) assert.ok(agent.includes(line));
+        if (role === "researcher-glm") assert.ok(!agent.includes("write, edit, bash"));
       }
       assert.equal(profile.packages.includes("@tintinweb/pi-subagents"), ["main", "goal"].includes(name));
       assert.equal(profile.packages.includes("pi-background-tasks"), name === "background");
@@ -115,12 +120,9 @@ for (const platform of ["darwin", "linux", "win32"]) {
     }
     for (const profile of Object.values(profiles)) {
       assert.ok(!profile.packages.includes("compact-adviser"));
-      for (const retired of ["compact-adviser.json", "routing-capabilities.json"]) {
+      for (const retired of ["compact-adviser.json", "routing.json", "routing-capabilities.json"]) {
         assert.ok(!files.some(file => file.path === p.join(profile.agentDir, retired)));
       }
-      const routing = json(p.join(profile.agentDir, "routing.json"));
-      assert.equal(routing.version, 2); assert.equal(routing.mode, "off");
-      assert.equal(routing.jev, undefined);
       const advisor = json(p.join(profile.agentDir, "advisor.json"));
       assert.equal(advisor.alwaysOn, false);
       assert.equal(advisor.advisorAutoLoopGate, false);

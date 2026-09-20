@@ -49,7 +49,7 @@ Không nhập token vào chat hoặc commit credential. Bốn profile dùng cùn
 | `pi-background` | 0.84.4 | Parent Astra high, 872K, background tasks |
 | `pi-advisor` | 0.86.0 | Executor **GPT-5.6 Sol high**; advisor **GPT-6 Astra high, 872K**, consultation mặc định tắt |
 
-Bốn role `researcher`, `worker`, `debugger`, `reviewer` dùng **GPT-5.6 Sol high, 872K**, context riêng, tối đa 12 turns, concurrency 2. Researcher/reviewer chỉ đọc; researcher có Firecrawl; worker/debugger có shell và ghi file qua permission gate. Không bật nested delegation, workflow hay worktree tự động. Compat 0.84.4 nạp định nghĩa Astra từ catalog Pi 0.86.0 qua `models.json` (asset `astra-compat.json`); đã có kiểm thử offline resolver, thinking và request payload. Goal/background dùng đăng nhập Codex chung, không cần Claude. Đây không phải nghiệm thu inference Astra thật trên compat.
+Bốn role `researcher`, `worker`, `debugger`, `reviewer` dùng **GPT-5.6 Sol high, 872K**, context riêng, 12 turns với grace 2; mỗi pool foreground/background giới hạn 2. Researcher/reviewer chỉ đọc; researcher có Firecrawl; worker/debugger có shell và ghi file qua permission gate. Không bật nested delegation, workflow hay worktree tự động. Compat 0.84.4 nạp định nghĩa Astra từ catalog Pi 0.86.0 qua `models.json` (asset `astra-compat.json`); đã có kiểm thử offline resolver, thinking và request payload. Goal/background dùng đăng nhập Codex chung, không cần Claude. Đây không phải nghiệm thu inference Astra thật trên compat.
 
 | Thành phần | Phiên bản |
 |---|---|
@@ -83,13 +83,13 @@ Main dùng **Rosé Pine Moon**, các profile khác Rosé Pine; có thêm Dawn. F
 
 `pi-doctor` kiểm dependency/bản vá/config tại máy, không gọi model. `pi-models` xem model từng profile. `/model`, `/thinking`, `/usage`, `/mcp`, `/lens-health`, `/open-tui` dùng trong Pi. Các lệnh đặc thù goal/background/advisor ở profile tương ứng.
 
-GLM-5.3-Flash chạy trực tiếp qua OpenCode Go trong Pi, effort `max`; Astra/Sol vẫn `high`. Main/goal có dispatcher native, mặc định `off` khi cài mới. Dùng `/routing manual`: mặc định Sol/high, GLM/max khi chọn tường minh; `record` vẫn nhận như alias cũ. Không dùng Codex/OpenCode CLI để giao task. Xem [vận hành routing](docs/routing.md).
+Main/goal giao việc trực tiếp bằng `Agent` của `@tintinweb/pi-subagents`. Bốn role mặc định giữ Sol/high. Khi chọn GLM/max trực tiếp qua OpenCode Go trong Pi, dùng `researcher-glm`, `worker-glm` hoặc `debugger-glm`; reviewer vẫn Sol. Dùng `/agents` để quản lý. Xem [hướng dẫn giao việc](docs/subagents.md).
 
 MCP filesystem chỉ expose công cụ đọc và dùng cwd của project. LSP Go/Rust/Python cần language server riêng của project/máy; installer không hứa cài mọi toolchain ngôn ngữ. Permission extension là lớp kiểm soát tool, không phải OS sandbox. Một repo được trust hoặc lệnh shell được duyệt vẫn cần được xem xét phù hợp.
 
 ## Chạy lại, cập nhật và khôi phục
 
-Chạy lại cùng installer giữ runtime nếu lockfile không đổi; vẫn kiểm checksum bản vá. File cấu hình đã tùy chỉnh, auth và key được giữ nguyên. Với bản mới, file managed chưa chỉnh sửa được cập nhật và có backup; file có drift được giữ lại và báo đường dẫn để bạn đối chiếu. Nếu nâng từ bản có Jev và đã tùy chỉnh `settings.json`, bỏ mục `compact-adviser` trong `packages` ở file được báo; `pi-doctor` sẽ nhắc nếu còn. Cấu hình routing v1 được đọc thành manual/off, bỏ qua mọi trường Jev. File credential cũ do người dùng quản lý được giữ nguyên nhưng không còn được extension đọc.
+Chạy lại cùng installer giữ runtime nếu lockfile không đổi; vẫn kiểm checksum bản vá. File cấu hình đã tùy chỉnh, auth và key được giữ nguyên. Với bản mới, file managed chưa chỉnh sửa được cập nhật và có backup; file có drift được giữ lại và báo đường dẫn để bạn đối chiếu. Nếu nâng từ bản có Jev và đã tùy chỉnh `settings.json`, bỏ mục `compact-adviser` trong `packages` ở file được báo; `pi-doctor` sẽ nhắc nếu còn. Dispatcher tự viết được gỡ khi nâng cấp: installer sao lưu trước khi bỏ đường dẫn extension trong settings, giữ các trường tùy chỉnh khác và cất policy/state cũ. Dừng task/Pi trước khi cập nhật; writer lock còn tồn tại sẽ chặn migration. File credential cũ do người dùng quản lý được giữ nguyên nhưng không còn được extension đọc.
 
 Mặc định cài ở `~/.local/share/pi-platform`, main agent `~/.pi/agent`, launcher `~/.local/bin`. Windows dùng vị trí tương ứng dưới user profile; Bash và Node portable có thư mục toolchain riêng. Installer thêm PATH theo user; `--no-path` bỏ bước này.
 
@@ -109,6 +109,6 @@ npm run smoke
 
 Badge đầu trang là trạng thái nghiệm thu hiện tại. Test không gọi model/API tính phí và không chứng minh chất lượng model, OAuth của tài khoản bạn, hay quota. Các plugin đã được tách profile do giới hạn version; “toàn bộ” không có nghĩa nạp mọi extension xung đột vào một session.
 
-Jev và compact-adviser đã gỡ khỏi runtime và bộ cài. Pilot 10 task không tìm thấy thông báo completion đánh thức parent thừa trong luồng dispatcher, nên chưa chứng minh được lợi ích thêm của event gate. Kết quả này không chứng minh Jev vô ích ở luồng khác; setup hiện tại chọn ít thành phần hơn. Native compaction của Pi vẫn hoạt động.
+Jev, compact-adviser và dispatcher tự viết đã gỡ. Không còn `dispatch_task` hoặc `/routing`; native compaction của Pi vẫn bật. Kiểm thử native Agent xác nhận chức năng với provider giả; không tuyên bố đã chứng minh mức tiết kiệm token so với cấu hình khác.
 
 Nguồn và giấy phép: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Mã installer/config riêng dùng [MIT](LICENSE).

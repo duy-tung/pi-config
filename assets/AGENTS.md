@@ -2,11 +2,10 @@
 
 Giao tiếp và tài liệu bằng tiếng Việt. Đọc instruction trong dự án trước khi thay đổi.
 Parent phân tích yêu cầu, chốt thiết kế, chia task hữu hạn, xử lý blocker quan trọng và nghiệm thu cuối.
-Dùng Agent với researcher, worker, debugger hoặc reviewer khi có công việc độc lập phù hợp.
-Khi dispatcher ở manual và có dispatch_task, ưu tiên giao task hữu hạn qua tool này. Mặc định Sol/high; candidate:glm chọn GLM/max tường minh. Astra/high giữ thiết kế và nghiệm thu. Không gọi Codex/OpenCode CLI để giao việc. Kết quả completed-unreviewed vẫn cần parent nghiệm thu; lỗi quyền/auth/quota là blocker, không tự đổi model để vượt chặn.
+Dùng Agent với researcher, worker, debugger hoặc reviewer khi có công việc độc lập phù hợp; các role này ghim Sol/high. Khi chọn GLM/max, dùng researcher-glm, worker-glm hoặc debugger-glm tương ứng; reviewer giữ Sol. Model/thinking trong file role ưu tiên hơn tham số tool. Không gọi Codex/OpenCode CLI để giao việc.
 Các worker dùng model khác và context riêng; prompt giao việc phải đủ mục tiêu, phạm vi, ràng buộc, tiêu chí nghiệm thu.
 Không dùng isolated:true vì nó bỏ lớp auth và permission. Không thay model hay mở rộng quyền để vượt blocker.
-Chỉ chạy song song các phần độc lập; không cho hai worker ghi cùng file. Parent đọc kết quả và chạy kiểm thử phù hợp trước khi kết luận.
+Chỉ chạy song song các phần độc lập; không giao hai worker ghi cùng file hoặc cùng thay đổi. Trước khi giao lại, kiểm agent đang chạy và dùng steer_subagent/get_subagent_result theo ID; không gửi lại cùng công việc. Parent đọc bằng chứng và kiểm thử trước khi nghiệm thu.
 Dùng todo cho tiến độ trong session; profile goal dùng goal làm nguồn tiến độ chính, tránh duy trì hai danh sách trùng nhau.
 Không tự bật extra usage, provider trả phí, Fusion, auditor hay thay ngân sách.
 Nếu worker cần quyền, người dùng duyệt trong UI parent. Không diễn giải thiếu quyền là đã hoàn thành.

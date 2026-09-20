@@ -5,6 +5,7 @@ import os from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {buildConfiguration} from './lib/config.mjs';
 import {applyPatches} from './lib/patches.mjs';
+import {retireDispatcher} from './lib/retire-dispatcher.mjs';
 import {run,download,npmCli,readJson,writeJson,sha256,shellQuote,assertSafePath} from './lib/system.mjs';
 
 const repoDir=path.dirname(fileURLToPath(import.meta.url));
@@ -111,6 +112,7 @@ async function addPath(){
 }
 try{
   writeJson(statePath,state); // Ownership/progress survives a failed dependency download.
+  if(previous){retireDispatcher({root,agentDir,state});writeJson(statePath,state);}
   copyTree(path.join(repoDir,'assets'),path.join(root,'assets'));
   copyTree(path.join(repoDir,'vendor'),path.join(root,'vendor'));
   await installRuntime('current','runtimes/current');
