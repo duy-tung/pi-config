@@ -22,7 +22,6 @@ jobs:
       CI: 'true'
       npm_config_timing: 'true'
       npm_config_loglevel: verbose
-      npm_config_logs_dir: ${{ runner.temp }}/npm-debug
       npm_config_fetch_timeout: '60000'
       npm_config_fetch_retries: '1'
     steps:
@@ -35,11 +34,14 @@ jobs:
       - name: Unit tests không dùng credential
         run: npm test
       - name: Cài đầy đủ và thử runtime với provider giả
+        env:
+          npm_config_logs_dir: ${{ runner.temp }}/npm-debug
         run: npm run smoke
       - name: Bootstrap Unix với đường dẫn có khoảng trắng
         if: runner.os != 'Windows'
         shell: bash
         env:
+          npm_config_logs_dir: ${{ runner.temp }}/npm-debug
           PI_CONFIG_SOURCE: ${{ github.workspace }}
           PI_CONFIG_BOOTSTRAP_DIR: ${{ runner.temp }}/bootstrap toolchain
           PI_CONFIG_FRESH_TOOLCHAIN: '1'
@@ -51,6 +53,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         env:
+          npm_config_logs_dir: ${{ runner.temp }}/npm-debug
           PI_CONFIG_SOURCE: ${{ github.workspace }}
           PI_CONFIG_BOOTSTRAP_DIR: ${{ runner.temp }}\bootstrap toolchain
           PI_CONFIG_FRESH_TOOLCHAIN: '1'
