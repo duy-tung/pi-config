@@ -33,8 +33,8 @@ for (const platform of ["darwin", "linux", "win32"]) {
     const { p, options, json, profiles, read } = fixture(platform);
     const expected = {
       main: ["current", "openai-codex", "gpt-6-astra", "high", "rose-pine-moon"],
-      goal: ["compat", "anthropic", "claude-opus-5", "medium", "rose-pine"],
-      background: ["compat", "anthropic", "claude-opus-5", "medium", "rose-pine"],
+      goal: ["compat", "openai-codex", "gpt-6-astra", "high", "rose-pine"],
+      background: ["compat", "openai-codex", "gpt-6-astra", "high", "rose-pine"],
       advisor: ["current", "openai-codex", "gpt-5.6-sol", "high", "rose-pine"],
     };
     for (const [name, profile] of Object.entries(profiles)) {
@@ -49,12 +49,12 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.ok(settings.packages.every((entry) => entry.startsWith(p.join(options.root, "runtimes", profile.runtime, "node_modules"))));
       const overrides = json(p.join(profile.agentDir, "models.json")).providers["openai-codex"].modelOverrides;
       assert.equal(overrides["gpt-5.6-sol"].contextWindow, 872000);
-      if (name === "main") {
+      if (name !== "advisor") {
         assert.equal(overrides["gpt-6-astra"].contextWindow, 872000);
         assert.deepEqual(settings.enabledModels, ["openai-codex/gpt-6-astra", "openai-codex/gpt-5.6-sol"]);
       } else {
-        assert.equal(overrides["gpt-6-astra"], undefined, "Không tạo fake model cho runtime compat");
-        assert.equal(settings.enabledModels, undefined, "Không sinh warning model pattern của profile Claude");
+        assert.equal(overrides["gpt-6-astra"], undefined, "Advisor chỉ cần override Sol");
+        assert.equal(settings.enabledModels, undefined, "Giữ scope advisor hiện có");
       }
       for (const role of ["researcher", "worker", "debugger", "reviewer"]) {
         const agent = read(p.join(profile.agentDir, "agents", `${role}.md`));
