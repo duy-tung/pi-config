@@ -38,6 +38,20 @@ test('registry entries outside managed directories cannot be removed',t=>{
   const f=fixture(t),outside=owned(f,'personal-note.json');
   reconcileResources(f);assert.ok(fs.existsSync(outside));
 });
+test('resources remain recoverable when install directories use different volumes',t=>{
+  const f=fixture(t),file=owned(f,'agent/optional.json');
+  const rename=fs.renameSync;
+  fs.renameSync=(from,to)=>{
+    if(from===file)throw Object.assign(new Error('Different volumes'),{code:'EXDEV'});
+    return rename(from,to);
+  };
+  try {
+    const result=reconcileResources(f);
+    assert.deepEqual(result.archived,[file]);assert.equal(fs.existsSync(file),false);
+    const saved=fs.readdirSync(result.archive,{recursive:true}).filter(name=>path.basename(name)==='optional.json');
+    assert.equal(saved.length,1);assert.equal(readJson(path.join(result.archive,saved[0])).fixture,'original');
+  } finally {fs.renameSync=rename;}
+});
 test('updating settings preserves extension exclusions and path denials',t=>{
   const f=fixture(t),settings=owned(f,'agent/settings.json',{extensions:['-/user/optional.ts']});
   let file=preserveLocalControls({path:settings,content:JSON.stringify({extensions:['palette.ts']}),mode:0o600});
