@@ -6,7 +6,7 @@ import { getAgentDir } from '@earendil-works/pi-coding-agent';
 import { getSupportedThinkingLevels } from '@earendil-works/pi-ai';
 import { VERSION, CANDIDATES, ROLES, CLASSES, DEFAULT_POLICY, validatePolicy, validateTask, validateRole, digest,
   makeRequest, selectCandidate, spawnAndJoin, rpc } from './core.mjs';
-import { readJson, atomicJson, withLock, readTypesafeKey, callJev, appendAudit } from './storage.mjs';
+import { readJson, atomicJson, withLock, claimWriter, readTypesafeKey, callJev, appendAudit } from './storage.mjs';
 
 async function bindings(agentDir, cwd, role) {
   const global = readJson(path.join(agentDir, 'settings.json'));
@@ -102,7 +102,7 @@ export default function (pi) {
       const abort = () => controller.abort(); signal?.addEventListener('abort', abort, { once: true });
       if (signal?.aborted) controller.abort();
       const startedAt = Date.now();
-      let selection, model;
+      let selection, model, releaseWriter, childAllocated = false;
       try {
         const binding = await bindings(agentDir, ctx.cwd, task.role);
         await rpc(pi.events, 'ping');
@@ -137,13 +137,21 @@ export default function (pi) {
         if (ctx.scopedModels?.length && !ctx.scopedModels.some(x => x.model.provider === model.provider && x.model.id === model.id)) throw new Error('Candidate ngoài scope của session hiện tại; mở lại Pi hoặc cập nhật scoped models.');
         const fresh = await bindings(agentDir, ctx.cwd, task.role);
         if (fresh.fingerprint !== binding.fingerprint || digest(policy()) !== digest(p)) throw new Error('Cấu hình thay đổi trong khi routing; chưa spawn.');
+        if (['worker', 'debugger'].includes(task.role)) {
+          const directory = p.writerLocksDir ?? path.join(stateDir, 'writers');
+          if (!path.isAbsolute(directory)) throw new Error('writerLocksDir phải là đường dẫn tuyệt đối.');
+          releaseWriter = claimWriter(directory, ctx.cwd, jobId);
+        }
         saveJob(jobId, { status: 'queued', model: id, thinking: candidate.thinking });
         update?.(result(`${task.role} · ${candidate.id} ${candidate.thinking} · ${selection.source}`, { jobId, status: 'queued' }));
         const prompt = `Task ID: ${task.requestId}\nMục tiêu và phạm vi:\n${task.brief}\n\nTiêu chí nghiệm thu:\n${task.acceptance}\n\nBáo file/evidence, kiểm thử thực tế và blocker. Không giao việc tiếp hoặc tự đổi model.`;
         const event = await spawnAndJoin(pi.events, task.role, prompt, {
           model, thinkingLevel: candidate.thinking, maxTurns: 12, inheritContext: false, isolated: false,
           isBackground: true, bypassQueue: false, description: `${jobId} · ${task.role} · ${candidate.id}/${candidate.thinking}`,
-        }, { signal: controller.signal, timeoutMs: p.timeoutMs, onStarted: childId => saveJob(jobId, { childId, status: 'running' }) });
+        }, { signal: controller.signal, timeoutMs: p.timeoutMs,
+          onQueued: (childId, ahead) => { childAllocated = true; saveJob(jobId, { childId, status: 'queued', ahead }); },
+          onStarted: childId => { childAllocated = true; saveJob(jobId, { childId, status: 'running' }); },
+          onSettled: () => releaseWriter?.() });
         const failed = ['error', 'stopped', 'aborted'].includes(event.status);
         const status = failed ? 'blocked' : 'completed-unreviewed';
         const text = failed ? 'Worker bị chặn/lỗi. Parent kiểm evidence; không tự đổi model để vượt blocker.' : String(event.result ?? 'Worker kết thúc, chưa có báo cáo.');
@@ -159,7 +167,10 @@ export default function (pi) {
       } catch (error) {
         saveJob(jobId, { status: controller.signal.aborted ? 'cancelled' : 'blocked', durationMs: Date.now() - startedAt });
         throw error;
-      } finally { signal?.removeEventListener('abort', abort); running.delete(jobId); }
+      } finally {
+        if (!childAllocated) releaseWriter?.();
+        signal?.removeEventListener('abort', abort); running.delete(jobId);
+      }
     },
   });
 }

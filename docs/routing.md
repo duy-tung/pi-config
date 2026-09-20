@@ -21,6 +21,8 @@ Mẫu yêu cầu trong Pi: “Dùng dispatch_task với candidate glm, role rese
 
 Role được resolve từ project hiện tại. Router kiểm đúng contract tools/extensions, context riêng và giới hạn trước spawn, sau đó kiểm lại nếu cấu hình thay đổi. RPC giữ permission của Pi. `isolated:false` không phải sandbox filesystem. Agent/@mention thủ công vẫn tồn tại; router chỉ quản lý task đi qua dispatcher.
 
+Router cho phép tối đa một writer (worker/debugger) trên một workspace qua lock dùng chung main/goal; reader vẫn theo pool 2. Hủy/timeout sẽ dừng đúng cả worker đang chờ và tiêu thụ thông báo kết thúc. Nếu process bị kill hoặc không xác nhận được worker đã dừng, lock được giữ để tránh writer chạy chồng. Chỉ xóa lock trong `state/routing-writers` sau khi kiểm PID trong file đã dừng. Các task đi ngoài dispatcher không chịu lock này.
+
 `routing-capabilities.json` mặc định rỗng. Code không tự biến lời worker “xong” thành bằng chứng chất lượng. Auto GLM hiện giới hạn researcher + lookup/mechanical, cần card được duyệt cho đúng GLM/max, tối thiểu 12 mẫu đều đạt và còn hạn. Gate này chỉ dành cho pilot; nó không chứng minh chất lượng production. Ngưỡng Jev cũng là ngưỡng thử nghiệm cần hiệu chỉnh, không phải bảo đảm xác suất đúng.
 
 Credential Jev được resolve tại máy từ `TYPESAFE_API_KEY`, file tuyệt đối `typesafeKeyFile` (dòng `TYPESAFE_API_KEY=...`, quyền 0600), hoặc saved key của compact-adviser. Extension không ghi key vào log hoặc truyền qua prompt. Nếu dùng env chung, tiến trình con khác có thể kế thừa env của shell; nên dùng file riêng hoặc saved credential. Brief gửi Jev có lọc một số dạng key phổ biến nhưng không bảo đảm loại mọi secret; chỉ giao brief chứa dữ liệu được phép gửi dịch vụ.

@@ -104,25 +104,36 @@ export function rpc(events, name, payload = {}, timeoutMs = 3000) {
     events.emit(topic, { ...payload, requestId });
   });
 }
-export async function spawnAndJoin(events, role, prompt, options, { signal, timeoutMs, onStarted = () => {} }) {
+export async function spawnAndJoin(events, role, prompt, options, { signal, timeoutMs, onStarted = () => {}, onQueued = () => {}, onSettled = () => {} }) {
   await rpc(events, 'ping');
   if (signal?.aborted) fail('Task đã hủy.');
   return new Promise((resolve, reject) => {
-    let id, settled = false;
-    const cleanup = () => { clearTimeout(timer); offDone(); offFail(); signal?.removeEventListener('abort', abort); };
+    let id, settled = false, drainTimer;
+    const cleanup = () => { clearTimeout(timer); clearTimeout(drainTimer); offDone(); offFail(); signal?.removeEventListener('abort', abort); };
     const stop = () => { if (id) events.emit('subagents:rpc:stop', { requestId: crypto.randomUUID(), agentId: id }); };
     const finish = event => {
-      if (!id || event.id !== id || settled) return;
-      settled = true;
+      if (!id || event.id !== id) return;
       // Synchronous consumption prevents a second parent notification/turn.
       events.emit('subagents:rpc:consume', { requestId: crypto.randomUUID(), agentId: id });
+      onSettled();
+      if (settled) { cleanup(); return; }
+      settled = true;
       cleanup(); resolve(event);
     };
     const offDone = events.on('subagents:completed', finish), offFail = events.on('subagents:failed', finish);
-    const abort = () => { if (settled) return; settled = true; stop(); cleanup(); reject(new Error('Task đã hủy; đã yêu cầu dừng worker.')); };
+    const abort = () => {
+      if (settled) return;
+      settled = true; clearTimeout(timer); signal?.removeEventListener('abort', abort);
+      // Keep a short drain listener to consume the asynchronous stopped event.
+      // Otherwise cancellation would trigger a second parent notification.
+      drainTimer = setTimeout(cleanup, 10000); drainTimer.unref?.();
+      stop(); reject(new Error('Task đã hủy; đã yêu cầu dừng worker.'));
+    };
     const timer = setTimeout(abort, timeoutMs);
     signal?.addEventListener('abort', abort, { once: true });
-    rpc(events, 'spawn', { type: role, prompt, options: { ...options, signal, onSpawned: childId => {
+    rpc(events, 'spawn', { type: role, prompt, options: { ...options, signal, onQueued: (childId, ahead) => {
+      id = childId; if (settled) stop(); else onQueued(id, ahead);
+    }, onSpawned: childId => {
       id = childId; if (settled) stop(); else onStarted(id);
     } } }, timeoutMs).catch(() => {
       if (settled) return;

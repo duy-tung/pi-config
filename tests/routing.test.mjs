@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { DEFAULT_POLICY, validatePolicy, validateTask, makeRequest, parseJudgment, selectCandidate, spawnAndJoin, CANDIDATES } from '../assets/extensions/pi-dispatch-router/core.mjs';
-import { callJev, readJson, appendAudit } from '../assets/extensions/pi-dispatch-router/storage.mjs';
+import { callJev, readJson, appendAudit, claimWriter } from '../assets/extensions/pi-dispatch-router/storage.mjs';
 
 const task = { requestId: 'r1', role: 'researcher', taskClass: 'lookup', candidate: 'auto', brief: 'Tìm hàm xử lý timeout.', acceptance: 'Nêu file và dòng từ source; không sửa.' };
 const policy = () => ({ ...structuredClone(DEFAULT_POLICY), mode: 'balanced', glmAutoClasses: ['lookup'] });
@@ -59,6 +59,14 @@ test('audit excludes raw prompts, credentials and result bodies', t => {
   const dir=fixture(t);appendAudit(dir,{jobId:'123',status:'completed',brief:'PRIVATE',key:'PRIVATE',result:'PRIVATE'});
   assert.ok(!fs.readFileSync(path.join(dir,'events.jsonl'),'utf8').includes('PRIVATE'));
 });
+test('workspace writers serialize across router instances and release on completion',t=>{
+  const dir=fixture(t),locks=path.join(dir,'routing-writers');
+  const release=claimWriter(locks,dir,'job-a');
+  assert.throws(()=>claimWriter(locks,dir,'job-b'),/writer/);release();
+  const releaseB=claimWriter(locks,dir,'job-b');release();
+  assert.throws(()=>claimWriter(locks,dir,'job-c'),/writer/);releaseB();
+  const releaseC=claimWriter(locks,dir,'job-c');releaseC();
+});
 function bus(){const map=new Map();return{on:(n,fn)=>{if(!map.has(n))map.set(n,new Set());map.get(n).add(fn);return()=>map.get(n).delete(fn);},emit:(n,p)=>{for(const fn of [...(map.get(n)??[])])fn(p);}};}
 test('RPC consumes completion synchronously even before spawn reply', async () => {
   const events=bus();let consumed=false;
@@ -76,4 +84,13 @@ test('RPC cancellation stops the exact child', async () => {
   events.on('subagents:rpc:stop',r=>{stopped=r.agentId;});
   events.on('subagents:rpc:spawn',r=>{r.options.onSpawned('child');events.emit('subagents:rpc:spawn:reply:'+r.requestId,{success:true,data:{id:'child'}});controller.abort();});
   await assert.rejects(spawnAndJoin(events,'worker','brief',{}, {signal:controller.signal,timeoutMs:1000}),/hủy/);assert.equal(stopped,'child');
+});
+test('queued timeout stops and consumes the queued child before it can start', async () => {
+  const events=bus();let stopped,consumed=false,spawnReply;
+  events.on('subagents:rpc:ping',r=>events.emit('subagents:rpc:ping:reply:'+r.requestId,{success:true,data:{}}));
+  events.on('subagents:rpc:consume',()=>{consumed=true;});
+  events.on('subagents:rpc:stop',r=>{stopped=r.agentId;events.emit('subagents:failed',{id:r.agentId,status:'stopped'});events.emit('subagents:rpc:spawn:reply:'+spawnReply,{success:false});});
+  events.on('subagents:rpc:spawn',r=>{spawnReply=r.requestId;r.options.onQueued('queued-child',2);});
+  await assert.rejects(spawnAndJoin(events,'worker','brief',{}, {timeoutMs:20}),/hủy/);
+  assert.equal(stopped,'queued-child');assert.equal(consumed,true);
 });

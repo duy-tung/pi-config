@@ -21,6 +21,21 @@ export function withLock(file, fn) {
   catch { throw new Error('Routing state đang khóa; không gửi request mới.'); }
   try { return fn(); } finally { fs.closeSync(fd); fs.unlinkSync(lock); }
 }
+export function claimWriter(directory, cwd, jobId) {
+  fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const workspace = fs.realpathSync(cwd);
+  const file = path.join(directory, crypto.createHash('sha256').update(workspace).digest('hex') + '.lock');
+  let fd;
+  try { fd = fs.openSync(file, 'wx', 0o600); }
+  catch { throw new Error('Workspace đang có writer hoặc lock chưa được giải phóng; không chạy hai writer cùng lúc.'); }
+  try { fs.writeFileSync(fd, JSON.stringify({ jobId, pid: process.pid, createdAt: new Date().toISOString() })); }
+  catch (error) { fs.unlinkSync(file); throw error; }
+  finally { fs.closeSync(fd); }
+  return () => {
+    try { if (readJson(file).jobId === jobId) fs.unlinkSync(file); }
+    catch { /* Retain an unknown lock; never unlock another job or hide a live writer. */ }
+  };
+}
 export function readTypesafeKey(policyFile, policy) {
   if (!policy.jev.enabled) return undefined;
   if (process.env.TYPESAFE_API_KEY?.trim()) return process.env.TYPESAFE_API_KEY.trim();
