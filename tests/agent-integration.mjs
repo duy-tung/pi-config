@@ -12,8 +12,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // Only installed configuration on the explicit root is used. The test copies
 // a fixed whitelist into a disposable agent, never auth/history/cache/secrets.
 const [installArg, profile] = process.argv.slice(2);
-if (!installArg || !["main", "goal"].includes(profile)) {
-  throw new Error("Cách dùng: node tests/agent-integration.mjs <installRoot> <main|goal>");
+if (!installArg || !["main"].includes(profile)) {
+  throw new Error("Cách dùng: node tests/agent-integration.mjs <installRoot> <main>");
 }
 let activePhase = "khởi tạo runtime";
 const watchdog = setTimeout(() => {
@@ -24,7 +24,7 @@ const installRoot = path.resolve(installArg);
 const readJson = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
 const writeJson = (file, value) => fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
 const configuration = readJson(path.join(installRoot, "profiles.json"))[profile];
-assert.ok(configuration?.agentDir && ["current", "compat"].includes(configuration.runtime));
+assert.ok(configuration?.agentDir && configuration.runtime === "current");
 const fixture = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `pi-config ${profile} integration `)));
 const agentDir = path.join(fixture, "fixture agent");
 const cwd = path.join(fixture, "fixture workspace");
@@ -67,7 +67,7 @@ const modules = path.join(installRoot, "runtimes", configuration.runtime, "node_
 Object.assign(process.env, {
   PI_CODING_AGENT_DIR: agentDir, PI_WORKSPACE_DIR: cwd, PI_LENS_HOME: path.join(fixture, "lens-state"),
   PI_CONFIG_AUTH_PATH: path.join(agentDir, "auth.json"), PI_LENS_CONFIG_PATH: path.join(installRoot, "config", "pi-lens.json"),
-  PI_LENS_DISABLE_LSP_INSTALL: "1", PI_LENS_DISABLE_TOOL_INSTALL: "1",
+  PI_LENS_DISABLE_LSP_INSTALL: "1", PI_LENS_DISABLE_TOOL_INSTALL: "1", PI_BG_DISABLE_UPDATE_CHECK: "1",
   FIRECRAWL_NO_SEARCH_FEEDBACK: "1", FIRECRAWL_NO_ENDPOINT_FEEDBACK: "1",
 });
 for (const key of Object.keys(process.env)) {

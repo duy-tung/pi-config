@@ -10,11 +10,10 @@ const root=path.join(temporary,'platform with spaces'),agentDir=path.join(tempor
 const args=[path.join(repo,'install.mjs'),'--root',root,'--agent-dir',agentDir,'--bin-dir',binDir,'--no-path'];
 await run(process.execPath,args,{timeout:1800000});
 await run(process.execPath,[path.join(root,'bin/launch.mjs'),'main','--version']);
-await run(process.execPath,[path.join(root,'bin/launch.mjs'),'goal','--version']);
 await run(process.execPath,[path.join(root,'bin/launch.mjs'),'models']);
-await run(process.execPath,['--test',path.join(repo,'tests/patches.test.mjs'),path.join(repo,'tests/compat-models.test.mjs'),path.join(repo,'tests/glm-wire.test.mjs')],{env:{...process.env,PI_CONFIG_TEST_ROOT:root}});
-for(const profile of ['main','goal','background','advisor'])await run(process.execPath,[path.join(repo,'tests/profile-integration.mjs'),root,profile]);
-for(const profile of ['main','goal'])await run(process.execPath,[path.join(repo,'tests/agent-integration.mjs'),root,profile]);
+await run(process.execPath,['--test',path.join(repo,'tests/patches.test.mjs'),path.join(repo,'tests/models.test.mjs'),path.join(repo,'tests/glm-wire.test.mjs')],{env:{...process.env,PI_CONFIG_TEST_ROOT:root}});
+for(const profile of ['main'])await run(process.execPath,[path.join(repo,'tests/profile-integration.mjs'),root,profile]);
+for(const profile of ['main'])await run(process.execPath,[path.join(repo,'tests/agent-integration.mjs'),root,profile]);
 const settingsPath=path.join(agentDir,'settings.json');
 const settings=readJson(settingsPath);
 settings.theme='rose-pine-dawn';writeJson(settingsPath,settings);
@@ -37,7 +36,7 @@ await run(process.execPath,[path.join(repo,'tests/agent-integration.mjs'),root,'
 assert.deepEqual(fs.readFileSync(auth),authBefore);
 const state=readJson(path.join(root,'install-state.json'));assert.equal(Object.keys(state.sources).length,3);
 assert.equal(fs.existsSync(path.join(root,'.install.lock')),false);
-console.log('PASS: cài sạch, hai runtime, bốn profile, auth/permission, chạy lại giữ tùy chỉnh và secret giả.');
+console.log('PASS: cài sạch, một runtime Pi, slash workflows, auth/permission, chạy lại giữ tùy chỉnh và secret giả.');
 console.log(`Fixture: ${root}`);
 if(process.env.GITHUB_ENV){
   fs.appendFileSync(process.env.GITHUB_ENV,`PI_CONFIG_SMOKE_ROOT=${root}\nPI_CONFIG_SMOKE_AGENT_DIR=${agentDir}\nPI_CONFIG_SMOKE_BIN_DIR=${binDir}\n`);

@@ -17,7 +17,7 @@ function walk(dir){for(const e of fs.readdirSync(dir,{withFileTypes:true})){
   if(text.includes(personal)||patterns.some(p=>p.test(text)))failures.push(`Có thể chứa secret/path cá nhân: ${relative}`);
 }}
 walk(root);
-for(const name of ['current','compat','firecrawl']){
+for(const name of ['current','firecrawl']){
   const p=JSON.parse(fs.readFileSync(path.join(root,'manifests',name,'package.json')));
   for(const [dep,version] of Object.entries(p.dependencies))if(!/^\d+\.\d+\.\d+$|^file:\.\.\/\.\.\/vendor\//.test(version))failures.push(`Dependency chưa ghim ${name}/${dep}`);
   for(const entry of Object.values(p.piPlatform?.localPackages ?? {})){

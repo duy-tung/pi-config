@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@earendil-works/pi-agent-core": "0.86.0",
-    "@earendil-works/pi-ai": "0.86.0",
-    "@earendil-works/pi-coding-agent": "0.86.0",
-    "@earendil-works/pi-tui": "0.86.0",
+    "@earendil-works/pi-agent-core": "0.86.1",
+    "@earendil-works/pi-ai": "0.86.1",
+    "@earendil-works/pi-coding-agent": "0.86.1",
+    "@earendil-works/pi-tui": "0.86.1",
     "@gotgenes/pi-anthropic-auth": "2.0.10",
     "@gotgenes/pi-permission-system": "33.0.1",
     "@juicesharp/rpiv-ask-user-question": "2.10.1",
@@ -15,29 +15,67 @@
     "@modelcontextprotocol/server-filesystem": "2026.8.31",
     "@narumitw/pi-usage": "0.60.8",
     "@tintinweb/pi-subagents": "0.19.0",
-    "pi-advisor-flow": "file:../../vendor/pi-advisor-flow-0.6.0-pi086.tgz",
-    "pi-lens": "4.2.1",
-    "pi-mcp-adapter": "2.34.0",
+    "pi-advisor-flow": "file:../../vendor/pi-advisor-flow-0.6.0-pi0861.tgz",
+    "pi-lens": "file:../../vendor/pi-lens-4.2.1-pi0861.tgz",
+    "pi-mcp-adapter": "file:../../vendor/pi-mcp-adapter-2.34.0-pi0861.tgz",
     "pi-open-tui": "0.3.6",
     "pi-web-access": "0.29.0",
     "typescript": "5.9.3",
-    "typescript-language-server": "6.0.0"
+    "typescript-language-server": "6.0.0",
+    "pi-goal-x": "file:../../vendor/pi-goal-x-0.31.6-pi0861.tgz",
+    "pi-background-tasks": "file:../../vendor/pi-background-tasks-2.5.0-pi0861.tgz",
+    "pi-workspace-history": "file:../../vendor/pi-workspace-history-0.4.3-pi0861.tgz"
   },
-  "overrides": {
-    "pi-lens": {
-      "@earendil-works/pi-tui": "$@earendil-works/pi-tui"
-    },
-    "pi-mcp-adapter": {
-      "@earendil-works/pi-ai": "$@earendil-works/pi-ai"
-    }
-  },
+  "overrides": {},
   "piPlatform": {
     "localPackages": {
+      "pi-goal-x": {
+        "version": "0.31.6",
+        "source": "../../vendor/pi-goal-x-0.31.6-pi0861.tgz",
+        "sha256": "a71bf40a050f242ebf3e40ebc2c67d8acfabd973f8f08f708dc25a68b469940c",
+        "upstreamIntegrity": "sha512-i+2gAXtKtwTHWJASl9r8y44c67EqSs+dS3LpAIAcrNDk1fwVkxh4+QQRBapYj1kX0Gdfh48SniGMr0jMZBmCsA==",
+        "upstreamTarball": "https://registry.npmjs.org/pi-goal-x/-/pi-goal-x-0.31.6.tgz",
+        "reason": "Peer metadata adds exactly Pi 0.86.1; runtime changes are tracked separately in assets/patches.json."
+      },
+      "pi-background-tasks": {
+        "version": "2.5.0",
+        "source": "../../vendor/pi-background-tasks-2.5.0-pi0861.tgz",
+        "sha256": "e32221411fd2b6dada3c3bd7d1738f7d4ab3303e6968a033a15150855556d893",
+        "upstreamIntegrity": "sha512-YrOedXIYZYgLctffizuu2V5bI8u87Ex4ChFipXpVazsY75J9X98/9K7pO5Y7egB+6fgkE9KQPDxdDkdkLenhng==",
+        "upstreamTarball": "https://registry.npmjs.org/pi-background-tasks/-/pi-background-tasks-2.5.0.tgz",
+        "reason": "Peer metadata adds exactly Pi 0.86.1; runtime changes are tracked separately in assets/patches.json."
+      },
+      "pi-workspace-history": {
+        "version": "0.4.3",
+        "source": "../../vendor/pi-workspace-history-0.4.3-pi0861.tgz",
+        "sha256": "20ee95733c2d955d234713d3aafb108487bab08b06ca00bb3920882709ee55f9",
+        "upstreamIntegrity": "sha512-dGLoWNK3fgMVKVL+QPfkXAm4yRk2j5eH1fPh4T/WiU0cFlb+g8g6wgNIz4sQ8gPMwU45VKSgf+wMf0kbOLKm2A==",
+        "upstreamTarball": "https://registry.npmjs.org/pi-workspace-history/-/pi-workspace-history-0.4.3.tgz",
+        "reason": "Peer metadata adds exactly Pi 0.86.1; runtime changes are tracked separately in assets/patches.json."
+      },
       "pi-advisor-flow": {
         "version": "0.6.0",
-        "source": "../../vendor/pi-advisor-flow-0.6.0-pi086.tgz",
-        "sha256": "6ac0352f3fc46b65a5961d2c2db54ca8e547b6fd6ee55c9ef966c85ee674b520",
-        "reason": "Peer metadata includes exactly Pi 0.86.0; runtime code unchanged before separately tracked transport patch."
+        "source": "../../vendor/pi-advisor-flow-0.6.0-pi0861.tgz",
+        "sha256": "1b3a459907b551555ca60936bb3dafa5b0095bf73a73e23125822371aaa70001",
+        "upstreamIntegrity": "sha512-EUmqTph4ePe0YxSffWPY75ILOJ3Fl+JrMD8g4WI0GFBkCBHb2n4fv640fjAKM2MG856Ita+s+FPDaxcOQIl6Yw==",
+        "upstreamTarball": "https://registry.npmjs.org/pi-advisor-flow/-/pi-advisor-flow-0.6.0.tgz",
+        "reason": "Peer metadata adds exactly Pi 0.86.1; runtime changes are tracked separately in assets/patches.json."
+      },
+      "pi-lens": {
+        "version": "4.2.1",
+        "source": "../../vendor/pi-lens-4.2.1-pi0861.tgz",
+        "sha256": "8312ccf7a8791c1da43177cb5f04955da29c19728f95c64f888b34e4588667c5",
+        "upstreamIntegrity": "sha512-nRF5I/xdYZ1bZoOcTVCbRPV81TsCvkBdyxCtx+nZiRju76S18COFTnj8oNmSV7LAfatiRy8r5pHl0dcc0FtaAw==",
+        "upstreamTarball": "https://registry.npmjs.org/pi-lens/-/pi-lens-4.2.1.tgz",
+        "reason": "Peer metadata adds exactly Pi 0.86.1; runtime changes are tracked separately in assets/patches.json."
+      },
+      "pi-mcp-adapter": {
+        "version": "2.34.0",
+        "source": "../../vendor/pi-mcp-adapter-2.34.0-pi0861.tgz",
+        "sha256": "79e5e2f4c34353861c7e0bcda5ed976ba5062b0c04bc9dd0ae454f8c23ed11f8",
+        "upstreamIntegrity": "sha512-3YzoYQlxwKQjk4co0MMnRrhTNWzw5XsoCKCuhfZkIa9XSRBbrOLbi32yu7KOn6Unyk/K0rTof1lX/7cSLobudg==",
+        "upstreamTarball": "https://registry.npmjs.org/pi-mcp-adapter/-/pi-mcp-adapter-2.34.0.tgz",
+        "reason": "Peer metadata adds exactly Pi 0.86.1; runtime changes are tracked separately in assets/patches.json."
       }
     }
   }

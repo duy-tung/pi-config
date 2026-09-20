@@ -8,6 +8,12 @@ const profiles=JSON.parse(fs.readFileSync(path.join(root,'profiles.json'),'utf8'
 const [action='main',...args]=process.argv.slice(2);
 if(action==='doctor'){
   process.env.PI_CONFIG_ROOT=root;await import('./doctor.mjs');
+}else if(action==='test'){
+  const {spawnSync}=await import('node:child_process');
+  for(const script of ['profile-integration.mjs','agent-integration.mjs']){
+    const result=spawnSync(state.nodePath,[path.join(root,'tests',script),root,'main'],{stdio:'inherit',env:process.env});
+    if(result.status!==0){process.exitCode=result.status??1;break;}
+  }
 }else if(action==='models'){
   if(args.length)throw new Error('pi-models chỉ xem cấu hình. Đổi model bằng /model hoặc chỉnh settings và file role.');
   for(const [name,p] of Object.entries(profiles)){
@@ -28,10 +34,10 @@ if(action==='doctor'){
   const modules=path.join(root,'runtimes',runtime,'node_modules');
   const env={...process.env,
     PI_CODING_AGENT_DIR:profile?.agentDir ?? state.agentDir,
-    PI_CONFIG_AUTH_PATH:path.join(state.agentDir,'auth.json'),
     PI_WORKSPACE_DIR:process.cwd(),
     PI_LENS_CONFIG_PATH:path.join(root,'config/pi-lens.json'),
     PI_LENS_DISABLE_LSP_INSTALL:'1', PI_LENS_DISABLE_TOOL_INSTALL:'1',
+    PI_BG_DISABLE_UPDATE_CHECK:'1',
     FIRECRAWL_NO_SEARCH_FEEDBACK:'1', FIRECRAWL_NO_ENDPOINT_FEEDBACK:'1',
   };
   const parts=[path.dirname(state.nodePath),path.join(modules,'.bin'),path.join(root,'runtimes/current/node_modules/.bin')];

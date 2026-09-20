@@ -2,9 +2,9 @@
 
 Giao tiếp và tài liệu vận hành bằng tiếng Việt. Repo mô tả bộ cài và cấu hình Pi hiện hành cho Windows, Linux, macOS.
 
-- Cấu hình chuẩn: parent Astra/high; researcher GLM/max; worker, debugger, reviewer Sol/high. Main/goal dùng Agent của @tintinweb/pi-subagents. Background và advisor có workflow riêng.
+- Cấu hình chuẩn: parent Astra/high; researcher GLM/max; worker, debugger, reviewer Sol/high. Một runtime Pi 0.86.1, một cấu hình main; dùng Agent của @tintinweb/pi-subagents và slash command trong cùng phiên.
 - Ghim phiên bản dependency, nguồn skills và checksum bản vá. Chỉ đổi phiên bản hoặc phân vai theo phạm vi yêu cầu.
-- Mỗi profile chỉ có cấu hình cho extension mà nó sử dụng. Giữ context riêng và quyền công cụ của từng role; model/thinking trong role được ưu tiên hơn tham số Agent.
+- Goal, shell jobs, workspace history và advisor phải dùng được trong cùng phiên; background chỉ cung cấp shell jobs, model delegation dùng Agent. Giữ context riêng và quyền công cụ của từng role; model/thinking trong role được ưu tiên hơn tham số Agent.
 - Giữ auditor, advisor auto, cache warming và workflow tính phí tự động tắt trong cấu hình mặc định.
 - Repo không chứa credential, token, dữ liệu phiên, log riêng hoặc đường dẫn máy nguồn. Auth và tùy chỉnh người dùng phải được bảo toàn khi cài lại.
 - Installer phải idempotent, kiểm quyền sở hữu file bằng manifest/checksum và báo rõ file đã được người dùng sửa. Chỉ lưu trữ tài nguyên thuộc installer, chưa sửa và không còn được tham chiếu.

@@ -116,16 +116,17 @@ try{
   copyTree(path.join(repoDir,'assets'),path.join(root,'assets'));
   copyTree(path.join(repoDir,'vendor'),path.join(root,'vendor'));
   await installRuntime('current','runtimes/current');
-  await installRuntime('compat','runtimes/compat');
   await installRuntime('firecrawl','tools/firecrawl');
   await applyPatches({root});
   for(const source of readJson(path.join(repoDir,'sources.lock.json')))await installSource(source);
   for(const filename of fs.readdirSync(path.join(repoDir,'runtime'))){
     const source=path.join(repoDir,'runtime',filename);if(fs.statSync(source).isFile())managed(path.join(root,'bin',filename),fs.readFileSync(source));
   }
+  for(const filename of ['profile-integration.mjs','agent-integration.mjs','scripted-provider.ts','agent-provider.ts'])
+    managed(path.join(root,'tests',filename),fs.readFileSync(path.join(repoDir,'tests',filename)));
   const files=buildConfiguration({root,agentDir,binDir,nodePath,platform:process.platform,home,repoDir,shellPath:state.shellPath});
   for(const specification of files){const file=preserveLocalControls(specification);managed(file.path,file.content,file.mode);}
-  for(const [name,action] of Object.entries({'pi':'main','pi-goal':'goal','pi-background':'background','pi-advisor':'advisor','pi-login':'login','pi-doctor':'doctor','pi-config':'doctor','firecrawl':'firecrawl','pi-models':'models'}))launcher(name,action);
+  for(const [name,action] of Object.entries({'pi':'main','pi-login':'login','pi-doctor':'doctor','pi-test':'test','pi-config':'doctor','firecrawl':'firecrawl','pi-models':'models'}))launcher(name,action);
   const auth=path.join(agentDir,'auth.json');
   if(!fs.existsSync(auth)){fs.mkdirSync(agentDir,{recursive:true,mode:0o700});fs.writeFileSync(auth,'{}\n',{mode:0o600});}
   await addPath();

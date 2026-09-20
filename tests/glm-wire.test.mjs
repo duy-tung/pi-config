@@ -4,7 +4,7 @@ import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 
 const root=process.env.PI_CONFIG_TEST_ROOT;
-for(const runtimeName of ['current','compat'])test(`GLM native ${runtimeName}: max reaches OpenCode Go HTTP payload`,{skip:!root},async()=>{
+for(const runtimeName of ['current'])test(`GLM native ${runtimeName}: max reaches OpenCode Go HTTP payload`,{skip:!root},async()=>{
   const modules=path.join(root,'runtimes',runtimeName,'node_modules');
   const load=rel=>import(pathToFileURL(path.join(modules,rel)).href);
   const {ModelRuntime}=await load('@earendil-works/pi-coding-agent/dist/core/model-runtime.js');

@@ -12,8 +12,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // Only installed configuration on the explicit root is used. The test copies
 // a fixed whitelist into a disposable agent, never auth/history/cache/secrets.
 const [installArg, profile] = process.argv.slice(2);
-if (!installArg || !["main", "goal", "background", "advisor"].includes(profile)) {
-  throw new Error("Cách dùng: node tests/profile-integration.mjs <installRoot> <main|goal|background|advisor>");
+if (!installArg || !["main"].includes(profile)) {
+  throw new Error("Cách dùng: node tests/profile-integration.mjs <installRoot> <main>");
 }
 let activePhase = "khởi tạo runtime";
 const watchdog = setTimeout(() => {
@@ -24,7 +24,7 @@ const installRoot = path.resolve(installArg);
 const readJson = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
 const writeJson = (file, value) => fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
 const configuration = readJson(path.join(installRoot, "profiles.json"))[profile];
-assert.ok(configuration?.agentDir && ["current", "compat"].includes(configuration.runtime));
+assert.ok(configuration?.agentDir && configuration.runtime === "current");
 const fixture = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `pi-config ${profile} integration `)));
 const agentDir = path.join(fixture, "fixture agent");
 const cwd = path.join(fixture, "fixture workspace");
@@ -33,7 +33,7 @@ for (const name of ["settings.json", "models.json", "advisor.json", "subagents.j
   if (fs.existsSync(path.join(configuration.agentDir, name))) fs.copyFileSync(path.join(configuration.agentDir, name), path.join(agentDir, name));
 }
 fs.mkdirSync(path.join(agentDir, "agents"));
-for (const name of (["main", "goal"].includes(profile) ? ["researcher", "worker", "debugger", "reviewer"] : [])) {
+for (const name of ["researcher", "worker", "debugger", "reviewer"]) {
   const role = fs.readFileSync(path.join(configuration.agentDir, "agents", `${name}.md`), "utf8")
     .replace(/^model: .+$/m, "model: config-test/worker")
     .replace('"pi-permission-system"', '"pi-permission-system", "scripted-provider"');
@@ -55,10 +55,10 @@ Object.assign(settings, {
 if (settings.workspaceHistory) settings.workspaceHistory.storageDir = path.join(fixture, "history");
 writeJson(path.join(agentDir, "settings.json"), settings);
 writeJson(credentialFile, {"fixture-secret": {type: "api_key", key: "synthetic-private-credential"}});
-if (profile === "advisor") {
+if (configuration.packages.includes("pi-advisor-flow")) {
   const advisorFile = path.join(agentDir, "advisor.json");
   const advisor = readJson(advisorFile);
-  Object.assign(advisor, { executor: "config-test/parent", advisor: "config-test/worker", alwaysOn: true });
+  Object.assign(advisor, { executor: "config-test/parent", advisor: "config-test/worker", alwaysOn: false });
   writeJson(advisorFile, advisor);
 }
 // Explicitly replace web config rather than copying a live credential command.
@@ -77,7 +77,7 @@ const modules = path.join(installRoot, "runtimes", configuration.runtime, "node_
 Object.assign(process.env, {
   PI_CODING_AGENT_DIR: agentDir, PI_WORKSPACE_DIR: cwd, PI_LENS_HOME: path.join(fixture, "lens-state"),
   PI_CONFIG_AUTH_PATH: path.join(agentDir, "auth.json"), PI_LENS_CONFIG_PATH: path.join(installRoot, "config", "pi-lens.json"),
-  PI_LENS_DISABLE_LSP_INSTALL: "1", PI_LENS_DISABLE_TOOL_INSTALL: "1",
+  PI_LENS_DISABLE_LSP_INSTALL: "1", PI_LENS_DISABLE_TOOL_INSTALL: "1", PI_BG_DISABLE_UPDATE_CHECK: "1",
   FIRECRAWL_NO_SEARCH_FEEDBACK: "1", FIRECRAWL_NO_ENDPOINT_FEEDBACK: "1",
 });
 for (const key of Object.keys(process.env)) {
@@ -167,6 +167,18 @@ async function check(name, fn) {
   try { await fn(); results.push({ name, status: "PASS" }); }
   catch (error) { results.push({ name, status: "FAIL", error: error.stack }); }
 }
+await check("single session exposes slash commands and only one model delegation system", async () => {
+  const commands = session.extensionRunner.getRegisteredCommands().map(command => command.name);
+  for (const name of ["goal", "goal-pause", "goal-resume", "bg", "jobs", "logs", "kill", "advisor", "advisor-off", "checkpoint", "undo", "redo"])
+    assert.ok(commands.includes(name), `Missing /${name}`);
+  assert.equal(new Set(commands).size, commands.length);
+  const tools = session.getAllTools().map(tool => tool.name);
+  assert.ok(tools.includes("Agent"));
+  for (const name of ["bg_delegate", "bg_run_pi_attested", "fusion_reason", "fusion_investigate", "fusion_research", "fusion_validate"])
+    assert.ok(!tools.includes(name), `Duplicate model workflow: ${name}`);
+  assert.ok(!loader.getExtensions().extensions.some(extension => extension.path?.includes("anthropic-attribution")));
+  assert.equal(control.seen.length, 0, "Startup must not call any model");
+});
 await check("read safe file; deny .env and symlink escape", async () => {
   const calls = [[tool("read", { path: "safe.txt" })], [tool("read", { path: ".env" })]];
   if (symlinkAvailable) calls.push([tool("read", { path: "secret-alias.txt" })]);
@@ -186,7 +198,7 @@ await check("shell asks parent before fixture execution", async () => {
   assert.ok(prompts.length > before); assert.match(JSON.stringify(result), /integration-ok/u);
   assert.ok(!result[0]?.isError, JSON.stringify(result));
 });
-if (["main", "goal"].includes(profile)) {
+if (configuration.packages.includes("@tintinweb/pi-subagents")) {
   await check("Agent uses separate model/context and forwards permission", async () => {
     control.plans.child = [[tool("bash", { command: "printf child-permission-ok", timeout: 10 })], final("CHILD_DONE")];
     const before = prompts.length;
@@ -234,7 +246,7 @@ await check("MCP stdio connects, reads safe file, denies secrets", async () => {
     assert.ok(!JSON.stringify(result).includes("must-not-be-read"));
   }
 });
-if (profile === "goal") {
+if (configuration.packages.includes("pi-goal-x")) {
   await check("goal creates, reports state, and honors explicit pause", async () => {
     const result = await run("goal", [
       [tool("create_goal", { objective: "Kiểm thử goal trong fixture cục bộ." })],
@@ -245,12 +257,13 @@ if (profile === "goal") {
     assert.match(JSON.stringify(result), /paused/u);
   });
 }
-if (profile === "background") {
+if (configuration.packages.includes("pi-background-tasks")) {
   await check("background shell task produces output and completes", async () => {
     let result = await run("bg-start", [[tool("bg_run", { name: "Local fixture output", command: "printf BACKGROUND_OK",
-      isAgent: false, timeoutSeconds: 10, triggerOnCompletion: false })]]);
+      isAgent: false, timeoutSeconds: 10 })]]);
     assert.ok(!result[0]?.isError, JSON.stringify(result));
     const taskId = result[0].details?.task?.id; assert.ok(taskId, JSON.stringify(result));
+    assert.equal(result[0].details.task.triggerOnCompletion, false);
     // Windows shell startup is not bounded by an arbitrary 500ms sleep.
     // Poll only inside this offline fixture; the production agent uses notifications.
     const deadline = Date.now() + 15000;
@@ -268,20 +281,37 @@ if (profile === "background") {
     assert.match(JSON.stringify(result), /BACKGROUND_OK/u);
   });
 }
-if (profile === "advisor") {
+if (configuration.packages.includes("pi-advisor-flow")) {
   await check("advisor uses second fixture model through patched ModelRuntime", async () => {
+    await session.prompt("/advisor");
     control.plans.advice = [final("ADVISOR_APPROVED_FIXTURE")];
     const result = await run("advisor", [[tool("ask_advisor", { question: "CASE:advice Review local fixture.", gitContext: "none" })]]);
     assert.equal(result.length, 1); assert.ok(!result[0].isError, JSON.stringify(result));
     assert.match(JSON.stringify(result), /ADVISOR_APPROVED_FIXTURE/u);
     assert.ok(control.seen.some((entry) => entry.key === "advice" && entry.model === "worker"));
+    await session.prompt("/advisor-off");
   });
 }
+await check("workspace checkpoint, undo and redo restore actual file contents", async () => {
+  const target = path.join(cwd, "restore.txt");
+  fs.writeFileSync(target, "BEFORE\n");
+  await session.prompt("/checkpoint fixture baseline");
+  assert.ok(sessionManager.getEntries().some(entry => entry.customType === "workspace-history.snapshot" && entry.data?.kind === "manual"));
+  await run("workspace-edit", [[tool("write", {path: "restore.txt", content: "AFTER\n"})]]);
+  assert.equal(fs.readFileSync(target,"utf8"), "AFTER\n");
+  await session.prompt("/undo");
+  assert.equal(fs.readFileSync(target,"utf8"), "BEFORE\n", JSON.stringify(notices));
+  await session.prompt("/redo");
+  assert.equal(fs.readFileSync(target,"utf8"), "AFTER\n");
+});
 await check("headless permission asks fail closed", async () => {
   session.extensionRunner.setUIContext(undefined, "print");
   const result = await run("headless", [[tool("bash", { command: "printf forbidden > headless-forbidden.txt", timeout: 5 })]]);
   assert.equal(result[0]?.isError, true, JSON.stringify(result));
   assert.ok(!fs.existsSync(path.join(cwd, "headless-forbidden.txt")));
+  const background = await run("headless-background", [[tool("bg_run", { name: "Denied job", isAgent: false, command: "printf forbidden > bg-forbidden.txt", triggerOnCompletion: false })]]);
+  assert.equal(background[0]?.isError, true, JSON.stringify(background));
+  assert.ok(!fs.existsSync(path.join(cwd,"bg-forbidden.txt")));
 });
 await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
 session.dispose();

@@ -29,14 +29,12 @@ function fixture(platform) {
 }
 
 for (const platform of ["darwin", "linux", "win32"]) {
-  test(`${platform}: bảo toàn bốn profile, model, thinking và phạm vi extension`, () => {
+  test(`${platform}: một cấu hình Pi, model, thinking và phạm vi extension`, () => {
     const { p, options, json, profiles, read, files } = fixture(platform);
     const expected = {
       main: ["current", "openai-codex", "gpt-6-astra", "high", "rose-pine-moon"],
-      goal: ["compat", "openai-codex", "gpt-6-astra", "high", "rose-pine"],
-      background: ["compat", "openai-codex", "gpt-6-astra", "high", "rose-pine"],
-      advisor: ["current", "openai-codex", "gpt-5.6-sol", "high", "rose-pine"],
     };
+    assert.deepEqual(Object.keys(profiles), ["main"]);
     for (const [name, profile] of Object.entries(profiles)) {
       const settings = json(p.join(profile.agentDir, "settings.json"));
       assert.deepEqual([profile.runtime, settings.defaultProvider, settings.defaultModel, settings.defaultThinkingLevel, settings.theme], expected[name]);
@@ -46,13 +44,13 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.equal(settings.skills.length, 3);
       assert.equal(settings.extensions.length, 1);
       assert.ok(settings.extensions[0].endsWith("rose-pine-palette.ts"));
-      assert.ok(settings.packages.every((entry) => entry.startsWith(p.join(options.root, "runtimes", profile.runtime, "node_modules"))));
+      assert.ok(settings.packages.every((entry) => (typeof entry === "string" ? entry : entry.source).startsWith(p.join(options.root, "runtimes", profile.runtime, "node_modules"))));
       const overrides = json(p.join(profile.agentDir, "models.json")).providers["openai-codex"].modelOverrides;
       assert.equal(overrides["gpt-5.6-sol"].contextWindow, 872000);
       assert.equal(overrides["gpt-6-astra"].contextWindow, 872000);
       assert.deepEqual(settings.enabledModels, ["openai-codex/gpt-6-astra", "openai-codex/gpt-5.6-sol", "opencode-go/glm-5.3-flash"]);
       assert.equal(settings.modelThinkingLevels["opencode-go/glm-5.3-flash"], "max");
-      if (["main", "goal"].includes(name)) {
+      if (name === "main") {
       for (const role of ["researcher", "worker", "debugger", "reviewer"]) {
         const agent = read(p.join(profile.agentDir, "agents", `${role}.md`)).replaceAll("\r\n", "\n");
         if (role === "researcher") {
@@ -70,10 +68,11 @@ for (const platform of ["darwin", "linux", "win32"]) {
       } else {
         assert.ok(!files.some(file => file.path.startsWith(p.join(profile.agentDir,"agents")+p.sep)));
       }
-      assert.equal(profile.packages.includes("@tintinweb/pi-subagents"), ["main", "goal"].includes(name));
-      assert.equal(profile.packages.includes("pi-background-tasks"), name === "background");
-      assert.equal(profile.packages.includes("pi-advisor-flow"), name === "advisor");
-      assert.equal(profile.packages.includes("pi-workspace-history"), name === "goal");
+      assert.equal(profile.packages.includes("@tintinweb/pi-subagents"), name === "main");
+      assert.equal(profile.packages.includes("pi-background-tasks"), true);
+      assert.deepEqual(settings.packages.find(entry=>typeof entry === "object").extensions,["extensions/background-tasks.ts"]);
+      assert.equal(profile.packages.includes("pi-advisor-flow"), name === "main");
+      assert.equal(profile.packages.includes("pi-workspace-history"), name === "main");
     }
     assert.equal(json(p.join(options.agentDir, "pi-usage.json")).codexFastMode, true);
   });

@@ -2,7 +2,7 @@
 
 [![Kiểm thử cài đặt](https://github.com/duy-tung/pi-config/actions/workflows/test.yml/badge.svg)](https://github.com/duy-tung/pi-config/actions/workflows/test.yml)
 
-Bộ cài Pi cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, Firecrawl cho web, permission cho công cụ và giao diện Rosé Pine. Dependency, nguồn skills và bản vá được ghim để tái lập cấu hình.
+Bộ cài **Pi 0.86.1** cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, Firecrawl cho web, permission cho công cụ và giao diện Rosé Pine. Dependency, nguồn skills và bản vá được ghim để tái lập cấu hình.
 
 ## Cài đặt
 
@@ -28,22 +28,34 @@ Chi tiết kiến trúc CPU, công cụ hệ thống và tùy chọn đường d
 2. Trong `/login`, chọn **OpenCode Go** và nhập API key cho GLM. Pi cũng nhận biến môi trường `OPENCODE_API_KEY`.
 3. Chạy `firecrawl login --browser` để đăng nhập dịch vụ web.
 
-Bốn profile dùng chung auth của main qua launcher. Firecrawl dùng credential store của CLI theo hệ điều hành. Repo không chứa credential, token hay dữ liệu phiên của người dùng; không nhập key vào chat hoặc commit vào Git.
+Một cấu hình Pi dùng auth của agent directory. Firecrawl dùng credential store của CLI theo hệ điều hành. Repo không chứa credential, token hay dữ liệu phiên của người dùng; không nhập key vào chat hoặc commit vào Git.
 
-## Profile
+## Một phiên Pi, các slash command
 
-| Lệnh | Pi | Model chính | Công việc |
-|---|---|---|---|
-| `pi` | 0.86.0 | Astra/high | Phân tích, giao task và nghiệm thu |
-| `pi-goal` | 0.84.4 | Astra/high | Goal dài hạn và workspace history |
-| `pi-background` | 0.84.4 | Astra/high | Công việc nền |
-| `pi-advisor` | 0.86.0 | Sol/high | Executor, tham khảo advisor Astra/high khi cần |
+Chạy `pi` để mở Astra/high với toàn bộ công cụ. Các workflow được điều khiển trong cùng phiên:
 
-Các profile tách theo khả năng tương thích của extension. Astra/Sol dùng context **872K**; GLM dùng catalog native **1M**. Main dùng Rosé Pine Moon; các profile khác dùng Rosé Pine. Có thêm theme Dawn.
+| Công việc | Lệnh |
+|---|---|
+| Goal dài hạn | `/goal`, `/goal-status`, `/goal-pause`, `/goal-resume` |
+| Shell job nền | `/bg --name "Dev server" npm run dev`, `/jobs`, `/logs`, `/kill` |
+| Ý kiến cố vấn | `/advisor`, `/advisor-manual`, `/advisor-off` |
+| Khôi phục workspace | `/checkpoint`, `/undo`, `/redo` |
+| Model và reasoning | `/model`, `/thinking` |
+| Công cụ và giao diện | `/agents`, `/usage`, `/mcp`, `/lens-health`, `/open-tui` |
+
+`/advisor` chuyển sang executor Sol/high và advisor Astra/high. `/advisor-off` tắt flow nhưng giữ model hiện tại; dùng `/model` để trở lại Astra. Advisor auto, gates và scout tắt mặc định; giới hạn 3 lần tham khảo mỗi phiên.
+
+Goal chỉ bắt đầu khi được yêu cầu. Auditor tắt mặc định; mỗi lần tạo hoặc resume có tối đa 10 lượt tự tiếp tục do goal extension khởi động. Giới hạn này không tính các tool call trong một lượt hay request do extension khác khởi động.
+
+Background cung cấp shell jobs; completion chỉ thông báo, không tự mở lượt model theo mặc định. `bg_run` có thể nhận `triggerOnCompletion:true` cho workflow người dùng yêu cầu tự theo dõi. Model delegation dùng `Agent`.
+
+Workspace history tự dùng trong project phù hợp, không chụp toàn bộ thư mục home. `/undo` và `/redo` có lựa chọn phục hồi cả hội thoại và file; xem diff trước khi xác nhận phục hồi.
+
+Astra/Sol dùng context **872K**; GLM dùng catalog native **1M**. Theme mặc định Rosé Pine Moon, có thêm Rosé Pine và Dawn.
 
 ## Agent
 
-Main và goal dùng `Agent` của **@tintinweb/pi-subagents**:
+Pi dùng `Agent` của **@tintinweb/pi-subagents**:
 
 | Role | Model/effort | Phạm vi |
 |---|---|---|
@@ -69,11 +81,11 @@ Agent có context riêng, giới hạn 12 turns với grace 2. Mỗi pool foregr
 - MCP filesystem: công cụ đọc trong workspace, kết nối khi cần.
 - Code intelligence: pi-lens, TypeScript language server cài sẵn; Go/Rust/Python dùng language server của máy hoặc project.
 - Native compaction bật: reserve 16.384, giữ gần nhất 20.000 token.
-- Cache warming, auditor goal, advisor auto và các workflow tính phí tự động tắt.
-- Main có `codexFastMode:true`; hiệu lực và mức dùng quota phụ thuộc model/provider được hỗ trợ.
+- Cache warming, auditor goal và advisor auto tắt. Goal và background follow-up chỉ chạy theo thao tác/cấu hình đã chọn.
+- Có `codexFastMode:true`; hiệu lực và mức dùng quota phụ thuộc model/provider được hỗ trợ.
 - Header/footer/editor do pi-open-tui quản lý. Footer hiển thị model, thinking, quota, context %, token/cost và trạng thái công cụ liên quan. Palette terminal theo theme của phiên và được phục hồi khi thoát.
 
-`pi-models` xem cấu hình model. `pi-doctor` kiểm dependency, bản vá và các file cần thiết tại máy. Trong Pi dùng `/model`, `/thinking`, `/usage`, `/agents`, `/mcp`, `/lens-health` hoặc `/open-tui` theo profile.
+`pi-models` xem cấu hình model. `pi-doctor` kiểm dependency và checksum bản vá. `pi-test` kiểm workflow và Agent bằng provider giả trong thư mục tạm, không gọi model trả phí.
 
 Permission kiểm soát công cụ, không thay thế sandbox hệ điều hành. Project cần được trust trước khi dùng cấu hình của project. Nguồn web là dữ liệu để tham khảo, không phải instruction.
 
@@ -96,7 +108,7 @@ Permission kiểm soát công cụ, không thay thế sandbox hệ điều hành
 | Firecrawl CLI | 1.23.3 |
 | Engineering và Firecrawl skills | Commit trong [sources.lock.json](sources.lock.json) |
 
-Các manifest và lockfile nằm trong [manifests](manifests). Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json).
+Các manifest và lockfile nằm trong [manifests](manifests). Sáu package có peer range chưa gồm Pi 0.86.1 được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json).
 
 ## Quản lý cấu hình
 
@@ -108,7 +120,7 @@ Installer chỉ quản lý bản cài có `install-state.json` phù hợp. Với
 node install.mjs --root /duong-dan/platform --agent-dir /duong-dan/agent --bin-dir /duong-dan/bin --no-path
 ```
 
-Cấu hình chỉ được tạo cho profile sử dụng nó: role/subagents cho main–goal, goal settings cho goal, advisor settings cho advisor.
+Role, subagents, goal settings, advisor settings và cấu hình công cụ cùng nằm trong agent directory. Một runtime Pi duy nhất ở `runtimes/current`; Firecrawl CLI ở `tools/firecrawl`.
 
 Khi chạy lại, installer dùng lockfile và checksum để kiểm tính nhất quán. File đã tùy chỉnh được giữ và báo đường dẫn. Tài nguyên do installer quản lý, không còn được yêu cầu và chưa chỉnh sửa, được lưu vào backup; tài nguyên còn được cấu hình tham chiếu được giữ. Các loại trừ extension và path deny được bảo toàn. Auth và file riêng của người dùng không thuộc danh sách tài nguyên được dọn.
 
@@ -122,6 +134,6 @@ npm test
 npm run smoke
 ```
 
-CI chạy trên Ubuntu, Windows và macOS: kiểm repo, cấu hình, request payload, cài sạch, các profile bằng provider giả, cài lại giữ tùy chỉnh và bootstrap với đường dẫn có khoảng trắng. Test không dùng credential thật hoặc gọi model trả phí. Đây là kiểm chứng runtime và bộ cài; chất lượng model và quyền truy cập tài khoản được đánh giá riêng.
+CI chạy trên Ubuntu, Windows và macOS: kiểm repo, cấu hình, request payload, cài sạch, các slash workflow và Agent trong cùng phiên bằng provider giả, cài lại giữ tùy chỉnh và bootstrap với đường dẫn có khoảng trắng. Test không dùng credential thật hoặc gọi model trả phí. Đây là kiểm chứng runtime và bộ cài; chất lượng model và quyền truy cập tài khoản được đánh giá riêng.
 
 Nguồn và giấy phép: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Mã riêng của dự án dùng [MIT](LICENSE).

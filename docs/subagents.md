@@ -1,6 +1,6 @@
 # Agent theo công việc
 
-Main và goal dùng tool `Agent` của `@tintinweb/pi-subagents` 0.19.0. Parent Astra/high phân tích yêu cầu, chốt thiết kế, chia việc và nghiệm thu.
+Pi dùng tool `Agent` của `@tintinweb/pi-subagents` 0.19.0. Parent Astra/high phân tích yêu cầu, chốt thiết kế, chia việc và nghiệm thu.
 
 | Role | Model/effort | Quyền và trách nhiệm |
 |---|---|---|
@@ -9,7 +9,7 @@ Main và goal dùng tool `Agent` của `@tintinweb/pi-subagents` 0.19.0. Parent 
 | `debugger` | GPT-5.6 Sol/high | Tái hiện, xác định nguyên nhân, sửa và kiểm hồi quy |
 | `reviewer` | GPT-5.6 Sol/high | Review độc lập, chỉ đọc |
 
-GLM dùng provider `opencode-go` trực tiếp trong Pi. Astra/Sol có context 872K; GLM dùng catalog native. File role nằm trong `agents/` của main/goal.
+GLM dùng provider `opencode-go` trực tiếp trong Pi. Astra/Sol có context 872K; GLM dùng catalog native. File role nằm trong `agents/` của Pi.
 
 ## Giao việc
 
@@ -46,4 +46,4 @@ Project có thể override role. Với `scopeModels:true`, lựa chọn ngoài s
 
 ## Kiểm thử
 
-`tests/agent-integration.mjs <root> main|goal` dùng provider giả và chặn mạng để kiểm model/effort thực, context, quyền, role không tồn tại và completion. Các test request payload kiểm provider OpenCode Go trên hai phiên bản SDK. Nghiệm thu chất lượng model trên công việc thật là bước riêng với ngân sách cụ thể.
+`pi-test` hoặc `tests/agent-integration.mjs <root> main` dùng provider giả và chặn mạng để kiểm model/effort thực, context, quyền, role không tồn tại và completion. Các test request payload kiểm provider OpenCode Go trên SDK đã ghim. Nghiệm thu chất lượng model trên công việc thật là bước riêng với ngân sách cụ thể.

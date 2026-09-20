@@ -4,8 +4,7 @@
     {
       "package": "pi-open-tui",
       "versions": {
-        "current": "0.3.6",
-        "compat": "0.3.6"
+        "current": "0.3.6"
       },
       "file": "extensions/open-tui/footer.ts",
       "originalSha256": "a7a9b8bd15a9b6c7a40e8f981de23094e6384c4b8a6e48e031b2c0f2a57e54fb",
@@ -96,8 +95,7 @@
     {
       "package": "@gotgenes/pi-permission-system",
       "versions": {
-        "current": "33.0.1",
-        "compat": "33.0.1"
+        "current": "33.0.1"
       },
       "file": "src/access-intent/tool-input-path.ts",
       "originalSha256": "6c41745b056bfdb703f774ac616eb134ae5399b5b6ba6754b0b431366f0462be",
@@ -113,8 +111,7 @@
     {
       "package": "@tintinweb/pi-subagents",
       "versions": {
-        "current": "0.19.0",
-        "compat": "0.19.0"
+        "current": "0.19.0"
       },
       "file": "src/agent-runner.ts",
       "originalSha256": "88e61481fd627254ff3ac0a27e1991136c41e103fac847dd06444c8ac3d3eab1",
@@ -143,47 +140,9 @@
       ]
     },
     {
-      "package": "@earendil-works/pi-coding-agent",
-      "versions": {
-        "current": "0.86.0",
-        "compat": "0.84.4"
-      },
-      "file": "dist/core/auth-storage.js",
-      "originalSha256": "0b45029901579032b19273a1427f63b622df8e1aaf9ea185eb932c0d4898998c",
-      "patchedSha256": "307fc7530896b08e4332f3cec856a783770ae6a89447c1ef25e41bfc5ca7fc97",
-      "edits": [
-        {
-          "before": "import { getFileRevision, normalizePath }",
-          "after": "import { canonicalizePath, getFileRevision, normalizePath }",
-          "count": 1
-        },
-        {
-          "before": "        this.authPath = normalizePath(authPath);\n    }\n    ensureParentDir()",
-          "after": "        this.authPath = canonicalizePath(normalizePath(authPath));\n    }\n    ensureParentDir()",
-          "count": 1
-        },
-        {
-          "before": "constructor(authPath = join(getAgentDir(), \"auth.json\")) {",
-          "after": "constructor(authPath = process.env.PI_CONFIG_AUTH_PATH || join(getAgentDir(), \"auth.json\")) {",
-          "count": 2
-        },
-        {
-          "before": "static create(authPath = join(getAgentDir(), \"auth.json\")) {",
-          "after": "static create(authPath = process.env.PI_CONFIG_AUTH_PATH || join(getAgentDir(), \"auth.json\")) {",
-          "count": 1
-        },
-        {
-          "before": "export function readStoredCredential(providerId, authPath = join(getAgentDir(), \"auth.json\")) {",
-          "after": "export function readStoredCredential(providerId, authPath = process.env.PI_CONFIG_AUTH_PATH || join(getAgentDir(), \"auth.json\")) {",
-          "count": 1
-        }
-      ]
-    },
-    {
       "package": "pi-advisor-flow",
       "versions": {
-        "current": "0.6.0",
-        "compat": "0.6.0"
+        "current": "0.6.0"
       },
       "file": "dist/index.js",
       "originalSha256": "645aa81206b874c336a432b197e1c3eba4735ff920e3b51b0418553f94c275b7",
@@ -202,63 +161,37 @@
       ]
     },
     {
-      "package": "@earendil-works/pi-ai",
+      "package": "pi-background-tasks",
       "versions": {
-        "compat": "0.84.4"
+        "current": "2.5.0"
       },
-      "file": "dist/providers/opencode-go.js",
-      "originalSha256": "9c3414b328bdc1717491824af3774615ef0744046d1250a2a602bc6c0e466e16",
-      "patchedSha256": "5f8c3244b77701c5dcaf77b9398a9722f8ff1e4bba0455412a35702423da259b",
+      "file": "src/extension.ts",
+      "originalSha256": "9b0973b12fdbcd7c69d710059efaf2cfc32a1455ea7b8b1606255c876e602b6d",
+      "patchedSha256": "c9e42c0c2b971d49c81d05df6662a219aeb85eff8d7812c123e86e1d7f8c5cac",
       "edits": [
         {
-          "before": "export function opencodeGoProvider() {",
-          "after": "const OPENCODE_SESSION_HEADER = \"x-opencode-session\";\nfunction hasHeader(headers, name) {\n    const expected = name.toLowerCase();\n    return Object.keys(headers ?? {}).some((key) => key.toLowerCase() === expected);\n}\nfunction withSessionHeader(options) {\n    if (!options?.sessionId || hasHeader(options.headers, OPENCODE_SESSION_HEADER))\n        return options;\n    return {\n        ...options,\n        headers: { ...options.headers, [OPENCODE_SESSION_HEADER]: options.sessionId },\n    };\n}\n/** Adds OpenCode's required per-conversation routing header before API dispatch. */\nfunction withOpenCodeSessionHeader(streams) {\n    return {\n        ...streams,\n        stream: (model, context, options) => streams.stream(model, context, withSessionHeader(options)),\n        streamSimple: (model, context, options) => streams.streamSimple(model, context, withSessionHeader(options)),\n    };\n}\n\nexport function opencodeGoProvider() {",
+          "before": "  registerFusionExtension(pi, {\n    startManagedTask: async (ctx, options) => {\n      currentCtx = ctx;\n      return registry.startManagedTask(ctx, options);\n    },\n    snapshot: (task) => registry.snapshot(task),\n    updateManagedTask: (task, state, line) => registry.updateManagedTask(task, state, line),\n  });\n\n  registerDelegateExtension(pi, {\n    startDelegateTask: async (ctx, options) => {\n      currentCtx = ctx;\n      return registry.startDelegateTask(ctx, options);\n    },\n    snapshot: (task) => registry.snapshot(task),\n    resolveTask: (idOrPrefix) => registry.resolveTask(idOrPrefix),\n    claimFusionUsage: (task) => registry.claimFusionUsage(task),\n  });\n\n",
+          "after": "  // This setup uses pi-subagents for model delegation; retain shell jobs only.\n\n",
           "count": 1
         },
         {
-          "before": "\"anthropic-messages\": anthropicMessagesApi(),",
-          "after": "\"anthropic-messages\": withOpenCodeSessionHeader(anthropicMessagesApi()),",
+          "before": "  pi.registerTool<typeof BgPiAttestedParams, BgRunDetails>({\n    name: 'bg_run_pi_attested',\n    label: 'Attested Pi Run',\n    description:\n      'Opt-in evidence-oriented direct Pi spawn. Launches exactly one `pi --mode json` child, records raw Pi events/stderr, hashes prompt/report/output, observes OAuth through ModelRegistry, and emits a strict attestation sidecar only after successful completion.',\n    promptSnippet: 'Start an attested direct Pi agent task and return its task ID plus output path',\n    promptGuidelines: [\n      'Use only when the user explicitly asks for an attested Pi evidence-producing task; ordinary background work should use bg_run unchanged.',\n      'Provide provider/model as structured fields and a relative reportPath that the child Pi prompt will write before exit.',\n      'Do not provide channel, auth, route, or hash claims; the producer observes those facts itself and fails loudly if it cannot attest them.',\n    ],\n    parameters: BgPiAttestedParams,\n    prepareArguments(args): BgPiAttestedParamsValue {\n      if (!args || typeof args !== 'object')\n        throw new Error('bg_run_pi_attested arguments must be an object');\n      const input = args as BgPiAttestedArgumentRecord;\n      if (typeof input.name !== 'string') throw new Error('bg_run_pi_attested requires name');\n      if (typeof input.provider !== 'string')\n        throw new Error('bg_run_pi_attested requires provider');\n      if (typeof input.model !== 'string') throw new Error('bg_run_pi_attested requires model');\n      if (typeof input.prompt !== 'string') throw new Error('bg_run_pi_attested requires prompt');\n      if (typeof input.reportPath !== 'string')\n        throw new Error('bg_run_pi_attested requires reportPath');\n      const prepared: BgPiAttestedParamsValue = {\n        name: input.name,\n        provider: input.provider,\n        model: input.model,\n        prompt: input.prompt,\n        reportPath: input.reportPath,\n      };\n      if (Array.isArray(input.extraPiArgs)) {\n        if (!input.extraPiArgs.every((entry) => typeof entry === 'string'))\n          throw new Error('bg_run_pi_attested extraPiArgs entries must be strings');\n        prepared.extraPiArgs = input.extraPiArgs;\n      }\n      if (typeof input.thinking === 'string') prepared.thinking = input.thinking;\n      if (typeof input.timeoutSeconds === 'number') prepared.timeoutSeconds = input.timeoutSeconds;\n      return prepared;\n    },\n    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {\n      const task = await startAttestedPiTask(ctx, params);\n      return {\n        content: textContent(\n          `Started attested Pi task ${taskDisplayName(task)} (${task.id})\\nStatus: ${task.status}\\nPID: ${String(task.pid ?? 'unknown')}\\nOutput: ${task.outputPath}\\nAttestation: ${task.attestationPath ?? 'pending until completion'}`,\n        ),\n        details: { task: registry.snapshot(task) },\n      };\n    },\n    renderCall(args, theme) {\n      return new Text(\n        `${theme.fg('toolTitle', theme.bold('bg_run_pi_attested '))}${theme.fg('muted', truncateChars(args.name, COMMAND_PREVIEW_CHARS))}`,\n        0,\n        0,\n      );\n    },\n    renderResult(result, _options, theme) {\n      const { task } = result.details;\n      return new Text(\n        `${theme.fg('success', '✓ started')} ${theme.fg('accent', taskDisplayName(task))} ${theme.fg('dim', `(${task.id})`)}\\n${theme.fg('dim', `Output: ${task.outputPath}`)}\\n${theme.fg('dim', `Attestation: ${task.attestationPath ?? 'pending'}`)}`,\n        0,\n        0,\n      );\n    },\n  });\n\n",
+          "after": "",
           "count": 1
         },
         {
-          "before": "\"openai-completions\": openAICompletionsApi(),",
-          "after": "\"openai-completions\": withOpenCodeSessionHeader(openAICompletionsApi()),",
+          "before": "    description: `Start a named long-running shell command in the background and return immediately with a task ID and output path. By default, completed, failed, or killed terminal state is delivered automatically as <background-task-notification> and starts a follow-up agent turn; do not sleep or poll merely to wait. Output is written to .pi/tasks and model-visible logs are bounded to ${formatSize(MAX_LOG_BYTES)}.`,\n    promptSnippet:\n      'Start a named long-running shell command; default terminal notification wakes a follow-up turn, so yield instead of polling',\n    promptGuidelines: [\n      'Use bg_run instead of bash for commands expected to run for a long time, such as test suites, dev servers, watchers, or builds.',\n      'Always set isAgent: true only when the background task launches an LLM/agent process; set isAgent: false for scripts, tests, dev servers, sleeps, and ordinary shell commands.',\n      'When using bg_run, always set name to a concise 2-6 word human-readable label for the footer task dock; do not use the raw command as the name unless it is already short and meaningful.',\n      'bg_run returns immediately. With notifyOnCompletion:true and triggerOnCompletion:true (both defaults), completed, failed, or killed terminal state is delivered as <background-task-notification> and automatically starts a follow-up agent turn.',\n      'After a default bg_run launch, continue only independent useful work that does not merely wait for the task; otherwise briefly acknowledge it if useful, then end the current turn. Do not call sleep, bg_status, or bg_logs merely to wait; the terminal notification will wake you.',\n      'Treat <background-task-notification> as durable terminal truth. Do not call bg_status to reconfirm it; call bg_logs only when the task output is needed.',\n      'Use bg_status/bg_logs only when the user explicitly requests an update, automatic notification or wake-up was deliberately disabled, there is concrete evidence the task is hung, or a terminal notification arrived and output details are needed.',\n      'Do not set notifyOnCompletion:false or triggerOnCompletion:false unless intentionally opting out of automatic completion handling.',\n    ],\n",
+          "after": "    description: `Start a named shell job in the background and return its task ID and output path. Completion notifies the UI without starting a model turn by default. Logs are bounded to ${formatSize(MAX_LOG_BYTES)}.`,\n    promptSnippet: 'Run a shell job without blocking; completion notification does not wake the model by default',\n    promptGuidelines: [\n      'Use for scripts, tests, builds, servers and watchers; set isAgent:false. Model delegation uses the Agent tool.',\n      'Set a concise name. Continue independent work after starting a job.',\n      'triggerOnCompletion defaults to false. Set true only when automatic follow-up is part of the user-requested workflow.',\n      'Read bg_status/bg_logs when the result is needed; avoid repetitive polling.',\n    ],\n",
           "count": 1
         },
         {
-          "before": "\"openai-responses\": openAIResponsesApi(),",
-          "after": "\"openai-responses\": withOpenCodeSessionHeader(openAIResponsesApi()),",
-          "count": 1
-        }
-      ]
-    },
-    {
-      "package": "@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai",
-      "versions": {
-        "compat": "0.84.4"
-      },
-      "file": "dist/providers/opencode-go.js",
-      "originalSha256": "9c3414b328bdc1717491824af3774615ef0744046d1250a2a602bc6c0e466e16",
-      "patchedSha256": "5f8c3244b77701c5dcaf77b9398a9722f8ff1e4bba0455412a35702423da259b",
-      "edits": [
-        {
-          "before": "export function opencodeGoProvider() {",
-          "after": "const OPENCODE_SESSION_HEADER = \"x-opencode-session\";\nfunction hasHeader(headers, name) {\n    const expected = name.toLowerCase();\n    return Object.keys(headers ?? {}).some((key) => key.toLowerCase() === expected);\n}\nfunction withSessionHeader(options) {\n    if (!options?.sessionId || hasHeader(options.headers, OPENCODE_SESSION_HEADER))\n        return options;\n    return {\n        ...options,\n        headers: { ...options.headers, [OPENCODE_SESSION_HEADER]: options.sessionId },\n    };\n}\n/** Adds OpenCode's required per-conversation routing header before API dispatch. */\nfunction withOpenCodeSessionHeader(streams) {\n    return {\n        ...streams,\n        stream: (model, context, options) => streams.stream(model, context, withSessionHeader(options)),\n        streamSimple: (model, context, options) => streams.streamSimple(model, context, withSessionHeader(options)),\n    };\n}\n\nexport function opencodeGoProvider() {",
+          "before": "triggerOnCompletion: params.triggerOnCompletion ?? true,",
+          "after": "triggerOnCompletion: params.triggerOnCompletion ?? false,",
           "count": 1
         },
         {
-          "before": "\"anthropic-messages\": anthropicMessagesApi(),",
-          "after": "\"anthropic-messages\": withOpenCodeSessionHeader(anthropicMessagesApi()),",
-          "count": 1
-        },
-        {
-          "before": "\"openai-completions\": openAICompletionsApi(),",
-          "after": "\"openai-completions\": withOpenCodeSessionHeader(openAICompletionsApi()),",
-          "count": 1
-        },
-        {
-          "before": "\"openai-responses\": openAIResponsesApi(),",
-          "after": "\"openai-responses\": withOpenCodeSessionHeader(openAIResponsesApi()),",
+          "before": "Default: true for bg_run; requires notifyOnCompletion.",
+          "after": "Default: false; requires notifyOnCompletion.",
           "count": 1
         }
       ]
