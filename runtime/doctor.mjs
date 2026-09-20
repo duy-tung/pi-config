@@ -25,7 +25,7 @@ for(const [name,p] of Object.entries(profiles)){
   const s=read(path.join(p.agentDir,'settings.json'));
   console.log(`${name}: ${s.defaultProvider}/${s.defaultModel}; thinking ${s.defaultThinkingLevel}`);
   for(const pkg of s.packages)if(typeof pkg==='string'&&!fs.existsSync(pkg))errors.push(`Thiếu package: ${name}`);
-  if(s.extensions?.some(value=>typeof value==='string'&&value.includes('pi-dispatch-router')))errors.push(`${name}: còn extension dispatcher đã gỡ`);
+  for(const entry of s.extensions??[])if(typeof entry==='string'&&!entry.startsWith('-')&&path.isAbsolute(entry)&&!fs.existsSync(entry))errors.push(`Thiếu extension: ${name}: ${entry}`);
   if(['main','goal'].includes(name)){
     for(const role of ['researcher','worker','debugger','reviewer']){
       if(!fs.existsSync(path.join(p.agentDir,'agents',role+'.md')))errors.push(`${name}: thiếu role ${role}`);
@@ -33,7 +33,6 @@ for(const [name,p] of Object.entries(profiles)){
     console.log(`${name}: Agent: researcher GLM/max, worker/debugger/reviewer Sol/high`);
   }
   if(s.modelThinkingLevels?.['opencode-go/glm-5.3-flash']!=='max')errors.push(`${name}: GLM effort phải max`);
-  if(s.packages.some(pkg=>typeof pkg==='string'&&pkg.replaceAll('\\','/').endsWith('/compact-adviser')))errors.push(`${name}: bỏ compact-adviser khỏi packages trong settings tùy chỉnh; extension đã gỡ`);
 }
 for(const source of Object.keys(state.sources))if(!fs.existsSync(path.join(root,'sources',source)))errors.push(`Thiếu skills source: ${source}`);
 console.log('Auth dùng chung theo launcher; đăng nhập bằng pi-login. Không kiểm tra token bằng mạng.');

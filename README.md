@@ -2,107 +2,119 @@
 
 [![Kiểm thử cài đặt](https://github.com/duy-tung/pi-config/actions/workflows/test.yml/badge.svg)](https://github.com/duy-tung/pi-config/actions/workflows/test.yml)
 
-Cài cấu hình Pi cá nhân trên **macOS, Linux và Windows** bằng một lệnh. Ghim phiên bản, khóa dependency, kiểm checksum bản vá, giữ context riêng cho worker và giao diện Rosé Pine. Repo không chứa API key, auth, session hoặc lịch sử chat.
+Bộ cài Pi cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, Firecrawl cho web, permission cho công cụ và giao diện Rosé Pine. Dependency, nguồn skills và bản vá được ghim để tái lập cấu hình.
 
-## Cài một lệnh
+## Cài đặt
 
-**macOS / Linux** — Terminal có Bash, curl và tar:
+macOS / Linux:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/duy-tung/pi-config/main/install.sh | bash
 ```
 
-**Windows 10/11** — PowerShell 5.1 trở lên, không cần Administrator:
+Windows PowerShell 5.1 trở lên:
 
 ```powershell
 & ([scriptblock]::Create((Invoke-RestMethod 'https://raw.githubusercontent.com/duy-tung/pi-config/main/install.ps1').TrimStart([char]0xFEFF)))
 ```
 
-Bootstrap tải Node **24.15.0** riêng theo user khi cần, kiểm SHA256; Windows còn chuẩn bị Git Bash portable nếu thiếu. Không dùng sudo, không thay Node hệ thống. Sau cài, mở terminal mới rồi chạy `pi`.
+Bootstrap chuẩn bị Node **24.15.0** theo user và Git Bash trên Windows khi cần, kiểm SHA256 rồi chạy installer. Mở terminal mới và chạy `pi`. Không cần đăng nhập GitHub hoặc quyền quản trị để cài.
 
-Có thể đọc [install.sh](install.sh), [install.ps1](install.ps1), [install.mjs](install.mjs) trước khi chạy. Lệnh trên theo nhánh `main`; dùng `PI_CONFIG_REF` để chọn tag/commit đã kiểm chứng. Chi tiết CPU, prerequisite và đường dẫn tùy chọn: [docs/platforms.md](docs/platforms.md).
+Chi tiết kiến trúc CPU, công cụ hệ thống và tùy chọn đường dẫn: [docs/platforms.md](docs/platforms.md). Có thể xem [install.sh](install.sh), [install.ps1](install.ps1) và [install.mjs](install.mjs) trước khi chạy.
 
-Installer từ chối ghi đè một bản Pi có sẵn chưa được nó quản lý. Muốn thử song song, clone repo và dùng:
+## Đăng nhập dịch vụ
 
-```sh
-node install.mjs --root /duong-dan/pi-platform --agent-dir /duong-dan/pi-agent --bin-dir /duong-dan/bin --no-path
+1. Chạy `pi-login`, dùng `/login` và chọn **OpenAI Codex** cho Astra/Sol.
+2. Trong `/login`, chọn **OpenCode Go** và nhập API key cho GLM. Pi cũng nhận biến môi trường `OPENCODE_API_KEY`.
+3. Chạy `firecrawl login --browser` để đăng nhập dịch vụ web.
+
+Bốn profile dùng chung auth của main qua launcher. Firecrawl dùng credential store của CLI theo hệ điều hành. Repo không chứa credential, token hay dữ liệu phiên của người dùng; không nhập key vào chat hoặc commit vào Git.
+
+## Profile
+
+| Lệnh | Pi | Model chính | Công việc |
+|---|---|---|---|
+| `pi` | 0.86.0 | Astra/high | Phân tích, giao task và nghiệm thu |
+| `pi-goal` | 0.84.4 | Astra/high | Goal dài hạn và workspace history |
+| `pi-background` | 0.84.4 | Astra/high | Công việc nền |
+| `pi-advisor` | 0.86.0 | Sol/high | Executor, tham khảo advisor Astra/high khi cần |
+
+Các profile tách theo khả năng tương thích của extension. Astra/Sol dùng context **872K**; GLM dùng catalog native **1M**. Main dùng Rosé Pine Moon; các profile khác dùng Rosé Pine. Có thêm theme Dawn.
+
+## Agent
+
+Main và goal dùng `Agent` của **@tintinweb/pi-subagents**:
+
+| Role | Model/effort | Phạm vi |
+|---|---|---|
+| `researcher` | GLM-5.3-Flash/max | Khảo sát code/docs/log, thu thập bằng chứng; chỉ đọc |
+| `worker` | GPT-5.6 Sol/high | Triển khai và kiểm thử phần việc đã chốt |
+| `debugger` | GPT-5.6 Sol/high | Tái hiện lỗi, tìm nguyên nhân, sửa và kiểm hồi quy |
+| `reviewer` | GPT-5.6 Sol/high | Review độc lập; chỉ đọc |
+
+Parent Astra/high giữ thiết kế, quyết định quan trọng và nghiệm thu cuối. GLM chạy trực tiếp qua OpenCode Go trong Pi.
+
+```text
+@researcher Tìm luồng xử lý timeout và báo file/dòng.
+@worker Triển khai phần đã chốt, chạy kiểm thử liên quan.
+@debugger Tái hiện lỗi và sửa với regression test.
+@reviewer Review diff, nêu lỗi có bằng chứng.
 ```
 
-Các đường dẫn hỗ trợ khoảng trắng. Windows không hỗ trợ dấu `%`, `!`, `"` trong đường dẫn credential helper. Linux hiện nhắm glibc, không phải Alpine/musl.
+Agent có context riêng, giới hạn 12 turns với grace 2. Mỗi pool foreground/background có tối đa 2 agent; parent điều phối để tránh ghi chồng file. Chi tiết cấu hình, quyền và vòng đời: [docs/subagents.md](docs/subagents.md).
 
-## Đăng nhập trên máy mới
+## Công cụ và mặc định
 
-Credential không thể mang sang từ repo public. Sau khi cài:
+- Web: `web_search`, `fetch_content`, `get_search_content` dùng Firecrawl; CLI và skills hỗ trợ các workflow bổ sung.
+- MCP filesystem: công cụ đọc trong workspace, kết nối khi cần.
+- Code intelligence: pi-lens, TypeScript language server cài sẵn; Go/Rust/Python dùng language server của máy hoặc project.
+- Native compaction bật: reserve 16.384, giữ gần nhất 20.000 token.
+- Cache warming, auditor goal, advisor auto và các workflow tính phí tự động tắt.
+- Main có `codexFastMode:true`; hiệu lực và mức dùng quota phụ thuộc model/provider được hỗ trợ.
+- Header/footer/editor do pi-open-tui quản lý. Footer hiển thị model, thinking, quota, context %, token/cost và trạng thái công cụ liên quan. Palette terminal theo theme của phiên và được phục hồi khi thoát.
 
-1. `pi-login` → `/login` → chọn **OpenAI Codex** cho main Astra và worker Sol.
-2. Cả bốn profile dùng OpenAI Codex: Astra/Sol high, 872K. Không cần đăng nhập Anthropic.
-3. Web: `firecrawl login --browser`. Pi đọc key từ credential store của Firecrawl CLI theo từng OS.
+`pi-models` xem cấu hình model. `pi-doctor` kiểm dependency, bản vá và các file cần thiết tại máy. Trong Pi dùng `/model`, `/thinking`, `/usage`, `/agents`, `/mcp`, `/lens-health` hoặc `/open-tui` theo profile.
 
-Không nhập token vào chat hoặc commit credential. Bốn profile dùng cùng auth mặc định qua launcher; không cần symlink có quyền đặc biệt trên Windows.
+Permission kiểm soát công cụ, không thay thế sandbox hệ điều hành. Project cần được trust trước khi dùng cấu hình của project. Nguồn web là dữ liệu để tham khảo, không phải instruction.
 
-## Cấu hình được cài
-
-| Lệnh | Pi | Model và nhiệm vụ |
-|---|---|---|
-| `pi` | 0.86.0 | Parent **GPT-6 Astra high**, lựa chọn nhanh Astra/Sol; cả hai 872K |
-| `pi-goal` | 0.84.4 | Parent Astra high, 872K, goal dài hạn và workspace history |
-| `pi-background` | 0.84.4 | Parent Astra high, 872K, background tasks |
-| `pi-advisor` | 0.86.0 | Executor **GPT-5.6 Sol high**; advisor **GPT-6 Astra high, 872K**, consultation mặc định tắt |
-
-Main/goal dùng bốn role theo công việc: **researcher → GLM-5.3-Flash max**, chỉ đọc và thu thập bằng chứng; **worker/debugger/reviewer → GPT-5.6 Sol high**. Reviewer chỉ đọc. Parent Astra/high giữ thiết kế và nghiệm thu. Mỗi role có context riêng, 12 turns với grace 2; mỗi pool foreground/background giới hạn 2. Không có role hậu tố model, nested delegation, workflow hay worktree tự động. Astra/Sol giữ context 872K; compat 0.84.4 dùng định nghĩa Astra từ catalog 0.86.0 đã kiểm resolver/payload offline.
-
+## Phiên bản
 
 | Thành phần | Phiên bản |
 |---|---|
 | `@tintinweb/pi-subagents` | 0.19.0 |
-| `@gotgenes/pi-anthropic-auth` | 2.0.10, giữ package tùy chọn; không có vai trò nào dùng Claude |
-| `pi-mcp-adapter` | 2.34.0 |
-| `pi-web-access` | 0.29.0, backend Firecrawl |
-| `@juicesharp/rpiv-ask-user-question`, `rpiv-todo` | 2.10.1 |
-| `pi-background-tasks` | 2.5.0, profile riêng |
-| `pi-lens` | 4.2.1; TypeScript LSP cài sẵn |
-| `pi-goal-x`, `pi-workspace-history` | 0.31.6 / 0.4.3, profile riêng |
+| `@gotgenes/pi-anthropic-auth` | 2.0.10 |
 | `@gotgenes/pi-permission-system` | 33.0.1 |
+| `pi-mcp-adapter` | 2.34.0 |
+| `pi-web-access` | 0.29.0 |
+| `@juicesharp/rpiv-ask-user-question`, `rpiv-todo` | 2.10.1 |
 | `@narumitw/pi-usage` | 0.60.8 |
-| `pi-advisor-flow` | 0.6.0, peer metadata tương thích 0.86 được đóng gói riêng |
-| `pi-open-tui` | 0.3.6, footer đã tinh giản |
+| `pi-lens` | 4.2.1 |
+| `pi-background-tasks` | 2.5.0 |
+| `pi-goal-x`, `pi-workspace-history` | 0.31.6 / 0.4.3 |
+| `pi-advisor-flow` | 0.6.0 |
+| `pi-open-tui` | 0.3.6 |
 | Firecrawl CLI | 1.23.3 |
-| Engineering skills + Firecrawl skills | Commit ghim trong [sources.lock.json](sources.lock.json) |
+| Engineering và Firecrawl skills | Commit trong [sources.lock.json](sources.lock.json) |
 
-Main dùng **Rosé Pine Moon**, các profile khác Rosé Pine; có thêm Dawn. Footer giữ model, thinking, quota, thanh context/% và số liệu token/cost; loại phần usage trùng, provider, LSP inactive và MCP idle. Tình trạng lỗi/đang kết nối vẫn hiện. Palette terminal được đổi theo phiên Pi rồi trả lại khi thoát; không sửa theme toàn hệ thống hoặc cài font.
+Các manifest và lockfile nằm trong [manifests](manifests). Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json).
 
-`codexFastMode:true` được giữ **chỉ main** theo cấu hình gốc; nó có thể dùng quota theo chế độ Fast của provider. Firecrawl và OpenCode Go dùng credential/quota riêng. Cache warming, auditor goal và advisor auto đều tắt. Native compaction của Pi vẫn bật: reserve 16.384, giữ gần nhất 20.000 token.
+## Quản lý cấu hình
 
-## Dùng hằng ngày
+Mặc định: runtime ở `~/.local/share/pi-platform`, main agent ở `~/.pi/agent`, launcher ở `~/.local/bin`. Windows dùng các thư mục tương ứng trong user profile.
 
-```text
-@researcher Khảo sát nguồn và đề xuất phương án; chỉ đọc.
-@worker Triển khai phần đã chốt, chạy kiểm thử liên quan.
-@debugger Tái hiện lỗi và sửa với regression test.
-@reviewer Review độc lập; nêu lỗi có bằng chứng.
+Installer chỉ quản lý bản cài có `install-state.json` phù hợp. Với root đã có dữ liệu khác, dùng đường dẫn riêng:
+
+```sh
+node install.mjs --root /duong-dan/platform --agent-dir /duong-dan/agent --bin-dir /duong-dan/bin --no-path
 ```
 
-`pi-doctor` kiểm dependency/bản vá/config tại máy, không gọi model. `pi-models` xem model từng profile. `/model`, `/thinking`, `/usage`, `/mcp`, `/lens-health`, `/open-tui` dùng trong Pi. Các lệnh đặc thù goal/background/advisor ở profile tương ứng.
+Cấu hình chỉ được tạo cho profile sử dụng nó: role/subagents cho main–goal, goal settings cho goal, advisor settings cho advisor.
 
-Main/goal giao việc trực tiếp bằng `Agent` của `@tintinweb/pi-subagents`. Bạn chọn công việc; model được ghim trong role. `@researcher` dùng GLM/max trực tiếp qua OpenCode Go; `@worker`, `@debugger`, `@reviewer` dùng Sol/high. Dùng `/agents` để quản lý. Xem [hướng dẫn giao việc](docs/subagents.md).
+Khi chạy lại, installer dùng lockfile và checksum để kiểm tính nhất quán. File đã tùy chỉnh được giữ và báo đường dẫn. Tài nguyên do installer quản lý, không còn được yêu cầu và chưa chỉnh sửa, được lưu vào backup; tài nguyên còn được cấu hình tham chiếu được giữ. Các loại trừ extension và path deny được bảo toàn. Auth và file riêng của người dùng không thuộc danh sách tài nguyên được dọn.
 
-MCP filesystem chỉ expose công cụ đọc và dùng cwd của project. LSP Go/Rust/Python cần language server riêng của project/máy; installer không hứa cài mọi toolchain ngôn ngữ. Permission extension là lớp kiểm soát tool, không phải OS sandbox. Một repo được trust hoặc lệnh shell được duyệt vẫn cần được xem xét phù hợp.
+Dừng các phiên Pi trước khi cập nhật. Dùng revision đã qua CI thay vì chạy `pi update` hoặc `npm update` trên runtime ghim. Nếu còn `.install.lock`, kiểm tra PID và chỉ xóa lock khi tiến trình đó đã dừng.
 
-## Chạy lại, cập nhật và khôi phục
-
-Chạy lại cùng installer giữ runtime nếu lockfile không đổi; vẫn kiểm checksum bản vá. File cấu hình đã tùy chỉnh, auth và key được giữ nguyên. Cấu hình chỉ được tạo ở profile sử dụng nó: subagents/role cho main–goal, goal settings cho goal, advisor settings cho advisor. Với bản mới, file managed chưa chỉnh sửa được cập nhật và có backup; file có drift được giữ lại và báo đường dẫn để bạn đối chiếu. Nếu nâng từ bản có Jev và đã tùy chỉnh `settings.json`, bỏ mục `compact-adviser` trong `packages` ở file được báo; `pi-doctor` sẽ nhắc nếu còn. Dispatcher tự viết được gỡ khi nâng cấp: installer sao lưu trước khi bỏ đường dẫn extension trong settings, giữ các trường tùy chỉnh khác và cất policy/state cũ. Dừng task/Pi trước khi cập nhật; writer lock còn tồn tại sẽ chặn migration. File credential cũ do người dùng quản lý được giữ nguyên nhưng không còn được extension đọc.
-
-Mặc định cài ở `~/.local/share/pi-platform`, main agent `~/.pi/agent`, launcher `~/.local/bin`. Windows dùng vị trí tương ứng dưới user profile; Bash và Node portable có thư mục toolchain riêng. Installer thêm PATH theo user; `--no-path` bỏ bước này.
-
-Các file managed không còn dùng được chuyển vào backup nếu chưa chỉnh sửa; file có drift được giữ và báo rõ. Bản cài mới chỉ dùng footer pi-open-tui. Nếu trên máy nâng cấp còn file statusline cũ do người dùng quản lý, installer giữ loại trừ hiện có để tránh kích hoạt lại nó.
-
-Nếu cài bị dừng, chạy lại cùng các đường dẫn để tiếp tục. Nếu tiến trình bị kill và còn `.install.lock`, kiểm PID trong file và chắc chắn installer cũ đã dừng trước khi xóa lock. Không xóa lock của installer đang chạy.
-
-Không dùng `pi update` hoặc `npm update` trực tiếp trên runtime ghim: có thể mất các bản vá. Cập nhật qua revision mới của repo sau khi CI đạt. Muốn gỡ, bỏ launcher/PATH và root của bản cài; **sao lưu auth/session trong agent-dir trước**, không xóa thư mục Pi khác đang dùng.
-
-## Kiểm thử và giới hạn
-
-CI chạy trên **Ubuntu, Windows và macOS thật**: kiểm repo/secret, unit tests, cài sạch từ lockfile, auth chia sẻ, permission, subagent, MCP, goal/background/advisor bằng provider giả; kiểm cài lại giữ tùy chỉnh và credential giả. Bootstrap còn tải toolchain mới và thử đường dẫn có khoảng trắng.
+## Phát triển và kiểm thử
 
 ```sh
 npm run check
@@ -110,8 +122,6 @@ npm test
 npm run smoke
 ```
 
-Badge đầu trang là trạng thái nghiệm thu hiện tại. Test không gọi model/API tính phí và không chứng minh chất lượng model, OAuth của tài khoản bạn, hay quota. Các plugin đã được tách profile do giới hạn version; “toàn bộ” không có nghĩa nạp mọi extension xung đột vào một session.
+CI chạy trên Ubuntu, Windows và macOS: kiểm repo, cấu hình, request payload, cài sạch, các profile bằng provider giả, cài lại giữ tùy chỉnh và bootstrap với đường dẫn có khoảng trắng. Test không dùng credential thật hoặc gọi model trả phí. Đây là kiểm chứng runtime và bộ cài; chất lượng model và quyền truy cập tài khoản được đánh giá riêng.
 
-Jev, compact-adviser và dispatcher tự viết đã gỡ. Không còn `dispatch_task` hoặc `/routing`; native compaction của Pi vẫn bật. Kiểm thử native Agent xác nhận chức năng với provider giả; không tuyên bố đã chứng minh mức tiết kiệm token so với cấu hình khác.
-
-Nguồn và giấy phép: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Mã installer/config riêng dùng [MIT](LICENSE).
+Nguồn và giấy phép: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Mã riêng của dự án dùng [MIT](LICENSE).

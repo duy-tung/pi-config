@@ -71,7 +71,7 @@ Object.assign(process.env, {
   FIRECRAWL_NO_SEARCH_FEEDBACK: "1", FIRECRAWL_NO_ENDPOINT_FEEDBACK: "1",
 });
 for (const key of Object.keys(process.env)) {
-  if (/API_KEY|AUTH_TOKEN|ACCESS_TOKEN|REFRESH_TOKEN|TYPESAFE/u.test(key)) delete process.env[key];
+  if (/API_KEY|AUTH_TOKEN|ACCESS_TOKEN|REFRESH_TOKEN/u.test(key)) delete process.env[key];
 }
 const pathKey = process.platform === "win32" ? Object.keys(process.env).find((key) => key.toLowerCase() === "path") : "PATH";
 const existingPath = process.env[pathKey] ?? "";
@@ -96,7 +96,7 @@ const ensureSafeRead = (file) => {
   const relative = path.relative(fixture, resolved);
   if (relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative))) return;
   const normalized = resolved.replaceAll("\\", "/");
-  if (/\/(?:auth\.json|\.?credentials\.json|compact-adviser\.json)$/u.test(normalized)
+  if (/\/(?:auth\.json|\.?credentials\.json)$/u.test(normalized)
       || /\/(?:\.ssh|\.aws|secrets)\//u.test(normalized)) {
     throw new Error("Fixture refused credential read outside its temporary directory");
   }
@@ -152,11 +152,11 @@ async function check(name,fn) {
   activePhase=name;console.log(`Agent ${profile}: ${name}`);
   try {await fn();results.push({name,status:'PASS'});}catch(error){results.push({name,status:'FAIL',error:error.stack});}
 }
-await check('native Agent registered; custom dispatcher and routing command absent',async()=>{
+await check('native delegation tools and four task roles are available',async()=>{
   const names=session.getAllTools().map(tool=>tool.name);
   assert.ok(names.includes('Agent'));
-  assert.ok(!names.includes('dispatch_task'));
-  assert.equal(session.extensionRunner.getCommand('routing'),undefined);
+  for(const name of ['get_subagent_result','steer_subagent'])assert.ok(names.includes(name));
+  assert.deepEqual(fs.readdirSync(path.join(agentDir,'agents')).sort(),['debugger.md','researcher.md','reviewer.md','worker.md']);
 });
 await check('researcher uses GLM/max and separate context',async()=>{
   const out=await run('sol',invocation('sol'),[[tool('read',{path:'safe.txt'})],final('CHILD_OK')]);
@@ -199,10 +199,10 @@ await check('Sol worker can make an authorized file edit',async()=>{
   assert.equal(out[0]?.isError,false,JSON.stringify(out));
   assert.equal(fs.readFileSync(path.join(cwd,'result.txt'),'utf8'),'NATIVE_WRITE_OK');
 });
-await check('retired model-suffixed role does not spawn a child',async()=>{
-  const out=await run('retired-role',invocation('retired-role',{subagent_type:'worker-glm'}));
+await check('unknown role is rejected without spawning a child',async()=>{
+  const out=await run('unknown-role',invocation('unknown-role',{subagent_type:'undefined-agent'}));
   assert.ok(out.length>0);
-  assert.ok(!control.seen.some(x=>x.key==='child_retired-role'));
+  assert.ok(!control.seen.some(x=>x.key==='child_unknown-role'));
   assert.ok(!JSON.stringify(out).includes('CHILD_OK'));
 });
 await check('foreground completion returns inline without another parent generation',async()=>{

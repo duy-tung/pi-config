@@ -52,7 +52,6 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.equal(overrides["gpt-6-astra"].contextWindow, 872000);
       assert.deepEqual(settings.enabledModels, ["openai-codex/gpt-6-astra", "openai-codex/gpt-5.6-sol", "opencode-go/glm-5.3-flash"]);
       assert.equal(settings.modelThinkingLevels["opencode-go/glm-5.3-flash"], "max");
-      assert.equal(settings.extensions.some(value => value.includes("pi-dispatch-router")), false);
       if (["main", "goal"].includes(name)) {
       for (const role of ["researcher", "worker", "debugger", "reviewer"]) {
         const agent = read(p.join(profile.agentDir, "agents", `${role}.md`)).replaceAll("\r\n", "\n");
@@ -92,7 +91,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.equal(server.lifecycle, "lazy");
       assert.deepEqual(server.includeTools, ["read_text_file", "list_directory", "get_file_info", "list_allowed_directories"]);
       const { permission } = json(p.join(profile.agentDir, "extensions", "pi-permission-system", "config.json"));
-      for (const deny of [p.join(options.agentDir, "auth.json"), p.join(options.root, "profiles", "*", "auth.json"), p.join(options.root, "secrets", "*.env"), p.join(options.agentDir, "compact-adviser.json")]) {
+      for (const deny of [p.join(options.agentDir, "auth.json"), p.join(options.root, "profiles", "*", "auth.json"), p.join(options.root, "secrets", "*.env"), p.join(options.home, ".codex", "auth.json")]) {
         assert.equal(permission.path[forward(deny)], "deny", deny);
       }
       assert.equal(permission.mcpScript, "deny");
@@ -119,13 +118,9 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.equal(file.mode, 0o600);
       assert.notEqual(p.basename(file.path), "auth.json");
       assert.doesNotMatch(file.path, /sessions|mcp-cache|models-store/u);
-      assert.doesNotMatch(file.content, /\/Users\/tung|apikey_[a-z0-9]|fc-[a-f0-9]{20}|TYPESAFE_API_KEY=/u);
+      assert.doesNotMatch(file.content, /\/Users\/tung|apikey_[a-z0-9]|fc-[a-f0-9]{20}|[A-Z_]*(?:API_KEY|ACCESS_TOKEN|REFRESH_TOKEN)=/u);
     }
     for (const profile of Object.values(profiles)) {
-      assert.ok(!profile.packages.includes("compact-adviser"));
-      for (const retired of ["compact-adviser.json", "routing.json", "routing-capabilities.json"]) {
-        assert.ok(!files.some(file => file.path === p.join(profile.agentDir, retired)));
-      }
       if (profile.packages.includes("pi-advisor-flow")) {
       const advisor = json(p.join(profile.agentDir, "advisor.json"));
       assert.equal(advisor.alwaysOn, false);

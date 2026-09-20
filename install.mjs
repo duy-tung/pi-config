@@ -5,8 +5,7 @@ import os from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {buildConfiguration} from './lib/config.mjs';
 import {applyPatches} from './lib/patches.mjs';
-import {retireDispatcher} from './lib/retire-dispatcher.mjs';
-import {preserveLegacyFooterExclusion,pruneInactiveConfiguration} from './lib/config-cleanup.mjs';
+import {preserveLocalControls,reconcileResources} from './lib/resources.mjs';
 import {run,download,npmCli,readJson,writeJson,sha256,shellQuote,assertSafePath} from './lib/system.mjs';
 
 const repoDir=path.dirname(fileURLToPath(import.meta.url));
@@ -38,8 +37,9 @@ const lock=path.join(root,'.install.lock');
 const lockFd=fs.openSync(lock,'wx',0o600);fs.writeFileSync(lockFd,String(process.pid));fs.closeSync(lockFd);
 const state={version:1,root,agentDir,binDir,nodePath,platform:process.platform,arch:process.arch,
   shellPath:shellPath ?? previous?.shellPath,files:previous?.files ?? {},runtimes:previous?.runtimes ?? {},sources:previous?.sources ?? {}};
-const preserved=[];
+const preserved=[],wanted=new Set();
 function managed(file,content,mode=0o600){
+  wanted.add(file);
   const bytes=Buffer.isBuffer(content)?content:Buffer.from(content);
   const hash=sha256(bytes);
   if(fs.existsSync(file)){
@@ -112,8 +112,7 @@ async function addPath(){
   }
 }
 try{
-  writeJson(statePath,state); // Ownership/progress survives a failed dependency download.
-  if(previous){retireDispatcher({root,agentDir,state});writeJson(statePath,state);}
+  writeJson(statePath,state);
   copyTree(path.join(repoDir,'assets'),path.join(root,'assets'));
   copyTree(path.join(repoDir,'vendor'),path.join(root,'vendor'));
   await installRuntime('current','runtimes/current');
@@ -125,13 +124,13 @@ try{
     const source=path.join(repoDir,'runtime',filename);if(fs.statSync(source).isFile())managed(path.join(root,'bin',filename),fs.readFileSync(source));
   }
   const files=buildConfiguration({root,agentDir,binDir,nodePath,platform:process.platform,home,repoDir,shellPath:state.shellPath});
-  for(const specification of files){const file=preserveLegacyFooterExclusion(specification);managed(file.path,file.content,file.mode);}
-  pruneInactiveConfiguration({root,agentDir,state,desiredFiles:files});
+  for(const specification of files){const file=preserveLocalControls(specification);managed(file.path,file.content,file.mode);}
   for(const [name,action] of Object.entries({'pi':'main','pi-goal':'goal','pi-background':'background','pi-advisor':'advisor','pi-login':'login','pi-doctor':'doctor','pi-config':'doctor','firecrawl':'firecrawl','pi-models':'models'}))launcher(name,action);
   const auth=path.join(agentDir,'auth.json');
   if(!fs.existsSync(auth)){fs.mkdirSync(agentDir,{recursive:true,mode:0o700});fs.writeFileSync(auth,'{}\n',{mode:0o600});}
-  state.installedAt=new Date().toISOString();writeJson(statePath,state);
   await addPath();
+  reconcileResources({root,agentDir,binDir,state,wanted});
+  state.installedAt=new Date().toISOString();writeJson(statePath,state);
   console.log(`\nĐã cài Pi vào ${root}. Mở terminal mới rồi chạy pi.`);
   console.log('Đăng nhập: pi-login → /login. Firecrawl: firecrawl login --browser.');
   if(preserved.length)console.log('Giữ nguyên các file đã được bạn tùy chỉnh:\n'+preserved.join('\n'));

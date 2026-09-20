@@ -39,13 +39,11 @@ for (const name of (["main", "goal"].includes(profile) ? ["researcher", "worker"
     .replace('"pi-permission-system"', '"pi-permission-system", "scripted-provider"');
   fs.writeFileSync(path.join(agentDir, "agents", `${name}.md`), role);
 }
-const compactFile = path.join(agentDir, "compact-adviser.json");
-writeJson(compactFile, { version: 1, mode: "off", minContextTokens: 40000, autoAcknowledged: false,
-  logRequests: false, typesafeApiKey: "synthetic-adviser-key-not-a-secret" });
+const credentialFile = path.join(agentDir, 'auth.json');
 const permissionDir = path.join(agentDir, "extensions", "pi-permission-system");
 fs.mkdirSync(permissionDir, { recursive: true });
 const permission = readJson(path.join(configuration.agentDir, "extensions", "pi-permission-system", "config.json"));
-permission.permission.path[compactFile.replaceAll("\\", "/")] = "deny";
+permission.permission.path[credentialFile.replaceAll("\\", "/")] = "deny";
 writeJson(path.join(permissionDir, "config.json"), permission);
 const settings = readJson(path.join(agentDir, "settings.json"));
 Object.assign(settings, {
@@ -56,7 +54,7 @@ Object.assign(settings, {
 });
 if (settings.workspaceHistory) settings.workspaceHistory.storageDir = path.join(fixture, "history");
 writeJson(path.join(agentDir, "settings.json"), settings);
-writeJson(path.join(agentDir, "auth.json"), {});
+writeJson(credentialFile, {"fixture-secret": {type: "api_key", key: "synthetic-private-credential"}});
 if (profile === "advisor") {
   const advisorFile = path.join(agentDir, "advisor.json");
   const advisor = readJson(advisorFile);
@@ -83,7 +81,7 @@ Object.assign(process.env, {
   FIRECRAWL_NO_SEARCH_FEEDBACK: "1", FIRECRAWL_NO_ENDPOINT_FEEDBACK: "1",
 });
 for (const key of Object.keys(process.env)) {
-  if (/API_KEY|AUTH_TOKEN|ACCESS_TOKEN|REFRESH_TOKEN|TYPESAFE/u.test(key)) delete process.env[key];
+  if (/API_KEY|AUTH_TOKEN|ACCESS_TOKEN|REFRESH_TOKEN/u.test(key)) delete process.env[key];
 }
 const pathKey = process.platform === "win32" ? Object.keys(process.env).find((key) => key.toLowerCase() === "path") : "PATH";
 const existingPath = process.env[pathKey] ?? "";
@@ -108,7 +106,7 @@ const ensureSafeRead = (file) => {
   const relative = path.relative(fixture, resolved);
   if (relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative))) return;
   const normalized = resolved.replaceAll("\\", "/");
-  if (/\/(?:auth\.json|\.?credentials\.json|compact-adviser\.json)$/u.test(normalized)
+  if (/\/(?:auth\.json|\.?credentials\.json)$/u.test(normalized)
       || /\/(?:\.ssh|\.aws|secrets)\//u.test(normalized)) {
     throw new Error("Fixture refused credential read outside its temporary directory");
   }
@@ -177,12 +175,10 @@ await check("read safe file; deny .env and symlink escape", async () => {
   assert.ok(result.slice(1).every((message) => message.isError));
   assert.ok(!JSON.stringify(result).includes("must-not-be-read"));
 });
-await check("retired compact-adviser absent; legacy secret remains denied", async () => {
-  assert.ok(!session.extensionRunner.getRegisteredCommands().some((command) => command.name === "compact-adviser"));
-  const result = await run("compact-deny", [[tool("read", { path: compactFile })]]);
+await check("credential storage is denied to model tools", async () => {
+  const result = await run("credential-deny", [[tool("read", { path: credentialFile })]]);
   assert.equal(result[0]?.isError, true);
-  assert.ok(!JSON.stringify(result).includes("synthetic-adviser-key-not-a-secret"));
-  assert.ok(!sessionManager.getEntries().some((entry) => entry.type === "custom" && entry.customType === "compact-adviser:state"));
+  assert.ok(!JSON.stringify(result).includes("synthetic-private-credential"));
 });
 await check("shell asks parent before fixture execution", async () => {
   const before = prompts.length;
