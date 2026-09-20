@@ -15,7 +15,7 @@ curl -fsSL https://raw.githubusercontent.com/duy-tung/pi-config/main/install.sh 
 **Windows 10/11** — PowerShell 5.1 trở lên, không cần Administrator:
 
 ```powershell
-& ([scriptblock]::Create((Invoke-RestMethod 'https://raw.githubusercontent.com/duy-tung/pi-config/main/install.ps1')))
+& ([scriptblock]::Create((Invoke-RestMethod 'https://raw.githubusercontent.com/duy-tung/pi-config/main/install.ps1').TrimStart([char]0xFEFF)))
 ```
 
 Bootstrap tải Node **24.15.0** riêng theo user khi cần, kiểm SHA256; Windows còn chuẩn bị Git Bash portable nếu thiếu. Không dùng sudo, không thay Node hệ thống. Sau cài, mở terminal mới rồi chạy `pi`.

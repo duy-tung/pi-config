@@ -64,16 +64,11 @@ jobs:
             '--bin-dir', $env:PI_CONFIG_SMOKE_BIN_DIR, '--no-path'
           )
           & .\install.ps1 @BootstrapArguments
-          # GetString keeps the UTF-8 BOM, unlike ReadAllText. Exercise the same
-          # text execution path as the public one-liner, including BOM handling.
-          $BootstrapText = [Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes((Join-Path $PWD 'install.ps1')))
+          # File mode needs BOM for Windows PowerShell 5.1 Vietnamese text. Text
+          # execution must remove it, exactly as the public one-liner does.
+          $DownloadedText = [Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes((Join-Path $PWD 'install.ps1')))
+          $BootstrapText = $DownloadedText.TrimStart([char]0xFEFF)
           & ([scriptblock]::Create($BootstrapText)) @BootstrapArguments
-          # Also cover the conventional "irm URL | iex" entrypoint. The function
-          # supplies isolated installer paths through the normal automatic args.
-          function Test-PipedBootstrap {
-            $BootstrapText | Invoke-Expression
-          }
-          Test-PipedBootstrap @BootstrapArguments
       - name: Chẩn đoán npm Windows khi thất bại
         if: failure() && runner.os == 'Windows'
         shell: powershell

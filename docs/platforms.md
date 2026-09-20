@@ -21,10 +21,12 @@ curl -fsSL https://raw.githubusercontent.com/duy-tung/pi-config/main/install.sh 
 Windows PowerShell:
 
 ```powershell
-& ([scriptblock]::Create((Invoke-RestMethod 'https://raw.githubusercontent.com/duy-tung/pi-config/main/install.ps1')))
+& ([scriptblock]::Create((Invoke-RestMethod 'https://raw.githubusercontent.com/duy-tung/pi-config/main/install.ps1').TrimStart([char]0xFEFF)))
 ```
 
 Không cần đăng nhập GitHub. Hai lệnh lấy phiên bản hiện tại của nhánh `main`; để tái lập chính xác, thay `main` trong URL bằng commit đã kiểm chứng **và** đặt `PI_CONFIG_REF` cùng commit đó. Installer không mang theo đăng nhập, API key hoặc lịch sử của máy nguồn. Đăng nhập dịch vụ trên máy đích là bước riêng.
+
+Lệnh Windows bỏ BOM trước khi thực thi chuỗi tải về. File `.ps1` giữ UTF-8 BOM để Windows PowerShell 5.1 đọc tiếng Việt đúng khi chạy từ file; không dùng `irm URL | iex` thiếu bước bỏ BOM.
 
 ## Tuỳ chỉnh và kiểm thử cô lập
 
@@ -51,7 +53,7 @@ Git portable Windows được ghim **2.55.0.5**, tải từ bản phát hành ch
 
 ## Phạm vi kiểm chứng
 
-Workflow `.github/workflows/test.yml` chạy trên Ubuntu, Windows và macOS: kiểm tra repo, unit tests, cài package thật, kiểm runtime bằng provider giả và chạy bootstrap với đường dẫn có khoảng trắng. Bootstrap trong CI tải Node riêng trên cả ba hệ điều hành và tải Git portable trên Windows để không bỏ sót nhánh máy mới chưa có toolchain. Windows còn chạy lại script dạng chuỗi có BOM qua `ScriptBlock::Create` và `Invoke-Expression`, tương ứng cách dùng one-liner. Không dùng API key hoặc gọi model trả phí. Chỉ xem nền tảng đã nghiệm thu khi job tương ứng của commit cài đặt thành công; cấu hình workflow riêng chưa chứng minh tương thích.
+Workflow `.github/workflows/test.yml` chạy trên Ubuntu, Windows và macOS: kiểm tra repo, unit tests, cài package thật, kiểm runtime bằng provider giả và chạy bootstrap với đường dẫn có khoảng trắng. Bootstrap trong CI tải Node riêng trên cả ba hệ điều hành và tải Git portable trên Windows để không bỏ sót nhánh máy mới chưa có toolchain. Windows còn chạy lại script dạng chuỗi UTF-8 sau khi bỏ BOM qua `ScriptBlock::Create`, đúng cách dùng one-liner; các đường dẫn thử được truyền dưới dạng mảng để giữ nguyên khoảng trắng. Không dùng API key hoặc gọi model trả phí. Chỉ xem nền tảng đã nghiệm thu khi job tương ứng của commit cài đặt thành công; cấu hình workflow riêng chưa chứng minh tương thích.
 
 Bootstrap kiểm hash Node/Git đã ghim; archive của chính repo dùng HTTPS và commit/ref lựa chọn, không có chữ ký phát hành riêng. Với cài đặt cần kiểm soát chặt, tải script về, kiểm source và ghim commit trước khi chạy.
 
