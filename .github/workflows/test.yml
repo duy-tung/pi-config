@@ -20,6 +20,11 @@ jobs:
     timeout-minutes: 35
     env:
       CI: 'true'
+      npm_config_timing: 'true'
+      npm_config_loglevel: verbose
+      npm_config_logs_dir: ${{ runner.temp }}/npm-debug
+      npm_config_fetch_timeout: '60000'
+      npm_config_fetch_retries: '1'
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -66,3 +71,10 @@ jobs:
             $BootstrapText | Invoke-Expression
           }
           Test-PipedBootstrap @BootstrapArguments
+      - name: Chẩn đoán npm Windows khi thất bại
+        if: failure() && runner.os == 'Windows'
+        shell: powershell
+        run: |
+          Get-ChildItem -LiteralPath "$env:RUNNER_TEMP\npm-debug" -Filter '*debug*.log' -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime | Select-Object -Last 3 |
+            ForEach-Object { Write-Host $_.Name; Get-Content -LiteralPath $_.FullName -Tail 100 }
