@@ -1,0 +1,45 @@
+{
+  "name": "pi-config-current",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "0.86.0",
+    "@earendil-works/pi-ai": "0.86.0",
+    "@earendil-works/pi-coding-agent": "0.86.0",
+    "@earendil-works/pi-tui": "0.86.0",
+    "@gotgenes/pi-anthropic-auth": "2.0.10",
+    "@gotgenes/pi-permission-system": "33.0.1",
+    "@juicesharp/rpiv-ask-user-question": "2.10.1",
+    "@juicesharp/rpiv-todo": "2.10.1",
+    "@modelcontextprotocol/server-filesystem": "2026.8.31",
+    "@narumitw/pi-usage": "0.60.8",
+    "@tintinweb/pi-subagents": "0.19.0",
+    "compact-adviser": "0.1.4",
+    "pi-advisor-flow": "file:../../vendor/pi-advisor-flow-0.6.0-pi086.tgz",
+    "pi-lens": "4.2.1",
+    "pi-mcp-adapter": "2.34.0",
+    "pi-open-tui": "0.3.6",
+    "pi-web-access": "0.29.0",
+    "typescript": "5.9.3",
+    "typescript-language-server": "6.0.0"
+  },
+  "overrides": {
+    "pi-lens": {
+      "@earendil-works/pi-tui": "$@earendil-works/pi-tui"
+    },
+    "pi-mcp-adapter": {
+      "@earendil-works/pi-ai": "$@earendil-works/pi-ai"
+    }
+  },
+  "piPlatform": {
+    "localPackages": {
+      "pi-advisor-flow": {
+        "version": "0.6.0",
+        "source": "../../vendor/pi-advisor-flow-0.6.0-pi086.tgz",
+        "sha256": "6ac0352f3fc46b65a5961d2c2db54ca8e547b6fd6ee55c9ef966c85ee674b520",
+        "reason": "Peer metadata includes exactly Pi 0.86.0; runtime code unchanged before separately tracked transport patch."
+      }
+    }
+  }
+}

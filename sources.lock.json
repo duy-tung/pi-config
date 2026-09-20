@@ -1,0 +1,23 @@
+[
+  {
+    "name": "mattpocock-skills",
+    "repo": "mattpocock/skills",
+    "commit": "c55ee46073ed923f86ce59a5eb3b6d895095d1b7",
+    "url": "https://codeload.github.com/mattpocock/skills/tar.gz/c55ee46073ed923f86ce59a5eb3b6d895095d1b7",
+    "sha256": "7938c67820cd259ebca03efa78679455c1db5156f7404a50b6c53a45fe69345a"
+  },
+  {
+    "name": "firecrawl-cli-source",
+    "repo": "firecrawl/cli",
+    "commit": "86aaf06cb139029ff5ad2a249670f42b01d40b13",
+    "url": "https://codeload.github.com/firecrawl/cli/tar.gz/86aaf06cb139029ff5ad2a249670f42b01d40b13",
+    "sha256": "3bd65cdc7fea0bed60e5938ce67cd271f9354174aca08d61657ac7335bddb0eb"
+  },
+  {
+    "name": "firecrawl-workflows",
+    "repo": "firecrawl/firecrawl-workflows",
+    "commit": "94cc91229d6cedc0613f140d3d013b150bc8e1b0",
+    "url": "https://codeload.github.com/firecrawl/firecrawl-workflows/tar.gz/94cc91229d6cedc0613f140d3d013b150bc8e1b0",
+    "sha256": "bf0bf8abf2a6c5b1624531fbc08cd91b91869da6b62b2bd6e5909583335f5030"
+  }
+]

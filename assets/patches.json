@@ -1,0 +1,205 @@
+{
+  "schemaVersion": 1,
+  "patches": [
+    {
+      "package": "pi-open-tui",
+      "versions": {
+        "current": "0.3.6",
+        "compat": "0.3.6"
+      },
+      "file": "extensions/open-tui/footer.ts",
+      "originalSha256": "a7a9b8bd15a9b6c7a40e8f981de23094e6384c4b8a6e48e031b2c0f2a57e54fb",
+      "patchedSha256": "0f54df2dc712a2ddb444bbc5bafc8e8bd4b23d87341e66247b3ab5b3043d7f7f",
+      "edits": [
+        {
+          "before": "stats.push(theme.fg(\"warning\", `${glyphs.cost} $${totals.cost.toFixed(3)}`));",
+          "after": "stats.push(theme.fg(\"warning\", `$${totals.cost.toFixed(3)}`));",
+          "count": 1
+        },
+        {
+          "before": "const line = `${theme.fg(\"mdLink\", glyphs.extensions)} ${statusText}`;",
+          "after": "const line = statusText;",
+          "count": 1
+        },
+        {
+          "before": "return `${theme.fg(stressColor(contextPct), glyphs.context)} ${theme.fg(stressColor(contextPct), `${contextPct.toFixed(1)}%`)}`;",
+          "after": "return theme.fg(stressColor(contextPct), `${contextPct.toFixed(1)}%`);",
+          "count": 1
+        },
+        {
+          "before": "\tconst contextIcon = theme.fg(stressColor(contextPct), glyphs.context);\n",
+          "after": "",
+          "count": 1
+        },
+        {
+          "before": "visibleWidth(contextIcon) + visibleWidth(pctText)",
+          "after": "visibleWidth(pctText)",
+          "count": 1
+        },
+        {
+          "before": "return `${contextIcon} ${renderBar(theme, contextPct, barWidth, resolveIconMode(iconMode) === \"ascii\")}",
+          "after": "return `${renderBar(theme, contextPct, barWidth, resolveIconMode(iconMode) === \"ascii\")}",
+          "count": 1
+        },
+        {
+          "before": "\tconst ctxText = `${theme.fg(\"text\", fmtTokens(contextTokens))}${theme.fg(\"dim\", \"/\")}${theme.fg(\"text\", fmtTokens(contextWindow))}`;\n",
+          "after": "",
+          "count": 1
+        },
+        {
+          "before": "visibleWidth(pctText) + visibleWidth(ctxText) + 5 + 2",
+          "after": "visibleWidth(pctText) + 3",
+          "count": 1
+        },
+        {
+          "before": " ${pctText} ${theme.fg(\"dim\", \"·\")} ${ctxText}`;",
+          "after": " ${pctText}`;",
+          "count": 1
+        },
+        {
+          "before": ".map(([, text]) => sanitizeStatus(text))",
+          "after": ".filter(([key, text]) => key !== \"mcp\" || !/^(?:🔌\\s*)?MCP:\\s*\\d+ servers? enabled$/u.test(sanitizeStatus(text)))\n\t\t.map(([, text]) => sanitizeStatus(text))",
+          "count": 1
+        },
+        {
+          "before": ".map(([, text]) => sanitizeStatus(text))",
+          "after": ".filter(([key, text]) => key !== \"pi-lens-lsp\" || sanitizeStatus(text) !== \"LSP Inactive\")\n\t\t.map(([, text]) => sanitizeStatus(text))",
+          "count": 1
+        },
+        {
+          "before": "\t\t\t\tmodelParts.push(theme.fg(\"mdLink\", glyphs.model));\n",
+          "after": "",
+          "count": 1
+        },
+        {
+          "before": "\t\t\t\tif (meta.provider && meta.provider !== \"Unknown\") {\n\t\t\t\t\tmodelParts.push(theme.fg(providerColor(ctx.model?.provider ?? \"none\"), meta.provider));\n\t\t\t\t}\n",
+          "after": "",
+          "count": 1
+        },
+        {
+          "before": "theme.fg(effortColor(meta.effort), `${glyphs.thinking} ${meta.effort}`)",
+          "after": "theme.fg(effortColor(meta.effort), meta.effort)",
+          "count": 1
+        },
+        {
+          "before": ".map(([, text]) => sanitizeStatus(text))",
+          "after": ".filter(([key]) => key !== \"usage\")\n\t\t.map(([, text]) => sanitizeStatus(text))",
+          "count": 1
+        },
+        {
+          "before": "\t\t\t\tconst modelBlock = modelParts.join(theme.fg(\"dim\", \" · \"));",
+          "after": "\t\t\t\tconst usageStatus = segments.extensionStatuses\n\t\t\t\t\t? sanitizeStatus(footerData.getExtensionStatuses().get(\"usage\") ?? \"\").replace(/^codex(?:\\s+fast)?\\s+/i, \"\")\n\t\t\t\t\t: \"\";\n\t\t\t\tif (usageStatus) modelParts.push(theme.fg(\"muted\", usageStatus));\n\t\t\t\tconst modelBlock = modelParts.join(theme.fg(\"dim\", \" · \"));",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "package": "@gotgenes/pi-permission-system",
+      "versions": {
+        "current": "33.0.1",
+        "compat": "33.0.1"
+      },
+      "file": "src/access-intent/tool-input-path.ts",
+      "originalSha256": "6c41745b056bfdb703f774ac616eb134ae5399b5b6ba6754b0b431366f0462be",
+      "patchedSha256": "a343a993693a1e509cff64366b8f4ecda268706c634db464157c2195e7893df6",
+      "edits": [
+        {
+          "before": "    case \"mcp\":\n      return byConvention(getNonEmptyString(toRecord(record.arguments).path));",
+          "after": "    case \"mcp\": {\n      // pi-mcp-adapter uses args (object or JSON string); legacy MCP uses arguments.\n      let args: unknown = record.args ?? record.arguments;\n      if (typeof args === \"string\") {\n        try { args = JSON.parse(args); } catch { args = undefined; }\n      }\n      return byConvention(getNonEmptyString(toRecord(args).path));\n    }",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "package": "@tintinweb/pi-subagents",
+      "versions": {
+        "current": "0.19.0",
+        "compat": "0.19.0"
+      },
+      "file": "src/agent-runner.ts",
+      "originalSha256": "88e61481fd627254ff3ac0a27e1991136c41e103fac847dd06444c8ac3d3eab1",
+      "patchedSha256": "52e56f9d46dce2555ad3a0d3f603e1009440b77179cdcd9f46d994c3d8421941",
+      "edits": [
+        {
+          "before": "  const { session } = await runInChildSessionContext(() => createAgentSession(sessionOpts));",
+          "after": "  const { session } = await runInChildSessionContext(() => createAgentSession(sessionOpts));\n\n  // Local integration: announce before binding so permission gates know the parent.\n  const childIdentity = { sessionId: session.sessionId, parentSessionId: ctx.sessionManager?.getSessionId() };\n  const originalDispose = session.dispose.bind(session);\n  let childDisposed = false;\n  session.dispose = () => {\n    if (childDisposed) return;\n    childDisposed = true;\n    try {\n      originalDispose();\n    } finally {\n      options.pi.events.emit(\"subagents:child:disposed\", { sessionId: session.sessionId });\n    }\n  };\n  options.pi.events.emit(\"subagents:child:session-created\", childIdentity);",
+          "count": 1
+        },
+        {
+          "before": "  await session.bindExtensions({\n    onError:",
+          "after": "  try {\n    await session.bindExtensions({\n    onError:",
+          "count": 1
+        },
+        {
+          "before": "  // With `allowedToolNames` unset,",
+          "after": "    options.pi.events.emit(\"subagents:child:bound\", childIdentity);\n  } catch (error) {\n    session.dispose();\n    throw error;\n  }\n\n  // With `allowedToolNames` unset,",
+          "count": 1
+        },
+        {
+          "before": "  } finally {\n    unsubTurns();",
+          "after": "  } catch (error) {\n    session.dispose();\n    throw error;\n  } finally {\n    unsubTurns();",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "package": "@earendil-works/pi-coding-agent",
+      "versions": {
+        "current": "0.86.0",
+        "compat": "0.84.4"
+      },
+      "file": "dist/core/auth-storage.js",
+      "originalSha256": "0b45029901579032b19273a1427f63b622df8e1aaf9ea185eb932c0d4898998c",
+      "patchedSha256": "307fc7530896b08e4332f3cec856a783770ae6a89447c1ef25e41bfc5ca7fc97",
+      "edits": [
+        {
+          "before": "import { getFileRevision, normalizePath }",
+          "after": "import { canonicalizePath, getFileRevision, normalizePath }",
+          "count": 1
+        },
+        {
+          "before": "        this.authPath = normalizePath(authPath);\n    }\n    ensureParentDir()",
+          "after": "        this.authPath = canonicalizePath(normalizePath(authPath));\n    }\n    ensureParentDir()",
+          "count": 1
+        },
+        {
+          "before": "constructor(authPath = join(getAgentDir(), \"auth.json\")) {",
+          "after": "constructor(authPath = process.env.PI_CONFIG_AUTH_PATH || join(getAgentDir(), \"auth.json\")) {",
+          "count": 2
+        },
+        {
+          "before": "static create(authPath = join(getAgentDir(), \"auth.json\")) {",
+          "after": "static create(authPath = process.env.PI_CONFIG_AUTH_PATH || join(getAgentDir(), \"auth.json\")) {",
+          "count": 1
+        },
+        {
+          "before": "export function readStoredCredential(providerId, authPath = join(getAgentDir(), \"auth.json\")) {",
+          "after": "export function readStoredCredential(providerId, authPath = process.env.PI_CONFIG_AUTH_PATH || join(getAgentDir(), \"auth.json\")) {",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "package": "pi-advisor-flow",
+      "versions": {
+        "current": "0.6.0",
+        "compat": "0.6.0"
+      },
+      "file": "dist/index.js",
+      "originalSha256": "645aa81206b874c336a432b197e1c3eba4735ff920e3b51b0418553f94c275b7",
+      "patchedSha256": "730c90240165ca1d9c6b1db5dc98886696fa1c45b959d080e21395137117f5b9",
+      "edits": [
+        {
+          "before": "    ref\n  };\n};\nvar ADVISOR_STREAM_UPDATE_INTERVAL_MS",
+          "after": "    ref,\n    streamModel: (() => {\n      const runtime = ctx.modelRegistry.runtime;\n      if (!runtime?.streamSimple) throw new Error(\"Pi ModelRuntime transport unavailable; refusing unshaped advisor request\");\n      return runtime.streamSimple.bind(runtime);\n    })()\n  };\n};\nvar ADVISOR_STREAM_UPDATE_INTERVAL_MS",
+          "count": 1
+        },
+        {
+          "before": "var collectTextStream = async (resolved, options, streamModel = stream) => {",
+          "after": "var collectTextStream = async (resolved, options, streamModel = resolved.streamModel) => {",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

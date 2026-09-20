@@ -1,0 +1,16 @@
+{
+  "format": {
+    "enabled": false
+  },
+  "autofix": {
+    "enabled": false
+  },
+  "tests": {
+    "enabled": false
+  },
+  "actionableWarnings": {
+    "autoFix": {
+      "enabled": false
+    }
+  }
+}

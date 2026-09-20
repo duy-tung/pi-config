@@ -1,0 +1,22 @@
+{
+  "executor": "openai-codex/gpt-5.6-sol",
+  "advisor": "anthropic/claude-opus-5",
+  "executorEffort": "high",
+  "advisorEffort": "high",
+  "alwaysOn": false,
+  "simpleMode": false,
+  "advisorMaxCallsPerSession": 3,
+  "advisorPlanGate": false,
+  "advisorFailureGate": false,
+  "advisorCompletionGate": false,
+  "advisorAutoLoopGate": false,
+  "advisorScoutEnabled": false,
+  "advisorSessionSummary": false,
+  "advisorRedactSecrets": true,
+  "advisorTrackedFileContent": false,
+  "advisorUntrackedContent": false,
+  "advisorOutcomeLogging": false,
+  "advisorHerdrIntegration": false,
+  "advisorGitContext": "summary",
+  "contextMaxChars": 15000
+}

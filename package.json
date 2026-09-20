@@ -1,0 +1,13 @@
+{
+  "name": "@duy-tung/pi-config",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cài cấu hình Pi đã ghim phiên bản trên Windows, Linux và macOS",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "check": "node scripts/check-repo.mjs",
+    "smoke": "node tests/install-smoke.mjs"
+  }
+}

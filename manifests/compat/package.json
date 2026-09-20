@@ -1,0 +1,27 @@
+{
+  "name": "pi-config-compat",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "0.84.4",
+    "@earendil-works/pi-ai": "0.84.4",
+    "@earendil-works/pi-coding-agent": "0.84.4",
+    "@earendil-works/pi-tui": "0.84.4",
+    "@gotgenes/pi-anthropic-auth": "2.0.10",
+    "@gotgenes/pi-permission-system": "33.0.1",
+    "@juicesharp/rpiv-ask-user-question": "2.10.1",
+    "@juicesharp/rpiv-todo": "2.10.1",
+    "@narumitw/pi-usage": "0.60.8",
+    "@tintinweb/pi-subagents": "0.19.0",
+    "compact-adviser": "0.1.4",
+    "pi-advisor-flow": "0.6.0",
+    "pi-background-tasks": "2.5.0",
+    "pi-goal-x": "0.31.6",
+    "pi-lens": "4.2.1",
+    "pi-mcp-adapter": "2.34.0",
+    "pi-open-tui": "0.3.6",
+    "pi-web-access": "0.29.0",
+    "pi-workspace-history": "0.4.3"
+  }
+}
