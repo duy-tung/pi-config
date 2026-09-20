@@ -255,11 +255,21 @@ if (profile === "background") {
       isAgent: false, timeoutSeconds: 10, triggerOnCompletion: false })]]);
     assert.ok(!result[0]?.isError, JSON.stringify(result));
     const taskId = result[0].details?.task?.id; assert.ok(taskId, JSON.stringify(result));
-    await delay(500);
-    result = await run("bg-output", [[tool("bg_status", { taskId })], [tool("bg_logs", { taskId })]]);
-    assert.ok(result.every((message) => !message.isError), JSON.stringify(result));
-    assert.match(JSON.stringify(result), /BACKGROUND_OK/u);
+    // Windows shell startup is not bounded by an arbitrary 500ms sleep.
+    // Poll only inside this offline fixture; the production agent uses notifications.
+    const deadline = Date.now() + 15000;
+    let poll = 0;
+    do {
+      result = await run(`bg-status-${poll++}`, [[tool("bg_status", { taskId })]]);
+      assert.ok(!result[0]?.isError, JSON.stringify(result));
+      if (!["running", "queued"].includes(result[0].details.tasks[0].status)) break;
+      assert.ok(Date.now() < deadline, "Fixture background task did not finish within 15 seconds");
+      await delay(200);
+    } while (true);
     assert.equal(result[0].details.tasks[0].status, "completed");
+    result = await run("bg-output", [[tool("bg_logs", { taskId })]]);
+    assert.ok(!result[0]?.isError, JSON.stringify(result));
+    assert.match(JSON.stringify(result), /BACKGROUND_OK/u);
   });
 }
 if (profile === "advisor") {
