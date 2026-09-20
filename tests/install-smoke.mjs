@@ -11,8 +11,9 @@ const args=[path.join(repo,'install.mjs'),'--root',root,'--agent-dir',agentDir,'
 await run(process.execPath,args,{timeout:1800000});
 await run(process.execPath,[path.join(root,'bin/launch.mjs'),'main','--version']);
 await run(process.execPath,[path.join(root,'bin/launch.mjs'),'goal','--version']);
-await run(process.execPath,['--test',path.join(repo,'tests/patches.test.mjs'),path.join(repo,'tests/compat-models.test.mjs')],{env:{...process.env,PI_CONFIG_TEST_ROOT:root}});
+await run(process.execPath,['--test',path.join(repo,'tests/patches.test.mjs'),path.join(repo,'tests/compat-models.test.mjs'),path.join(repo,'tests/glm-wire.test.mjs')],{env:{...process.env,PI_CONFIG_TEST_ROOT:root}});
 for(const profile of ['main','goal','background','advisor'])await run(process.execPath,[path.join(repo,'tests/profile-integration.mjs'),root,profile]);
+for(const profile of ['main','goal'])await run(process.execPath,[path.join(repo,'tests/router-integration.mjs'),root,profile]);
 const settingsPath=path.join(agentDir,'settings.json');
 const settings=readJson(settingsPath);settings.theme='rose-pine-dawn';fs.writeFileSync(settingsPath,JSON.stringify(settings,null,2)+'\n');
 const privateConfig=path.join(agentDir,'compact-adviser.json');

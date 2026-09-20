@@ -28,14 +28,14 @@ test("không chấp nhận edit thiếu hoặc kết quả checksum sai", () => 
   }), /Checksum kết quả/);
 });
 
-test("metadata ghim đủ năm loại bản vá cho hai runtime", async () => {
+test("metadata ghim năm bản vá chung và backport OpenCode Go cho compat", async () => {
   const data = JSON.parse(await readFile(new URL("../assets/patches.json", import.meta.url), "utf8"));
   assert.equal(data.schemaVersion, 1);
-  assert.equal(data.patches.length, 5);
+  assert.equal(data.patches.length, 7);
   for (const spec of data.patches) {
     assert.match(spec.originalSha256, /^[a-f0-9]{64}$/);
     assert.match(spec.patchedSha256, /^[a-f0-9]{64}$/);
-    assert.deepEqual(Object.keys(spec.versions).sort(), ["compat", "current"]);
+    assert.deepEqual(Object.keys(spec.versions).sort(), spec.file === 'dist/providers/opencode-go.js' ? ['compat'] : ["compat", "current"]);
   }
   await assert.rejects(applyPatches({ root: os.tmpdir(), runtimes: ["../escape"] }), /Runtime phải/);
 });

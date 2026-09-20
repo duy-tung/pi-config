@@ -44,13 +44,17 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.equal(settings.modelThinkingLevels["openai-codex/gpt-5.6-sol"], "high");
       assert.equal(settings.shellPath, options.shellPath);
       assert.equal(settings.skills.length, 3);
-      assert.equal(settings.extensions.length, 2);
+      assert.equal(settings.extensions.length, ["main", "goal"].includes(name) ? 3 : 2);
       assert.equal(settings.extensions[0], `-${p.join(profile.agentDir, "extensions", "statusline.ts")}`);
       assert.ok(settings.packages.every((entry) => entry.startsWith(p.join(options.root, "runtimes", profile.runtime, "node_modules"))));
       const overrides = json(p.join(profile.agentDir, "models.json")).providers["openai-codex"].modelOverrides;
       assert.equal(overrides["gpt-5.6-sol"].contextWindow, 872000);
       assert.equal(overrides["gpt-6-astra"].contextWindow, 872000);
-      assert.deepEqual(settings.enabledModels, ["openai-codex/gpt-6-astra", "openai-codex/gpt-5.6-sol"]);
+      assert.deepEqual(settings.enabledModels, ["openai-codex/gpt-6-astra", "openai-codex/gpt-5.6-sol", "opencode-go/glm-5.3-flash"]);
+      assert.equal(settings.modelThinkingLevels["opencode-go/glm-5.3-flash"], "max");
+      assert.equal(json(p.join(profile.agentDir, "routing.json")).mode, "off");
+      assert.equal(json(p.join(profile.agentDir, "routing.json")).jev.budgetUsd, 0);
+      assert.equal(settings.extensions.some(value => value.includes("pi-dispatch-router")), ["main", "goal"].includes(name));
       for (const role of ["researcher", "worker", "debugger", "reviewer"]) {
         const agent = read(p.join(profile.agentDir, "agents", `${role}.md`));
         assert.match(agent, /^model: openai-codex\/gpt-5\.6-sol$/mu);

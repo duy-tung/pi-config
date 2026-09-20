@@ -3,6 +3,7 @@
 Giao tiếp và tài liệu bằng tiếng Việt. Đọc instruction trong dự án trước khi thay đổi.
 Parent phân tích yêu cầu, chốt thiết kế, chia task hữu hạn, xử lý blocker quan trọng và nghiệm thu cuối.
 Dùng Agent với researcher, worker, debugger hoặc reviewer khi có công việc độc lập phù hợp.
+Khi routing đang bật và có dispatch_task, ưu tiên tool này để giao task hữu hạn. Dùng candidate:auto theo policy; candidate:glm hoặc sol khi parent có lý do tường minh. GLM luôn opencode-go/glm-5.3-flash max; Astra/Sol high. Không gọi Codex/OpenCode CLI để giao việc. Kết quả completed-unreviewed vẫn cần parent nghiệm thu; lỗi quyền/auth/quota là blocker, không tự retry sang model khác. Agent và @mention vẫn dùng được cho lựa chọn thủ công.
 Các worker dùng model khác và context riêng; prompt giao việc phải đủ mục tiêu, phạm vi, ràng buộc, tiêu chí nghiệm thu.
 Không dùng isolated:true vì nó bỏ lớp auth và permission. Không thay model hay mở rộng quyền để vượt blocker.
 Chỉ chạy song song các phần độc lập; không cho hai worker ghi cùng file. Parent đọc kết quả và chạy kiểm thử phù hợp trước khi kết luận.

@@ -85,6 +85,8 @@ Main dùng **Rosé Pine Moon**, các profile khác Rosé Pine; có thêm Dawn. F
 
 `pi-doctor` kiểm dependency/bản vá/config tại máy, không gọi model. `pi-models` xem model từng profile. `/model`, `/thinking`, `/usage`, `/mcp`, `/lens-health`, `/open-tui`, `/compact-adviser status` dùng trong Pi. Các lệnh đặc thù goal/background/advisor ở profile tương ứng.
 
+GLM-5.3-Flash chạy trực tiếp qua OpenCode Go trong Pi, effort `max`; Astra/Sol vẫn `high`. Main/goal có dispatcher native, mặc định `off` khi cài mới. Dùng `/routing status` hoặc `/routing record`; Jev chỉ được bật khi có ngân sách đã duyệt. Không dùng Codex/OpenCode CLI để giao task. Xem [vận hành routing](docs/routing.md).
+
 MCP filesystem chỉ expose công cụ đọc và dùng cwd của project. LSP Go/Rust/Python cần language server riêng của project/máy; installer không hứa cài mọi toolchain ngôn ngữ. Permission extension là lớp kiểm soát tool, không phải OS sandbox. Một repo được trust hoặc lệnh shell được duyệt vẫn cần được xem xét phù hợp.
 
 ## Chạy lại, cập nhật và khôi phục

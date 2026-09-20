@@ -27,6 +27,10 @@ for(const [name,p] of Object.entries(profiles)){
   console.log(`${name}: ${s.defaultProvider}/${s.defaultModel}; thinking ${s.defaultThinkingLevel}; compact-adviser ${c.mode}`);
   for(const pkg of s.packages)if(typeof pkg==='string'&&!fs.existsSync(pkg))errors.push(`Thiếu package: ${name}`);
   if(c.mode==='auto'&&!c.autoAcknowledged)errors.push(`${name}: auto chưa được xác nhận`);
+  const routing=read(path.join(p.agentDir,'routing.json'));
+  console.log(`${name}: routing ${routing.mode}; GLM-5.3-Flash ${s.modelThinkingLevels?.['opencode-go/glm-5.3-flash']}`);
+  if(s.modelThinkingLevels?.['opencode-go/glm-5.3-flash']!=='max')errors.push(`${name}: GLM effort phải max`);
+  if(!['off','record','shadow','balanced'].includes(routing.mode))errors.push(`${name}: routing mode không hợp lệ`);
 }
 for(const source of Object.keys(state.sources))if(!fs.existsSync(path.join(root,'sources',source)))errors.push(`Thiếu skills source: ${source}`);
 console.log('Auth dùng chung theo launcher; đăng nhập bằng pi-login. Không kiểm tra token bằng mạng.');

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "mode": "off",
+  "allowExplicitGlm": true,
+  "jev": { "enabled": false, "model": "jev-1.13.0", "budgetUsd": 0, "maxCalls": 0, "timeoutMs": 5000 },
+  "thresholds": { "canComplete": 0.9, "needsDesign": 0.2 },
+  "glmAutoClasses": [],
+  "timeoutMs": 900000,
+  "cacheTtlMs": 3600000
+}

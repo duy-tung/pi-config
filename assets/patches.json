@@ -200,6 +200,68 @@
           "count": 1
         }
       ]
+    },
+    {
+      "package": "@earendil-works/pi-ai",
+      "versions": {
+        "compat": "0.84.4"
+      },
+      "file": "dist/providers/opencode-go.js",
+      "originalSha256": "9c3414b328bdc1717491824af3774615ef0744046d1250a2a602bc6c0e466e16",
+      "patchedSha256": "5f8c3244b77701c5dcaf77b9398a9722f8ff1e4bba0455412a35702423da259b",
+      "edits": [
+        {
+          "before": "export function opencodeGoProvider() {",
+          "after": "const OPENCODE_SESSION_HEADER = \"x-opencode-session\";\nfunction hasHeader(headers, name) {\n    const expected = name.toLowerCase();\n    return Object.keys(headers ?? {}).some((key) => key.toLowerCase() === expected);\n}\nfunction withSessionHeader(options) {\n    if (!options?.sessionId || hasHeader(options.headers, OPENCODE_SESSION_HEADER))\n        return options;\n    return {\n        ...options,\n        headers: { ...options.headers, [OPENCODE_SESSION_HEADER]: options.sessionId },\n    };\n}\n/** Adds OpenCode's required per-conversation routing header before API dispatch. */\nfunction withOpenCodeSessionHeader(streams) {\n    return {\n        ...streams,\n        stream: (model, context, options) => streams.stream(model, context, withSessionHeader(options)),\n        streamSimple: (model, context, options) => streams.streamSimple(model, context, withSessionHeader(options)),\n    };\n}\n\nexport function opencodeGoProvider() {",
+          "count": 1
+        },
+        {
+          "before": "\"anthropic-messages\": anthropicMessagesApi(),",
+          "after": "\"anthropic-messages\": withOpenCodeSessionHeader(anthropicMessagesApi()),",
+          "count": 1
+        },
+        {
+          "before": "\"openai-completions\": openAICompletionsApi(),",
+          "after": "\"openai-completions\": withOpenCodeSessionHeader(openAICompletionsApi()),",
+          "count": 1
+        },
+        {
+          "before": "\"openai-responses\": openAIResponsesApi(),",
+          "after": "\"openai-responses\": withOpenCodeSessionHeader(openAIResponsesApi()),",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "package": "@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai",
+      "versions": {
+        "compat": "0.84.4"
+      },
+      "file": "dist/providers/opencode-go.js",
+      "originalSha256": "9c3414b328bdc1717491824af3774615ef0744046d1250a2a602bc6c0e466e16",
+      "patchedSha256": "5f8c3244b77701c5dcaf77b9398a9722f8ff1e4bba0455412a35702423da259b",
+      "edits": [
+        {
+          "before": "export function opencodeGoProvider() {",
+          "after": "const OPENCODE_SESSION_HEADER = \"x-opencode-session\";\nfunction hasHeader(headers, name) {\n    const expected = name.toLowerCase();\n    return Object.keys(headers ?? {}).some((key) => key.toLowerCase() === expected);\n}\nfunction withSessionHeader(options) {\n    if (!options?.sessionId || hasHeader(options.headers, OPENCODE_SESSION_HEADER))\n        return options;\n    return {\n        ...options,\n        headers: { ...options.headers, [OPENCODE_SESSION_HEADER]: options.sessionId },\n    };\n}\n/** Adds OpenCode's required per-conversation routing header before API dispatch. */\nfunction withOpenCodeSessionHeader(streams) {\n    return {\n        ...streams,\n        stream: (model, context, options) => streams.stream(model, context, withSessionHeader(options)),\n        streamSimple: (model, context, options) => streams.streamSimple(model, context, withSessionHeader(options)),\n    };\n}\n\nexport function opencodeGoProvider() {",
+          "count": 1
+        },
+        {
+          "before": "\"anthropic-messages\": anthropicMessagesApi(),",
+          "after": "\"anthropic-messages\": withOpenCodeSessionHeader(anthropicMessagesApi()),",
+          "count": 1
+        },
+        {
+          "before": "\"openai-completions\": openAICompletionsApi(),",
+          "after": "\"openai-completions\": withOpenCodeSessionHeader(openAICompletionsApi()),",
+          "count": 1
+        },
+        {
+          "before": "\"openai-responses\": openAIResponsesApi(),",
+          "after": "\"openai-responses\": withOpenCodeSessionHeader(openAIResponsesApi()),",
+          "count": 1
+        }
+      ]
     }
   ]
 }

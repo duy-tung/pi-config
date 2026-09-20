@@ -14,7 +14,7 @@
 
 `vendor/pi-advisor-flow-0.6.0-pi086.tgz` là package npm 0.6.0 được bổ sung **chỉ** phạm vi peer metadata `0.86.0`; source runtime giữ nguyên trước các bản vá được theo dõi riêng trong `assets/patches.json`. SHA-256 của tarball: `6ac0352f3fc46b65a5961d2c2db54ca8e547b6fd6ee55c9ef966c85ee674b520`. Tarball chứa đầy đủ giấy phép MIT gốc. Profile compat dùng nguyên package npm 0.6.0.
 
-Các bản vá local gồm: footer tối giản; chuẩn hóa MCP arguments cho permission; thông báo vòng đời child session cho permission; khóa auth theo đường dẫn canonical và chia sẻ auth mặc định qua biến môi trường; dùng Pi ModelRuntime cho advisor. Mọi bản vá kiểm tra phiên bản và SHA-256 source trước khi sửa. Các tác giả upstream không bảo trợ hoặc chứng nhận bản phân phối này.
+Các bản vá local gồm: footer tối giản; chuẩn hóa MCP arguments cho permission; thông báo vòng đời child session cho permission; khóa auth theo đường dẫn canonical và chia sẻ auth mặc định qua biến môi trường; dùng Pi ModelRuntime cho advisor; backport header phiên OpenCode Go từ Pi 0.86.0 sang 0.84.4. Mọi bản vá kiểm tra phiên bản và SHA-256 source trước khi sửa. Các tác giả upstream không bảo trợ hoặc chứng nhận bản phân phối này.
 
 ## Dependency được tải khi cài đặt
 
