@@ -35,7 +35,7 @@ Các đường dẫn hỗ trợ khoảng trắng. Windows không hỗ trợ dấ
 Credential không thể mang sang từ repo public. Sau khi cài:
 
 1. `pi-login` → `/login` → chọn **OpenAI Codex** cho main Astra và worker Sol.
-2. Nếu dùng các profile còn Opus, đăng nhập Anthropic riêng. Giữ kiểm soát Extra usage của tài khoản.
+2. Cả bốn profile dùng OpenAI Codex: Astra/Sol high, 872K. Không cần đăng nhập Anthropic.
 3. Web: `firecrawl login --browser`. Pi đọc key từ credential store của Firecrawl CLI theo từng OS.
 4. Compact adviser được cài **Off**. Nếu muốn dùng Jev, mở `/compact-adviser` để lưu key qua UI và chủ động chọn Hint. Đây là API trả phí riêng, có gửi phần context đã chọn tới TypeSafe.
 
@@ -48,14 +48,14 @@ Không nhập token vào chat hoặc commit credential. Bốn profile dùng cùn
 | `pi` | 0.86.0 | Parent **GPT-6 Astra high**, lựa chọn nhanh Astra/Sol; cả hai 872K |
 | `pi-goal` | 0.84.4 | Parent Astra high, 872K, goal dài hạn và workspace history |
 | `pi-background` | 0.84.4 | Parent Astra high, 872K, background tasks |
-| `pi-advisor` | 0.86.0 | Executor **GPT-5.6 Sol high**; advisor Opus 5 high, consultation mặc định tắt |
+| `pi-advisor` | 0.86.0 | Executor **GPT-5.6 Sol high**; advisor **GPT-6 Astra high, 872K**, consultation mặc định tắt |
 
 Bốn role `researcher`, `worker`, `debugger`, `reviewer` dùng **GPT-5.6 Sol high, 872K**, context riêng, tối đa 12 turns, concurrency 2. Researcher/reviewer chỉ đọc; researcher có Firecrawl; worker/debugger có shell và ghi file qua permission gate. Không bật nested delegation, workflow hay worktree tự động. Compat 0.84.4 nạp định nghĩa Astra từ catalog Pi 0.86.0 qua `models.json` (asset `astra-compat.json`); đã có kiểm thử offline resolver, thinking và request payload. Goal/background dùng đăng nhập Codex chung, không cần Claude. Đây không phải nghiệm thu inference Astra thật trên compat.
 
 | Thành phần | Phiên bản |
 |---|---|
 | `@tintinweb/pi-subagents` | 0.19.0 |
-| `@gotgenes/pi-anthropic-auth` | 2.0.10 |
+| `@gotgenes/pi-anthropic-auth` | 2.0.10, giữ package tùy chọn; không có vai trò nào dùng Claude |
 | `pi-mcp-adapter` | 2.34.0 |
 | `pi-web-access` | 0.29.0, backend Firecrawl |
 | `@juicesharp/rpiv-ask-user-question`, `rpiv-todo` | 2.10.1 |

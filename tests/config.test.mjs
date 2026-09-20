@@ -49,13 +49,8 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.ok(settings.packages.every((entry) => entry.startsWith(p.join(options.root, "runtimes", profile.runtime, "node_modules"))));
       const overrides = json(p.join(profile.agentDir, "models.json")).providers["openai-codex"].modelOverrides;
       assert.equal(overrides["gpt-5.6-sol"].contextWindow, 872000);
-      if (name !== "advisor") {
-        assert.equal(overrides["gpt-6-astra"].contextWindow, 872000);
-        assert.deepEqual(settings.enabledModels, ["openai-codex/gpt-6-astra", "openai-codex/gpt-5.6-sol"]);
-      } else {
-        assert.equal(overrides["gpt-6-astra"], undefined, "Advisor chỉ cần override Sol");
-        assert.equal(settings.enabledModels, undefined, "Giữ scope advisor hiện có");
-      }
+      assert.equal(overrides["gpt-6-astra"].contextWindow, 872000);
+      assert.deepEqual(settings.enabledModels, ["openai-codex/gpt-6-astra", "openai-codex/gpt-5.6-sol"]);
       for (const role of ["researcher", "worker", "debugger", "reviewer"]) {
         const agent = read(p.join(profile.agentDir, "agents", `${role}.md`));
         assert.match(agent, /^model: openai-codex\/gpt-5\.6-sol$/mu);
@@ -122,6 +117,11 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.equal(advisor.advisorAutoLoopGate, false);
       assert.equal(advisor.executor, "openai-codex/gpt-5.6-sol");
       assert.equal(advisor.executorEffort, "high");
+      assert.equal(advisor.advisor, "openai-codex/gpt-6-astra");
+      assert.equal(advisor.advisorEffort, "high");
+      const auditor = json(p.join(profile.agentDir, "pi-goal-x-settings.json"));
+      assert.equal(auditor.provider, "openai-codex");
+      assert.equal(auditor.model, "gpt-5.6-sol");
       assert.equal(json(p.join(profile.agentDir, "pi-goal-x-settings.json")).disabled, true);
       assert.equal(json(p.join(profile.agentDir, "settings.json")).cacheWarming, "off");
       assert.equal(json(p.join(profile.agentDir, "subagents.json")).fallbackSubagent, "none");
