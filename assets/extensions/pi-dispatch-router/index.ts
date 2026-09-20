@@ -8,12 +8,15 @@ import { VERSION, CANDIDATES, ROLES, CLASSES, DEFAULT_POLICY, validatePolicy, va
   makeRequest, selectCandidate, spawnAndJoin, rpc } from './core.mjs';
 import { readJson, atomicJson, withLock, claimWriter, readTypesafeKey, callJev, appendAudit } from './storage.mjs';
 
-async function bindings(agentDir, cwd, role) {
+async function bindings(agentDir, cwd, role, trusted) {
+  const projectResources = ['.pi/settings.json', '.pi/subagents.json', '.pi/agents', '.agents/agents'];
+  if (!trusted && projectResources.some(file => fs.existsSync(path.join(cwd, file)))) throw new Error('Project chưa được Pi trust; chưa nạp cấu hình hoặc role của project.');
   const global = readJson(path.join(agentDir, 'settings.json'));
   const project = readJson(path.join(cwd, '.pi', 'settings.json'), {});
-  const packages = project.packages ?? global.packages;
-  const pkg = packages?.find(p => typeof p === 'string' && p.replaceAll('\\', '/').endsWith('/@tintinweb/pi-subagents'));
+  // Never use a project-controlled package path as executable loader code.
+  const pkg = global.packages?.find(p => typeof p === 'string' && p.replaceAll('\\', '/').endsWith('/@tintinweb/pi-subagents'));
   if (!pkg || !path.isAbsolute(pkg) || readJson(path.join(pkg, 'package.json')).version !== '0.19.0') throw new Error('Router cần pi-subagents 0.19.0 đang nạp trong profile.');
+  if (project.packages && (!Array.isArray(project.packages) || !project.packages.includes(pkg))) throw new Error('Project thay package contract; router chỉ dùng bản tintin đã ghim ở global config.');
   const require = createRequire(path.join(pkg, 'package.json'));
   const jiti = require('jiti').createJiti(path.join(pkg, 'package.json'));
   const { loadCustomAgents } = await jiti.import(path.join(pkg, 'src/custom-agents.ts'));
@@ -104,7 +107,7 @@ export default function (pi) {
       const startedAt = Date.now();
       let selection, model, releaseWriter, childAllocated = false;
       try {
-        const binding = await bindings(agentDir, ctx.cwd, task.role);
+        const binding = await bindings(agentDir, ctx.cwd, task.role, ctx.isProjectTrusted());
         await rpc(pi.events, 'ping');
         const evidence = cards();
         let judgment, judgeStatus = 'not-needed';
@@ -135,7 +138,7 @@ export default function (pi) {
         if (!model || model.provider !== candidate.provider || model.id !== candidate.id || !ctx.modelRegistry.hasConfiguredAuth(model)) throw new Error('Model chính xác hoặc credential chưa sẵn sàng; không fallback ngầm.');
         if (!getSupportedThinkingLevels(model).includes(candidate.thinking)) throw new Error('Model không hỗ trợ effort đã ghim.');
         if (ctx.scopedModels?.length && !ctx.scopedModels.some(x => x.model.provider === model.provider && x.model.id === model.id)) throw new Error('Candidate ngoài scope của session hiện tại; mở lại Pi hoặc cập nhật scoped models.');
-        const fresh = await bindings(agentDir, ctx.cwd, task.role);
+        const fresh = await bindings(agentDir, ctx.cwd, task.role, ctx.isProjectTrusted());
         if (fresh.fingerprint !== binding.fingerprint || digest(policy()) !== digest(p)) throw new Error('Cấu hình thay đổi trong khi routing; chưa spawn.');
         if (['worker', 'debugger'].includes(task.role)) {
           const directory = p.writerLocksDir ?? path.join(stateDir, 'writers');

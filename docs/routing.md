@@ -21,6 +21,8 @@ Mẫu yêu cầu trong Pi: “Dùng dispatch_task với candidate glm, role rese
 
 Role được resolve từ project hiện tại. Router kiểm đúng contract tools/extensions, context riêng và giới hạn trước spawn, sau đó kiểm lại nếu cấu hình thay đổi. RPC giữ permission của Pi. `isolated:false` không phải sandbox filesystem. Agent/@mention thủ công vẫn tồn tại; router chỉ quản lý task đi qua dispatcher.
 
+Project phải được Pi trust trước khi router đọc cấu hình/role cục bộ. Loader luôn lấy từ package tintin đã ghim trong global config; project không được thay đường dẫn mã loader. Khi project thay package contract, router báo lỗi để kiểm tra cấu hình thay vì tự nạp source khác.
+
 Router cho phép tối đa một writer (worker/debugger) trên một workspace qua lock dùng chung main/goal; reader vẫn theo pool 2. Hủy/timeout sẽ dừng đúng cả worker đang chờ và tiêu thụ thông báo kết thúc. Nếu process bị kill hoặc không xác nhận được worker đã dừng, lock được giữ để tránh writer chạy chồng. Chỉ xóa lock trong `state/routing-writers` sau khi kiểm PID trong file đã dừng. Các task đi ngoài dispatcher không chịu lock này.
 
 `routing-capabilities.json` mặc định rỗng. Code không tự biến lời worker “xong” thành bằng chứng chất lượng. Auto GLM hiện giới hạn researcher + lookup/mechanical, cần card được duyệt cho đúng GLM/max, tối thiểu 12 mẫu đều đạt và còn hạn. Gate này chỉ dành cho pilot; nó không chứng minh chất lượng production. Ngưỡng Jev cũng là ngưỡng thử nghiệm cần hiệu chỉnh, không phải bảo đảm xác suất đúng.
