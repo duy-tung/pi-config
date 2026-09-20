@@ -15,6 +15,11 @@ const [installArg, profile] = process.argv.slice(2);
 if (!installArg || !["main", "goal", "background", "advisor"].includes(profile)) {
   throw new Error("Cách dùng: node tests/profile-integration.mjs <installRoot> <main|goal|background|advisor>");
 }
+let activePhase = "khởi tạo runtime";
+const watchdog = setTimeout(() => {
+  console.error(`TIMEOUT: ${profile}: ${activePhase}; giữ fixture để chẩn đoán.`);
+  process.exit(124);
+}, 120000);
 const installRoot = path.resolve(installArg);
 const readJson = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
 const writeJson = (file, value) => fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
@@ -159,6 +164,8 @@ async function run(name, steps, extra = "") {
   return messages.filter((message) => message.role === "toolResult");
 }
 async function check(name, fn) {
+  activePhase = name;
+  console.log(`Kiểm thử ${profile}: ${name}`);
   try { await fn(); results.push({ name, status: "PASS" }); }
   catch (error) { results.push({ name, status: "FAIL", error: error.stack }); }
 }
@@ -277,4 +284,5 @@ console.log(JSON.stringify({ profile, runtime: configuration.runtime, platform: 
   extensionErrors: errors, symlinkTest: symlinkAvailable ? "tested" : "SKIP: Windows symlink permission unavailable",
   blockedNetworkRequests: networkAttempts.length, fixture: failed ? fixture : undefined }, null, 2));
 if (!failed) await fs.promises.rm(fixture, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
+clearTimeout(watchdog);
 process.exit(failed ? 1 : 0);
