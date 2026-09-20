@@ -84,6 +84,8 @@ Agent có context riêng, giới hạn 12 turns với grace 2. Mỗi pool foregr
 - Cache warming, auditor goal và advisor auto tắt. Goal và background follow-up chỉ chạy theo thao tác/cấu hình đã chọn.
 - Có `codexFastMode:true`; hiệu lực và mức dùng quota phụ thuộc model/provider được hỗ trợ.
 - Header/footer/editor do pi-open-tui quản lý. Footer hiển thị model, thinking, quota, context %, token/cost và trạng thái công cụ liên quan. Palette terminal theo theme của phiên và được phục hồi khi thoát.
+- Dán ảnh: `@pi-archimedes/image-paste`, dùng **Ctrl+V** trên macOS/Linux hoặc **Alt+V** trên Windows. Copy ảnh vào clipboard, dán để có marker `[Image #1]`, rồi gửi cùng prompt. Xóa marker để bỏ ảnh; giới hạn 20 MiB/ảnh. Preview chỉ hiện trong UI, ảnh được gửi tới model đúng một lần. Phím dán ảnh tích hợp của Pi được tắt trong `keybindings.json` để tránh xử lý trùng.
+- Clipboard native `@mariozechner/clipboard` được ghim và cài bên cạnh extension. Linux cần desktop X11/Wayland; `wl-clipboard`/`xclip` là các reader thay thế. Terminal không hỗ trợ ảnh inline vẫn gửi được ảnh, chỉ thiếu preview. Chỉ nạp image-paste; phần giao diện của bộ Archimedes không được nạp.
 
 `pi-models` xem cấu hình model. `pi-doctor` kiểm dependency và checksum bản vá. `pi-test` kiểm workflow và Agent bằng provider giả trong thư mục tạm, không gọi model trả phí.
 
@@ -105,6 +107,8 @@ Permission kiểm soát công cụ, không thay thế sandbox hệ điều hành
 | `pi-goal-x`, `pi-workspace-history` | 0.31.6 / 0.4.3 |
 | `pi-advisor-flow` | 0.6.0 |
 | `pi-open-tui` | 0.3.6 |
+| `@pi-archimedes/image-paste` | 2.7.3 |
+| `@mariozechner/clipboard` | 0.3.9 |
 | Firecrawl CLI | 1.23.3 |
 | Engineering và Firecrawl skills | Commit trong [sources.lock.json](sources.lock.json) |
 

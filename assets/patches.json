@@ -195,6 +195,22 @@
           "count": 1
         }
       ]
+    },
+    {
+      "package": "@pi-archimedes/image-paste",
+      "versions": {
+        "current": "2.7.3"
+      },
+      "file": "src/preview.ts",
+      "originalSha256": "9a8e227847c3c215810c19ff7324a6889723fd1870653151aa9e3bf704234978",
+      "patchedSha256": "3fbd9cbff2bc76cd1d2ef6d59e649bbe4481d54c78d827b9fc207eb02f91515f",
+      "edits": [
+        {
+          "before": "export function registerImagePreview(pi: ExtensionAPI): void {\n",
+          "after": "export function registerImagePreview(pi: ExtensionAPI): void {\n  // Keep the visual preview in the transcript without billing the image twice.\n  pi.on(\"context\", (event) => ({\n    messages: event.messages.filter((message) => !(message.role === \"custom\" && message.customType === CUSTOM_TYPE)),\n  }));\n",
+          "count": 1
+        }
+      ]
     }
   ]
 }

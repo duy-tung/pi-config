@@ -4,7 +4,8 @@ import os from "node:os";
 import http from "node:http";
 import https from "node:https";
 import net from "node:net";
-import { syncBuiltinESMExports } from "node:module";
+import Module, { syncBuiltinESMExports } from "node:module";
+import childProcess from "node:child_process";
 import assert from "node:assert/strict";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -29,7 +30,7 @@ const fixture = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `pi-config
 const agentDir = path.join(fixture, "fixture agent");
 const cwd = path.join(fixture, "fixture workspace");
 for (const dir of [agentDir, cwd]) fs.mkdirSync(dir, { recursive: true });
-for (const name of ["settings.json", "models.json", "advisor.json", "subagents.json", "mcp.json", "open-tui.json", "pi-goal-x-settings.json"]) {
+for (const name of ["settings.json", "keybindings.json", "models.json", "advisor.json", "subagents.json", "mcp.json", "open-tui.json", "pi-goal-x-settings.json"]) {
   if (fs.existsSync(path.join(configuration.agentDir, name))) fs.copyFileSync(path.join(configuration.agentDir, name), path.join(agentDir, name));
 }
 fs.mkdirSync(path.join(agentDir, "agents"));
@@ -122,6 +123,7 @@ const sdk = await import(pathToFileURL(path.join(modules, "@earendil-works", "pi
 const control = { plans: {}, seen: [] };
 globalThis[Symbol.for("pi-config:test")] = control;
 const errors = [], prompts = [], notices = [], results = [];
+let imageDraft = "";
 const loader = new sdk.DefaultResourceLoader({ cwd, agentDir });
 await loader.reload();
 assert.deepEqual(loader.getExtensions().errors, []);
@@ -139,6 +141,7 @@ const ui = {
   notify: (message, type) => notices.push({ message, type }),
   custom: async () => { throw new Error("Unexpected TUI dialog in RPC fixture"); },
   getToolsExpanded: () => false, getEditorText: () => "", getTheme: () => undefined,
+  pasteToEditor: text => { imageDraft += text; },
 };
 await session.bindExtensions({ uiContext: ui, mode: "rpc", onError: (error) => errors.push(error),
   commandContextActions: { waitForIdle: () => session.waitForIdle(), navigateTree: (id, options) => session.navigateTree(id, options) } });
@@ -303,6 +306,42 @@ await check("workspace checkpoint, undo and redo restore actual file contents", 
   assert.equal(fs.readFileSync(target,"utf8"), "BEFORE\n", JSON.stringify(notices));
   await session.prompt("/redo");
   assert.equal(fs.readFileSync(target,"utf8"), "AFTER\n");
+});
+await check("clipboard image shortcut, attachment, deleted marker and size guard", async () => {
+  const {KeybindingsManager}=await import(pathToFileURL(path.join(modules,"@earendil-works/pi-coding-agent/dist/core/keybindings.js")).href);
+  const keybindings = KeybindingsManager.create(agentDir);
+  const shortcuts = session.extensionRunner.getShortcuts(keybindings.getEffectiveConfig());
+  const shortcut = shortcuts.get(process.platform === "win32" ? "alt+v" : "ctrl+v");
+  assert.ok(shortcut?.extensionPath.includes("image-paste"));
+  assert.ok(!session.extensionRunner.getShortcutDiagnostics().some(item=>item.message.includes("pasteImage")));
+  assert.ok(!loader.getExtensions().extensions.some(extension=>extension.path.replaceAll("\\","/").includes("@pi-archimedes/core/")));
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j1ioAAAAASUVORK5CYII=", "base64");
+  let bytes = png;
+  const originalLoad = Module._load, originalSpawn = childProcess.spawnSync, display = process.env.DISPLAY;
+  // Isolate the OS boundary: never inspect the user's clipboard in automated tests.
+  Module._load = function(name,...args) { return name === "@mariozechner/clipboard" ? {hasImage:()=>true,getImageBinary:async()=>bytes} : originalLoad.call(this,name,...args); };
+  childProcess.spawnSync = function(command,...args) { return ["xclip","wl-paste"].includes(command) ? {error:Object.assign(new Error("fixture"),{code:"ENOENT"})} : originalSpawn.call(this,command,...args); };
+  process.env.DISPLAY = ":fixture";
+  syncBuiltinESMExports();
+  try {
+    imageDraft=""; await shortcut.handler();
+    assert.match(imageDraft,/\[Image #1\]/);
+    await run("clipboard-image", [], imageDraft);
+    const request=control.seen.findLast(entry=>entry.key==="clipboard-image");
+    const attached=request.messages.flatMap(message=>Array.isArray(message.content)?message.content.filter(item=>item.type==="image"):[]);
+    assert.equal(attached.length,1,"An image must reach the model exactly once; previews must stay UI-only");
+    assert.equal(attached[0].data,png.toString("base64"));
+    imageDraft=""; await shortcut.handler();
+    await run("clipboard-deleted", [], "Marker removed before submit");
+    const next=control.seen.findLast(entry=>entry.key==="clipboard-deleted");
+    const user=next.messages.findLast(message=>message.role==="user");
+    assert.ok(!Array.isArray(user.content)||!user.content.some(item=>item.type==="image"));
+    bytes=Buffer.alloc(20*1024*1024+1);imageDraft="";await shortcut.handler();
+    assert.equal(imageDraft,"");assert.ok(notices.some(item=>item.message.includes("Image too large")));
+  } finally {
+    Module._load=originalLoad;childProcess.spawnSync=originalSpawn;syncBuiltinESMExports();
+    if(display===undefined)delete process.env.DISPLAY;else process.env.DISPLAY=display;
+  }
 });
 await check("headless permission asks fail closed", async () => {
   session.extensionRunner.setUIContext(undefined, "print");

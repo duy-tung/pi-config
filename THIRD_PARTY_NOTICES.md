@@ -11,12 +11,13 @@
 | pi-subagents | 0.19.0 | [tintinweb/pi-subagents](https://github.com/tintinweb/pi-subagents) | [MIT — tintinweb](vendor/pi-subagents.LICENSE) |
 | pi-open-tui | 0.3.6 | [OldSuns/pi-open-tui](https://github.com/OldSuns/pi-open-tui) | [MIT — pi-open-tui contributors](vendor/pi-open-tui.LICENSE) |
 | pi-advisor-flow | 0.6.0 | [philipbrembeck/pi-advisor](https://github.com/philipbrembeck/pi-advisor) | [MIT — Philip Brembeck](vendor/pi-advisor-flow.LICENSE) |
+| @pi-archimedes/image-paste | 2.7.3 | [danielcherubini/pi-archimedes](https://github.com/danielcherubini/pi-archimedes) | [MIT](vendor/pi-archimedes.LICENSE) |
 
 Các tarball `vendor/*-pi0861.tgz` giữ source npm và giấy phép gốc, chỉ bổ sung `0.86.1` vào peer metadata của pi-advisor-flow, pi-goal-x, pi-background-tasks, pi-workspace-history, pi-lens và pi-mcp-adapter. URL/integrity upstream và SHA256 bản đóng gói được ghi trong `manifests/current/package.json`. Script `scripts/rebuild-vendor.py` kiểm nguồn và tái tạo các tarball trên môi trường phát triển có Python 3.12 trở lên và curl; máy cài Pi không cần Python.
 
 Nguồn bổ sung: [pi-goal-x](https://github.com/tmonk/pi-goal-x), [pi-background-tasks](https://github.com/ismailsaleekh/pi-background-tasks), [pi-workspace-history](https://github.com/wcldyx/pi-workspace-history). Giấy phép của các package nằm nguyên trong tarball.
 
-Năm bản vá runtime: footer tối giản; chuẩn hóa MCP arguments cho permission; chuyển lifecycle child session cho permission; gọi advisor qua ModelRuntime; giới hạn background vào shell jobs với notification không tự đánh thức model mặc định. Background attribution entrypoint không được nạp; Claude auth do pi-anthropic-auth quản lý. Mọi bản vá kiểm phiên bản và SHA256 source/kết quả. Các tác giả upstream không bảo trợ hoặc chứng nhận bản phân phối này.
+Sáu bản vá runtime: footer tối giản; chuẩn hóa MCP arguments cho permission; chuyển lifecycle child session cho permission; gọi advisor qua ModelRuntime; giới hạn background vào shell jobs với notification không tự đánh thức model mặc định; giữ image-paste preview ở UI để ảnh không vào context hai lần. Background attribution entrypoint không được nạp; Claude auth do pi-anthropic-auth quản lý. Mọi bản vá kiểm phiên bản và SHA256 source/kết quả. Các tác giả upstream không bảo trợ hoặc chứng nhận bản phân phối này.
 
 ## Dependency được tải khi cài đặt
 

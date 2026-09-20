@@ -24,7 +24,9 @@
     "typescript-language-server": "6.0.0",
     "pi-goal-x": "file:../../vendor/pi-goal-x-0.31.6-pi0861.tgz",
     "pi-background-tasks": "file:../../vendor/pi-background-tasks-2.5.0-pi0861.tgz",
-    "pi-workspace-history": "file:../../vendor/pi-workspace-history-0.4.3-pi0861.tgz"
+    "pi-workspace-history": "file:../../vendor/pi-workspace-history-0.4.3-pi0861.tgz",
+    "@pi-archimedes/image-paste": "2.7.3",
+    "@mariozechner/clipboard": "0.3.9"
   },
   "overrides": {},
   "piPlatform": {
