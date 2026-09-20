@@ -34,6 +34,19 @@ test('an explicitly referenced extension retains its companion resources',t=>{
   f.wanted.add(entry);fs.writeFileSync(entry,'user customized extension');
   assert.equal(reconcileResources(f).archived.length,0);assert.ok(fs.existsSync(helper));
 });
+test('relative paths, local package references and patterns preserve configured resources',t=>{
+  const f=fixture(t),entry=owned(f,'assets/extra/index.ts'),helper=owned(f,'assets/extra/helper.ts');
+  const localPackage=owned(f,'assets/package/index.ts');
+  const prompt=owned(f,'agent/prompts/custom.md'),theme=owned(f,'agent/themes/custom.json');
+  const settings=owned(f,'agent/settings.json',{
+    extensions:['../assets/extra/index.ts'],
+    packages:[{source:'../assets/package'}],
+    prompts:['prompts/*.md'],themes:['themes/*.json'],
+  });f.wanted.add(settings);
+  const result=reconcileResources(f);
+  assert.equal(result.archived.length,0);
+  for(const file of [entry,helper,localPackage,prompt,theme])assert.ok(fs.existsSync(file));
+});
 test('registry entries outside managed directories cannot be removed',t=>{
   const f=fixture(t),outside=owned(f,'personal-note.json');
   reconcileResources(f);assert.ok(fs.existsSync(outside));
