@@ -8,7 +8,7 @@ const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const temporary=fs.mkdtempSync(path.join(os.tmpdir(),'pi-config-smoke-'));
 const root=path.join(temporary,'platform with spaces'),agentDir=path.join(temporary,'agent'),binDir=path.join(temporary,'bin');
 const args=[path.join(repo,'install.mjs'),'--root',root,'--agent-dir',agentDir,'--bin-dir',binDir,'--no-path'];
-await run(process.execPath,args);
+await run(process.execPath,args,{timeout:1800000});
 await run(process.execPath,[path.join(root,'bin/launch.mjs'),'main','--version']);
 await run(process.execPath,[path.join(root,'bin/launch.mjs'),'goal','--version']);
 await run(process.execPath,['--test',path.join(repo,'tests/patches.test.mjs')],{env:{...process.env,PI_CONFIG_TEST_ROOT:root}});
@@ -26,3 +26,6 @@ const state=readJson(path.join(root,'install-state.json'));assert.equal(Object.k
 assert.equal(fs.existsSync(path.join(root,'.install.lock')),false);
 console.log('PASS: cài sạch, hai runtime, bốn profile, auth/permission, chạy lại giữ tùy chỉnh và secret giả.');
 console.log(`Fixture: ${root}`);
+if(process.env.GITHUB_ENV){
+  fs.appendFileSync(process.env.GITHUB_ENV,`PI_CONFIG_SMOKE_ROOT=${root}\nPI_CONFIG_SMOKE_AGENT_DIR=${agentDir}\nPI_CONFIG_SMOKE_BIN_DIR=${binDir}\n`);
+}

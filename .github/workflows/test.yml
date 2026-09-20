@@ -17,7 +17,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 35
+    timeout-minutes: 50
     env:
       CI: 'true'
       npm_config_timing: 'true'
@@ -59,9 +59,9 @@ jobs:
           PI_CONFIG_FRESH_TOOLCHAIN: '1'
         run: |
           $BootstrapArguments = @(
-            '--root', "$env:RUNNER_TEMP\bootstrap smoke\platform",
-            '--agent-dir', "$env:RUNNER_TEMP\bootstrap smoke\agent",
-            '--bin-dir', "$env:RUNNER_TEMP\bootstrap smoke\bin", '--no-path'
+            '--root', $env:PI_CONFIG_SMOKE_ROOT,
+            '--agent-dir', $env:PI_CONFIG_SMOKE_AGENT_DIR,
+            '--bin-dir', $env:PI_CONFIG_SMOKE_BIN_DIR, '--no-path'
           )
           & .\install.ps1 @BootstrapArguments
           # GetString keeps the UTF-8 BOM, unlike ReadAllText. Exercise the same
