@@ -3,57 +3,38 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { DEFAULT_POLICY, validatePolicy, validateTask, makeRequest, parseJudgment, selectCandidate, spawnAndJoin, CANDIDATES } from '../assets/extensions/pi-dispatch-router/core.mjs';
-import { callJev, readJson, appendAudit, claimWriter } from '../assets/extensions/pi-dispatch-router/storage.mjs';
+import { DEFAULT_POLICY, validatePolicy, validateTask, selectCandidate, spawnAndJoin, CANDIDATES } from '../assets/extensions/pi-dispatch-router/core.mjs';
+import { appendAudit, claimWriter } from '../assets/extensions/pi-dispatch-router/storage.mjs';
 
 const task = { requestId: 'r1', role: 'researcher', taskClass: 'lookup', candidate: 'auto', brief: 'Tìm hàm xử lý timeout.', acceptance: 'Nêu file và dòng từ source; không sửa.' };
-const policy = () => ({ ...structuredClone(DEFAULT_POLICY), mode: 'balanced', glmAutoClasses: ['lookup'] });
-const cards = { glm: [{ model: 'opencode-go/glm-5.3-flash', thinking: 'max', role: 'researcher', taskClass: 'lookup', samples: 12, passed: 12, status: 'accepted', evidenceId: 'synthetic-eval', expiresAt: '2099-01-01' }], sol: [] };
-const good = { needs_design: 0.01, glm_can_complete: 0.98, sol_can_complete: 0.99 };
-const response = () => ({ model: 'jev-1.13.0', answers: Object.fromEntries(Object.entries(good).map(([k,noul]) => [k,{ type:'noul',noul }])), usage: { input_tokens: 1000, output_tokens: 50 } });
+const policy = () => ({ ...structuredClone(DEFAULT_POLICY), mode: 'manual' });
 const fixture = t => { const p = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-router-unit-')); t.after(() => fs.rmSync(p,{recursive:true,force:true})); return p; };
 test('fixed candidates pin GLM max and Sol high; invalid policy/task fail closed', () => {
   assert.equal(CANDIDATES.glm.thinking, 'max'); assert.equal(CANDIDATES.sol.thinking,'high');
-  assert.equal(validatePolicy(policy()).mode,'balanced'); validateTask(task);
+  assert.equal(validatePolicy(policy()).mode,'manual'); validateTask(task);
+  validateTask({...task,taskClass:undefined});
   assert.throws(()=>validateTask({...task,requestId:'../escape'}));
-  for(const bad of [-1,NaN,Infinity,11]){const p=policy();p.jev.budgetUsd=bad;assert.throws(()=>validatePolicy(p));}
+  for(const timeoutMs of [-1,NaN,Infinity,1800001])assert.throws(()=>validatePolicy({...policy(),timeoutMs}));
+  for(const mode of ['record','shadow','balanced','unknown'])assert.throws(()=>validatePolicy({...policy(),mode}));
 });
-test('no evidence never downgrades Sol despite high Jev probability', () => {
-  assert.equal(selectCandidate(task,policy(),{glm:[]},good).candidate,'sol');
-  assert.equal(selectCandidate(task,policy(),cards,good).candidate,'glm');
-  assert.equal(selectCandidate({...task,role:'reviewer'},policy(),cards,good).candidate,'sol');
-  assert.equal(selectCandidate({...task,taskClass:'engineering'},policy(),cards,good).candidate,'sol');
+test('legacy policies normalize to manual and drop every retired field',()=>{
+  for(const mode of ['off','record','manual','shadow','balanced']) {
+    const old={...policy(),version:1,mode,jev:{enabled:true,budgetUsd:10,maxCalls:1000},
+      thresholds:{},glmAutoClasses:['lookup'],cacheTtlMs:1000,typesafeKeyFile:'/unused',writerLocksDir:'/locks'};
+    const current=validatePolicy(old);
+    assert.deepEqual(current,{version:2,mode:mode==='off'?'off':'manual',allowExplicitGlm:true,timeoutMs:900000,writerLocksDir:'/locks'});
+    assert.equal(old.mode,mode);
+    assert.equal(selectCandidate(task,current).candidate,'sol');
+  }
 });
-test('record/shadow retain baseline; ambiguity and design return parent', () => {
-  assert.equal(selectCandidate(task,{...policy(),mode:'record'},cards,good).candidate,'sol');
-  assert.equal(selectCandidate(task,{...policy(),mode:'shadow'},cards,good).candidate,'sol');
-  assert.equal(selectCandidate(task,{...policy(),mode:'shadow'},cards,{...good,needs_design:0.99}).candidate,'sol');
-  assert.equal(selectCandidate(task,policy(),cards,{...good,needs_design:0.9}).candidate,null);
-  assert.equal(selectCandidate({...task,taskClass:'design'},policy(),cards,good).candidate,null);
-  assert.equal(selectCandidate({...task,candidate:'glm'},policy(),{},null).candidate,'glm');
-  assert.throws(()=>selectCandidate({...task,candidate:'glm',role:'reviewer'},policy(),{},null));
-});
-test('typed request uses pinned profiles; secrets redacted; bad judgments rejected', () => {
-  const req=makeRequest({...task,brief:'Bearer '+ 'x'.repeat(30)},cards);
-  assert.equal(req.state.candidates.glm.thinking,'max'); assert.match(req.state.task.brief,/REDACTED/);
-  assert.deepEqual(Object.keys(req.questions),['needs_design','glm_can_complete','sol_can_complete']);
-  assert.equal(parseJudgment(response()).inputTokens,1000);
-  for(const mutate of [r=>r.model='jev-latest',r=>r.answers.glm_can_complete.noul=2,r=>delete r.answers.sol_can_complete,r=>r.usage.input_tokens=-1]){const r=response();mutate(r);assert.throws(()=>parseJudgment(r));}
-});
-test('Jev budget persists across calls/restart and uses fixed endpoint without retries', async t => {
-  const dir=fixture(t),ledgerFile=path.join(dir,'budget.json');let count=0;
-  const args={request:makeRequest(task,cards),key:'fixture',policy:{budgetUsd:0.01,maxCalls:1,timeoutMs:1000},ledgerFile,
-    fetchImpl:async(url,init)=>{count++;assert.equal(url,'https://api.typesafe.ai/v1/systemone');assert.equal(init.redirect,'error');return new Response(JSON.stringify(response()));}};
-  await callJev(args); assert.equal(readJson(ledgerFile).calls,1);
-  assert.ok(Math.abs(readJson(ledgerFile).chargedUsd-0.000042)<1e-9);
-  await assert.rejects(callJev(args),/ngân sách/);assert.equal(count,1);
-});
-test('unknown failed request stays reserved; zero budget never calls network', async t => {
-  const ledgerFile=path.join(fixture(t),'budget.json');let count=0;
-  const args={request:makeRequest(task,cards),key:'fixture',policy:{budgetUsd:0,maxCalls:3,timeoutMs:1000},ledgerFile,fetchImpl:async()=>{count++;throw new Error('provider response contains secret');}};
-  await assert.rejects(callJev(args)); assert.equal(count,0);
-  args.policy.budgetUsd=0.01;await assert.rejects(callJev(args),e=>!e.message.includes('secret'));
-  assert.equal(count,1);assert.ok(readJson(ledgerFile).chargedUsd>0);assert.equal(Object.keys(readJson(ledgerFile).pending).length,1);
+test('default selection needs no classification; GLM requires explicit choice; design stays parent', () => {
+  assert.equal(selectCandidate(task,policy()).candidate,'sol');
+  assert.equal(selectCandidate({...task,taskClass:undefined},policy()).candidate,'sol');
+  assert.equal(selectCandidate({...task,candidate:'sol'},policy()).source,'explicit');
+  assert.equal(selectCandidate({...task,candidate:'glm'},policy()).candidate,'glm');
+  assert.equal(selectCandidate({...task,taskClass:'design',candidate:'glm'},policy()).candidate,null);
+  assert.throws(()=>selectCandidate({...task,candidate:'glm',role:'reviewer'},policy()));
+  assert.throws(()=>selectCandidate({...task,candidate:'glm'},{...policy(),allowExplicitGlm:false}));
 });
 test('audit excludes raw prompts, credentials and result bodies', t => {
   const dir=fixture(t);appendAudit(dir,{jobId:'123',status:'completed',brief:'PRIVATE',key:'PRIVATE',result:'PRIVATE'});

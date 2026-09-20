@@ -177,8 +177,8 @@ await check("read safe file; deny .env and symlink escape", async () => {
   assert.ok(result.slice(1).every((message) => message.isError));
   assert.ok(!JSON.stringify(result).includes("must-not-be-read"));
 });
-await check("compact-adviser coexists, secret file denied, RPC inert", async () => {
-  assert.ok(session.extensionRunner.getRegisteredCommands().some((command) => command.name === "compact-adviser"));
+await check("retired compact-adviser absent; legacy secret remains denied", async () => {
+  assert.ok(!session.extensionRunner.getRegisteredCommands().some((command) => command.name === "compact-adviser"));
   const result = await run("compact-deny", [[tool("read", { path: compactFile })]]);
   assert.equal(result[0]?.isError, true);
   assert.ok(!JSON.stringify(result).includes("synthetic-adviser-key-not-a-secret"));

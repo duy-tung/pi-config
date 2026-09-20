@@ -5,8 +5,8 @@ import { Type } from '@sinclair/typebox';
 import { getAgentDir } from '@earendil-works/pi-coding-agent';
 import { getSupportedThinkingLevels } from '@earendil-works/pi-ai';
 import { VERSION, CANDIDATES, ROLES, CLASSES, DEFAULT_POLICY, validatePolicy, validateTask, validateRole, digest,
-  makeRequest, selectCandidate, spawnAndJoin, rpc } from './core.mjs';
-import { readJson, atomicJson, withLock, claimWriter, readTypesafeKey, callJev, appendAudit } from './storage.mjs';
+  selectCandidate, spawnAndJoin, rpc } from './core.mjs';
+import { readJson, atomicJson, withLock, claimWriter, appendAudit } from './storage.mjs';
 
 async function bindings(agentDir, cwd, role, trusted) {
   const projectResources = ['.pi/settings.json', '.pi/subagents.json', '.pi/agents', '.agents/agents'];
@@ -36,30 +36,25 @@ export default function (pi) {
   const policyFile = path.join(agentDir, 'routing.json');
   const stateDir = path.join(agentDir, 'routing-state');
   const jobsFile = path.join(stateDir, 'jobs.json');
-  const budgetFile = path.join(stateDir, 'jev-budget.json');
-  const cache = new Map(), running = new Map(), completed = new Map();
+  const running = new Map(), completed = new Map();
   const policy = () => validatePolicy(readJson(policyFile, DEFAULT_POLICY));
-  const cards = () => {
-    const value = readJson(path.join(agentDir, 'routing-capabilities.json'), { version: 1, glm: [], sol: [] });
-    if (value.version !== 1 || !Array.isArray(value.glm) || !Array.isArray(value.sol) || JSON.stringify(value).length > 12000) throw new Error('Capability cards không hợp lệ.');
-    return value;
-  };
   const saveJob = (id, value) => withLock(jobsFile, () => {
     const jobs = readJson(jobsFile, {});
     jobs[id] = { ...jobs[id], ...value };
     const sorted = Object.entries(jobs).sort((a, b) => (b[1].time ?? '').localeCompare(a[1].time ?? ''));
     atomicJson(jobsFile, Object.fromEntries(sorted.slice(0, 1000)));
   });
-  pi.on('session_shutdown', () => { for (const controller of running.values()) controller.abort(); cache.clear(); completed.clear(); });
+  pi.on('session_shutdown', () => { for (const controller of running.values()) controller.abort(); completed.clear(); });
   pi.registerCommand('routing', {
-    description: 'Xem routing, giải thích task; /routing off|record|shadow|balanced.',
+    description: 'Dispatcher native: /routing status|explain <jobId>|manual|off.',
     handler: async (args, ctx) => {
       try {
-        const [action = 'status', id] = args.trim().split(/\s+/);
+        const [rawAction, id] = args.trim() ? args.trim().split(/\s+/) : ['status'];
+        const action = rawAction === 'record' ? 'manual' : rawAction;
         const p = policy();
-        if (['off', 'record', 'shadow', 'balanced'].includes(action)) {
-          if (['shadow', 'balanced'].includes(action) && (!p.jev.enabled || p.jev.budgetUsd <= 0 || p.jev.maxCalls <= 0)) throw new Error('Chưa cấu hình ngân sách Jev đã duyệt. Record vẫn dùng được và không gọi Jev.');
-          p.mode = action; atomicJson(policyFile, p); cache.clear();
+        if (['shadow', 'balanced'].includes(action)) throw new Error('Jev đã gỡ; dùng /routing manual hoặc /routing off.');
+        if (['off', 'manual'].includes(action)) {
+          p.mode = action; atomicJson(policyFile, p);
           if (action === 'off') for (const controller of running.values()) controller.abort();
           ctx.ui.notify(`Routing: ${action}`, 'info'); return;
         }
@@ -68,26 +63,25 @@ export default function (pi) {
           const job = readJson(jobsFile, {})[id];
           ctx.ui.notify(job ? JSON.stringify(job) : 'Không có task này.', 'info'); return;
         }
-        if (action !== 'status') throw new Error('Dùng /routing status|explain <jobId>|off|record|shadow|balanced.');
-        const budget = readJson(budgetFile, { calls: 0, chargedUsd: 0 });
-        ctx.ui.notify(`Router ${VERSION}: ${p.mode}; Sol/high, GLM/max; Jev ${p.jev.enabled ? 'có ngân sách' : 'tắt'}; ${budget.calls}/${p.jev.maxCalls} calls, $${budget.chargedUsd.toFixed(5)}/$${p.jev.budgetUsd}.`, 'info');
+        if (action !== 'status') throw new Error('Dùng /routing status|explain <jobId>|manual|off.');
+        ctx.ui.notify(`Dispatcher ${VERSION}: ${p.mode}; mặc định Sol/high, GLM/max khi chọn tường minh.`, 'info');
       } catch (error) { ctx.ui.notify(error.message, 'warning'); }
     },
   });
   pi.registerTool({
     name: 'dispatch_task', label: 'Giao task',
-    description: 'Giao task hữu hạn cho role Pi có context riêng. Router giữ Sol/high hoặc chọn GLM/max theo policy và evidence. Parent giữ thiết kế/nghiệm thu. Không đổi quyền hay gọi CLI khác. requestId ổn định chống chạy trùng. candidate=glm/sol là chọn tường minh; auto dùng policy. Không tự retry task bị chặn.',
+    description: 'Giao task hữu hạn cho role Pi có context riêng. Mặc định Sol/high, candidate=glm chọn GLM/max. Parent giữ thiết kế/nghiệm thu. Không đổi quyền hay gọi CLI khác. requestId ổn định chống chạy trùng. Không tự retry task bị chặn.',
     promptSnippet: 'Giao task hữu hạn qua router Pi (Sol/high, GLM/max).',
     parameters: Type.Object({
       requestId: Type.String({ maxLength: 80 }), role: Type.Union(ROLES.map(x => Type.Literal(x))),
-      taskClass: Type.Union(CLASSES.map(x => Type.Literal(x))),
+      taskClass: Type.Optional(Type.Union(CLASSES.map(x => Type.Literal(x)))),
       candidate: Type.Optional(Type.Union(['auto', 'sol', 'glm'].map(x => Type.Literal(x)))),
       brief: Type.String({ minLength: 1, maxLength: 12000 }), acceptance: Type.String({ minLength: 1, maxLength: 12000 }),
     }, { additionalProperties: false }),
     async execute(_callId, args, signal, update, ctx) {
       const task = validateTask({ ...args, candidate: args.candidate ?? 'auto' });
       const p = policy();
-      if (p.mode === 'off') throw new Error('Routing đang off. Dùng Agent như trước hoặc /routing record.');
+      if (p.mode === 'off') throw new Error('Routing đang off. Dùng Agent như trước hoặc /routing manual.');
       const sessionId = ctx.sessionManager.getSessionId();
       const jobId = digest([sessionId, ctx.cwd, task.requestId]).slice(0, 20);
       const requestHash = digest(task);
@@ -109,26 +103,11 @@ export default function (pi) {
       try {
         const binding = await bindings(agentDir, ctx.cwd, task.role, ctx.isProjectTrusted());
         await rpc(pi.events, 'ping');
-        const evidence = cards();
-        let judgment, judgeStatus = 'not-needed';
-        const request = makeRequest(task, evidence);
-        const cacheKey = digest([request, p, binding.fingerprint]);
-        if (task.candidate === 'auto' && task.taskClass !== 'design' && ['shadow', 'balanced'].includes(p.mode) && p.jev.enabled) {
-          const cached = cache.get(cacheKey);
-          if (cached && Date.now() - cached.at < p.cacheTtlMs) { judgment = cached.value; judgeStatus = 'cached'; }
-          else {
-            try {
-              judgment = await callJev({ request, key: readTypesafeKey(policyFile, p), policy: p.jev, ledgerFile: budgetFile, signal: controller.signal });
-              if (cache.size >= 128) cache.delete(cache.keys().next().value);
-              cache.set(cacheKey, { at: Date.now(), value: judgment }); judgeStatus = 'answered';
-            } catch { judgeStatus = 'unavailable-or-budget'; }
-          }
-        }
         if (controller.signal.aborted) throw new Error('Task đã hủy trước spawn.');
-        selection = selectCandidate(task, p, evidence, judgment);
-        saveJob(jobId, { ...selection, judgeStatus, judgment, candidate: selection.candidate });
+        selection = selectCandidate(task, p);
+        saveJob(jobId, selection);
         if (!selection.candidate) {
-          const output = result(selection.reason, { jobId, status: 'parent', judgeStatus });
+          const output = result(selection.reason, { jobId, status: 'parent' });
           saveJob(jobId, { status: 'parent' }); completed.set(jobId, { requestHash, result: output }); return output;
         }
         const candidate = CANDIDATES[selection.candidate];
@@ -159,7 +138,7 @@ export default function (pi) {
         const status = failed ? 'blocked' : 'completed-unreviewed';
         const text = failed ? 'Worker bị chặn/lỗi. Parent kiểm evidence; không tự đổi model để vượt blocker.' : String(event.result ?? 'Worker kết thúc, chưa có báo cáo.');
         const output = result(text.length > 14000 ? text.slice(0, 14000) + '\n[Báo cáo rút gọn; xem get_subagent_result bằng childId.]' : text,
-          { jobId, childId: event.id, model: id, thinking: candidate.thinking, source: selection.source, status, judgeStatus });
+          { jobId, childId: event.id, model: id, thinking: candidate.thinking, source: selection.source, status });
         saveJob(jobId, { status, durationMs: Date.now() - startedAt });
         appendAudit(stateDir, { time: new Date().toISOString(), jobId, role: task.role, taskClass: task.taskClass, candidate: id, thinking: candidate.thinking, source: selection.source, status,
           durationMs: Date.now() - startedAt, inputTokens: event.usage?.input, outputTokens: event.usage?.output,

@@ -17,10 +17,16 @@ for(const profile of ['main','goal'])await run(process.execPath,[path.join(repo,
 const settingsPath=path.join(agentDir,'settings.json');
 const settings=readJson(settingsPath);settings.theme='rose-pine-dawn';fs.writeFileSync(settingsPath,JSON.stringify(settings,null,2)+'\n');
 const privateConfig=path.join(agentDir,'compact-adviser.json');
-const adviser=readJson(privateConfig);adviser.typesafeApiKey='synthetic-secret-preservation-only';fs.writeFileSync(privateConfig,JSON.stringify(adviser));
+assert.equal(fs.existsSync(privateConfig),false);
+// A pre-existing retired credential belongs to the user; reinstall must not delete it.
+fs.writeFileSync(privateConfig,JSON.stringify({typesafeApiKey:'synthetic-secret-preservation-only'}));
+const routingPath=path.join(agentDir,'routing.json');
+const routing=readJson(routingPath);routing.mode='manual';fs.writeFileSync(routingPath,JSON.stringify(routing));
 const auth=path.join(agentDir,'auth.json');const authBefore=fs.readFileSync(auth);
 await run(process.execPath,args);
 assert.equal(readJson(settingsPath).theme,'rose-pine-dawn');
+assert.equal(readJson(routingPath).mode,'manual');
+assert.equal(readJson(settingsPath).packages.some(p=>p.endsWith('compact-adviser')),false);
 assert.equal(readJson(privateConfig).typesafeApiKey,'synthetic-secret-preservation-only');
 assert.deepEqual(fs.readFileSync(auth),authBefore);
 const state=readJson(path.join(root,'install-state.json'));assert.equal(Object.keys(state.sources).length,3);

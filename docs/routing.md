@@ -1,38 +1,51 @@
-# Routing trong Pi
+# Dispatcher trong Pi
 
-Router dùng trực tiếp provider của Pi: `openai-codex/gpt-5.6-sol` với `high`, `opencode-go/glm-5.3-flash` với `max`. Astra/high giữ parent và nghiệm thu. Không gọi Codex CLI hoặc OpenCode CLI.
+Astra/high giữ parent, thiết kế và nghiệm thu. Task con chạy trực tiếp trong Pi: mặc định `openai-codex/gpt-5.6-sol` với `high`; parent có thể chọn `opencode-go/glm-5.3-flash` với `max`. Không cần Codex CLI, OpenCode CLI hoặc classifier bên ngoài.
 
-Installer nạp extension vào main/goal nhưng mặc định `off`; background/advisor giữ workflow riêng. Model menu ưu tiên Astra, Sol, rồi GLM. Context Astra/Sol giữ 872K; GLM dùng catalog native 1M. Các role mặc định vẫn Sol/high.
+Main/goal nạp dispatcher; cài mới mặc định `off`. Background/advisor giữ workflow riêng. Các role vẫn mặc định Sol/high và context riêng.
 
 Trong Pi:
 
-- `/routing status`: mode và ngân sách Jev đã dùng.
-- `/routing record`: bật dispatcher, tự động giữ Sol; không gọi Jev.
-- `/routing shadow`: Jev chỉ đưa đề xuất, model tự động vẫn Sol.
-- `/routing balanced`: cho phép GLM ở nhóm có evidence được duyệt; thiếu evidence giữ Sol hoặc trả parent.
-- `/routing explain <jobId>`: model thực, effort, nguồn chọn và trạng thái.
-- `/routing off`: ngừng routing và yêu cầu dừng worker do router đang quản lý.
+- `/routing manual`: bật dispatcher Sol/GLM.
+- `/routing status`: xem trạng thái và model mặc định.
+- `/routing explain <jobId>`: xem model thực, effort, nguồn chọn và trạng thái task.
+- `/routing off`: ngừng dispatcher, yêu cầu dừng worker đang quản lý.
 
-Hai mode gọi Jev yêu cầu `routing.json` có `jev.enabled:true`, `budgetUsd` và `maxCalls` đã được người dùng duyệt. Ngân sách là tổng tích lũy qua các lần mở Pi, không reset theo ngày/session. Timeout hoặc request lỗi giữ khoản dự phòng vì có thể đã tính tiền. Đổi giá Jev cần xem lại bộ đếm; giá đang ghim $0,042/M input theo bản 1.13.0. Không dùng bộ đếm như hóa đơn của provider.
+`record` là alias cũ của `manual`. Jev và compact-adviser đã gỡ. Không còn mode shadow/balanced, capability card, ngân sách classifier hoặc event gate.
 
-`dispatch_task` nhận role, brief, acceptance, taskClass, requestId ổn định và candidate (auto/sol/glm). `candidate:glm` là lựa chọn tường minh và vẫn chịu scope/credential/permission; reviewer luôn giữ Sol. Một requestId không được dùng lại cho nhiệm vụ khác. Task bị chặn không tự chạy lại hoặc đổi provider.
+## Giao task
 
-Mẫu yêu cầu trong Pi: “Dùng dispatch_task với candidate glm, role researcher để đọc các file config và báo timeout đang dùng; chỉ đọc, không sửa.” Đây sử dụng quota GLM thật. `/routing record` chỉ tắt inference của Jev, không làm worker miễn phí.
+`dispatch_task` cần `requestId` ổn định, `role`, `brief` và `acceptance`. Bỏ `candidate` hoặc dùng `auto` đều chọn Sol/high; `candidate:glm` chọn GLM/max tường minh. Reviewer giữ Sol. `taskClass` không bắt buộc; nếu khai báo `design`, task trả về parent để chốt thiết kế.
 
-Role được resolve từ project hiện tại. Router kiểm đúng contract tools/extensions, context riêng và giới hạn trước spawn, sau đó kiểm lại nếu cấu hình thay đổi. RPC giữ permission của Pi. `isolated:false` không phải sandbox filesystem. Agent/@mention thủ công vẫn tồn tại; router chỉ quản lý task đi qua dispatcher.
+Mẫu yêu cầu: “Dùng dispatch_task với candidate glm, role researcher để đọc config và báo timeout đang dùng; chỉ đọc, không sửa.” Worker sử dụng quota của provider thật. Dispatcher không thêm request phân loại.
 
-Project phải được Pi trust trước khi router đọc cấu hình/role cục bộ. Loader luôn lấy từ package tintin đã ghim trong global config; project không được thay đường dẫn mã loader. Khi project thay package contract, router báo lỗi để kiểm tra cấu hình thay vì tự nạp source khác.
+Parent cung cấp phạm vi, ràng buộc và tiêu chí nghiệm thu trong brief. `completed-unreviewed` chỉ có nghĩa worker đã kết thúc; parent phải kiểm evidence và kiểm thử trước khi nghiệm thu. Worker báo permission/auth/quota blocker thì không tự đổi model hoặc retry.
 
-Router cho phép tối đa một writer (worker/debugger) trên một workspace qua lock dùng chung main/goal; reader vẫn theo pool 2. Hủy/timeout sẽ dừng đúng cả worker đang chờ và tiêu thụ thông báo kết thúc. Nếu process bị kill hoặc không xác nhận được worker đã dừng, lock được giữ để tránh writer chạy chồng. Chỉ xóa lock trong `state/routing-writers` sau khi kiểm PID trong file đã dừng. Các task đi ngoài dispatcher không chịu lock này.
+## Các giới hạn được giữ
 
-`routing-capabilities.json` mặc định rỗng. Code không tự biến lời worker “xong” thành bằng chứng chất lượng. Auto GLM hiện giới hạn researcher + lookup/mechanical, cần card được duyệt cho đúng GLM/max, tối thiểu 12 mẫu đều đạt và còn hạn. Gate này chỉ dành cho pilot; nó không chứng minh chất lượng production. Ngưỡng Jev cũng là ngưỡng thử nghiệm cần hiệu chỉnh, không phải bảo đảm xác suất đúng.
+Role được resolve theo project đã trust; loader chỉ dùng `@tintinweb/pi-subagents` 0.19.0 từ global config. Trước spawn, dispatcher kiểm role contract, model chính xác, credential sẵn sàng, effort, enabledModels và scope session. Cấu hình thay đổi trong lúc giao task sẽ chặn spawn.
 
-Credential Jev được resolve tại máy từ `TYPESAFE_API_KEY`, file tuyệt đối `typesafeKeyFile` (dòng `TYPESAFE_API_KEY=...`, quyền 0600), hoặc saved key của compact-adviser. Extension không ghi key vào log hoặc truyền qua prompt. Nếu dùng env chung, tiến trình con khác có thể kế thừa env của shell; nên dùng file riêng hoặc saved credential. Brief gửi Jev có lọc một số dạng key phổ biến nhưng không bảo đảm loại mọi secret; chỉ giao brief chứa dữ liệu được phép gửi dịch vụ.
+Worker không kế thừa context parent, tối đa 12 turns, pool 2, grace 2; không giao việc lồng nhau. `isolated:false` giữ auth/permission hooks, không phải sandbox hệ điều hành.
 
-`routing-state/` chứa audit metadata, job chống trùng và ngân sách. Không log raw brief/tool result. Cache quyết định nằm trong bộ nhớ, khóa theo brief/policy/role/evidence và phiên bản Jev. Permission/auth/scope luôn kiểm lại trước spawn. Không cache hoặc chia sẻ prompt cache giữa các provider.
+Main/goal dùng lock chung, tối đa một writer (worker/debugger) trong một workspace. Timeout/hủy yêu cầu dừng đúng cả worker đang chờ và tiêu thụ thông báo kết thúc, tránh đánh thức parent lần nữa. Nếu chưa xác nhận worker dừng hoặc process bị kill, lock được giữ. Chỉ xóa lock trong `state/routing-writers` sau khi xác minh PID đã dừng. Task đi qua Agent/@mention ngoài dispatcher không chịu lock này.
 
-`completed-unreviewed` nghĩa worker đã kết thúc, parent chưa nghiệm thu. Task đọc file bị permission deny có thể vẫn kết thúc bằng báo cáo blocker; parent phải kiểm kết quả. Router không tự promote model, merge, commit hoặc đổi cấu hình.
+`routing-state/` giữ job chống chạy trùng và audit metadata, không lưu raw brief hoặc worker output. Một requestId không dùng lại cho nhiệm vụ khác. File policy/state được bảo vệ khỏi công cụ agent; người dùng đổi mode bằng slash command.
 
-Compact-adviser vẫn off và có ngân sách riêng nếu bật sau. Trong phép đo routing nên giữ nó off để tách tác dụng. Các file routing/policy/state được bảo vệ khỏi công cụ agent; chỉnh bằng editor hoặc slash command của người dùng.
+## Cấu hình
 
-Kiểm thử: `npm test` dùng fixture không mạng. `tests/router-integration.mjs <root> main|goal` nạp đầy đủ extension và RPC thật với provider giả, kiểm GLM/max, Sol/high, context, permission, model scope, chống chạy trùng và Jev có ngân sách. Smoke installer chạy bộ này trên Windows/Linux/macOS. Nghiệm thu API thật là bước riêng, cần credential và trần chi phí; không chạy trong CI public.
+```json
+{
+  "version": 2,
+  "mode": "manual",
+  "allowExplicitGlm": true,
+  "timeoutMs": 900000
+}
+```
+
+Installer thêm `writerLocksDir` tuyệt đối để main/goal dùng chung lock. `allowExplicitGlm:false` vô hiệu lựa chọn GLM qua dispatcher. Policy v1 cũ được đọc thành off/manual và loại mọi trường Jev; `/routing manual` lưu lại schema v2. Cấu hình v2 không chấp nhận shadow/balanced.
+
+Native compaction/cache của Pi độc lập với dispatcher và vẫn giữ cấu hình hiện tại. Không có prompt-cache chia sẻ giữa provider.
+
+## Kiểm thử
+
+`npm test` kiểm policy và RPC. `tests/router-integration.mjs <root> main|goal` nạp extension/provider giả và RPC thật: Sol/high, GLM/max, context riêng, permission, scope, chống trùng, cấu hình legacy không gọi mạng. Smoke installer chạy bốn profile trên Windows/Linux/macOS trong CI, không dùng credential thật hoặc gọi model tính phí.

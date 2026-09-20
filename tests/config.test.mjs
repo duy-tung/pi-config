@@ -53,7 +53,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.deepEqual(settings.enabledModels, ["openai-codex/gpt-6-astra", "openai-codex/gpt-5.6-sol", "opencode-go/glm-5.3-flash"]);
       assert.equal(settings.modelThinkingLevels["opencode-go/glm-5.3-flash"], "max");
       assert.equal(json(p.join(profile.agentDir, "routing.json")).mode, "off");
-      assert.equal(json(p.join(profile.agentDir, "routing.json")).jev.budgetUsd, 0);
+      assert.equal(json(p.join(profile.agentDir, "routing.json")).jev, undefined);
       assert.equal(settings.extensions.some(value => value.includes("pi-dispatch-router")), ["main", "goal"].includes(name));
       for (const role of ["researcher", "worker", "debugger", "reviewer"]) {
         const agent = read(p.join(profile.agentDir, "agents", `${role}.md`));
@@ -114,8 +114,13 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.doesNotMatch(file.content, /\/Users\/tung|apikey_[a-z0-9]|fc-[a-f0-9]{20}|TYPESAFE_API_KEY=/u);
     }
     for (const profile of Object.values(profiles)) {
-      const adviser = json(p.join(profile.agentDir, "compact-adviser.json"));
-      assert.deepEqual(adviser, { version: 1, mode: "off", minContextTokens: 40000, autoAcknowledged: false, logRequests: false });
+      assert.ok(!profile.packages.includes("compact-adviser"));
+      for (const retired of ["compact-adviser.json", "routing-capabilities.json"]) {
+        assert.ok(!files.some(file => file.path === p.join(profile.agentDir, retired)));
+      }
+      const routing = json(p.join(profile.agentDir, "routing.json"));
+      assert.equal(routing.version, 2); assert.equal(routing.mode, "off");
+      assert.equal(routing.jev, undefined);
       const advisor = json(p.join(profile.agentDir, "advisor.json"));
       assert.equal(advisor.alwaysOn, false);
       assert.equal(advisor.advisorAutoLoopGate, false);

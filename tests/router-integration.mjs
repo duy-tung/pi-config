@@ -96,13 +96,7 @@ process.env.PATH = [path.join(modules, ".bin"), path.join(installRoot, "runtimes
 // traffic from extensions as well; MCP is a local stdio child, not a socket.
 const networkAttempts = [];
 const networkBlocked = () => { networkAttempts.push("blocked outbound request"); throw new Error("Network disabled in Pi integration fixture"); };
-let jevCalls = 0;
-globalThis.fetch = async (url, init) => {
- if (url !== "https://api.typesafe.ai/v1/systemone") return networkBlocked();
- jevCalls++;
- assert.equal(init.headers.Authorization, "Bearer synthetic-adviser-key-not-a-secret");
- return new Response(JSON.stringify({model:"jev-1.13.0", answers:Object.fromEntries(Object.entries({needs_design:0.01,glm_can_complete:0.98,sol_can_complete:0.99}).map(([k,noul])=>[k,{type:"noul",noul}])),usage:{input_tokens:1000,output_tokens:10}}));
-};
+globalThis.fetch = async () => networkBlocked();
 http.request = networkBlocked; http.get = networkBlocked;
 https.request = networkBlocked; https.get = networkBlocked;
 net.connect = networkBlocked; net.createConnection = networkBlocked;
@@ -131,9 +125,8 @@ const sdk = await import(pathToFileURL(path.join(modules, "@earendil-works", "pi
 const control = { plans: {}, seen: [] };
 globalThis[Symbol.for("pi-config:test")] = control;
 const errors = [], prompts = [], notices = [], results = [];
-const routerPolicy = {version:1,mode:"record",allowExplicitGlm:true,jev:{enabled:false,model:"jev-1.13.0",budgetUsd:0,maxCalls:0,timeoutMs:5000},thresholds:{canComplete:0.9,needsDesign:0.2},glmAutoClasses:[],timeoutMs:30000,cacheTtlMs:3600000};
+const routerPolicy = {version:2,mode:"manual",allowExplicitGlm:true,timeoutMs:30000};
 writeJson(path.join(agentDir,"routing.json"),routerPolicy);
-writeJson(path.join(agentDir,"routing-capabilities.json"),{version:1,glm:[],sol:[]});
 const loader = new sdk.DefaultResourceLoader({ cwd, agentDir });
 await loader.reload();
 assert.deepEqual(loader.getExtensions().errors, []);
@@ -173,13 +166,42 @@ async function check(name,fn) {
   activePhase=name;console.log(`Router ${profile}: ${name}`);
   try {await fn();results.push({name,status:'PASS'});}catch(error){results.push({name,status:'FAIL',error:error.stack});}
 }
-await check('record keeps Sol/high with separate context; no Jev',async()=>{
+await check('manual keeps Sol/high with separate context; no Jev',async()=>{
   const out=await run('baseline',dispatch('baseline'));
   assert.equal(out[0]?.isError,false,JSON.stringify(out));
   assert.equal(out[0].details.model,'openai-codex/gpt-5.6-sol');assert.equal(out[0].details.thinking,'high');
   const child=control.seen.find(x=>x.key==='child_baseline');assert.equal(child.model,'gpt-5.6-sol');
   assert.equal(child.options.reasoning,'high');assert.ok(!JSON.stringify(child.messages).includes('CASE:parent_baseline'));
-  assert.equal(jevCalls,0);
+  assert.equal(networkAttempts.length,0);
+});
+await check('legacy record config and command remain compatible',async()=>{
+  writeJson(path.join(agentDir,'routing.json'),{...routerPolicy,version:1,mode:'record'});
+  const out=await run('legacy',dispatch('legacy'));assert.equal(out[0]?.isError,false,JSON.stringify(out));
+  assert.equal(out[0].details.model,'openai-codex/gpt-5.6-sol');assert.equal(networkAttempts.length,0);
+  const command=session.extensionRunner.getCommand('routing');
+  await command.handler('record',session.extensionRunner.createCommandContext());
+  assert.equal(readJson(path.join(agentDir,'routing.json')).mode,'manual');
+});
+await check('legacy Jev configuration is ignored; research modes cannot be activated',async()=>{
+  const cardFile=path.join(agentDir,'routing-capabilities.json'),ledgerFile=path.join(agentDir,'routing-state','jev-budget.json');
+  fs.writeFileSync(cardFile,'invalid retired data');fs.writeFileSync(ledgerFile,'invalid retired ledger');
+  for(const mode of ['shadow','balanced']) {
+    writeJson(path.join(agentDir,'routing.json'),{...routerPolicy,version:1,mode,jev:{enabled:true,budgetUsd:10,maxCalls:1000},typesafeKeyFile:'/must-not-read'});
+    const out=await run(`legacy-${mode}`,dispatch(`legacy-${mode}`,{taskClass:undefined}));assert.equal(out[0]?.isError,false,JSON.stringify(out));
+    assert.equal(out[0].details.model,'openai-codex/gpt-5.6-sol');assert.equal(networkAttempts.length,0);
+  }
+  const command=session.extensionRunner.getCommand('routing');
+  await command.handler('manual',session.extensionRunner.createCommandContext());
+  assert.deepEqual(readJson(path.join(agentDir,'routing.json')),routerPolicy);
+  await command.handler('',session.extensionRunner.createCommandContext());
+  assert.match(notices.at(-1).message,/manual.*Sol/u);
+  for(const mode of ['shadow','balanced']) {
+    await command.handler(mode,session.extensionRunner.createCommandContext());
+    assert.match(notices.at(-1).message,/Jev đã gỡ/u);
+    assert.deepEqual(readJson(path.join(agentDir,'routing.json')),routerPolicy);
+  }
+  assert.equal(fs.readFileSync(ledgerFile,'utf8'),'invalid retired ledger');
+  fs.unlinkSync(cardFile);fs.unlinkSync(ledgerFile);
 });
 await check('explicit native GLM uses max and reads file through permission layer',async()=>{
   const out=await run('glm',dispatch('glm',{candidate:'glm'}),[[tool('read',{path:'safe.txt'})],final('CHILD_OK')]);
@@ -203,30 +225,12 @@ await check('worker permissions deny .env; no child bypass',async()=>{
   assert.ok(child.messages.some(m=>m.role==='toolResult'&&m.isError));
   assert.ok(!JSON.stringify(child.messages).includes('must-not-be-read'));
 });
-await check('worker cannot change routing policy or budget',async()=>{
+await check('worker cannot change routing policy',async()=>{
   const before=fs.readFileSync(path.join(agentDir,'routing.json'),'utf8');
   const out=await run('policy',dispatch('policy',{candidate:'glm',role:'worker',taskClass:'mechanical'}),[[tool('write',{path:path.join(agentDir,'routing.json'),content:'{}'})],final('BLOCKED_AS_EXPECTED')]);
   assert.equal(out[0]?.isError,false,JSON.stringify(out));
   assert.equal(fs.readFileSync(path.join(agentDir,'routing.json'),'utf8'),before);
   assert.ok(control.seen.filter(x=>x.key==='child_policy').at(-1).messages.some(m=>m.role==='toolResult'&&m.isError));
-});
-await check('shadow calls fixture Jev, keeps Sol, records budget',async()=>{
-  Object.assign(routerPolicy,{mode:'shadow'});Object.assign(routerPolicy.jev,{enabled:true,budgetUsd:0.01,maxCalls:5});
-  writeJson(path.join(agentDir,'routing.json'),routerPolicy);
-  const out=await run('shadow',dispatch('shadow'));
-  assert.equal(out[0]?.isError,false,JSON.stringify(out));assert.equal(out[0].details.model,'openai-codex/gpt-5.6-sol');assert.equal(jevCalls,1);
-  assert.equal(readJson(path.join(agentDir,'routing-state','jev-budget.json')).calls,1);
-});
-await check('balanced needs accepted evidence; valid fixture routes GLM max',async()=>{
-  routerPolicy.mode='balanced';routerPolicy.glmAutoClasses=['lookup'];writeJson(path.join(agentDir,'routing.json'),routerPolicy);
-  writeJson(path.join(agentDir,'routing-capabilities.json'),{version:1,sol:[],glm:[{model:'opencode-go/glm-5.3-flash',thinking:'max',role:'researcher',taskClass:'lookup',status:'accepted',samples:12,passed:12,evidenceId:'fixture-only',expiresAt:'2099-01-01'}]});
-  const out=await run('balanced',dispatch('balanced'));assert.equal(out[0]?.isError,false,JSON.stringify(out));
-  assert.equal(out[0].details.model,'opencode-go/glm-5.3-flash');assert.equal(out[0].details.thinking,'max');
-});
-await check('exhausted Jev budget falls back without extra API requests',async()=>{
-  const before=jevCalls;routerPolicy.jev.maxCalls=0;writeJson(path.join(agentDir,'routing.json'),routerPolicy);
-  const out=await run('budget',dispatch('budget'));assert.equal(out[0]?.isError,false,JSON.stringify(out));
-  assert.equal(out[0].details.model,'openai-codex/gpt-5.6-sol');assert.equal(jevCalls,before);
 });
 await check('scope and project role drift fail before spawning',async()=>{
   fs.mkdirSync(path.join(cwd,'.pi'),{recursive:true});writeJson(path.join(cwd,'.pi','settings.json'),{enabledModels:['openai-codex/gpt-5.6-sol']});

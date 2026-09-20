@@ -15,7 +15,6 @@
     "@modelcontextprotocol/server-filesystem": "2026.8.31",
     "@narumitw/pi-usage": "0.60.8",
     "@tintinweb/pi-subagents": "0.19.0",
-    "compact-adviser": "0.1.4",
     "pi-advisor-flow": "file:../../vendor/pi-advisor-flow-0.6.0-pi086.tgz",
     "pi-lens": "4.2.1",
     "pi-mcp-adapter": "2.34.0",

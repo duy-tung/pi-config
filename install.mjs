@@ -129,7 +129,7 @@ try{
   state.installedAt=new Date().toISOString();writeJson(statePath,state);
   await addPath();
   console.log(`\nĐã cài Pi vào ${root}. Mở terminal mới rồi chạy pi.`);
-  console.log('Đăng nhập: pi-login → /login. Firecrawl: firecrawl login --browser. Compact adviser đang Off.');
+  console.log('Đăng nhập: pi-login → /login. Firecrawl: firecrawl login --browser.');
   if(preserved.length)console.log('Giữ nguyên các file đã được bạn tùy chỉnh:\n'+preserved.join('\n'));
   await run(nodePath,[path.join(root,'bin/launch.mjs'),'doctor']);
 }finally{fs.unlinkSync(lock);}
