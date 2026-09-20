@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {buildConfiguration} from './lib/config.mjs';
 import {applyPatches} from './lib/patches.mjs';
 import {retireDispatcher} from './lib/retire-dispatcher.mjs';
+import {preserveLegacyFooterExclusion,pruneInactiveConfiguration} from './lib/config-cleanup.mjs';
 import {run,download,npmCli,readJson,writeJson,sha256,shellQuote,assertSafePath} from './lib/system.mjs';
 
 const repoDir=path.dirname(fileURLToPath(import.meta.url));
@@ -124,7 +125,8 @@ try{
     const source=path.join(repoDir,'runtime',filename);if(fs.statSync(source).isFile())managed(path.join(root,'bin',filename),fs.readFileSync(source));
   }
   const files=buildConfiguration({root,agentDir,binDir,nodePath,platform:process.platform,home,repoDir,shellPath:state.shellPath});
-  for(const file of files)managed(file.path,file.content,file.mode);
+  for(const specification of files){const file=preserveLegacyFooterExclusion(specification);managed(file.path,file.content,file.mode);}
+  pruneInactiveConfiguration({root,agentDir,state,desiredFiles:files});
   for(const [name,action] of Object.entries({'pi':'main','pi-goal':'goal','pi-background':'background','pi-advisor':'advisor','pi-login':'login','pi-doctor':'doctor','pi-config':'doctor','firecrawl':'firecrawl','pi-models':'models'}))launcher(name,action);
   const auth=path.join(agentDir,'auth.json');
   if(!fs.existsSync(auth)){fs.mkdirSync(agentDir,{recursive:true,mode:0o700});fs.writeFileSync(auth,'{}\n',{mode:0o600});}

@@ -10,3 +10,5 @@ Giao việc bằng Agent của @tintinweb/pi-subagents, không có dispatcher/ro
 Kiểm thử không dùng model thật hoặc credential người dùng. Dùng fixture cho provider và mạng.
 Installer phải idempotent, không ghi đè tùy chỉnh/secret hiện có. Thay đổi managed file có drift phải báo rõ trước khi sửa.
 Chạy kiểm tra Linux, Windows, macOS trong CI trước khi tuyên bố hỗ trợ. Không coi mock platform là nghiệm thu hệ điều hành thật.
+
+Chỉ tạo cấu hình cho profile có extension tương ứng. Không tạo entry statusline cũ trong cài mới. Cleanup chỉ lưu trữ file owned chưa có drift; không xóa auth, session hoặc tùy chỉnh người dùng.

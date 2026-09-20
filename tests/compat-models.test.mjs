@@ -55,6 +55,7 @@ test('Bốn profile: Codex Astra/Sol high 872K, default session và advisor payl
       assert.equal(session.model.id, profile === 'advisor' ? 'gpt-5.6-sol' : 'gpt-6-astra');
       assert.equal(session.thinkingLevel, 'high');
       session.dispose();
+      if (profile !== 'advisor') continue;
       const advisorConfig = get('advisor.json');
       const [advisorProvider, advisorId] = advisorConfig.advisor.split('/');
       const advisorModel = runtime.getModel(advisorProvider, advisorId);

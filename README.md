@@ -49,7 +49,7 @@ Không nhập token vào chat hoặc commit credential. Bốn profile dùng cùn
 | `pi-background` | 0.84.4 | Parent Astra high, 872K, background tasks |
 | `pi-advisor` | 0.86.0 | Executor **GPT-5.6 Sol high**; advisor **GPT-6 Astra high, 872K**, consultation mặc định tắt |
 
-Bốn role `researcher`, `worker`, `debugger`, `reviewer` dùng **GPT-5.6 Sol high, 872K**, context riêng, 12 turns với grace 2; mỗi pool foreground/background giới hạn 2. Researcher/reviewer chỉ đọc; researcher có Firecrawl; worker/debugger có shell và ghi file qua permission gate. Không bật nested delegation, workflow hay worktree tự động. Compat 0.84.4 nạp định nghĩa Astra từ catalog Pi 0.86.0 qua `models.json` (asset `astra-compat.json`); đã có kiểm thử offline resolver, thinking và request payload. Goal/background dùng đăng nhập Codex chung, không cần Claude. Đây không phải nghiệm thu inference Astra thật trên compat.
+Main/goal có bốn role `researcher`, `worker`, `debugger`, `reviewer` dùng **GPT-5.6 Sol high, 872K**, context riêng, 12 turns với grace 2; mỗi pool foreground/background giới hạn 2. Researcher/reviewer chỉ đọc; researcher có Firecrawl; worker/debugger có shell và ghi file qua permission gate. Không bật nested delegation, workflow hay worktree tự động. Compat 0.84.4 nạp định nghĩa Astra từ catalog Pi 0.86.0 qua `models.json` (asset `astra-compat.json`); đã có kiểm thử offline resolver, thinking và request payload. Goal/background dùng đăng nhập Codex chung, không cần Claude. Đây không phải nghiệm thu inference Astra thật trên compat.
 
 | Thành phần | Phiên bản |
 |---|---|
@@ -89,9 +89,11 @@ MCP filesystem chỉ expose công cụ đọc và dùng cwd của project. LSP G
 
 ## Chạy lại, cập nhật và khôi phục
 
-Chạy lại cùng installer giữ runtime nếu lockfile không đổi; vẫn kiểm checksum bản vá. File cấu hình đã tùy chỉnh, auth và key được giữ nguyên. Với bản mới, file managed chưa chỉnh sửa được cập nhật và có backup; file có drift được giữ lại và báo đường dẫn để bạn đối chiếu. Nếu nâng từ bản có Jev và đã tùy chỉnh `settings.json`, bỏ mục `compact-adviser` trong `packages` ở file được báo; `pi-doctor` sẽ nhắc nếu còn. Dispatcher tự viết được gỡ khi nâng cấp: installer sao lưu trước khi bỏ đường dẫn extension trong settings, giữ các trường tùy chỉnh khác và cất policy/state cũ. Dừng task/Pi trước khi cập nhật; writer lock còn tồn tại sẽ chặn migration. File credential cũ do người dùng quản lý được giữ nguyên nhưng không còn được extension đọc.
+Chạy lại cùng installer giữ runtime nếu lockfile không đổi; vẫn kiểm checksum bản vá. File cấu hình đã tùy chỉnh, auth và key được giữ nguyên. Cấu hình chỉ được tạo ở profile sử dụng nó: subagents/role cho main–goal, goal settings cho goal, advisor settings cho advisor. Với bản mới, file managed chưa chỉnh sửa được cập nhật và có backup; file có drift được giữ lại và báo đường dẫn để bạn đối chiếu. Nếu nâng từ bản có Jev và đã tùy chỉnh `settings.json`, bỏ mục `compact-adviser` trong `packages` ở file được báo; `pi-doctor` sẽ nhắc nếu còn. Dispatcher tự viết được gỡ khi nâng cấp: installer sao lưu trước khi bỏ đường dẫn extension trong settings, giữ các trường tùy chỉnh khác và cất policy/state cũ. Dừng task/Pi trước khi cập nhật; writer lock còn tồn tại sẽ chặn migration. File credential cũ do người dùng quản lý được giữ nguyên nhưng không còn được extension đọc.
 
 Mặc định cài ở `~/.local/share/pi-platform`, main agent `~/.pi/agent`, launcher `~/.local/bin`. Windows dùng vị trí tương ứng dưới user profile; Bash và Node portable có thư mục toolchain riêng. Installer thêm PATH theo user; `--no-path` bỏ bước này.
+
+Các file managed không còn dùng được chuyển vào backup nếu chưa chỉnh sửa; file có drift được giữ và báo rõ. Bản cài mới chỉ dùng footer pi-open-tui. Nếu trên máy nâng cấp còn file statusline cũ do người dùng quản lý, installer giữ loại trừ hiện có để tránh kích hoạt lại nó.
 
 Nếu cài bị dừng, chạy lại cùng các đường dẫn để tiếp tục. Nếu tiến trình bị kill và còn `.install.lock`, kiểm PID trong file và chắc chắn installer cũ đã dừng trước khi xóa lock. Không xóa lock của installer đang chạy.
 

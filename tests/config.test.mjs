@@ -30,7 +30,7 @@ function fixture(platform) {
 
 for (const platform of ["darwin", "linux", "win32"]) {
   test(`${platform}: bảo toàn bốn profile, model, thinking và phạm vi extension`, () => {
-    const { p, options, json, profiles, read } = fixture(platform);
+    const { p, options, json, profiles, read, files } = fixture(platform);
     const expected = {
       main: ["current", "openai-codex", "gpt-6-astra", "high", "rose-pine-moon"],
       goal: ["compat", "openai-codex", "gpt-6-astra", "high", "rose-pine"],
@@ -44,8 +44,8 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.equal(settings.modelThinkingLevels["openai-codex/gpt-5.6-sol"], "high");
       assert.equal(settings.shellPath, options.shellPath);
       assert.equal(settings.skills.length, 3);
-      assert.equal(settings.extensions.length, 2);
-      assert.equal(settings.extensions[0], `-${p.join(profile.agentDir, "extensions", "statusline.ts")}`);
+      assert.equal(settings.extensions.length, 1);
+      assert.ok(settings.extensions[0].endsWith("rose-pine-palette.ts"));
       assert.ok(settings.packages.every((entry) => entry.startsWith(p.join(options.root, "runtimes", profile.runtime, "node_modules"))));
       const overrides = json(p.join(profile.agentDir, "models.json")).providers["openai-codex"].modelOverrides;
       assert.equal(overrides["gpt-5.6-sol"].contextWindow, 872000);
@@ -53,6 +53,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.deepEqual(settings.enabledModels, ["openai-codex/gpt-6-astra", "openai-codex/gpt-5.6-sol", "opencode-go/glm-5.3-flash"]);
       assert.equal(settings.modelThinkingLevels["opencode-go/glm-5.3-flash"], "max");
       assert.equal(settings.extensions.some(value => value.includes("pi-dispatch-router")), false);
+      if (["main", "goal"].includes(name)) {
       for (const role of ["researcher", "worker", "debugger", "reviewer"]) {
         const agent = read(p.join(profile.agentDir, "agents", `${role}.md`)).replaceAll("\r\n", "\n");
         assert.match(agent, /^model: openai-codex\/gpt-5\.6-sol$/mu);
@@ -67,6 +68,9 @@ for (const platform of ["darwin", "linux", "win32"]) {
         assert.ok(agent.includes("thinking: max\n"));
         for (const line of ["inherit_context: false", "isolated: false", "max_turns: 12"]) assert.ok(agent.includes(line));
         if (role === "researcher-glm") assert.ok(!agent.includes("write, edit, bash"));
+      }
+      } else {
+        assert.ok(!files.some(file => file.path.startsWith(p.join(profile.agentDir,"agents")+p.sep)));
       }
       assert.equal(profile.packages.includes("@tintinweb/pi-subagents"), ["main", "goal"].includes(name));
       assert.equal(profile.packages.includes("pi-background-tasks"), name === "background");
@@ -123,6 +127,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       for (const retired of ["compact-adviser.json", "routing.json", "routing-capabilities.json"]) {
         assert.ok(!files.some(file => file.path === p.join(profile.agentDir, retired)));
       }
+      if (profile.packages.includes("pi-advisor-flow")) {
       const advisor = json(p.join(profile.agentDir, "advisor.json"));
       assert.equal(advisor.alwaysOn, false);
       assert.equal(advisor.advisorAutoLoopGate, false);
@@ -130,12 +135,16 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.equal(advisor.executorEffort, "high");
       assert.equal(advisor.advisor, "openai-codex/gpt-6-astra");
       assert.equal(advisor.advisorEffort, "high");
+      } else assert.ok(!files.some(file => file.path === p.join(profile.agentDir,"advisor.json")));
+      if (profile.packages.includes("pi-goal-x")) {
       const auditor = json(p.join(profile.agentDir, "pi-goal-x-settings.json"));
       assert.equal(auditor.provider, "openai-codex");
       assert.equal(auditor.model, "gpt-5.6-sol");
       assert.equal(json(p.join(profile.agentDir, "pi-goal-x-settings.json")).disabled, true);
+      } else assert.ok(!files.some(file => file.path === p.join(profile.agentDir,"pi-goal-x-settings.json")));
       assert.equal(json(p.join(profile.agentDir, "settings.json")).cacheWarming, "off");
-      assert.equal(json(p.join(profile.agentDir, "subagents.json")).fallbackSubagent, "none");
+      if (profile.packages.includes("@tintinweb/pi-subagents")) assert.equal(json(p.join(profile.agentDir, "subagents.json")).fallbackSubagent, "none");
+      else assert.ok(!files.some(file => file.path === p.join(profile.agentDir,"subagents.json")));
     }
     assert.equal(json(p.join(options.root, "config", "pi-lens.json")).format.enabled, false);
     assert.ok(files.every(({ path: file }) => file !== p.join(options.home, ".pi-lens", "config.json")));

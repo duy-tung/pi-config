@@ -12,8 +12,13 @@ if(action==='doctor'){
   if(args.length)throw new Error('pi-models chỉ xem cấu hình. Đổi model bằng /model hoặc chỉnh settings và file role.');
   for(const [name,p] of Object.entries(profiles)){
     const s=JSON.parse(fs.readFileSync(path.join(p.agentDir,'settings.json'),'utf8'));
-    const worker=fs.readFileSync(path.join(p.agentDir,'agents/worker.md'),'utf8');
-    console.log(`${name}: parent ${s.defaultProvider}/${s.defaultModel}; worker ${worker.match(/^model: (.+)$/m)?.[1]}; thinking ${worker.match(/^thinking: (.+)$/m)?.[1]}`);
+    console.log(`${name}: ${s.defaultProvider}/${s.defaultModel} (${s.defaultThinkingLevel})`);
+    if(p.packages.includes('@tintinweb/pi-subagents')){
+      for(const file of fs.readdirSync(path.join(p.agentDir,'agents')).filter(file=>file.endsWith('.md')).sort()){
+        const role=fs.readFileSync(path.join(p.agentDir,'agents',file),'utf8');
+        console.log(`  ${file.slice(0,-3)}: ${role.match(/^model: (.+)$/m)?.[1]} (${role.match(/^thinking: (.+)$/m)?.[1]})`);
+      }
+    }
   }
 }else{
   const name=action==='login'?'main':action;
