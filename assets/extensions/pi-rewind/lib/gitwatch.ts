@@ -15,7 +15,7 @@ const GIT_ENV = { GIT_OPTIONAL_LOCKS: "0", GIT_TERMINAL_PROMPT: "0", LC_ALL: "C"
 export function runGit(cwd: string, args: string[], input?: string, timeoutMs = 10000): Promise<GitResult> {
   return new Promise((resolve) => {
     const child = spawn("git", ["--no-optional-locks", ...args], {
-      cwd, env: { ...process.env, ...GIT_ENV }, stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
+      cwd, env: { ...process.env, ...GIT_ENV }, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"], windowsHide: true,
     });
     const out: Buffer[] = [];
     const err: Buffer[] = [];
@@ -34,7 +34,9 @@ export function runGit(cwd: string, args: string[], input?: string, timeoutMs = 
       clearTimeout(timer);
       resolve({ code: code ?? 1, stdout: Buffer.concat(out), stderr: Buffer.concat(err).toString("utf8"), timedOut });
     });
-    child.stdin.end(input ?? "");
+    // git có thể thoát trước khi đọc hết stdin: EPIPE không được thành lỗi không bắt trong Pi.
+    child.stdin?.on("error", () => {});
+    if (input !== undefined) child.stdin?.end(input);
   });
 }
 

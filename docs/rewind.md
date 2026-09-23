@@ -17,7 +17,7 @@
 | Nguồn thay đổi | Cách ghi nhận |
 |---|---|
 | Tool `edit`, `write` | Lưu nội dung trước lần sửa đầu tiên trong lượt, trước khi tool chạy |
-| `bash`, `powershell`, `Agent` (foreground) trong git worktree | `git status` trước/sau tool; file đổi được lưu bản trước (file sạch lấy từ `HEAD` qua filter như checkout) |
+| `bash`, `powershell`, `Agent` (foreground) trong git worktree | `git status` trước/sau tool; file đổi được lưu bản trước (file sạch lấy từ `HEAD` qua filter như checkout, nên kiểu xuống dòng theo `core.autocrlf`) |
 | File đã theo dõi, đổi giữa hai prompt | Ảnh chụp đầu mỗi prompt ghi lại phiên bản mới |
 
 Khôi phục code chỉ đụng tới file đã theo dõi trong phiên, giống Claude Code. Không theo dõi: sửa tay trên file chưa từng theo dõi, file bị `.gitignore` sửa bằng bash, bash ngoài git worktree, background agent/shell job, file lớn hơn 20 MiB và file chứa bí mật (`.env`, khóa, `auth.json`…). Symlink, thư mục cha đã đổi hoặc nội dung hiện tại không sao lưu được thì bỏ qua và báo tên file. Repo cần hơn 2 giây để chuẩn bị theo dõi (`git status` và chụp file bẩn) hoặc có hơn 500 file chưa commit (ví dụ `node_modules` chưa ignore) sẽ tắt theo dõi bash trong phiên và báo; edit/write vẫn được theo dõi.

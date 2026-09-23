@@ -13,7 +13,8 @@ import { applyRestore, describeRestore, planRestore, planStats } from "../assets
 import { ABSENT, BlobStore, Capturer } from "../assets/extensions/pi-rewind/lib/store.ts";
 
 function sandbox() {
-  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pi-rewind-test-")));
+  // realpath native: Windows trả tên dài thay cho dạng 8.3 (RUNNER~1), giống realParent.
+  const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "pi-rewind-test-")));
   const store = new BlobStore(path.join(dir, "store"));
   const capturer = new Capturer(store, { maxBytes: 1024 * 1024 });
   const work = path.join(dir, "work");
@@ -129,6 +130,8 @@ test("git watcher nhận file bash sửa, tạo và xóa; bỏ qua file bị ign
   const git = (...args) => execFileSync("git", args, { cwd: work, stdio: "pipe" });
   try {
     git("init", "-q");
+    // Kiểm theo dõi thay đổi, không phụ thuộc core.autocrlf của máy (Git for Windows bật sẵn).
+    git("config", "core.autocrlf", "false");
     fs.writeFileSync(path.join(work, ".gitignore"), "ignored.txt\n");
     fs.writeFileSync(path.join(work, "clean.txt"), "C0\r\n");
     fs.writeFileSync(path.join(work, "gone.txt"), "G0\n");
