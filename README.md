@@ -2,7 +2,7 @@
 
 [![Kiểm thử cài đặt](https://github.com/duy-tung/pi-config/actions/workflows/test.yml/badge.svg)](https://github.com/duy-tung/pi-config/actions/workflows/test.yml)
 
-Bộ cài **Pi 0.86.1** cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, Firecrawl cho web, permission cho công cụ và giao diện Rosé Pine. Dependency, nguồn skills và bản vá được ghim để tái lập cấu hình.
+Bộ cài **Pi 0.87.1** cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, Firecrawl cho web, permission cho công cụ và giao diện Rosé Pine. Dependency, nguồn skills và bản vá được ghim để tái lập cấu hình.
 
 ## Cài đặt
 
@@ -39,7 +39,7 @@ Chạy `pi` để mở Astra/high với toàn bộ công cụ. Các workflow đ�
 | Goal dài hạn | `/goal`, `/goal-status`, `/goal-pause`, `/goal-resume` |
 | Shell job nền | `/bg --name "Dev server" npm run dev`, `/jobs`, `/logs`, `/kill` |
 | Ý kiến cố vấn | `/advisor`, `/advisor-manual`, `/advisor-off` |
-| Khôi phục workspace | `/checkpoint`, `/undo`, `/redo` |
+| Rewind code/hội thoại | `Esc Esc`, `/rewind` (`/checkpoint`, `/undo`), `/redo` |
 | Model và reasoning | `/model`, `/thinking` |
 | Công cụ và giao diện | `/agents`, `/usage`, `/mcp`, `/lens-health`, `/open-tui` |
 
@@ -49,7 +49,7 @@ Goal chỉ bắt đầu khi được yêu cầu. Auditor tắt mặc định; m�
 
 Background cung cấp shell jobs; completion chỉ thông báo, không tự mở lượt model theo mặc định. `bg_run` có thể nhận `triggerOnCompletion:true` cho workflow người dùng yêu cầu tự theo dõi. Model delegation dùng `Agent`.
 
-Workspace history tự dùng trong project phù hợp, không chụp toàn bộ thư mục home. `/undo` và `/redo` có lựa chọn phục hồi cả hội thoại và file; xem diff trước khi xác nhận phục hồi.
+Rewind (`pi-rewind`, extension của repo) theo giao diện `/rewind` của Claude Code: mỗi prompt có checkpoint; `Esc Esc` hoặc `/rewind` mở danh sách prompt kèm số dòng đã đổi, rồi chọn khôi phục code, hội thoại, cả hai, hoặc tóm tắt từ/đến prompt đó. File do `edit`/`write` sửa luôn được theo dõi; file do `bash`/`Agent` sửa được theo dõi trong git worktree. `/redo` hoàn tác lần rewind gần nhất. Chi tiết và giới hạn: [docs/rewind.md](docs/rewind.md).
 
 Astra/Sol dùng context **872K**; GLM dùng catalog native **1M**. Theme mặc định Rosé Pine Moon, có thêm Rosé Pine và Dawn.
 
@@ -96,23 +96,23 @@ Permission kiểm soát công cụ, không thay thế sandbox hệ điều hành
 | Thành phần | Phiên bản |
 |---|---|
 | `@tintinweb/pi-subagents` | 0.19.0 |
-| `@gotgenes/pi-anthropic-auth` | 2.0.10 |
-| `@gotgenes/pi-permission-system` | 33.0.1 |
-| `pi-mcp-adapter` | 2.34.0 |
-| `pi-web-access` | 0.29.0 |
-| `@juicesharp/rpiv-ask-user-question`, `rpiv-todo` | 2.10.1 |
-| `@narumitw/pi-usage` | 0.60.8 |
+| `@gotgenes/pi-anthropic-auth` | 3.1.0 |
+| `@gotgenes/pi-permission-system` | 33.0.7 |
+| `pi-mcp-adapter` | 2.36.0 |
+| `pi-web-access` | 0.30.0 |
+| `@juicesharp/rpiv-ask-user-question`, `rpiv-todo` | 2.11.0 |
+| `@narumitw/pi-usage` | 0.60.11 |
 | `pi-lens` | 4.2.1 |
-| `pi-background-tasks` | 2.5.0 |
-| `pi-goal-x`, `pi-workspace-history` | 0.31.6 / 0.4.3 |
-| `pi-advisor-flow` | 0.6.0 |
-| `pi-open-tui` | 0.3.6 |
-| `@pi-archimedes/image-paste` | 2.7.3 |
+| `pi-background-tasks` | 2.6.3 |
+| `pi-goal-x` | 0.31.8 |
+| `pi-advisor-flow` | 0.8.0 |
+| `pi-open-tui` | 0.3.8 |
+| `@pi-archimedes/image-paste` | 2.8.0 |
 | `@mariozechner/clipboard` | 0.3.9 |
-| Firecrawl CLI | 1.23.3 |
+| Firecrawl CLI | 1.24.4 |
 | Engineering và Firecrawl skills | Commit trong [sources.lock.json](sources.lock.json) |
 
-Các manifest và lockfile nằm trong [manifests](manifests). Sáu package có peer range chưa gồm Pi 0.86.1 được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json).
+Các manifest và lockfile nằm trong [manifests](manifests). Ba package có peer range chưa gồm Pi 0.87.1 (pi-lens, pi-mcp-adapter, pi-background-tasks) được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json).
 
 ## Quản lý cấu hình
 

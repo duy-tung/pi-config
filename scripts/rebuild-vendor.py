@@ -16,6 +16,8 @@ parser.add_argument('--write', action='store_true')
 args = parser.parse_args()
 repo = Path(__file__).resolve().parents[1]
 manifest = json.loads((repo / 'manifests/current/package.json').read_text())
+# Phiên bản Pi đã ghim; tarball chỉ bổ sung đúng phiên bản này vào peer range upstream.
+pi_version = manifest['dependencies']['@earendil-works/pi-coding-agent']
 for name, spec in manifest['piPlatform']['localPackages'].items():
     with tempfile.TemporaryDirectory(prefix='pi-vendor-') as temporary:
         root = Path(temporary)
@@ -37,7 +39,7 @@ for name, spec in manifest['piPlatform']['localPackages'].items():
             raise RuntimeError(f'Sai package nguồn: {name}')
         for dependency, version in package.get('peerDependencies', {}).items():
             if dependency.startswith('@earendil-works/pi-') and version != '*':
-                package['peerDependencies'][dependency] = version + ' || 0.86.1'
+                package['peerDependencies'][dependency] = f'{version} || {pi_version}'
         metadata.write_text(json.dumps(package, indent=2) + '\n')
         output = root / 'repacked.tgz'
         with output.open('wb') as stream, gzip.GzipFile(fileobj=stream, mode='wb', mtime=0, filename='') as gz, tarfile.open(fileobj=gz, mode='w') as target:

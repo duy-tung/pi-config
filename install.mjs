@@ -82,12 +82,16 @@ async function installRuntime(name,relative){
 async function installSource(source){
   const dest=path.join(root,'sources',source.name);
   if(previous?.sources[source.name]===source.sha256 && fs.existsSync(dest))return;
-  if(fs.existsSync(dest))throw new Error(`Nguồn skills đã tồn tại với revision khác: ${source.name}`);
+  // Nguồn cũ chỉ được thay khi do installer cài (có trong state); thư mục lạ thì dừng.
+  if(fs.existsSync(dest) && !previous?.sources[source.name])throw new Error(`Nguồn skills đã tồn tại nhưng không do pi-config cài: ${source.name}`);
   const archive=path.join(root,'.downloads',source.name+'.tar.gz');
   await download(source.url,archive,source.sha256);
   const stage=dest+'.stage';fs.rmSync(stage,{recursive:true,force:true});fs.mkdirSync(stage,{recursive:true});
   try{await run(process.platform==='win32'?'tar.exe':'tar',['-xzf',archive,'--strip-components=1','-C',stage]);}
   catch(error){fs.rmSync(stage,{recursive:true,force:true});throw error;}
+  if(fs.existsSync(dest)){
+    const backup=path.join(root,'backups',`source-${source.name}-${Date.now()}`);fs.mkdirSync(path.dirname(backup),{recursive:true});fs.renameSync(dest,backup);
+  }
   fs.renameSync(stage,dest);state.sources[source.name]=source.sha256;writeJson(statePath,state);
   fs.unlinkSync(archive);
 }

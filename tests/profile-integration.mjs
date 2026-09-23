@@ -50,10 +50,12 @@ const settings = readJson(path.join(agentDir, "settings.json"));
 Object.assign(settings, {
   defaultProvider: "config-test", defaultModel: "parent", defaultThinkingLevel: "off",
   enabledModels: ["config-test/parent", "config-test/worker"],
-  extensions: [fileURLToPath(new URL("./scripted-provider.ts", import.meta.url))],
+  // Giữ pi-rewind của bản cài để kiểm /rewind; các extension giao diện khác không cần trong RPC.
+  extensions: [...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && entry.replaceAll("\\", "/").endsWith("/pi-rewind")),
+    fileURLToPath(new URL("./scripted-provider.ts", import.meta.url))],
   compaction: { enabled: false }, retry: { enabled: false }, skills: [], cacheWarming: "off",
 });
-if (settings.workspaceHistory) settings.workspaceHistory.storageDir = path.join(fixture, "history");
+if (settings.rewind) settings.rewind.storageDir = path.join(fixture, "rewind");
 writeJson(path.join(agentDir, "settings.json"), settings);
 writeJson(credentialFile, {"fixture-secret": {type: "api_key", key: "synthetic-private-credential"}});
 if (configuration.packages.includes("pi-advisor-flow")) {
@@ -69,6 +71,8 @@ writeJson(path.join(agentDir, "web-search.json"), {
   githubClone: { enabled: false },
 });
 writeJson(path.join(cwd, "package.json"), { name: "pi-config-integration-fixture", private: true, type: "module" });
+// Git worktree để pi-rewind theo dõi được file bash sửa (git status trước/sau tool).
+childProcess.execFileSync("git", ["init", "-q"], { cwd, stdio: "ignore" });
 fs.writeFileSync(path.join(cwd, "safe.txt"), "SAFE_CONTENT\n");
 fs.writeFileSync(path.join(cwd, ".env"), "SYNTHETIC_SECRET=must-not-be-read\n");
 let symlinkAvailable = true;
@@ -123,6 +127,8 @@ const sdk = await import(pathToFileURL(path.join(modules, "@earendil-works", "pi
 const control = { plans: {}, seen: [] };
 globalThis[Symbol.for("pi-config:test")] = control;
 const errors = [], prompts = [], notices = [], results = [];
+// Câu trả lời định sẵn cho dialog Rewind (RPC dùng select); dialog khác dùng mặc định.
+const rewindAnswers = [];
 let imageDraft = "";
 const loader = new sdk.DefaultResourceLoader({ cwd, agentDir });
 await loader.reload();
@@ -136,7 +142,14 @@ const ui = {
   onTerminalInput: () => () => {}, input: async () => undefined, editor: async () => undefined,
   getEditorComponent: () => undefined, getAllThemes: () => [], setTheme: () => ({ success: true }),
   theme: { fg: (_color, text) => text, bg: (_color, text) => text, bold: (text) => text, italic: (text) => text, dim: (text) => text },
-  select: async (title, options) => { prompts.push({ kind: "select", title }); return options.find((option) => /^Allow once|^Approve once/u.test(option)) ?? options[0]; },
+  select: async (title, options) => {
+    prompts.push({ kind: "select", title });
+    if (/^Rewind|^Confirm you want/u.test(title)) {
+      const wanted = rewindAnswers.shift();
+      return options.find((option) => option === wanted || new RegExp(`CASE:${wanted}(?:\\s|$)`, "u").test(option));
+    }
+    return options.find((option) => /^Allow once|^Approve once/u.test(option)) ?? options[0];
+  },
   confirm: async (title) => { prompts.push({ kind: "confirm", title }); return true; },
   notify: (message, type) => notices.push({ message, type }),
   custom: async () => { throw new Error("Unexpected TUI dialog in RPC fixture"); },
@@ -172,7 +185,7 @@ async function check(name, fn) {
 }
 await check("single session exposes slash commands and only one model delegation system", async () => {
   const commands = session.extensionRunner.getRegisteredCommands().map(command => command.name);
-  for (const name of ["goal", "goal-pause", "goal-resume", "bg", "jobs", "logs", "kill", "advisor", "advisor-off", "checkpoint", "undo", "redo"])
+  for (const name of ["goal", "goal-pause", "goal-resume", "bg", "jobs", "logs", "kill", "advisor", "advisor-off", "rewind", "checkpoint", "undo", "redo"])
     assert.ok(commands.includes(name), `Missing /${name}`);
   assert.equal(new Set(commands).size, commands.length);
   const tools = session.getAllTools().map(tool => tool.name);
@@ -295,17 +308,28 @@ if (configuration.packages.includes("pi-advisor-flow")) {
     await session.prompt("/advisor-off");
   });
 }
-await check("workspace checkpoint, undo and redo restore actual file contents", async () => {
-  const target = path.join(cwd, "restore.txt");
-  fs.writeFileSync(target, "BEFORE\n");
-  await session.prompt("/checkpoint fixture baseline");
-  assert.ok(sessionManager.getEntries().some(entry => entry.customType === "workspace-history.snapshot" && entry.data?.kind === "manual"));
-  await run("workspace-edit", [[tool("write", {path: "restore.txt", content: "AFTER\n"})]]);
-  assert.equal(fs.readFileSync(target,"utf8"), "AFTER\n");
-  await session.prompt("/undo");
-  assert.equal(fs.readFileSync(target,"utf8"), "BEFORE\n", JSON.stringify(notices));
+await check("rewind restores code and conversation like Claude Code; redo brings them back", async () => {
+  const fileA = path.join(cwd, "rewind-a.txt"), fileB = path.join(cwd, "rewind-b.txt");
+  const read = (file) => fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
+  await run("rewind-one", [[tool("write", { path: "rewind-a.txt", content: "A1\n" })]]);
+  await run("rewind-two", [[tool("edit", { path: "rewind-a.txt", edits: [{ oldText: "A1", newText: "A2" }] })],
+    [tool("bash", { command: "printf B > rewind-b.txt", timeout: 10 })]]);
+  assert.equal(read(fileA), "A2\n"); assert.equal(read(fileB), "B");
+  const checkpoints = sessionManager.getEntries().filter((entry) => entry.customType === "pi-rewind" && entry.data?.kind === "checkpoint");
+  const userTwo = sessionManager.getEntries().find((entry) => entry.type === "message" && JSON.stringify(entry.message.content).includes("CASE:rewind-two"));
+  assert.ok(checkpoints.some((entry) => entry.data.userEntryId === userTwo.id), "Checkpoint phải gắn với user message của prompt");
+  rewindAnswers.push("rewind-two", "Restore code and conversation");
+  await session.prompt("/rewind");
+  assert.equal(read(fileA), "A1\n", JSON.stringify(notices)); assert.equal(read(fileB), null);
+  assert.ok(!sessionManager.getBranch().some((entry) => entry.id === userTwo.id), "Hội thoại phải quay về trước prompt đã chọn");
   await session.prompt("/redo");
-  assert.equal(fs.readFileSync(target,"utf8"), "AFTER\n");
+  assert.equal(read(fileA), "A2\n"); assert.equal(read(fileB), "B");
+  assert.ok(sessionManager.getBranch().some((entry) => entry.id === userTwo.id));
+  rewindAnswers.push("rewind-one", "Restore code");
+  await session.prompt("/undo");
+  assert.equal(read(fileA), null); assert.equal(read(fileB), null);
+  assert.ok(sessionManager.getBranch().some((entry) => entry.id === userTwo.id), "Restore code giữ nguyên hội thoại");
+  assert.equal(control.seen.filter((entry) => entry.key === "rewind-one" || entry.key === "rewind-two").length, 5);
 });
 await check("clipboard image shortcut, attachment, deleted marker and size guard", async () => {
   const {KeybindingsManager}=await import(pathToFileURL(path.join(modules,"@earendil-works/pi-coding-agent/dist/core/keybindings.js")).href);
@@ -315,7 +339,8 @@ await check("clipboard image shortcut, attachment, deleted marker and size guard
   assert.ok(shortcut?.extensionPath.includes("image-paste"));
   assert.ok(!session.extensionRunner.getShortcutDiagnostics().some(item=>item.message.includes("pasteImage")));
   assert.ok(!loader.getExtensions().extensions.some(extension=>extension.path.replaceAll("\\","/").includes("@pi-archimedes/core/")));
-  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j1ioAAAAASUVORK5CYII=", "base64");
+  // PNG RGBA 2x2: Pi 0.87 chuẩn hóa ảnh prompt bằng Photon, ảnh xám 1x1 bị bỏ qua.
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII=", "base64");
   let bytes = png;
   const originalLoad = Module._load, originalSpawn = childProcess.spawnSync, display = process.env.DISPLAY;
   // Isolate the OS boundary: never inspect the user's clipboard in automated tests.

@@ -48,7 +48,7 @@ Object.assign(settings, {
   extensions: [fileURLToPath(new URL("./agent-provider.ts", import.meta.url))],
   compaction: { enabled: false }, retry: { enabled: false }, skills: [], cacheWarming: "off",
 });
-if (settings.workspaceHistory) settings.workspaceHistory.storageDir = path.join(fixture, "history");
+if (settings.rewind) settings.rewind.storageDir = path.join(fixture, "rewind");
 writeJson(path.join(agentDir, "settings.json"), settings);
 writeJson(path.join(agentDir, "auth.json"), {});
 // Explicitly replace web config rather than copying a live credential command.

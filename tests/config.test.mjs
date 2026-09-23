@@ -42,8 +42,14 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.equal(settings.modelThinkingLevels["openai-codex/gpt-5.6-sol"], "high");
       assert.equal(settings.shellPath, options.shellPath);
       assert.equal(settings.skills.length, 3);
-      assert.equal(settings.extensions.length, 1);
+      assert.equal(settings.extensions.length, 2);
       assert.ok(settings.extensions[0].endsWith("rose-pine-palette.ts"));
+      assert.equal(settings.extensions[1], p.join(options.root, "assets", "extensions", "pi-rewind"));
+      assert.equal(settings.doubleEscapeAction, "none");
+      assert.deepEqual(settings.rewind, { storageDir: p.join(options.root, "state", "rewind"), retentionDays: 30 });
+      assert.equal(settings.workspaceHistory, undefined);
+      const manifest = JSON.parse(fs.readFileSync(path.join(repoDir, "manifests", "current", "package.json"), "utf8"));
+      assert.equal(settings.lastChangelogVersion, manifest.dependencies["@earendil-works/pi-coding-agent"]);
       assert.ok(settings.packages.every((entry) => (typeof entry === "string" ? entry : entry.source).startsWith(p.join(options.root, "runtimes", profile.runtime, "node_modules"))));
       const overrides = json(p.join(profile.agentDir, "models.json")).providers["openai-codex"].modelOverrides;
       assert.equal(overrides["gpt-5.6-sol"].contextWindow, 872000);
@@ -70,9 +76,9 @@ for (const platform of ["darwin", "linux", "win32"]) {
       }
       assert.equal(profile.packages.includes("@tintinweb/pi-subagents"), name === "main");
       assert.equal(profile.packages.includes("pi-background-tasks"), true);
-      assert.deepEqual(settings.packages.find(entry=>typeof entry === "object").extensions,["extensions/background-tasks.ts"]);
+      assert.deepEqual(settings.packages.find(entry=>typeof entry === "object").extensions,["dist/extensions/background-tasks.js"]);
       assert.equal(profile.packages.includes("pi-advisor-flow"), name === "main");
-      assert.equal(profile.packages.includes("pi-workspace-history"), name === "main");
+      assert.equal(profile.packages.includes("pi-workspace-history"), false);
     }
     assert.equal(json(p.join(options.agentDir, "pi-usage.json")).codexFastMode, true);
   });
