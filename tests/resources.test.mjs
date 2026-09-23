@@ -65,11 +65,13 @@ test('resources remain recoverable when install directories use different volume
     assert.equal(saved.length,1);assert.equal(readJson(path.join(result.archive,saved[0])).fixture,'original');
   } finally {fs.renameSync=rename;}
 });
-test('updating settings preserves extension exclusions and path denials',t=>{
-  const f=fixture(t),settings=owned(f,'agent/settings.json',{extensions:['-/user/optional.ts']});
-  let file=preserveLocalControls({path:settings,content:JSON.stringify({extensions:['palette.ts']}),mode:0o600});
-  assert.deepEqual(JSON.parse(file.content).extensions,['-/user/optional.ts','palette.ts']);
-  const policy=owned(f,'agent/extensions/pi-permission-system/config.json',{permission:{path:{'*':'allow','/private/token.json':'deny'}}});
-  file=preserveLocalControls({path:policy,content:JSON.stringify({permission:{path:{'*':'allow'}}}),mode:0o600});
-  assert.equal(JSON.parse(file.content).permission.path['/private/token.json'],'deny');
+test('updating settings preserves extension exclusions and deny rules, migrating pi-permission-system denials',t=>{
+  const f=fixture(t),settings=owned(f,'agent/settings.json',{extensions:['-/user/optional.ts'],permissions:{deny:['Path(/user/extra.key)']}});
+  owned(f,'agent/extensions/pi-permission-system/config.json',{permission:{'*':'ask',mcpScript:'deny',path:{'*':'allow','/private/token.json':'deny','~/.ssh/*':'deny'},bash:{'*':'ask','git push*':'deny'}}});
+  const file=preserveLocalControls({path:settings,content:JSON.stringify({extensions:['palette.ts'],permissions:{deny:['Bash(sudo *)']}}),mode:0o600});
+  const next=JSON.parse(file.content);
+  assert.deepEqual(next.extensions,['-/user/optional.ts','palette.ts']);
+  assert.deepEqual(next.permissions.deny,['Bash(sudo *)','Path(/user/extra.key)','Path(/private/token.json)','Path(~/.ssh/*)','Bash(git push*)','mcpScript']);
+  const other=preserveLocalControls({path:path.join(f.root,'agent','models.json'),content:'{}',mode:0o600});
+  assert.equal(other.content,'{}');
 });

@@ -2,7 +2,7 @@
 
 [![Kiểm thử cài đặt](https://github.com/duy-tung/pi-config/actions/workflows/test.yml/badge.svg)](https://github.com/duy-tung/pi-config/actions/workflows/test.yml)
 
-Bộ cài **Pi 0.87.1** cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, Firecrawl cho web, permission cho công cụ và giao diện Rosé Pine. Dependency, nguồn skills và bản vá được ghim để tái lập cấu hình.
+Bộ cài **Pi 0.87.1** cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, Firecrawl cho web, permission kiểu Claude Code (auto mode và bypass) và giao diện Rosé Pine. Dependency, nguồn skills và bản vá được ghim để tái lập cấu hình.
 
 ## Cài đặt
 
@@ -40,7 +40,8 @@ Chạy `pi` để mở Astra/high với toàn bộ công cụ. Các workflow đ�
 | Shell job nền | `/bg --name "Dev server" npm run dev`, `/jobs`, `/logs`, `/kill` |
 | Ý kiến cố vấn | `/advisor`, `/advisor-manual`, `/advisor-off` |
 | Rewind code/hội thoại | `Esc Esc`, `/rewind` (`/checkpoint`, `/undo`), `/redo` |
-| Model và reasoning | `/model`, `/thinking` |
+| Permission | `Shift+Tab` (auto ⇄ bypass), `/permissions`, `/auto-mode` |
+| Model và reasoning | `/model`, `/thinking`, `Alt+T` đổi mức thinking |
 | Công cụ và giao diện | `/agents`, `/usage`, `/mcp`, `/lens-health`, `/open-tui` |
 
 `/advisor` chuyển sang executor Sol/high và advisor Astra/high. `/advisor-off` tắt flow nhưng giữ model hiện tại; dùng `/model` để trở lại Astra. Advisor auto, gates và scout tắt mặc định; giới hạn 3 lần tham khảo mỗi phiên.
@@ -50,6 +51,8 @@ Goal chỉ bắt đầu khi được yêu cầu. Auditor tắt mặc định; m�
 Background cung cấp shell jobs; completion chỉ thông báo, không tự mở lượt model theo mặc định. `bg_run` có thể nhận `triggerOnCompletion:true` cho workflow người dùng yêu cầu tự theo dõi. Model delegation dùng `Agent`.
 
 Rewind (`pi-rewind`, extension của repo) theo giao diện `/rewind` của Claude Code: mỗi prompt có checkpoint; `Esc Esc` hoặc `/rewind` mở danh sách prompt kèm số dòng đã đổi, rồi chọn khôi phục code, hội thoại, cả hai, hoặc tóm tắt từ/đến prompt đó. File do `edit`/`write` sửa luôn được theo dõi; file do `bash`/`Agent` sửa được theo dõi trong git worktree. `/redo` hoàn tác lần rewind gần nhất. Chi tiết và giới hạn: [docs/rewind.md](docs/rewind.md).
+
+Permission (`pi-auto-mode`, extension của repo) có hai mode như Claude Code. **Auto** là mặc định: thao tác đọc, lệnh chỉ đọc và sửa file trong project chạy ngay; lệnh khác qua bộ phân loại (model `gpt-6-sol`) chỉ thấy tin nhắn của người dùng và lệnh của agent. Lệnh bị chặn trả lý do cho agent để đi đường an toàn hơn; 3 lần chặn liên tiếp hoặc 20 lần trong phiên thì hỏi người dùng. **Bypass** chạy mọi thứ trừ luật deny và `rm` vào đường dẫn quan trọng. `Shift+Tab` đổi mode, `/permissions` xem và duyệt lại lệnh bị chặn. Chi tiết: [docs/auto-mode.md](docs/auto-mode.md).
 
 Astra/Sol dùng context **872K**; GLM dùng catalog native **1M**. Theme mặc định Rosé Pine Moon, có thêm Rosé Pine và Dawn.
 
@@ -89,7 +92,7 @@ Agent có context riêng, giới hạn 12 turns với grace 2. Mỗi pool foregr
 
 `pi-models` xem cấu hình model. `pi-doctor` kiểm dependency và checksum bản vá. `pi-test` kiểm workflow và Agent bằng provider giả trong thư mục tạm, không gọi model trả phí.
 
-Permission kiểm soát công cụ, không thay thế sandbox hệ điều hành. Project cần được trust trước khi dùng cấu hình của project. Nguồn web là dữ liệu để tham khảo, không phải instruction.
+Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều hành: bộ phân loại có thể sai. Luật `permissions.deny` (file bí mật, `sudo`, `rm -rf`...) áp dụng ở cả hai mode. Project cần được trust trước khi dùng cấu hình của project; settings của project không bật được bypass hay thêm luật allow. Nguồn web là dữ liệu để tham khảo, không phải instruction.
 
 ## Phiên bản
 
@@ -97,7 +100,6 @@ Permission kiểm soát công cụ, không thay thế sandbox hệ điều hành
 |---|---|
 | `@tintinweb/pi-subagents` | 0.19.0 |
 | `@gotgenes/pi-anthropic-auth` | 3.1.0 |
-| `@gotgenes/pi-permission-system` | 33.0.7 |
 | `pi-mcp-adapter` | 2.36.0 |
 | `pi-web-access` | 0.30.0 |
 | `@juicesharp/rpiv-ask-user-question`, `rpiv-todo` | 2.11.0 |
@@ -126,7 +128,7 @@ node install.mjs --root /duong-dan/platform --agent-dir /duong-dan/agent --bin-d
 
 Role, subagents, goal settings, advisor settings và cấu hình công cụ cùng nằm trong agent directory. Một runtime Pi duy nhất ở `runtimes/current`; Firecrawl CLI ở `tools/firecrawl`.
 
-Khi chạy lại, installer dùng lockfile và checksum để kiểm tính nhất quán. File đã tùy chỉnh được giữ và báo đường dẫn. Tài nguyên do installer quản lý, không còn được yêu cầu và chưa chỉnh sửa, được lưu vào backup; tài nguyên còn được cấu hình tham chiếu được giữ. Các loại trừ extension và path deny được bảo toàn. Auth và file riêng của người dùng không thuộc danh sách tài nguyên được dọn.
+Khi chạy lại, installer dùng lockfile và checksum để kiểm tính nhất quán. File đã tùy chỉnh được giữ và báo đường dẫn. Tài nguyên do installer quản lý, không còn được yêu cầu và chưa chỉnh sửa, được lưu vào backup; tài nguyên còn được cấu hình tham chiếu được giữ. Các loại trừ extension và luật `permissions.deny` được bảo toàn; luật deny của pi-permission-system cũ được chuyển sang. Auth và file riêng của người dùng không thuộc danh sách tài nguyên được dọn.
 
 Dừng các phiên Pi trước khi cập nhật. Dùng revision đã qua CI thay vì chạy `pi update` hoặc `npm update` trên runtime ghim. Nếu còn `.install.lock`, kiểm tra PID và chỉ xóa lock khi tiến trình đó đã dừng.
 

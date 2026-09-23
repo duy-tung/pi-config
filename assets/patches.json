@@ -93,22 +93,6 @@
       ]
     },
     {
-      "package": "@gotgenes/pi-permission-system",
-      "versions": {
-        "current": "33.0.7"
-      },
-      "file": "src/access-intent/tool-input-path.ts",
-      "originalSha256": "6c41745b056bfdb703f774ac616eb134ae5399b5b6ba6754b0b431366f0462be",
-      "patchedSha256": "a343a993693a1e509cff64366b8f4ecda268706c634db464157c2195e7893df6",
-      "edits": [
-        {
-          "before": "    case \"mcp\":\n      return byConvention(getNonEmptyString(toRecord(record.arguments).path));",
-          "after": "    case \"mcp\": {\n      // pi-mcp-adapter uses args (object or JSON string); legacy MCP uses arguments.\n      let args: unknown = record.args ?? record.arguments;\n      if (typeof args === \"string\") {\n        try { args = JSON.parse(args); } catch { args = undefined; }\n      }\n      return byConvention(getNonEmptyString(toRecord(args).path));\n    }",
-          "count": 1
-        }
-      ]
-    },
-    {
       "package": "@tintinweb/pi-subagents",
       "versions": {
         "current": "0.19.0"

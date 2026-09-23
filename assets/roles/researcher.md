@@ -4,7 +4,7 @@ description: Khảo sát code, docs, log và thu thập bằng chứng; chỉ đ
 model: opencode-go/glm-5.3-flash
 thinking: max
 tools: "read, grep, find, ls, ext:pi-web-access"
-extensions: ["pi-anthropic-auth", "pi-permission-system", "pi-web-access"]
+extensions: ["pi-anthropic-auth", "pi-auto-mode", "pi-web-access"]
 inherit_context: false
 prompt_mode: replace
 isolated: false

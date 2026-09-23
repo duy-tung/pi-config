@@ -37,15 +37,14 @@ for (const name of ["researcher", "worker", "debugger", "reviewer"]) {
   const role = fs.readFileSync(path.join(configuration.agentDir, "agents", `${name}.md`), "utf8");
   fs.writeFileSync(path.join(agentDir, "agents", `${name}.md`), role);
 }
-const permissionDir = path.join(agentDir, "extensions", "pi-permission-system");
-fs.mkdirSync(permissionDir, { recursive: true });
-const permission = readJson(path.join(configuration.agentDir, "extensions", "pi-permission-system", "config.json"));
-writeJson(path.join(permissionDir, "config.json"), permission);
 const settings = readJson(path.join(agentDir, "settings.json"));
+settings.autoMode = { ...settings.autoMode, model: "config-test/parent", stateDir: path.join(fixture, "auto-mode") };
 Object.assign(settings, {
   defaultProvider: "config-test", defaultModel: "parent", defaultThinkingLevel: "off",
   enabledModels: ["config-test/parent", "openai-codex/gpt-5.6-sol", "opencode-go/glm-5.3-flash"],
-  extensions: [fileURLToPath(new URL("./agent-provider.ts", import.meta.url))],
+  // Cổng permission của bản cài nạp sau provider giả.
+  extensions: [fileURLToPath(new URL("./agent-provider.ts", import.meta.url)),
+    ...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && entry.replaceAll("\\", "/").endsWith("/pi-auto-mode"))],
   compaction: { enabled: false }, retry: { enabled: false }, skills: [], cacheWarming: "off",
 });
 if (settings.rewind) settings.rewind.storageDir = path.join(fixture, "rewind");
@@ -109,7 +108,7 @@ const originalReadFilePromise = fs.promises.readFile;
 fs.promises.readFile = async function (file, ...args) { ensureSafeRead(file); return originalReadFilePromise.call(this, file, ...args); };
 syncBuiltinESMExports();
 const sdk = await import(pathToFileURL(path.join(modules, "@earendil-works", "pi-coding-agent", "dist", "index.js")).href);
-const control = { plans: {}, seen: [] };
+const control = { plans: {}, seen: [], classifier: [] };
 globalThis[Symbol.for("pi-config:test")] = control;
 const errors = [], prompts = [], notices = [], results = [];
 const loader = new sdk.DefaultResourceLoader({ cwd, agentDir });
@@ -185,14 +184,15 @@ await check('GLM researcher remains read-only',async()=>{
   assert.ok(control.seen.filter(x=>x.key==='child_readonly').at(-1).messages.some(m=>m.role==='toolResult'&&m.isError));
 });
 await check('Sol worker retains permission gate even when isolated=true was requested',async()=>{
-  const before=prompts.length;
   const out=await run('permission',invocation('permission',{subagent_type:'worker',isolated:true}),
-    [[tool('read',{path:'.env'})],[tool('bash',{command:'printf native-agent-permission-ok',timeout:10})],final('CHECKED')]);
+    [[tool('read',{path:'.env'})],[tool('bash',{command:'printf native-agent-permission-ok > gate-proof.txt',timeout:10})],final('CHECKED')]);
   assert.equal(out[0]?.isError,false,JSON.stringify(out));
   const messages=control.seen.filter(x=>x.key==='child_permission').at(-1).messages;
   assert.ok(messages.some(m=>m.role==='toolResult'&&m.isError));
   assert.ok(!JSON.stringify(messages).includes('must-not-be-read'));
-  assert.match(JSON.stringify(messages),/native-agent-permission-ok/);assert.ok(prompts.length>before);
+  assert.equal(fs.readFileSync(path.join(cwd,'gate-proof.txt'),'utf8'),'native-agent-permission-ok');
+  const reviewed=control.seen.filter(x=>x.key==='classifier').map(x=>JSON.stringify(x.messages));
+  assert.ok(reviewed.some(text=>text.includes('gate-proof.txt')&&text.includes('delegated_task')),'Child phải qua bộ phân loại của pi-auto-mode');
 });
 await check('Sol worker can make an authorized file edit',async()=>{
   const out=await run('write',invocation('write',{subagent_type:'worker'}),[[tool('write',{path:'result.txt',content:'NATIVE_WRITE_OK'})],final('DONE')]);

@@ -37,22 +37,21 @@ fs.mkdirSync(path.join(agentDir, "agents"));
 for (const name of ["researcher", "worker", "debugger", "reviewer"]) {
   const role = fs.readFileSync(path.join(configuration.agentDir, "agents", `${name}.md`), "utf8")
     .replace(/^model: .+$/m, "model: config-test/worker")
-    .replace('"pi-permission-system"', '"pi-permission-system", "scripted-provider"');
+    .replace('"pi-auto-mode"', '"pi-auto-mode", "scripted-provider"');
   fs.writeFileSync(path.join(agentDir, "agents", `${name}.md`), role);
 }
 const credentialFile = path.join(agentDir, 'auth.json');
-const permissionDir = path.join(agentDir, "extensions", "pi-permission-system");
-fs.mkdirSync(permissionDir, { recursive: true });
-const permission = readJson(path.join(configuration.agentDir, "extensions", "pi-permission-system", "config.json"));
-permission.permission.path[credentialFile.replaceAll("\\", "/")] = "deny";
-writeJson(path.join(permissionDir, "config.json"), permission);
 const settings = readJson(path.join(agentDir, "settings.json"));
+// Cổng permission của bản cài: thêm deny cho auth của fixture, bộ phân loại dùng model giả.
+settings.permissions.deny.push(`Path(${credentialFile.replaceAll("\\", "/")})`);
+settings.autoMode = { ...settings.autoMode, model: "config-test/worker", stateDir: path.join(fixture, "auto-mode") };
 Object.assign(settings, {
   defaultProvider: "config-test", defaultModel: "parent", defaultThinkingLevel: "off",
   enabledModels: ["config-test/parent", "config-test/worker"],
-  // Giữ pi-rewind của bản cài để kiểm /rewind; các extension giao diện khác không cần trong RPC.
+  // Giữ pi-rewind và pi-auto-mode (nạp sau cùng) của bản cài; các extension giao diện khác không cần trong RPC.
   extensions: [...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && entry.replaceAll("\\", "/").endsWith("/pi-rewind")),
-    fileURLToPath(new URL("./scripted-provider.ts", import.meta.url))],
+    fileURLToPath(new URL("./scripted-provider.ts", import.meta.url)),
+    ...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && entry.replaceAll("\\", "/").endsWith("/pi-auto-mode"))],
   compaction: { enabled: false }, retry: { enabled: false }, skills: [], cacheWarming: "off",
 });
 if (settings.rewind) settings.rewind.storageDir = path.join(fixture, "rewind");
@@ -124,7 +123,7 @@ const originalReadFilePromise = fs.promises.readFile;
 fs.promises.readFile = async function (file, ...args) { ensureSafeRead(file); return originalReadFilePromise.call(this, file, ...args); };
 syncBuiltinESMExports();
 const sdk = await import(pathToFileURL(path.join(modules, "@earendil-works", "pi-coding-agent", "dist", "index.js")).href);
-const control = { plans: {}, seen: [] };
+const control = { plans: {}, seen: [], classifier: [] };
 globalThis[Symbol.for("pi-config:test")] = control;
 const errors = [], prompts = [], notices = [], results = [];
 // Câu trả lời định sẵn cho dialog Rewind (RPC dùng select); dialog khác dùng mặc định.
@@ -139,7 +138,8 @@ const { session } = await sdk.createAgentSession({ cwd, agentDir, resourceLoader
 // Automatic approvals are restricted to our isolated fixture and fake model.
 const ui = {
   ...Object.fromEntries(["setStatus", "setWorkingMessage", "setWorkingVisible", "setWorkingIndicator", "setHiddenThinkingLabel", "setWidget", "setFooter", "setHeader", "setTitle", "pasteToEditor", "setEditorText", "addAutocompleteProvider", "setEditorComponent", "setToolsExpanded"].map((key) => [key, () => {}])),
-  onTerminalInput: () => () => {}, input: async () => undefined, editor: async () => undefined,
+  onTerminalInput: () => () => {}, input: async () => undefined,
+  editor: async (title, text) => { prompts.push({ kind: "editor", title, text }); return undefined; },
   getEditorComponent: () => undefined, getAllThemes: () => [], setTheme: () => ({ success: true }),
   theme: { fg: (_color, text) => text, bg: (_color, text) => text, bold: (text) => text, italic: (text) => text, dim: (text) => text },
   select: async (title, options) => {
@@ -185,7 +185,7 @@ async function check(name, fn) {
 }
 await check("single session exposes slash commands and only one model delegation system", async () => {
   const commands = session.extensionRunner.getRegisteredCommands().map(command => command.name);
-  for (const name of ["goal", "goal-pause", "goal-resume", "bg", "jobs", "logs", "kill", "advisor", "advisor-off", "rewind", "checkpoint", "undo", "redo"])
+  for (const name of ["goal", "goal-pause", "goal-resume", "bg", "jobs", "logs", "kill", "advisor", "advisor-off", "rewind", "checkpoint", "undo", "redo", "permissions", "auto-mode"])
     assert.ok(commands.includes(name), `Missing /${name}`);
   assert.equal(new Set(commands).size, commands.length);
   const tools = session.getAllTools().map(tool => tool.name);
@@ -208,21 +208,55 @@ await check("credential storage is denied to model tools", async () => {
   assert.equal(result[0]?.isError, true);
   assert.ok(!JSON.stringify(result).includes("synthetic-private-credential"));
 });
-await check("shell asks parent before fixture execution", async () => {
-  const before = prompts.length;
-  const result = await run("shell", [[tool("bash", { command: "printf integration-ok", timeout: 10 })]]);
-  assert.ok(prompts.length > before); assert.match(JSON.stringify(result), /integration-ok/u);
+const classifierRequests = () => control.seen.filter((entry) => entry.key === "classifier");
+await check("/auto-mode eval runs the labeled cases through the classifier", async () => {
+  const before = classifierRequests().length;
+  await session.prompt("/auto-mode eval config-test/worker");
+  const report = prompts.findLast((item) => item.kind === "editor" && /Auto mode eval/u.test(item.title));
+  assert.ok(report, JSON.stringify(notices.slice(-3)));
+  assert.match(report.text, /Cases: \d+ \(\d+ must-block, \d+ must-allow\)/u);
+  assert.ok(classifierRequests().length > before);
+  assert.ok(!report.text.includes("unavailable: 1"), report.text.slice(0, 400));
+});
+await check("auto mode: read-only shell runs directly, other commands go through the classifier", async () => {
+  let before = classifierRequests().length;
+  let result = await run("shell", [[tool("bash", { command: "printf integration-ok", timeout: 10 })]]);
+  assert.match(JSON.stringify(result), /integration-ok/u); assert.ok(!result[0]?.isError, JSON.stringify(result));
+  assert.equal(classifierRequests().length, before, "Lệnh chỉ đọc không cần bộ phân loại");
+  control.classifier.push("<block>no</block>");
+  result = await run("shell-classified", [[tool("bash", { command: "printf classified-ok > classified.txt", timeout: 10 })]], "USER_INTENT_MARKER");
   assert.ok(!result[0]?.isError, JSON.stringify(result));
+  assert.equal(fs.readFileSync(path.join(cwd, "classified.txt"), "utf8"), "classified-ok");
+  const request = classifierRequests().at(-1);
+  assert.equal(classifierRequests().length, before + 1);
+  const text = JSON.stringify(request.messages);
+  assert.match(text, /USER_INTENT_MARKER/u); assert.match(text, /classified-ok > classified\.txt/u);
+  assert.ok(!text.includes("SAFE_CONTENT"), "Kết quả tool không được gửi cho bộ phân loại");
+  before = classifierRequests().length;
+  control.classifier.push("<block>yes</block>", "<block>yes</block><rule>Irreversible Deletion</rule><reason>Fixture block.</reason>");
+  result = await run("shell-blocked", [[tool("bash", { command: "printf blocked > blocked.txt", timeout: 10 })]]);
+  assert.equal(result[0]?.isError, true, JSON.stringify(result));
+  assert.match(JSON.stringify(result), /denied by Pi's auto mode classifier/u);
+  assert.ok(!fs.existsSync(path.join(cwd, "blocked.txt")));
+  assert.equal(classifierRequests().length, before + 2);
+  assert.ok(notices.some((item) => /denied by auto mode/u.test(item.message)));
 });
 if (configuration.packages.includes("@tintinweb/pi-subagents")) {
-  await check("Agent uses separate model/context and forwards permission", async () => {
-    control.plans.child = [[tool("bash", { command: "printf child-permission-ok", timeout: 10 })], final("CHILD_DONE")];
-    const before = prompts.length;
+  await check("Agent spawn is classified; the child keeps the gate and the root user intent", async () => {
+    control.plans.child = [[tool("bash", { command: "printf child-permission-ok > child-proof.txt", timeout: 10 })], final("CHILD_DONE")];
+    const before = classifierRequests().length;
     const result = await run("parent", [[tool("Agent", { subagent_type: "worker", prompt: "CASE:child Execute fixture command.", description: "fixture worker", run_in_background: false })]], "PARENT_PRIVATE_MARKER");
     const child = control.seen.filter((entry) => entry.key === "child");
     assert.ok(child.length > 0, JSON.stringify(result)); assert.ok(child.every((entry) => entry.model === "worker"));
     assert.ok(child.every((entry) => !JSON.stringify(entry.messages).includes("PARENT_PRIVATE_MARKER")));
-    assert.ok(prompts.length > before); assert.match(JSON.stringify(result), /CHILD_DONE/u);
+    assert.match(JSON.stringify(result), /CHILD_DONE/u);
+    assert.equal(fs.readFileSync(path.join(cwd, "child-proof.txt"), "utf8"), "child-permission-ok");
+    const requests = classifierRequests().slice(before).map((entry) => JSON.stringify(entry.messages));
+    assert.ok(requests.some((text) => text.includes('\\"Agent\\"') || text.includes("(worker)")), "Agent spawn phải qua bộ phân loại");
+    const fromChild = requests.find((text) => text.includes("child-proof.txt"));
+    assert.ok(fromChild, "Child phải có cổng permission");
+    assert.match(fromChild, /root_user_messages/u); assert.match(fromChild, /PARENT_PRIVATE_MARKER/u);
+    assert.match(fromChild, /delegated_task/u);
   });
   await check("reviewer cannot write", async () => {
     control.plans.reviewchild = [[tool("write", { path: "reviewer-illegal.txt", content: "bad" })], final("REVIEW_DONE")];
@@ -368,14 +402,19 @@ await check("clipboard image shortcut, attachment, deleted marker and size guard
     if(display===undefined)delete process.env.DISPLAY;else process.env.DISPLAY=display;
   }
 });
-await check("headless permission asks fail closed", async () => {
+await check("headless auto mode never prompts and fails closed without a verdict", async () => {
   session.extensionRunner.setUIContext(undefined, "print");
+  const before = prompts.length;
+  control.classifier.push("garbage", "garbage", "garbage");
   const result = await run("headless", [[tool("bash", { command: "printf forbidden > headless-forbidden.txt", timeout: 5 })]]);
   assert.equal(result[0]?.isError, true, JSON.stringify(result));
+  assert.match(JSON.stringify(result), /could not check this action/u);
   assert.ok(!fs.existsSync(path.join(cwd, "headless-forbidden.txt")));
+  control.classifier.push("<block>yes</block>", "<block>yes</block><rule>Persistence</rule><reason>Fixture block.</reason>");
   const background = await run("headless-background", [[tool("bg_run", { name: "Denied job", isAgent: false, command: "printf forbidden > bg-forbidden.txt", triggerOnCompletion: false })]]);
   assert.equal(background[0]?.isError, true, JSON.stringify(background));
   assert.ok(!fs.existsSync(path.join(cwd,"bg-forbidden.txt")));
+  assert.equal(prompts.length, before);
 });
 await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
 session.dispose();

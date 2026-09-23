@@ -147,6 +147,11 @@ export default function piRewind(pi: ExtensionAPI) {
         /* bỏ qua: tool đã chạy xong */
       }
     });
+
+    // Tool bị cổng permission chặn không có tool_result: bỏ cửa sổ theo dõi (lệnh không chạy).
+    pi.on("tool_execution_end", (event) => {
+      windows.delete(event.toolCallId);
+    });
   }
 
   function installDoubleEscape(ctx: ExtensionContext): void {

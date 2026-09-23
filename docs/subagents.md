@@ -28,7 +28,7 @@ Model/thinking ghim trong file role được ưu tiên hơn tham số tool. Ch�
 
 ## Context và thực thi
 
-Role dùng `inherit_context:false`, `prompt_mode:replace`, `isolated:false` và `persist_session:true`. Worker nhận prompt riêng; permission/auth hooks được giữ.
+Role dùng `inherit_context:false`, `prompt_mode:replace`, `isolated:false` và `persist_session:true`. Worker nhận prompt riêng; auth và cổng permission `pi-auto-mode` được giữ (role liệt kê `pi-auto-mode` trong `extensions`).
 
 Mỗi role giới hạn 12 turns với grace 2. Foreground và background có pool riêng, mỗi pool tối đa 2; các phiên Pi quản lý pool riêng.
 
@@ -36,7 +36,7 @@ Mỗi role giới hạn 12 turns với grace 2. Foreground và background có po
 
 ## Quyền và nghiệm thu
 
-Researcher/reviewer chỉ đọc. Worker/debugger dùng shell, write và edit qua permission. Yêu cầu quyền của child được chuyển lên UI parent.
+Researcher/reviewer chỉ đọc. Worker/debugger dùng shell, write và edit qua cổng permission. Child dùng mode (auto/bypass) của phiên gốc; bộ phân loại của child lấy tin nhắn của người dùng ở phiên gốc làm ý định, coi task do parent viết là không phải lời người dùng. Khi cần hỏi (luật ask, chạm giới hạn chặn), câu hỏi hiện ở UI của phiên gốc. Trong auto mode, `Agent` với `isolated:true` hoặc danh sách extension thiếu `pi-auto-mode` bị chặn vì child sẽ chạy không có cổng.
 
 Parent cần tránh giao trùng việc hoặc để nhiều writer sửa chồng file. Dùng ID của agent đang chạy để lấy kết quả hay điều chỉnh; parent kiểm evidence và test trước khi kết luận.
 

@@ -42,9 +42,10 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.equal(settings.modelThinkingLevels["openai-codex/gpt-5.6-sol"], "high");
       assert.equal(settings.shellPath, options.shellPath);
       assert.equal(settings.skills.length, 3);
-      assert.equal(settings.extensions.length, 2);
+      assert.equal(settings.extensions.length, 3);
       assert.ok(settings.extensions[0].endsWith("rose-pine-palette.ts"));
       assert.equal(settings.extensions[1], p.join(options.root, "assets", "extensions", "pi-rewind"));
+      assert.equal(settings.extensions[2], p.join(options.root, "assets", "extensions", "pi-auto-mode"));
       assert.equal(settings.doubleEscapeAction, "none");
       assert.deepEqual(settings.rewind, { storageDir: p.join(options.root, "state", "rewind"), retentionDays: 30 });
       assert.equal(settings.workspaceHistory, undefined);
@@ -84,7 +85,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
   });
 
   test(`${platform}: MCP không qua shell, đường dẫn có khoảng trắng và credential được chặn`, () => {
-    const { p, options, json, profiles } = fixture(platform);
+    const { p, options, json, profiles, files } = fixture(platform);
     const forward = (value) => value.replaceAll("\\", "/");
     for (const profile of Object.values(profiles)) {
       const mcp = json(p.join(profile.agentDir, "mcp.json"));
@@ -95,13 +96,20 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.equal(server.cwd, "${PI_WORKSPACE_DIR}");
       assert.equal(server.lifecycle, "lazy");
       assert.deepEqual(server.includeTools, ["read_text_file", "list_directory", "get_file_info", "list_allowed_directories"]);
-      const { permission } = json(p.join(profile.agentDir, "extensions", "pi-permission-system", "config.json"));
-      for (const deny of [p.join(options.agentDir, "auth.json"), p.join(options.root, "profiles", "*", "auth.json"), p.join(options.root, "secrets", "*.env"), p.join(options.home, ".codex", "auth.json")]) {
-        assert.equal(permission.path[forward(deny)], "deny", deny);
+      const settings = json(p.join(profile.agentDir, "settings.json"));
+      const deny = settings.permissions.deny;
+      for (const file of [p.join(options.agentDir, "auth.json"), p.join(options.root, "profiles", "*", "auth.json"), p.join(options.root, "secrets", "*.env"), p.join(options.home, ".codex", "auth.json")]) {
+        assert.ok(deny.includes(`Path(${forward(file)})`), file);
       }
-      assert.equal(permission.mcpScript, "deny");
-      assert.equal(permission.bash["*firecrawl-key.cjs*"], "deny");
-      assert.equal(permission["*"], "ask");
+      assert.ok(deny.includes("mcpScript"));
+      assert.ok(deny.includes("Bash(*firecrawl-key.cjs*)"));
+      assert.ok(deny.includes("!Path(*.env.example)"));
+      assert.equal(settings.permissions.defaultMode, "auto");
+      assert.equal(settings.autoMode.model, "openai-codex/gpt-6-sol");
+      assert.ok(settings.extensions.at(-1).endsWith("pi-auto-mode"), "pi-auto-mode phải nạp sau cùng");
+      assert.ok(!settings.packages.some((entry) => String(entry?.source ?? entry).includes("pi-permission-system")));
+      assert.ok(!files.some((file) => file.path.includes("pi-permission-system")));
+      assert.deepEqual(json(p.join(profile.agentDir, "keybindings.json"))["app.thinking.cycle"], ["alt+t"]);
       const firecrawl = json(p.join(profile.agentDir, "web-search.json"));
       assert.equal(firecrawl.provider, "firecrawl");
       assert.equal(firecrawl.searchRouting.useCurrentModel, false);
@@ -112,7 +120,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       const credentialRoot = platform === "darwin" ? p.join(options.home, "Library", "Application Support", "firecrawl-cli", "*")
         : platform === "win32" ? p.join(options.home, "AppData", "Roaming", "firecrawl-cli", "*")
           : p.join(options.home, ".config", "firecrawl-cli", "*");
-      assert.equal(permission.path[forward(credentialRoot)], "deny");
+      assert.ok(deny.includes(`Path(${forward(credentialRoot)})`));
     }
   });
 

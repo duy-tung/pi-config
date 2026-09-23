@@ -17,9 +17,13 @@ export default function (pi) {
       const text = context.messages.filter((message) => message.role === "user")
         .map((message) => typeof message.content === "string" ? message.content
           : message.content.filter((part) => part.type === "text").map((part) => part.text).join("\n")).at(-1) || "";
-      const key = [...text.matchAll(/CASE:([a-z0-9_-]+)/g)].at(-1)?.[1] ?? control.fallbackKey;
+      // Bộ phân loại của pi-auto-mode: trả lời từ hàng đợi riêng (mặc định cho phép).
+      const classifier = JSON.stringify(context).includes("You are the permission classifier for Pi");
+      const key = classifier ? "classifier" : [...text.matchAll(/CASE:([a-z0-9_-]+)/g)].at(-1)?.[1] ?? control.fallbackKey;
       control.seen.push({ key, model: model.id, options, messages: context.messages });
-      const content = control.plans[key]?.shift() ?? [{ type: "text", text: "SCRIPT_COMPLETE" }];
+      const content = classifier
+        ? [{ type: "text", text: control.classifier?.shift() ?? "<block>no</block>" }]
+        : control.plans[key]?.shift() ?? [{ type: "text", text: "SCRIPT_COMPLETE" }];
       const message = {
         role: "assistant", content, api: model.api, provider: model.provider, model: model.id,
         usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,

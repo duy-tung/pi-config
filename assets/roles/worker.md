@@ -4,7 +4,7 @@ description: Triển khai task đã được parent chốt và kiểm thử ph�
 model: openai-codex/gpt-5.6-sol
 thinking: high
 tools: "read, grep, find, ls, write, edit, bash"
-extensions: ["pi-anthropic-auth", "pi-permission-system"]
+extensions: ["pi-anthropic-auth", "pi-auto-mode"]
 inherit_context: false
 prompt_mode: replace
 isolated: false

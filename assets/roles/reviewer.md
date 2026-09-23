@@ -4,7 +4,7 @@ description: Review độc lập; chỉ đọc, nêu lỗi có bằng chứng v�
 model: openai-codex/gpt-5.6-sol
 thinking: high
 tools: "read, grep, find, ls"
-extensions: ["pi-anthropic-auth", "pi-permission-system"]
+extensions: ["pi-anthropic-auth", "pi-auto-mode"]
 inherit_context: false
 prompt_mode: replace
 isolated: false

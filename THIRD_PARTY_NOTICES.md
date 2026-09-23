@@ -7,7 +7,6 @@
 | Thành phần | Phiên bản | Nguồn | Giấy phép kèm theo |
 |---|---|---|---|
 | Pi coding agent | 0.87.1 | [earendil-works/pi](https://github.com/earendil-works/pi) | [MIT — Mario Zechner](vendor/pi.LICENSE) |
-| pi-permission-system | 33.0.7 | [gotgenes/pi-packages](https://github.com/gotgenes/pi-packages/tree/main/packages/pi-permission-system) | [MIT — MasuRii và Christopher D. Lasher](vendor/pi-permission-system.LICENSE) |
 | pi-subagents | 0.19.0 | [tintinweb/pi-subagents](https://github.com/tintinweb/pi-subagents) | [MIT — tintinweb](vendor/pi-subagents.LICENSE) |
 | pi-open-tui | 0.3.8 | [OldSuns/pi-open-tui](https://github.com/OldSuns/pi-open-tui) | [MIT — pi-open-tui contributors](vendor/pi-open-tui.LICENSE) |
 | pi-advisor-flow | 0.8.0 | [philipbrembeck/pi-advisor](https://github.com/philipbrembeck/pi-advisor) | [MIT — Philip Brembeck](vendor/pi-advisor-flow.LICENSE) |
@@ -19,7 +18,9 @@ Nguồn bổ sung: [pi-goal-x](https://github.com/tmonk/pi-goal-x), [pi-backgrou
 
 `pi-rewind` (`assets/extensions/pi-rewind`) là mã riêng của pi-config (MIT). Nhãn và bố cục giao diện theo `/rewind` của Claude Code; ý tưởng kỹ thuật tham khảo [pi-workspace-history](https://github.com/wcldyx/pi-workspace-history) (MIT) nhưng không chép mã.
 
-Sáu bản vá runtime: footer tối giản; chuẩn hóa MCP arguments cho permission; chuyển lifecycle child session cho permission; gọi advisor qua ModelRuntime; giới hạn background vào shell jobs với notification không tự đánh thức model mặc định; giữ image-paste preview ở UI để ảnh không vào context hai lần. Background attribution entrypoint không được nạp; Claude auth do pi-anthropic-auth quản lý. Mọi bản vá kiểm phiên bản và SHA256 source/kết quả. Các tác giả upstream không bảo trợ hoặc chứng nhận bản phân phối này.
+`pi-auto-mode` (`assets/extensions/pi-auto-mode`) là mã riêng của pi-config (MIT). Hành vi và giao diện theo auto mode và bypassPermissions của Claude Code (tài liệu và bài viết kỹ thuật công khai của Anthropic), cùng ý tưởng duyệt tự động của OpenAI Codex auto-review; prompt, bộ luật và mã được viết riêng, không chép văn bản hay mã của Claude Code hoặc Codex.
+
+Năm bản vá runtime: footer tối giản; chuyển lifecycle child session cho cổng permission (pi-auto-mode); gọi advisor qua ModelRuntime; giới hạn background vào shell jobs với notification không tự đánh thức model mặc định; giữ image-paste preview ở UI để ảnh không vào context hai lần. Background attribution entrypoint không được nạp; Claude auth do pi-anthropic-auth quản lý. Mọi bản vá kiểm phiên bản và SHA256 source/kết quả. Các tác giả upstream không bảo trợ hoặc chứng nhận bản phân phối này.
 
 ## Dependency được tải khi cài đặt
 

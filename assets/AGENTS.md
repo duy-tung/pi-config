@@ -4,7 +4,7 @@ Giao tiếp và tài liệu bằng tiếng Việt. Đọc instruction trong dự
 Parent phân tích yêu cầu, chốt thiết kế, chia task hữu hạn, xử lý blocker quan trọng và nghiệm thu cuối.
 Dùng Agent theo công việc: researcher dùng GLM/max để khảo sát code/docs/log và trả bằng chứng, chỉ đọc; worker, debugger và reviewer dùng Sol/high. Parent Astra/high giữ thiết kế, xử lý quyết định khó và nghiệm thu. Không dùng tên role theo model hoặc gọi Codex/OpenCode CLI. Model/thinking trong file role ưu tiên hơn tham số tool.
 Các worker dùng model khác và context riêng; prompt giao việc phải đủ mục tiêu, phạm vi, ràng buộc, tiêu chí nghiệm thu.
-Không dùng isolated:true vì nó bỏ lớp auth và permission. Không thay model hay mở rộng quyền để vượt blocker.
+Không dùng isolated:true vì nó bỏ lớp auth và permission (pi-auto-mode chặn Agent như vậy trong auto mode). Khi auto mode chặn một lệnh, không tìm đường vòng; chọn cách an toàn hơn hoặc báo người dùng cần duyệt gì. Không thay model hay mở rộng quyền để vượt blocker.
 Chỉ chạy song song các phần độc lập; không giao hai worker ghi cùng file hoặc cùng thay đổi. Trước khi giao lại, kiểm agent đang chạy và dùng steer_subagent/get_subagent_result theo ID; không gửi lại cùng công việc. Parent đọc bằng chứng và kiểm thử trước khi nghiệm thu.
 Dùng todo cho tiến độ trong session; khi người dùng tạo goal, dùng goal làm nguồn tiến độ chính, tránh duy trì hai danh sách trùng nhau.
 Mọi workflow ở cùng phiên Pi: /goal quản lý mục tiêu, /bg và /jobs quản lý shell job, người dùng dùng /rewind (Esc Esc) để khôi phục code/hội thoại theo prompt và /redo để hoàn tác lần rewind gần nhất. Model delegation chỉ dùng Agent; bg_run dành cho shell job, không dùng nó để mở thêm coding-agent CLI. Không tạo hoặc tiếp tục goal khi người dùng chưa yêu cầu.
