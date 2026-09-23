@@ -54,7 +54,9 @@ Object.assign(settings, {
     ...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && entry.replaceAll("\\", "/").endsWith("/pi-auto-mode"))],
   compaction: { enabled: false }, retry: { enabled: false }, skills: [], cacheWarming: "off",
 });
-if (settings.rewind) settings.rewind.storageDir = path.join(fixture, "rewind");
+// Máy CI Windows có lúc chạy git lần đầu chậm hơn 2 giây; pi-rewind khi đó tự tắt theo dõi bash
+// (đúng thiết kế) làm kiểm thử rewind bash chập chờn. Fixture nới ngưỡng để kết quả ổn định.
+if (settings.rewind) Object.assign(settings.rewind, { storageDir: path.join(fixture, "rewind"), watchSlowMs: 60000 });
 writeJson(path.join(agentDir, "settings.json"), settings);
 writeJson(credentialFile, {"fixture-secret": {type: "api_key", key: "synthetic-private-credential"}});
 if (configuration.packages.includes("pi-advisor-flow")) {
@@ -354,7 +356,7 @@ await check("rewind restores code and conversation like Claude Code; redo brings
   assert.ok(checkpoints.some((entry) => entry.data.userEntryId === userTwo.id), "Checkpoint phải gắn với user message của prompt");
   rewindAnswers.push("rewind-two", "Restore code and conversation");
   await session.prompt("/rewind");
-  assert.equal(read(fileA), "A1\n", JSON.stringify(notices)); assert.equal(read(fileB), null);
+  assert.equal(read(fileA), "A1\n", JSON.stringify(notices)); assert.equal(read(fileB), null, JSON.stringify(notices));
   assert.ok(!sessionManager.getBranch().some((entry) => entry.id === userTwo.id), "Hội thoại phải quay về trước prompt đã chọn");
   await session.prompt("/redo");
   assert.equal(read(fileA), "A2\n"); assert.equal(read(fileB), "B");

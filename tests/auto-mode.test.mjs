@@ -137,7 +137,8 @@ test("chính sách: lối đi nhanh, luật, bypass và tự bảo vệ", () => 
     assert.equal(decide({ toolName: "read", input: { path: "/etc/hosts" } }, auto).kind, "classify");
     assert.equal(decide(bash("grep -rn TOKEN ~/ 2>/dev/null"), auto).kind, "classify");
     assert.equal(decide(bash("cat ../other/README.md"), auto).kind, "classify");
-    assert.equal(decide({ toolName: "read", input: { path: "/opt/skills/x/SKILL.md" } }, { ...auto, readRoots: [ws.cwd, "/opt/skills"] }).kind, "allow");
+    const skills = path.join(ws.dir, "skills");
+    assert.equal(decide({ toolName: "read", input: { path: path.join(skills, "x", "SKILL.md") } }, { ...auto, readRoots: [ws.cwd, skills] }).kind, "allow");
     assert.equal(decide(bash("mkdir -p build && touch build/a"), auto).kind, "allow");
     assert.equal(decide(bash("cd /tmp && mkdir x"), auto).kind, "classify");
     assert.equal(decide(bash("npm install"), auto).kind, "classify");
@@ -158,7 +159,8 @@ test("chính sách: lối đi nhanh, luật, bypass và tự bảo vệ", () => 
     // Cấu hình của chính cổng permission: người dùng mới được sửa khi ở auto.
     const settings = path.join(ws.home, ".pi", "agent", "settings.json");
     assert.equal(decide({ toolName: "write", input: { path: settings, content: "{}" } }, auto).kind, "ask");
-    assert.equal(decide(bash(`echo '{}' > ${settings}`), auto).kind, "ask");
+    // Trong bash, "\\" là ký tự escape: dùng "/" như Git Bash trên Windows.
+    assert.equal(decide(bash(`echo '{}' > '${settings.replaceAll("\\", "/")}'`), auto).kind, "ask");
     assert.equal(decide({ toolName: "write", input: { path: settings, content: "{}" } }, { ...auto, mode: "bypass" }).kind, "allow");
     // Subagent không có cổng permission bị chặn trong auto.
     const ungated = context(ws, { agentIsUngated: (input) => input.isolated === true });
