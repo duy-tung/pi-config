@@ -66,10 +66,14 @@ export interface CallFacts {
   summary: string;
 }
 
-// Chữ có khoảng trắng chỉ tính là đường dẫn khi chứa "/" ("My Project/.env"), để câu commit
-// kiểu "fix bug" không bị coi là file; chuỗi nhiều dòng không phải đường dẫn.
+const URL_LIKE = /^[a-z][a-z0-9+.-]+:\/\//iu;
+// Đường dẫn tuyệt đối/tương đối rõ ràng: /, ~/, ./, ../, ổ đĩa Windows (C:\ hoặc C:/), UNC (\\server).
+const EXPLICIT_PATH = /^(?:\/|~[\/\\]|~$|\.\.?[\/\\]|[A-Za-z]:[\/\\]|\\\\)/u;
+
+// Từ của lệnh shell: có khoảng trắng chỉ tính là đường dẫn khi chứa dấu phân cách thư mục
+// ("My Project/.env"), để câu commit kiểu "fix bug" không bị coi là file.
 const looksLikePath = (word: string) =>
-  word !== "" && !/[\r\n]/u.test(word) && (!/\s/u.test(word) || word.includes("/")) && !word.startsWith("-") && !/^[a-z]+:\/\//iu.test(word);
+  word !== "" && !/[\r\n]/u.test(word) && (!/\s/u.test(word) || /[\/\\]/u.test(word)) && !word.startsWith("-") && !URL_LIKE.test(word);
 
 /** Đối số có thể là đường dẫn: mọi từ chữ thuần (trừ tên lệnh và tùy chọn) + đích chuyển hướng. */
 function shellPaths(analysis: ShellAnalysis, cwd: string, home: string): string[] {
@@ -210,7 +214,8 @@ function inputPaths(input: unknown, cwd: string, home: string): string[] {
           /* không phải JSON */
         }
       }
-      const pathLike = /^(?:\/|~\/|~$|\.\.?\/)/u.test(trimmed) || (PATH_KEY.test(key) && looksLikePath(trimmed));
+      // Tham số của tool là chuỗi riêng: dấu cách vẫn là một phần đường dẫn.
+      const pathLike = EXPLICIT_PATH.test(trimmed) || (PATH_KEY.test(key) && trimmed !== "" && !trimmed.startsWith("-") && !URL_LIKE.test(trimmed));
       if (pathLike && !/[\r\n]/u.test(trimmed) && trimmed.length < 4_096) result.add(resolveShellPath(trimmed, cwd, home));
       return;
     }

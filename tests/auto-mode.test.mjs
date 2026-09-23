@@ -181,6 +181,10 @@ test("chính sách: lối đi nhanh, luật, bypass và tự bảo vệ", () => 
     // Đường dẫn có dấu cách vẫn phải khớp luật deny (tool và shell).
     assert.equal(decide(mcp({ path: `${ws.cwd}/My Project/.env` }), secrets).kind, "deny");
     assert.equal(decide(bash('cat "My Project/.env"'), secrets).kind, "deny");
+    // Đường dẫn kiểu Windows (\\, ổ đĩa, dấu cách) trong tham số MCP và trong lệnh shell có trích dẫn.
+    assert.equal(decide(mcp({ path: "C:\\Users\\dev\\fixture workspace\\.env" }), secrets).kind, "deny");
+    assert.equal(decide(mcp({ uri_or_whatever: "D:/data/prod.env" }), secrets).kind, "deny");
+    assert.equal(decide(bash('cat "C:\\Users\\dev\\My Project\\.env"'), secrets).kind, "deny");
     assert.equal(decide(bash('git commit -m "update prod.env handling"'), secrets).kind, "classify");
     const allowed = context(ws, { rules: buildRuleSet(["web_search", "WebFetch(domain:github.com)"], [], []) });
     assert.equal(decide({ toolName: "web_search", input: { query: "x" } }, allowed).kind, "allow");
