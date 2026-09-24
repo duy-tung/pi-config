@@ -1,10 +1,16 @@
 # Claude và native web search
 
-## Đăng nhập và chọn model
+## Đăng nhập và model
 
-Claude là tùy chọn. Chạy `pi-login`, dùng `/login` và chọn **Anthropic** để đăng nhập gói Claude Pro/Max (OAuth), hoặc cung cấp `ANTHROPIC_API_KEY`. Sau khi đăng nhập, chọn model Claude bằng `/model`; vòng `Ctrl+P` vẫn là Astra, Sol và GLM, thêm Claude bằng `/scoped-models` nếu cần.
+Parent mặc định là **Claude Opus 5.5/high** (`anthropic/claude-opus-5-5`, context 1M của catalog). Chạy `pi-login`, dùng `/login` và chọn **Anthropic** để đăng nhập gói Claude Pro/Max (OAuth), hoặc cung cấp `ANTHROPIC_API_KEY`. Vòng `Ctrl+P` gồm Opus 5.5, GPT-6 Sol, GPT-6 Astra và GLM; worker/debugger/reviewer vẫn cần đăng nhập OpenAI Codex.
+
+Tài liệu Claude Code ghi OAuth của gói Pro/Max dành cho Claude Code và ứng dụng native của Anthropic, và Anthropic có thể thực thi giới hạn này không báo trước. Nếu Claude không dùng được, chọn model khác bằng `/model`; role của Agent không phụ thuộc Claude.
 
 `@gotgenes/pi-anthropic-auth` 3.2.2 shape request OAuth (billing header, system prompt) cho mọi request đi qua provider `anthropic`, và tự thử lại khi Anthropic yêu cầu phiên bản Claude Code mới hơn. Cảnh báo extra usage của Pi vẫn bật (`warnings.anthropicExtraUsage`): request Claude không qua shaping có thể bị tính vào extra usage.
+
+## Mức thinking (effort)
+
+Opus 5.5 không tắt được thinking; `/thinking` (Alt+T) đổi effort `low`…`max`. Pi gửi effort theo lượt bằng một system message rỗng chỉ có `output_config`, và pi-anthropic-auth bỏ message rỗng khi shape request OAuth, nên mọi mức đều thành `high`. Bản vá trong [assets/patches.json](../assets/patches.json) đưa mức hiện tại vào `output_config.effort` của request. Đổi mức thinking giữa phiên làm mất prompt cache một lần. Với API key, request không qua shaping và giữ cơ chế gốc của Pi.
 
 ## Quota trong footer và `/claude-usage`
 
@@ -16,23 +22,29 @@ pi-usage chưa hỗ trợ Anthropic nên pi-config có extension `claude-usage`:
 
 ## Native web search
 
-`web_search` (pi-web-access 0.31.0) định tuyến `["openai", "firecrawl"]` với `useCurrentModel: true`:
+`web_search` (pi-web-access 0.31.0) định tuyến `["openai", "exa", "firecrawl"]` với `useCurrentModel: true`:
 
 | Model hiện tại | Cách tìm |
 |---|---|
 | Codex/OpenAI trên endpoint chính thức (Astra, Sol) | Hosted `web_search` của Responses API, dùng chính model và auth Codex |
 | Claude của provider `anthropic` trên `api.anthropic.com` | Server tool `web_search_20250305` của Anthropic, tối đa 5 lượt tìm mỗi lần gọi |
-| Model khác (GLM, gateway, Claude qua provider khác) | Firecrawl |
+| Model khác (GLM, gateway, Claude qua provider khác) | Exa (endpoint MCP miễn phí, không cần key; đặt `EXA_API_KEY` để dùng API có key), rồi Firecrawl |
 
 Tìm kiếm Claude là một request phụ theo cách WebSearch của Claude Code (prompt viết riêng), đi qua transport Anthropic của Pi nên dùng cùng auth và shaping OAuth. Model không tắt được thinking (Opus 5.x, Fable) tìm với effort `low`; model khác tắt thinking. Nguồn và trích dẫn được đọc từ luồng SSE rồi trả về như kết quả pi-web-access (`**Provider:** anthropic`).
 
-Lỗi mạng, lỗi tạm thời, quota, phản hồi không hợp lệ hoặc tài khoản không hỗ trợ web search chuyển sang Firecrawl. Lỗi xác thực và request sai được báo lại. `webSearch.allowedProviders` chỉ cho phép `openai` và `firecrawl`; `fetch_content` luôn dùng Firecrawl. Phiên mới chỉ hiện `web_enable`; model gọi tool này để bật các web tool.
+Lỗi mạng, lỗi tạm thời, quota, phản hồi không hợp lệ hoặc tài khoản không hỗ trợ web search chuyển sang provider kế tiếp (Exa, rồi Firecrawl). Lỗi xác thực và request sai được báo lại. `webSearch.allowedProviders` chỉ cho phép `openai`, `exa` và `firecrawl`; `fetch_content` luôn dùng Firecrawl. Phiên mới chỉ hiện `web_enable`; model gọi tool này để bật các web tool.
 
 Cầu nối là extension `native-web-search` cùng bản vá `pi-web-access` trong [assets/patches.json](../assets/patches.json): bước `openai` chấp nhận model Claude và giữ `provider` do kết quả trả về.
 
 ## Nâng cấp bản cài cũ
 
-Installer giữ file người dùng đã sửa và in đường dẫn. Nếu `settings.json` hoặc `web-search.json` được giữ nguyên, đối chiếu với cấu hình mới: thêm `<root>/assets/extensions/native-web-search` và `<root>/assets/extensions/claude-usage` vào `extensions`, trước `pi-auto-mode` (extension này phải nạp sau cùng); dùng `searchRouting` và `webSearch` mới, bỏ `provider: "firecrawl"`. Thiếu các phần này thì web search vẫn dùng Firecrawl và footer không có quota Claude. `web_enable` là safe tool của pi-auto-mode nên không cần luật `allow`.
+Installer giữ file người dùng đã sửa và in đường dẫn. Với file được giữ, đối chiếu với cấu hình mới:
+
+- `settings.json`: `defaultProvider: "anthropic"`, `defaultModel: "claude-opus-5-5"`, `enabledModels`, `modelThinkingLevels`; `extensions` có `<root>/assets/extensions/native-web-search` và `<root>/assets/extensions/claude-usage` đứng trước `pi-auto-mode` (extension này phải nạp sau cùng).
+- `agents/*.md` và `subagents.json`: model/thinking của role, `max_turns: 0`, `pi-usage` trong `extensions` của worker/debugger.
+- `web-search.json`: `searchRouting` và `webSearch` với `openai`, `exa`, `firecrawl`; bỏ `provider: "firecrawl"`.
+
+Cách nhanh nhất: đổi tên file được giữ rồi chạy lại installer để nhận bản mới, sau đó chép lại phần tùy chỉnh cần giữ. `pi-doctor` in model thật của từng role. `web_enable` là safe tool của pi-auto-mode nên không cần luật `allow`.
 
 ## Chi phí và giới hạn
 
@@ -40,4 +52,4 @@ Installer giữ file người dùng đã sửa và in đường dẫn. Nếu `se
 - Request phụ không nằm trong token/cost của footer; kết quả web chỉ vào context qua tool result.
 - `pause_turn` từ Anthropic trả kết quả hiện có kèm ghi chú chưa đầy đủ.
 - Mô tả tool của pi-web-access vẫn ghi "OpenAI, Firecrawl"; provider thực tế nằm trong kết quả.
-- Kiểm thử: `tests/native-search.test.mjs`, `tests/claude-usage.test.mjs` (unit), `tests/native-search-wire.test.mjs` và `tests/profile-integration.mjs` (runtime đã cài, fetch giả, credential giả).
+- Kiểm thử: `tests/native-search.test.mjs`, `tests/claude-usage.test.mjs` (unit), `tests/native-search-wire.test.mjs`, `tests/claude-effort-wire.test.mjs` và `tests/profile-integration.mjs` (runtime đã cài, fetch giả, credential giả).

@@ -11,7 +11,7 @@ const args=[path.join(repo,'install.mjs'),'--root',root,'--agent-dir',agentDir,'
 await run(process.execPath,args,{timeout:1800000});
 await run(process.execPath,[path.join(root,'bin/launch.mjs'),'main','--version']);
 await run(process.execPath,[path.join(root,'bin/launch.mjs'),'models']);
-await run(process.execPath,['--test',...['patches','models','glm-wire','native-search-wire'].map(name=>path.join(repo,`tests/${name}.test.mjs`))],{env:{...process.env,PI_CONFIG_TEST_ROOT:root}});
+await run(process.execPath,['--test',...['patches','models','glm-wire','native-search-wire','claude-effort-wire'].map(name=>path.join(repo,`tests/${name}.test.mjs`))],{env:{...process.env,PI_CONFIG_TEST_ROOT:root}});
 for(const profile of ['main'])await run(process.execPath,[path.join(repo,'tests/profile-integration.mjs'),root,profile]);
 for(const profile of ['main'])await run(process.execPath,[path.join(repo,'tests/agent-integration.mjs'),root,profile]);
 const settingsPath=path.join(agentDir,'settings.json');

@@ -2,7 +2,7 @@
   "maxAutonomousRuns": 10,
   "disabled": true,
   "provider": "openai-codex",
-  "model": "gpt-5.6-sol",
+  "model": "gpt-6-sol",
   "thinkingLevel": "high",
   "auditorProjectResources": false
 }

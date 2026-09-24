@@ -9,9 +9,9 @@ import { pathToFileURL } from "node:url";
 import { anthropicSearchEvents, codexSearchEvents, sse } from "./search-fixtures.mjs";
 
 // web_search của pi-web-access (đã vá) trên runtime đã cài: Claude → Anthropic web_search qua
-// pi-anthropic-auth, Codex → hosted web_search, GLM → Firecrawl. fetch/DNS giả, không gọi mạng.
+// pi-anthropic-auth, Codex → hosted web_search, GLM → Exa rồi Firecrawl. fetch/DNS giả, không gọi mạng.
 const root = process.env.PI_CONFIG_TEST_ROOT;
-test("web_search dùng native search theo model hiện tại, GLM dùng Firecrawl", { skip: !root, timeout: 120000 }, async () => {
+test("web_search dùng native search theo model hiện tại, GLM dùng Exa rồi Firecrawl", { skip: !root, timeout: 120000 }, async () => {
   const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pi-native-search-")));
   const agentDir = path.join(temp, "agent");
   fs.mkdirSync(agentDir);
@@ -36,6 +36,7 @@ test("web_search dùng native search theo model hiện tại, GLM dùng Firecraw
 
   const saved = { fetch: globalThis.fetch, lookup: dns.promises.lookup, agentDir: process.env.PI_CODING_AGENT_DIR };
   const requests = [];
+  let exaStatus = 200;
   globalThis.fetch = async (input, init = {}) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     const headers = new Headers(input instanceof Request ? input.headers : init.headers);
@@ -44,6 +45,12 @@ test("web_search dùng native search theo model hiện tại, GLM dùng Firecraw
     const stream = (body) => new Response(body, { headers: { "content-type": "text/event-stream" } });
     if (url.hostname === "api.anthropic.com" && url.pathname === "/v1/messages") return stream(sse(anthropicSearchEvents()));
     if (url.href === "https://chatgpt.com/backend-api/codex/responses") return stream(sse(codexSearchEvents("gpt-6-astra")));
+    // Exa không có key: JSON-RPC tới endpoint MCP miễn phí của Exa.
+    if (url.origin === "https://mcp.exa.ai" && url.pathname === "/mcp") {
+      if (exaStatus !== 200) return new Response("fixture unavailable", { status: exaStatus });
+      return Response.json({ jsonrpc: "2.0", id: 1, result: { content: [{ type: "text",
+        text: "Title: Exa result\nURL: https://exa.example/pi\nText: From Exa\n" }] } });
+    }
     if (url.href === "https://api.firecrawl.dev/v2/search") {
       return Response.json({ success: true, data: { web: [{ url: "https://firecrawl.example/pi", title: "Firecrawl result", description: "From Firecrawl" }] } });
     }
@@ -108,8 +115,18 @@ test("web_search dùng native search theo model hiện tại, GLM dùng Firecraw
     assert.match(text, /https:\/\/code\.example\/pi/u);
 
     text = await search("opencode-go", "glm-5.3-flash");
-    assert.deepEqual(requests.map((request) => request.url.href), ["https://api.firecrawl.dev/v2/search"]);
-    assert.equal(requests[0].headers.get("authorization"), "Bearer fixture-firecrawl-key");
+    assert.deepEqual(requests.map((request) => request.url.origin + request.url.pathname), ["https://mcp.exa.ai/mcp"]);
+    assert.equal(requests[0].headers.get("authorization"), null);
+    assert.equal(requests[0].body.method, "tools/call");
+    assert.match(JSON.stringify(requests[0].body.params.arguments), /pi coding agent/u);
+    assert.match(text, /\*\*Provider:\*\* exa/u);
+    assert.match(text, /https:\/\/exa\.example\/pi/u);
+
+    // Exa lỗi tạm thời (5xx) thì chuyển sang Firecrawl.
+    exaStatus = 503;
+    text = await search("opencode-go", "glm-5.3-flash");
+    assert.deepEqual(requests.map((request) => request.url.origin + request.url.pathname), ["https://mcp.exa.ai/mcp", "https://api.firecrawl.dev/v2/search"]);
+    assert.equal(requests[1].headers.get("authorization"), "Bearer fixture-firecrawl-key");
     assert.match(text, /\*\*Provider:\*\* firecrawl/u);
     assert.deepEqual(errors, []);
     session.dispose();

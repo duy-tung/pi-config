@@ -29,7 +29,7 @@ const fixture = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `pi-config
 const agentDir = path.join(fixture, "fixture agent");
 const cwd = path.join(fixture, "fixture workspace");
 for (const dir of [agentDir, cwd]) fs.mkdirSync(dir, { recursive: true });
-for (const name of ["settings.json", "keybindings.json", "models.json", "advisor.json", "subagents.json", "mcp.json", "open-tui.json", "pi-goal-x-settings.json"]) {
+for (const name of ["settings.json", "keybindings.json", "models.json", "advisor.json", "subagents.json", "mcp.json", "open-tui.json", "pi-goal-x-settings.json", "pi-usage.json"]) {
   if (fs.existsSync(path.join(configuration.agentDir, name))) fs.copyFileSync(path.join(configuration.agentDir, name), path.join(agentDir, name));
 }
 fs.mkdirSync(path.join(agentDir, "agents"));
@@ -41,7 +41,7 @@ const settings = readJson(path.join(agentDir, "settings.json"));
 settings.autoMode = { ...settings.autoMode, model: "config-test/parent", stateDir: path.join(fixture, "auto-mode") };
 Object.assign(settings, {
   defaultProvider: "config-test", defaultModel: "parent", defaultThinkingLevel: "off",
-  enabledModels: ["config-test/parent", "openai-codex/gpt-5.6-sol", "opencode-go/glm-5.3-flash"],
+  enabledModels: ["config-test/parent", "openai-codex/gpt-6-sol", "openai-codex/gpt-6-astra", "opencode-go/glm-5.3-flash"],
   // Cổng permission của bản cài nạp sau provider giả.
   extensions: [fileURLToPath(new URL("./agent-provider.ts", import.meta.url)),
     ...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && entry.replaceAll("\\", "/").endsWith("/pi-auto-mode"))],
@@ -165,12 +165,12 @@ await check('researcher uses GLM/max and separate context',async()=>{
   assert.ok(!JSON.stringify(child).includes('CASE:parent_sol'));
   assert.match(JSON.stringify(child.at(-1).messages),/SAFE_CONTENT/);
 });
+const configured={researcher:['glm-5.3-flash','max'],worker:['gpt-6-sol','max'],debugger:['gpt-6-sol','max'],reviewer:['gpt-6-astra','high']};
 for(const role of ['researcher','worker','debugger','reviewer']) {
   await check(`native ${role} keeps its configured model/effort despite conflicting tool parameters`,async()=>{
     const id='configured-'+role;
-    const expectedModel=role==='researcher'?'glm-5.3-flash':'gpt-5.6-sol';
-    const expectedEffort=role==='researcher'?'max':'high';
-    const opposite=role==='researcher'?'openai-codex/gpt-5.6-sol':'opencode-go/glm-5.3-flash';
+    const [expectedModel,expectedEffort]=configured[role];
+    const opposite=role==='researcher'?'openai-codex/gpt-6-sol':'opencode-go/glm-5.3-flash';
     const out=await run(id,invocation(id,{subagent_type:role,model:opposite,thinking:'off',inherit_context:true,isolated:true,max_turns:999}));
     assert.equal(out[0]?.isError,false,JSON.stringify(out));
     const seen=control.seen.filter(x=>x.key==='child_'+id);
@@ -178,6 +178,26 @@ for(const role of ['researcher','worker','debugger','reviewer']) {
     assert.ok(!JSON.stringify(seen).includes('CASE:parent_'+id));
   });
 }
+await check('researcher gets pi-web-access tools from its role',async()=>{
+  await run('web',invocation('web'));
+  const child=control.seen.filter(x=>x.key==='child_web');assert.ok(child.length>0);
+  for(const name of ['web_search','fetch_content'])assert.ok(child[0].tools.includes(name),JSON.stringify(child[0].tools));
+});
+await check('Codex fast mode reaches worker/debugger requests, not the Astra reviewer',async()=>{
+  for(const [role,tier] of [['worker','priority'],['debugger','priority'],['reviewer',undefined]]){
+    const id='fast-'+role;
+    const out=await run(id,invocation(id,{subagent_type:role}));
+    assert.equal(out[0]?.isError,false,JSON.stringify(out));
+    const seen=control.seen.filter(x=>x.key==='child_'+id);assert.ok(seen.length>0);
+    assert.ok(seen.every(x=>x.payload?.service_tier===tier),`${role}: ${JSON.stringify(seen.map(x=>x.payload))}`);
+  }
+});
+await check('worker has no turn limit',async()=>{
+  const steps=Array.from({length:16},()=>[tool('read',{path:'safe.txt'})]);
+  const out=await run('long',invocation('long',{subagent_type:'worker',max_turns:3}),[...steps,final('LONG_DONE')]);
+  assert.equal(out[0]?.isError,false,JSON.stringify(out));assert.match(JSON.stringify(out),/LONG_DONE/);
+  assert.equal(control.seen.filter(x=>x.key==='child_long').length,17);
+});
 await check('GLM researcher remains read-only',async()=>{
   const out=await run('readonly',invocation('readonly',{subagent_type:'researcher'}),[[tool('write',{path:'forbidden.txt',content:'should-not-exist'})],final('BLOCKED')]);
   assert.equal(out[0]?.isError,false,JSON.stringify(out));assert.equal(fs.existsSync(path.join(cwd,'forbidden.txt')),false);
