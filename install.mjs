@@ -126,7 +126,7 @@ try{
   for(const filename of fs.readdirSync(path.join(repoDir,'runtime'))){
     const source=path.join(repoDir,'runtime',filename);if(fs.statSync(source).isFile())managed(path.join(root,'bin',filename),fs.readFileSync(source));
   }
-  for(const filename of ['profile-integration.mjs','agent-integration.mjs','scripted-provider.ts','agent-provider.ts'])
+  for(const filename of ['profile-integration.mjs','agent-integration.mjs','scripted-provider.ts','agent-provider.ts','search-fixtures.mjs'])
     managed(path.join(root,'tests',filename),fs.readFileSync(path.join(repoDir,'tests',filename)));
   const files=buildConfiguration({root,agentDir,binDir,nodePath,platform:process.platform,home,repoDir,shellPath:state.shellPath});
   for(const specification of files){const file=preserveLocalControls(specification);managed(file.path,file.content,file.mode);}

@@ -8,6 +8,7 @@ import Module, { syncBuiltinESMExports } from "node:module";
 import childProcess from "node:child_process";
 import assert from "node:assert/strict";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { unifiedHeaders } from "./search-fixtures.mjs";
 
 // CLI: node tests/profile-integration.mjs <installRoot> <profile>
 // Only installed configuration on the explicit root is used. The test copies
@@ -48,8 +49,9 @@ settings.autoMode = { ...settings.autoMode, model: "config-test/worker", stateDi
 Object.assign(settings, {
   defaultProvider: "config-test", defaultModel: "parent", defaultThinkingLevel: "off",
   enabledModels: ["config-test/parent", "config-test/worker"],
-  // Giữ pi-rewind và pi-auto-mode (nạp sau cùng) của bản cài; các extension giao diện khác không cần trong RPC.
-  extensions: [...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && entry.replaceAll("\\", "/").endsWith("/pi-rewind")),
+  // Giữ pi-rewind, native-web-search, claude-usage và pi-auto-mode (nạp sau cùng) của bản cài;
+  // các extension giao diện khác không cần trong RPC.
+  extensions: [...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && /\/(?:pi-rewind|native-web-search|claude-usage)$/u.test(entry.replaceAll("\\", "/"))),
     fileURLToPath(new URL("./scripted-provider.ts", import.meta.url)),
     ...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && entry.replaceAll("\\", "/").endsWith("/pi-auto-mode"))],
   compaction: { enabled: false }, retry: { enabled: false }, skills: [], cacheWarming: "off",
@@ -58,19 +60,17 @@ Object.assign(settings, {
 // (đúng thiết kế) làm kiểm thử rewind bash chập chờn. Fixture nới ngưỡng để kết quả ổn định.
 if (settings.rewind) Object.assign(settings.rewind, { storageDir: path.join(fixture, "rewind"), watchSlowMs: 60000 });
 writeJson(path.join(agentDir, "settings.json"), settings);
-writeJson(credentialFile, {"fixture-secret": {type: "api_key", key: "synthetic-private-credential"}});
+writeJson(credentialFile, {"fixture-secret": {type: "api_key", key: "synthetic-private-credential"},
+  anthropic: {type: "oauth", access: "sk-ant-oat01-synthetic-fixture", refresh: "synthetic-refresh", expires: Date.now() + 3600000}});
 if (configuration.packages.includes("pi-advisor-flow")) {
   const advisorFile = path.join(agentDir, "advisor.json");
   const advisor = readJson(advisorFile);
   Object.assign(advisor, { executor: "config-test/parent", advisor: "config-test/worker", alwaysOn: false });
   writeJson(advisorFile, advisor);
 }
-// Explicitly replace web config rather than copying a live credential command.
-writeJson(path.join(agentDir, "web-search.json"), {
-  provider: "firecrawl", workflow: "none", firecrawlApiKey: "fixture-never-used",
-  allowBrowserCookies: false, searchRouting: { providers: ["firecrawl"], useCurrentModel: false },
-  githubClone: { enabled: false },
-});
+// Dùng routing web của bản cài nhưng thay credential command bằng giá trị giả.
+const webConfig = readJson(path.join(configuration.agentDir, "web-search.json"));
+writeJson(path.join(agentDir, "web-search.json"), { ...webConfig, firecrawlApiKey: "fixture-never-used" });
 writeJson(path.join(cwd, "package.json"), { name: "pi-config-integration-fixture", private: true, type: "module" });
 // Git worktree để pi-rewind theo dõi được file bash sửa (git status trước/sau tool).
 childProcess.execFileSync("git", ["init", "-q"], { cwd, stdio: "ignore" });
@@ -99,7 +99,15 @@ process.env.PATH = [path.join(modules, ".bin"), path.join(installRoot, "runtimes
 // traffic from extensions as well; MCP is a local stdio child, not a socket.
 const networkAttempts = [];
 const networkBlocked = () => { networkAttempts.push("blocked outbound request"); throw new Error("Network disabled in Pi integration fixture"); };
-globalThis.fetch = async () => networkBlocked();
+// Chỉ endpoint quota Claude có phản hồi giả để kiểm /claude-usage; mọi request khác bị chặn.
+const usageRequests = [];
+globalThis.fetch = async (input, init = {}) => {
+  if (String(input) !== "https://api.anthropic.com/api/oauth/usage") return networkBlocked();
+  usageRequests.push(new Headers(init.headers));
+  return Response.json({ five_hour: { utilization: 12, resets_at: new Date(Date.now() + 3600000).toISOString() },
+    seven_day: { utilization: 34, resets_at: new Date(Date.now() + 86400000).toISOString() },
+    extra_usage: { is_enabled: false, used_credits: 0, monthly_limit: 0, currency: "USD" } });
+};
 http.request = networkBlocked; http.get = networkBlocked;
 https.request = networkBlocked; https.get = networkBlocked;
 net.connect = networkBlocked; net.createConnection = networkBlocked;
@@ -128,6 +136,7 @@ const sdk = await import(pathToFileURL(path.join(modules, "@earendil-works", "pi
 const control = { plans: {}, seen: [], classifier: [] };
 globalThis[Symbol.for("pi-config:test")] = control;
 const errors = [], prompts = [], notices = [], results = [];
+const statuses = new Map();
 // Câu trả lời định sẵn cho dialog Rewind (RPC dùng select); dialog khác dùng mặc định.
 const rewindAnswers = [];
 let imageDraft = "";
@@ -157,6 +166,7 @@ const ui = {
   custom: async () => { throw new Error("Unexpected TUI dialog in RPC fixture"); },
   getToolsExpanded: () => false, getEditorText: () => "", getTheme: () => undefined,
   pasteToEditor: text => { imageDraft += text; },
+  setStatus: (key, value) => { if (value === undefined) statuses.delete(key); else statuses.set(key, value); },
 };
 await session.bindExtensions({ uiContext: ui, mode: "rpc", onError: (error) => errors.push(error),
   commandContextActions: { waitForIdle: () => session.waitForIdle(), navigateTree: (id, options) => session.navigateTree(id, options) } });
@@ -187,7 +197,7 @@ async function check(name, fn) {
 }
 await check("single session exposes slash commands and only one model delegation system", async () => {
   const commands = session.extensionRunner.getRegisteredCommands().map(command => command.name);
-  for (const name of ["goal", "goal-pause", "goal-resume", "bg", "jobs", "logs", "kill", "advisor", "advisor-off", "rewind", "checkpoint", "undo", "redo", "permissions", "auto-mode"])
+  for (const name of ["goal", "goal-pause", "goal-resume", "bg", "jobs", "logs", "kill", "advisor", "advisor-off", "rewind", "checkpoint", "undo", "redo", "permissions", "auto-mode", "claude-usage"])
     assert.ok(commands.includes(name), `Missing /${name}`);
   assert.equal(new Set(commands).size, commands.length);
   const tools = session.getAllTools().map(tool => tool.name);
@@ -196,6 +206,27 @@ await check("single session exposes slash commands and only one model delegation
     assert.ok(!tools.includes(name), `Duplicate model workflow: ${name}`);
   assert.ok(!loader.getExtensions().extensions.some(extension => extension.path?.includes("anthropic-attribution")));
   assert.equal(control.seen.length, 0, "Startup must not call any model");
+});
+await check("Claude: native search bridge, quota footer from headers and /claude-usage", async () => {
+  const claude = runtime.getModel("anthropic", "claude-sonnet-5");
+  const bridge = globalThis[Symbol.for("pi-config.native-web-search")];
+  assert.equal(typeof bridge?.search, "function");
+  assert.equal(bridge.supports(claude), true);
+  assert.equal(bridge.supports(runtime.getModel("config-test", "parent")), false);
+  await session.setModel(claude);
+  await session.extensionRunner.emit({ type: "after_provider_response", status: 200, headers: unifiedHeaders() });
+  assert.match(statuses.get("claude-usage") ?? "", /^claude 77% ↻ 2h1\dm 59% ↻ 4d\dh$/u);
+  await session.prompt("/claude-usage");
+  assert.equal(usageRequests.length, 1);
+  assert.equal(usageRequests[0].get("authorization"), "Bearer sk-ant-oat01-synthetic-fixture");
+  assert.equal(usageRequests[0].get("anthropic-beta"), "oauth-2025-04-20");
+  const report = notices.findLast((notice) => notice.message.startsWith("Claude usage"))?.message ?? "";
+  assert.match(report, /Phiên 5 giờ: dùng 12% · còn 88%/u);
+  assert.ok(!report.includes("sk-ant-oat01"), "Báo cáo không được chứa credential");
+  assert.match(statuses.get("claude-usage") ?? "", /^claude 88% ↻ /u);
+  await session.setModel(runtime.getModel("config-test", "parent"));
+  assert.equal(statuses.has("claude-usage"), false);
+  assert.equal(control.seen.length, 0, "Quota và bridge không được gọi model");
 });
 await check("read safe file; deny .env and symlink escape", async () => {
   const calls = [[tool("read", { path: "safe.txt" })], [tool("read", { path: ".env" })]];

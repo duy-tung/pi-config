@@ -2,7 +2,7 @@
 
 [![Kiểm thử cài đặt](https://github.com/duy-tung/pi-config/actions/workflows/test.yml/badge.svg)](https://github.com/duy-tung/pi-config/actions/workflows/test.yml)
 
-Bộ cài **Pi 0.87.1** cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, Firecrawl cho web, permission kiểu Claude Code (auto mode và bypass) và giao diện Rosé Pine. Dependency, nguồn skills và bản vá được ghim để tái lập cấu hình.
+Bộ cài **Pi 0.87.1** cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, native web search theo model (Codex, Claude) với Firecrawl dự phòng, quota Claude trong footer, permission kiểu Claude Code (auto mode và bypass) và giao diện Rosé Pine. Dependency, nguồn skills và bản vá được ghim để tái lập cấu hình.
 
 ## Cài đặt
 
@@ -27,6 +27,7 @@ Chi tiết kiến trúc CPU, công cụ hệ thống và tùy chọn đường d
 1. Chạy `pi-login`, dùng `/login` và chọn **OpenAI Codex** cho Astra/Sol.
 2. Trong `/login`, chọn **OpenCode Go** và nhập API key cho GLM. Pi cũng nhận biến môi trường `OPENCODE_API_KEY`.
 3. Chạy `firecrawl login --browser` để đăng nhập dịch vụ web.
+4. Tùy chọn: trong `/login`, chọn **Anthropic** để dùng Claude bằng gói Pro/Max, hoặc đặt `ANTHROPIC_API_KEY`. Xem [docs/claude.md](docs/claude.md).
 
 Một cấu hình Pi dùng auth của agent directory. Firecrawl dùng credential store của CLI theo hệ điều hành. Repo không chứa credential, token hay dữ liệu phiên của người dùng; không nhập key vào chat hoặc commit vào Git.
 
@@ -42,7 +43,7 @@ Chạy `pi` để mở Astra/high với toàn bộ công cụ. Các workflow đ�
 | Rewind code/hội thoại | `Esc Esc`, `/rewind` (`/checkpoint`, `/undo`), `/redo` |
 | Permission | `Shift+Tab` (auto ⇄ bypass), `/permissions`, `/auto-mode` |
 | Model và reasoning | `/model`, `/thinking`, `Alt+T` đổi mức thinking |
-| Công cụ và giao diện | `/agents`, `/usage`, `/mcp`, `/lens-health`, `/open-tui` |
+| Công cụ và giao diện | `/agents`, `/usage`, `/claude-usage`, `/mcp`, `/lens-health`, `/open-tui` |
 
 `/advisor` chuyển sang executor Sol/high và advisor Astra/high. `/advisor-off` tắt flow nhưng giữ model hiện tại; dùng `/model` để trở lại Astra. Advisor auto, gates và scout tắt mặc định; giới hạn 3 lần tham khảo mỗi phiên.
 
@@ -80,13 +81,13 @@ Agent có context riêng, giới hạn 12 turns với grace 2. Mỗi pool foregr
 
 ## Công cụ và mặc định
 
-- Web: `web_search`, `fetch_content`, `get_search_content` dùng Firecrawl; CLI và skills hỗ trợ các workflow bổ sung.
+- Web: `web_search` dùng native search của model hiện tại khi là Codex/OpenAI (Astra, Sol) hoặc Claude; model khác (GLM) và lỗi mạng, quota, phản hồi hỏng dùng Firecrawl. `fetch_content`, `get_search_content` dùng Firecrawl và kho kết quả. Phiên mới hiện `web_enable` để model bật web tools. CLI và skills hỗ trợ workflow bổ sung. Chi tiết: [docs/claude.md](docs/claude.md).
 - MCP filesystem: công cụ đọc trong workspace, kết nối khi cần.
 - Code intelligence: pi-lens, TypeScript language server cài sẵn; Go/Rust/Python dùng language server của máy hoặc project.
 - Native compaction bật: reserve 16.384, giữ gần nhất 20.000 token.
 - Cache warming, auditor goal và advisor auto tắt. Goal và background follow-up chỉ chạy theo thao tác/cấu hình đã chọn.
 - Có `codexFastMode:true`; hiệu lực và mức dùng quota phụ thuộc model/provider được hỗ trợ.
-- Header/footer/editor do pi-open-tui quản lý. Footer hiển thị model, thinking, quota, context %, token/cost và trạng thái công cụ liên quan. Palette terminal theo theme của phiên và được phục hồi khi thoát.
+- Header/footer/editor do pi-open-tui quản lý. Footer hiển thị model, thinking, quota (Codex qua pi-usage; Claude đọc từ header phản hồi, chi tiết bằng `/claude-usage`), context %, token/cost và trạng thái công cụ liên quan. Palette terminal theo theme của phiên và được phục hồi khi thoát.
 - Dán ảnh: `@pi-archimedes/image-paste`, dùng **Ctrl+V** trên macOS/Linux hoặc **Alt+V** trên Windows. Copy ảnh vào clipboard, dán để có marker `[Image #1]`, rồi gửi cùng prompt. Xóa marker để bỏ ảnh; giới hạn 20 MiB/ảnh. Preview chỉ hiện trong UI, ảnh được gửi tới model đúng một lần. Phím dán ảnh tích hợp của Pi được tắt trong `keybindings.json` để tránh xử lý trùng.
 - Clipboard native `@mariozechner/clipboard` được ghim và cài bên cạnh extension. Linux cần desktop X11/Wayland; `wl-clipboard`/`xclip` là các reader thay thế. Terminal không hỗ trợ ảnh inline vẫn gửi được ảnh, chỉ thiếu preview. Chỉ nạp image-paste; phần giao diện của bộ Archimedes không được nạp.
 
@@ -99,11 +100,11 @@ Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều
 | Thành phần | Phiên bản |
 |---|---|
 | `@tintinweb/pi-subagents` | 0.19.0 |
-| `@gotgenes/pi-anthropic-auth` | 3.1.0 |
+| `@gotgenes/pi-anthropic-auth` | 3.2.2 |
 | `pi-mcp-adapter` | 2.36.0 |
-| `pi-web-access` | 0.30.0 |
+| `pi-web-access` | 0.31.0 |
 | `@juicesharp/rpiv-ask-user-question`, `rpiv-todo` | 2.11.0 |
-| `@narumitw/pi-usage` | 0.60.11 |
+| `@narumitw/pi-usage` | 0.61.0 |
 | `pi-lens` | 4.2.1 |
 | `pi-background-tasks` | 2.6.3 |
 | `pi-goal-x` | 0.31.8 |

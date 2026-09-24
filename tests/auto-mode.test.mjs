@@ -128,6 +128,8 @@ test("chính sách: lối đi nhanh, luật, bypass và tự bảo vệ", () => 
   try {
     const auto = context(ws);
     assert.deepEqual(decide({ toolName: "read", input: { path: "src/a.ts" } }, auto), { kind: "allow", via: "safe tool" });
+    // web_enable (pi-web-access 0.31) chỉ bật web tools trong phiên, như pi_lens_activate_tools.
+    assert.deepEqual(decide({ toolName: "web_enable", input: {} }, auto), { kind: "allow", via: "safe tool" });
     assert.equal(decide({ toolName: "write", input: { path: "src/a.ts", content: "x" } }, auto).kind, "allow");
     assert.equal(decide({ toolName: "edit", input: { path: "../other/a.ts", edits: [] } }, auto).kind, "classify");
     assert.equal(decide({ toolName: "write", input: { path: ".git/hooks/pre-commit", content: "x" } }, auto).kind, "classify");
