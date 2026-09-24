@@ -44,7 +44,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       });
       assert.equal(settings.shellPath, options.shellPath);
       assert.equal(settings.skills.length, 3);
-      assert.deepEqual(settings.extensions, ["rose-pine-palette.ts", "pi-rewind", "native-web-search", "claude-usage", "pi-auto-mode"]
+      assert.deepEqual(settings.extensions, ["rose-pine-palette.ts", "pi-rewind", "claude-usage", "pi-auto-mode"]
         .map((entry) => p.join(options.root, "assets", "extensions", entry)));
       assert.equal(settings.doubleEscapeAction, "none");
       assert.deepEqual(settings.rewind, { storageDir: p.join(options.root, "state", "rewind"), retentionDays: 30 });
@@ -121,12 +121,13 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.ok(!files.some((file) => file.path.includes("pi-permission-system")));
       assert.deepEqual(json(p.join(profile.agentDir, "keybindings.json"))["app.thinking.cycle"], ["alt+t"]);
       const firecrawl = json(p.join(profile.agentDir, "web-search.json"));
-      // provider cố định sẽ bỏ qua searchRouting; native search theo model đi trước, Firecrawl dự phòng.
+      // provider cố định sẽ bỏ qua searchRouting; native search theo model (Codex, Claude) đi trước, Firecrawl dự phòng.
       assert.equal(firecrawl.provider, undefined);
-      assert.deepEqual(firecrawl.searchRouting.providers, ["openai", "exa", "firecrawl"]);
+      assert.deepEqual(firecrawl.searchRouting.providers, ["openai", "anthropic", "exa", "firecrawl"]);
       assert.equal(firecrawl.searchRouting.useCurrentModel, true);
       assert.deepEqual(firecrawl.searchRouting.fallbackOn, ["network", "transient", "quota", "invalid-response", "unsupported"]);
-      assert.deepEqual(firecrawl.webSearch.allowedProviders, ["openai", "exa", "firecrawl"]);
+      assert.deepEqual(firecrawl.webSearch.allowedProviders, ["openai", "anthropic", "exa", "firecrawl"]);
+      assert.equal(firecrawl.anthropicSearch, undefined, "Model khác Claude không tìm bằng Claude nếu người dùng không bật");
       assert.equal(firecrawl.exaApiKey, undefined, "Exa không cần key: dùng endpoint MCP miễn phí");
       assert.deepEqual(settings.permissions.ask, ["Edit(**/.pi/pi-goal-x-settings.json)"]);
       assert.deepEqual(firecrawl.fetchRouting.providers, ["firecrawl"]);

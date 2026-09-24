@@ -1,13 +1,25 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
-import {
-  buildPrompt, buildWebSearchTool, SearchStreamCollector, searchError, searchReasoning, searchWithAnthropic,
-  shapeSearchPayload, supportsNativeSearch, toSearchResponse,
-} from "../assets/extensions/native-web-search/lib/anthropic.ts";
 import { anthropicSearchEvents, sse } from "./search-fixtures.mjs";
 
+// File nguồn mà bản vá pi-web-access chèn vào dist/index.js; nạp như trong bundle (một biến duy nhất).
+const source = fs.readFileSync(new URL("../assets/patches/pi-web-access/anthropic-search.js", import.meta.url), "utf8");
+const api = new Function(`${source}\nreturn piConfigAnthropicSearch;`)();
+const {
+  buildPrompt, buildWebSearchTool, SearchStreamCollector, searchError, searchModel, searchReasoning,
+  shapeSearchPayload, supportsNativeSearch, toSearchResponse,
+} = api.internals;
+
 const claude = { provider: "anthropic", api: "anthropic-messages", id: "claude-sonnet-5", baseUrl: "https://api.anthropic.com", thinkingLevelMap: { xhigh: "xhigh" } };
+const glm = { provider: "opencode-go", api: "openai-completions", id: "glm-5.3-flash", baseUrl: "https://opencode.example/v1" };
 const stream = (text) => new Response(text).body;
+
+test("file chèn vào bundle chỉ khai báo một tên cấp cao và không import/export", () => {
+  const topLevel = source.split(/\r?\n/u).filter((line) => /^(?:var|let|const|function|async|class|import|export)\b/u.test(line));
+  assert.deepEqual(topLevel, ["var piConfigAnthropicSearch = (() => {"]);
+  assert.deepEqual(Object.keys(api).sort(), ["available", "configEntry", "internals", "search"]);
+});
 
 test("native search chỉ nhận Claude trên endpoint Anthropic chính thức", () => {
   assert.equal(supportsNativeSearch(claude), true);
@@ -16,6 +28,36 @@ test("native search chỉ nhận Claude trên endpoint Anthropic chính thức",
   assert.equal(supportsNativeSearch({ ...claude, provider: "opencode-go" }), false);
   assert.equal(supportsNativeSearch({ provider: "openai-codex", api: "openai-codex-responses", id: "gpt-6-astra", baseUrl: "https://chatgpt.com/backend-api" }), false);
   assert.equal(supportsNativeSearch(undefined), false);
+});
+
+test("anthropicSearch.modelForNonClaude: kiểm cấu hình, model khác Claude chỉ tìm khi được bật và có auth", () => {
+  assert.deepEqual(api.configEntry({}), {});
+  assert.deepEqual(api.configEntry({ anthropicSearch: {} }), { anthropicSearch: {} });
+  assert.deepEqual(api.configEntry({ anthropicSearch: { modelForNonClaude: "anthropic/claude-sonnet-5" } }),
+    { anthropicSearch: { modelForNonClaude: "anthropic/claude-sonnet-5" } });
+  assert.throws(() => api.configEntry({ anthropicSearch: [] }), /must be an object/u);
+  assert.throws(() => api.configEntry({ anthropicSearch: { model: "anthropic/claude-sonnet-5" } }), /anthropicSearch\.model .*not supported/u);
+  assert.throws(() => api.configEntry({ anthropicSearch: { modelForNonClaude: "claude-sonnet-5" } }), /must look like/u);
+
+  const found = [];
+  let auth = true;
+  const modelRegistry = {
+    find: (provider, id) => { found.push(`${provider}/${id}`); return id === "claude-sonnet-5" ? claude : id === "claude-proxy" ? { ...claude, baseUrl: "https://gateway.example" } : undefined; },
+    hasConfiguredAuth: () => auth,
+  };
+  const config = { modelForNonClaude: "anthropic/claude-sonnet-5" };
+  const opus = { ...claude, id: "claude-opus-5-5" };
+  // Phiên Claude luôn tìm bằng chính model đó, kể cả khi có modelForNonClaude.
+  assert.equal(searchModel({ model: opus, modelRegistry }, config), opus);
+  assert.equal(api.available({ model: glm, modelRegistry }, undefined), false);
+  assert.equal(api.available({ model: glm, modelRegistry }, {}), false);
+  assert.equal(searchModel({ model: glm, modelRegistry }, config), claude);
+  assert.deepEqual(found, ["anthropic/claude-sonnet-5"]);
+  assert.equal(api.available({ model: glm, modelRegistry }, { modelForNonClaude: "anthropic/claude-proxy" }), false);
+  assert.equal(api.available({ model: glm, modelRegistry }, { modelForNonClaude: "anthropic/claude-missing" }), false);
+  auth = false;
+  assert.equal(api.available({ model: glm, modelRegistry }, config), false);
+  assert.equal(api.available(undefined, config), false);
 });
 
 test("request dùng web_search_20250305, lọc domain và prompt tìm kiếm riêng", () => {
@@ -69,7 +111,7 @@ test("lỗi được diễn đạt để routing pi-web-access chọn fallback �
   assert.match(searchError("aborted", undefined, false, true).message, /timed out/u);
 });
 
-test("searchWithAnthropic: payload qua transport của Pi, fetch được tách để đọc nguồn", async () => {
+test("search: payload qua transport của Pi, fetch được tách để đọc nguồn", async () => {
   const savedFetch = globalThis.fetch;
   const calls = [];
   globalThis.fetch = async (url, init) => {
@@ -77,11 +119,14 @@ test("searchWithAnthropic: payload qua transport của Pi, fetch được tách 
     return new Response(sse(anthropicSearchEvents()), { headers: { "content-type": "text/event-stream" } });
   };
   try {
+    const used = [];
     const registry = {
+      find: () => claude,
+      hasConfiguredAuth: () => true,
       streamSimple(model, context, options) {
         return {
           async result() {
-            assert.equal(model, claude);
+            used.push(model);
             assert.equal(context.messages[0].content, "Search the web for: pi");
             assert.equal(options.reasoning, undefined);
             assert.equal(options.cacheRetention, "none");
@@ -93,17 +138,20 @@ test("searchWithAnthropic: payload qua transport của Pi, fetch được tách 
         };
       },
     };
-    const result = await searchWithAnthropic("pi", { domainFilter: ["pi.example"] }, { model: claude, modelRegistry: registry });
+    const result = await api.search("pi", { domainFilter: ["pi.example"] }, { model: claude, modelRegistry: registry }, undefined);
     assert.deepEqual(calls[0].body.tools, [{ type: "web_search_20250305", name: "web_search", max_uses: 5, allowed_domains: ["pi.example"] }]);
     assert.equal(result.answer, "Pi is a minimal coding agent with extensions.");
     assert.equal(result.results[0].url, "https://code.example/pi");
+    // Phiên GLM có modelForNonClaude: request dùng model Claude được chỉ định.
+    await api.search("pi", {}, { model: glm, modelRegistry: registry }, { modelForNonClaude: "anthropic/claude-sonnet-5" });
+    assert.deepEqual(used, [claude, claude]);
     const failing = { streamSimple: (_model, _context, options) => ({ async result() {
       await options.fetch("https://api.anthropic.com/v1/messages", { method: "POST", body: "{}" });
       return { stopReason: "error", errorMessage: '429 {"type":"error","error":{"message":"Rate limited"}}' };
     } }) };
     globalThis.fetch = async () => new Response("{}", { status: 429 });
-    await assert.rejects(searchWithAnthropic("pi", {}, { model: claude, modelRegistry: failing }), /API error 429: Rate limited/u);
-    await assert.rejects(searchWithAnthropic("pi", {}, { model: { ...claude, provider: "openai" }, modelRegistry: failing }), /not an official Claude model/u);
+    await assert.rejects(api.search("pi", {}, { model: claude, modelRegistry: failing }), /API error 429: Rate limited/u);
+    await assert.rejects(api.search("pi", {}, { model: glm, modelRegistry: failing }), /not an official Claude model/u);
   } finally {
     globalThis.fetch = savedFetch;
   }

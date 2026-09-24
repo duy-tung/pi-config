@@ -8,7 +8,7 @@ import Module, { syncBuiltinESMExports } from "node:module";
 import childProcess from "node:child_process";
 import assert from "node:assert/strict";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { unifiedHeaders } from "./search-fixtures.mjs";
+import { anthropicSearchEvents, sse, unifiedHeaders } from "./search-fixtures.mjs";
 
 // CLI: node tests/profile-integration.mjs <installRoot> <profile>
 // Only installed configuration on the explicit root is used. The test copies
@@ -49,9 +49,9 @@ settings.autoMode = { ...settings.autoMode, model: "config-test/worker", stateDi
 Object.assign(settings, {
   defaultProvider: "config-test", defaultModel: "parent", defaultThinkingLevel: "off",
   enabledModels: ["config-test/parent", "config-test/worker"],
-  // Giữ pi-rewind, native-web-search, claude-usage và pi-auto-mode (nạp sau cùng) của bản cài;
+  // Giữ pi-rewind, claude-usage và pi-auto-mode (nạp sau cùng) của bản cài;
   // các extension giao diện khác không cần trong RPC.
-  extensions: [...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && /\/(?:pi-rewind|native-web-search|claude-usage)$/u.test(entry.replaceAll("\\", "/"))),
+  extensions: [...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && /\/(?:pi-rewind|claude-usage)$/u.test(entry.replaceAll("\\", "/"))),
     fileURLToPath(new URL("./scripted-provider.ts", import.meta.url)),
     ...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && entry.replaceAll("\\", "/").endsWith("/pi-auto-mode"))],
   compaction: { enabled: false }, retry: { enabled: false }, skills: [], cacheWarming: "off",
@@ -68,9 +68,11 @@ if (configuration.packages.includes("pi-advisor-flow")) {
   Object.assign(advisor, { executor: "config-test/parent", advisor: "config-test/worker", alwaysOn: false });
   writeJson(advisorFile, advisor);
 }
-// Dùng routing web của bản cài nhưng thay credential command bằng giá trị giả.
+// Dùng routing web của bản cài nhưng thay credential command bằng giá trị giả; bật thêm tuỳ chọn tìm bằng
+// Claude cho model khác Claude để kiểm cả hai nhánh của provider anthropic.
 const webConfig = readJson(path.join(configuration.agentDir, "web-search.json"));
-writeJson(path.join(agentDir, "web-search.json"), { ...webConfig, firecrawlApiKey: "fixture-never-used" });
+writeJson(path.join(agentDir, "web-search.json"), { ...webConfig, firecrawlApiKey: "fixture-never-used",
+  anthropicSearch: { modelForNonClaude: "anthropic/claude-sonnet-5" } });
 writeJson(path.join(cwd, "package.json"), { name: "pi-config-integration-fixture", private: true, type: "module" });
 // Git worktree để pi-rewind theo dõi được file bash sửa (git status trước/sau tool).
 childProcess.execFileSync("git", ["init", "-q"], { cwd, stdio: "ignore" });
@@ -99,9 +101,16 @@ process.env.PATH = [path.join(modules, ".bin"), path.join(installRoot, "runtimes
 // traffic from extensions as well; MCP is a local stdio child, not a socket.
 const networkAttempts = [];
 const networkBlocked = () => { networkAttempts.push("blocked outbound request"); throw new Error("Network disabled in Pi integration fixture"); };
-// Chỉ endpoint quota Claude có phản hồi giả để kiểm /claude-usage; mọi request khác bị chặn.
-const usageRequests = [];
+// Chỉ endpoint quota Claude (/claude-usage) và Messages API (web search của Claude) có phản hồi giả;
+// mọi request khác bị chặn.
+const usageRequests = [], searchRequests = [];
 globalThis.fetch = async (input, init = {}) => {
+  // SDK Anthropic gọi /v1/messages?beta=true khi dùng OAuth.
+  if (/^https:\/\/api\.anthropic\.com\/v1\/messages(?:\?|$)/u.test(String(input instanceof Request ? input.url : input))) {
+    const body = input instanceof Request ? await input.text() : init.body;
+    searchRequests.push({ headers: new Headers(input instanceof Request ? input.headers : init.headers), body: JSON.parse(body) });
+    return new Response(sse(anthropicSearchEvents()), { headers: { "content-type": "text/event-stream" } });
+  }
   if (String(input) !== "https://api.anthropic.com/api/oauth/usage") return networkBlocked();
   usageRequests.push(new Headers(init.headers));
   return Response.json({ five_hour: { utilization: 12, resets_at: new Date(Date.now() + 3600000).toISOString() },
@@ -207,26 +216,45 @@ await check("single session exposes slash commands and only one model delegation
   assert.ok(!loader.getExtensions().extensions.some(extension => extension.path?.includes("anthropic-attribution")));
   assert.equal(control.seen.length, 0, "Startup must not call any model");
 });
-await check("Claude: native search bridge, quota footer from headers and /claude-usage", async () => {
+await check("Claude: web_search provider anthropic, quota footer from headers and /claude-usage", async () => {
   const claude = runtime.getModel("anthropic", "claude-sonnet-5");
-  const bridge = globalThis[Symbol.for("pi-config.native-web-search")];
-  assert.equal(typeof bridge?.search, "function");
-  assert.equal(bridge.supports(claude), true);
-  assert.equal(bridge.supports(runtime.getModel("config-test", "parent")), false);
-  await session.setModel(claude);
-  await session.extensionRunner.emit({ type: "after_provider_response", status: 200, headers: unifiedHeaders() });
-  assert.match(statuses.get("claude-usage") ?? "", /^claude 77% ↻ 2h1\dm 59% ↻ 4d\dh$/u);
-  await session.prompt("/claude-usage");
-  assert.equal(usageRequests.length, 1);
-  assert.equal(usageRequests[0].get("authorization"), "Bearer sk-ant-oat01-synthetic-fixture");
-  assert.equal(usageRequests[0].get("anthropic-beta"), "oauth-2025-04-20");
-  const report = notices.findLast((notice) => notice.message.startsWith("Claude usage"))?.message ?? "";
-  assert.match(report, /Phiên 5 giờ: dùng 12% · còn 88%/u);
-  assert.ok(!report.includes("sk-ant-oat01"), "Báo cáo không được chứa credential");
-  assert.match(statuses.get("claude-usage") ?? "", /^claude 88% ↻ /u);
-  await session.setModel(runtime.getModel("config-test", "parent"));
+  const webSearch = session.extensionRunner.getToolDefinition("web_search");
+  assert.match(webSearch?.description ?? "", /^Search the web with OpenAI, Anthropic, Exa, Firecrawl\./u);
+  const search = async () => {
+    searchRequests.length = 0;
+    const result = await webSearch.execute("profile-search", { query: "pi coding agent", numResults: 2 }, new AbortController().signal, undefined, session.extensionRunner.createContext());
+    return result.content.filter((part) => part.type === "text").map((part) => part.text).join("\n");
+  };
+  const parent = runtime.getModel("config-test", "parent");
+  try {
+    // Model hiện tại là Claude: tìm bằng chính model đó; model khác Claude: tìm bằng anthropicSearch.modelForNonClaude.
+    for (const model of [claude, parent]) {
+      await session.setModel(model);
+      const text = await search();
+      assert.equal(searchRequests.length, 1, `${model.id}: ${text.slice(0, 300)}`);
+      assert.equal(searchRequests[0].body.model, "claude-sonnet-5");
+      assert.deepEqual(searchRequests[0].body.tools, [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }]);
+      assert.match(searchRequests[0].body.system[0].text, /^x-anthropic-billing-header:/u, "pi-anthropic-auth phải shape request tìm kiếm");
+      assert.match(text, /\*\*Provider:\*\* anthropic/u);
+      assert.match(text, /https:\/\/code\.example\/pi/u);
+    }
+    await session.setModel(claude);
+    await session.extensionRunner.emit({ type: "after_provider_response", status: 200, headers: unifiedHeaders() });
+    assert.match(statuses.get("claude-usage") ?? "", /^claude 77% ↻ 2h1\dm 59% ↻ 4d\dh$/u);
+    await session.prompt("/claude-usage");
+    assert.equal(usageRequests.length, 1);
+    assert.equal(usageRequests[0].get("authorization"), "Bearer sk-ant-oat01-synthetic-fixture");
+    assert.equal(usageRequests[0].get("anthropic-beta"), "oauth-2025-04-20");
+    const report = notices.findLast((notice) => notice.message.startsWith("Claude usage"))?.message ?? "";
+    assert.match(report, /Phiên 5 giờ: dùng 12% · còn 88%/u);
+    assert.ok(!report.includes("sk-ant-oat01"), "Báo cáo không được chứa credential");
+    assert.match(statuses.get("claude-usage") ?? "", /^claude 88% ↻ /u);
+  } finally {
+    // Các check sau chạy trên model của fixture.
+    await session.setModel(parent);
+  }
   assert.equal(statuses.has("claude-usage"), false);
-  assert.equal(control.seen.length, 0, "Quota và bridge không được gọi model");
+  assert.equal(control.seen.length, 0, "Quota và web search không được gọi model của fixture");
 });
 await check("read safe file; deny .env and symlink escape", async () => {
   const calls = [[tool("read", { path: "safe.txt" })], [tool("read", { path: ".env" })]];
