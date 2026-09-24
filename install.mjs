@@ -134,14 +134,14 @@ try{
     managed(path.join(root,'tests',filename),fs.readFileSync(path.join(repoDir,'tests',filename)));
   const files=buildConfiguration({root,agentDir,binDir,nodePath,platform:process.platform,home,repoDir,shellPath:state.shellPath});
   for(const specification of files){const file=preserveLocalControls(specification);managed(file.path,file.content,file.mode);}
-  for(const [name,action] of Object.entries({'pi':'main','pi-login':'login','pi-doctor':'doctor','pi-test':'test','pi-config':'doctor','firecrawl':'firecrawl','pi-models':'models'}))launcher(name,action);
+  for(const [name,action] of Object.entries({'pi':'main','pi-login':'login','pi-doctor':'doctor','pi-test':'test','pi-config':'doctor','firecrawl':'firecrawl','pi-models':'models','pi-mcp-adapter':'mcp-adapter'}))launcher(name,action);
   const auth=path.join(agentDir,'auth.json');
   if(!fs.existsSync(auth)){fs.mkdirSync(agentDir,{recursive:true,mode:0o700});fs.writeFileSync(auth,'{}\n',{mode:0o600});}
   await addPath();
   reconcileResources({root,agentDir,binDir,state,wanted});
   state.installedAt=new Date().toISOString();writeJson(statePath,state);
   console.log(`\nĐã cài Pi vào ${root}. Mở terminal mới rồi chạy pi.`);
-  console.log('Đăng nhập: pi-login → /login. Firecrawl: firecrawl login --browser.');
+  console.log('Đăng nhập: pi-login → /login. Firecrawl: firecrawl login --browser. Jev cho auto mode: pi-mcp-adapter key set systemone.');
   if(preserved.length)console.log('Giữ nguyên các file đã được bạn tùy chỉnh:\n'+preserved.join('\n'));
   await run(nodePath,[path.join(root,'bin/launch.mjs'),'doctor']);
 }finally{fs.unlinkSync(lock);}

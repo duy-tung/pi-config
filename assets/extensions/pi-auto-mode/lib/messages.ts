@@ -57,4 +57,6 @@ export const BYPASS_WARNING = [
   "By proceeding, you accept all responsibility for actions taken in Bypass Permissions mode.",
 ].join("\n");
 
-export const AUTO_NOTICE = "Auto mode lets Pi handle permission prompts automatically: a classifier checks each risky tool call before it runs. Actions it judges safe run; risky ones are blocked and Pi tries another approach. It can make mistakes, so prefer isolated environments for sensitive work. Shift+Tab switches mode; /permissions shows recent denials.";
+export const JEV_NOTICE = "Auto mode can screen actions with Jev, TypeSafe's System One model: routine commands are cleared without an LLM call and only risky ones reach the LLM classifier. Store a TypeSafe API key with `pi-mcp-adapter key set systemone` in a terminal, then restart Pi. Until then the LLM classifier screens every action. /auto-mode shows the status.";
+
+export const AUTO_NOTICE ="Auto mode lets Pi handle permission prompts automatically: a classifier checks each risky tool call before it runs. Actions it judges safe run; risky ones are blocked and Pi tries another approach. It can make mistakes, so prefer isolated environments for sensitive work. Shift+Tab switches mode; /permissions shows recent denials.";

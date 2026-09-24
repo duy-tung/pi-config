@@ -29,7 +29,8 @@ if(action==='doctor'){
 }else{
   const name=action==='login'?'main':action;
   const profile=profiles[name];
-  if(action!=='firecrawl'&&!profile)throw new Error('Profile không hợp lệ');
+  // mcp-adapter: CLI của pi-mcp-adapter (vd `pi-mcp-adapter key set systemone` lưu key Jev vào keyring).
+  if(action!=='firecrawl'&&action!=='mcp-adapter'&&!profile)throw new Error('Profile không hợp lệ');
   const runtime=profile?.runtime ?? 'current';
   const modules=path.join(root,'runtimes',runtime,'node_modules');
   const env={...process.env,
@@ -46,6 +47,7 @@ if(action==='doctor'){
   if(process.platform==='win32')for(const key of Object.keys(env))if(key.toLowerCase()==='path')delete env[key];
   env.PATH=[...new Set(parts),oldPath].join(path.delimiter);
   const entry=action==='firecrawl'?path.join(root,'tools/firecrawl/node_modules/firecrawl-cli/dist/index.js'):
+    action==='mcp-adapter'?path.join(modules,'pi-mcp-adapter/cli.js'):
     path.join(modules,'@earendil-works/pi-coding-agent/dist/cli.js');
   const child=spawn(state.nodePath,[entry,...args],{env,stdio:'inherit',windowsHide:false});
   child.on('error',()=>{console.error('Không chạy được runtime; thử pi-doctor.');process.exitCode=1;});
