@@ -197,7 +197,7 @@ async function check(name, fn) {
 }
 await check("single session exposes slash commands and only one model delegation system", async () => {
   const commands = session.extensionRunner.getRegisteredCommands().map(command => command.name);
-  for (const name of ["goal", "goal-pause", "goal-resume", "bg", "jobs", "logs", "kill", "advisor", "advisor-off", "rewind", "checkpoint", "undo", "redo", "permissions", "auto-mode", "claude-usage"])
+  for (const name of ["goal", "goal-pause", "goal-resume", "bg", "jobs", "logs", "kill", "advisor", "advisor-off", "rewind", "checkpoint", "undo", "redo", "clear", "permissions", "auto-mode", "claude-usage"])
     assert.ok(commands.includes(name), `Missing /${name}`);
   assert.equal(new Set(commands).size, commands.length);
   const tools = session.getAllTools().map(tool => tool.name);
@@ -347,6 +347,9 @@ if (configuration.packages.includes("pi-background-tasks")) {
     assert.ok(!result[0]?.isError, JSON.stringify(result));
     const taskId = result[0].details?.task?.id; assert.ok(taskId, JSON.stringify(result));
     assert.equal(result[0].details.task.triggerOnCompletion, false);
+    // Mô tả và kết quả bg_run (bản vá) nói khi nào nên bật triggerOnCompletion.
+    assert.match(JSON.stringify(result[0].content), /this job will not wake you/u);
+    assert.match(session.getToolDefinition("bg_run").promptGuidelines.join("\n"), /triggerOnCompletion:true when your next step depends on the job result/u);
     // Windows shell startup is not bounded by an arbitrary 500ms sleep.
     // Poll only inside this offline fixture; the production agent uses notifications.
     const deadline = Date.now() + 15000;
@@ -375,7 +378,7 @@ if (configuration.packages.includes("pi-advisor-flow")) {
     await session.prompt("/advisor-off");
   });
 }
-await check("rewind restores code and conversation like Claude Code; redo brings them back", async () => {
+await check("rewind restores code and conversation like Claude Code; Redo in the menu and /redo bring them back", async () => {
   const fileA = path.join(cwd, "rewind-a.txt"), fileB = path.join(cwd, "rewind-b.txt");
   const read = (file) => fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
   await run("rewind-one", [[tool("write", { path: "rewind-a.txt", content: "A1\n" })]]);
@@ -389,14 +392,36 @@ await check("rewind restores code and conversation like Claude Code; redo brings
   await session.prompt("/rewind");
   assert.equal(read(fileA), "A1\n", JSON.stringify(notices)); assert.equal(read(fileB), null, JSON.stringify(notices));
   assert.ok(!sessionManager.getBranch().some((entry) => entry.id === userTwo.id), "Hội thoại phải quay về trước prompt đã chọn");
-  await session.prompt("/redo");
+  // Redo nằm trong menu /rewind (dưới "(current)"), như /redo.
+  rewindAnswers.push("Redo", "Redo");
+  await session.prompt("/rewind");
+  assert.deepEqual(rewindAnswers, [], "Menu phải có mục Redo");
   assert.equal(read(fileA), "A2\n"); assert.equal(read(fileB), "B");
   assert.ok(sessionManager.getBranch().some((entry) => entry.id === userTwo.id));
   rewindAnswers.push("rewind-one", "Restore code");
   await session.prompt("/undo");
   assert.equal(read(fileA), null); assert.equal(read(fileB), null);
   assert.ok(sessionManager.getBranch().some((entry) => entry.id === userTwo.id), "Restore code giữ nguyên hội thoại");
+  await session.prompt("/redo");
+  assert.equal(read(fileA), "A2\n"); assert.equal(read(fileB), "B");
   assert.equal(control.seen.filter((entry) => entry.key === "rewind-one" || entry.key === "rewind-two").length, 5);
+  assert.equal(fs.readdirSync(path.join(fixture, "rewind", "journal")).length, 0, "Nhật ký phục hồi phải được xóa khi khôi phục xong");
+});
+await check("rewind: a restore interrupted by a crash can be finished from the menu", async () => {
+  const file = path.join(cwd, "rewind-journal.txt");
+  fs.writeFileSync(file, "X-before\n");
+  const { BlobStore } = await import(pathToFileURL(path.join(installRoot, "assets", "extensions", "pi-rewind", "lib", "store.ts")).href);
+  const store = new BlobStore(path.join(fixture, "rewind"));
+  const version = (text) => ({ kind: "file", sha: store.put(Buffer.from(text)), size: Buffer.byteLength(text), mode: fs.statSync(file).mode & 0o7777, dir: fs.realpathSync.native(cwd) });
+  // Process đã thoát: như Pi chết giữa lúc khôi phục, nhật ký còn lại.
+  const dead = childProcess.spawnSync(process.execPath, ["-e", ""]).pid;
+  const journal = path.join(fixture, "rewind", "journal", "crashed.json");
+  writeJson(journal, { v: 1, id: "crashed", pid: dead, at: Date.now() - 60000, files: { [file]: { before: version("X-before\n"), after: version("X-target\n") } } });
+  rewindAnswers.push("⚠ Interrupted code restore", "Finish the restore");
+  await session.prompt("/rewind");
+  assert.deepEqual(rewindAnswers, [], "Menu phải có mục Interrupted code restore");
+  assert.equal(fs.readFileSync(file, "utf8"), "X-target\n");
+  assert.equal(fs.existsSync(journal), false);
 });
 await check("clipboard image shortcut, attachment, deleted marker and size guard", async () => {
   const {KeybindingsManager}=await import(pathToFileURL(path.join(modules,"@earendil-works/pi-coding-agent/dist/core/keybindings.js")).href);

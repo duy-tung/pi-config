@@ -1,6 +1,5 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { type ExtensionAPI, type ExtensionContext, getAgentDir, getPackageDir } from "@earendil-works/pi-coding-agent";
@@ -8,7 +7,7 @@ import { classifyWithFallback, type Complete } from "./lib/classifier.ts";
 import { loadConfig, parseMode, type PermissionMode, readState, writeState } from "./lib/config.ts";
 import * as text from "./lib/messages.ts";
 import { type CallFacts, decide, describeCall, type PolicyContext, SAFE_TOOLS, type ToolCall } from "./lib/policy.ts";
-import { resolveToolPath } from "./lib/paths.ts";
+import { resolveToolPath, temporaryRoots } from "./lib/paths.ts";
 import { buildSystemPrompt, DEFAULT_ALLOW, DEFAULT_ENVIRONMENT, DEFAULT_HARD_DENY, DEFAULT_SOFT_DENY, resolveSlots } from "./lib/prompt.ts";
 import { buildRuleSet, firstMatch } from "./lib/rules.ts";
 import { callKey, LIMITS, PermissionState } from "./lib/state.ts";
@@ -18,7 +17,7 @@ import { type EvalCase, formatReport, runEval } from "./lib/eval.ts";
 
 const WIDGET = "pi-auto-mode";
 const MCP_APPROVAL_EVENT = "pi-mcp-adapter:tool-approval-request";
-const DESTRUCTIVE_GIT = /\b(?:rm|rmdir|git\s+(?:reset|checkout|restore|clean|stash|push|commit|add|rebase|branch\s+-[dD]))\b/u;
+const DESTRUCTIVE_GIT = /\b(?:rm|rmdir|rimraf|git\s+(?:reset|checkout|restore|clean|stash|push|commit|add|rebase|branch\s+-[dD]))\b|\s-delete\b/u;
 
 type McpRequest = {
   serverName: string;
@@ -177,8 +176,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
 
   function roots(cwd: string): string[] {
     const extra = config.additionalDirectories.map((dir) => resolveToolPath(dir, cwd)).filter((dir): dir is string => !!dir);
-    const temp = [os.tmpdir(), ...(process.platform === "win32" ? [] : ["/tmp"])];
-    return [...new Set([path.resolve(cwd), ...extra, ...temp])];
+    return [...new Set([path.resolve(cwd), ...extra, ...temporaryRoots()])];
   }
 
   /** Subagent sẽ chạy không có cổng này (isolated, extensions:false hoặc danh sách extension thiếu pi-auto-mode). */
@@ -216,7 +214,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
   function policyContext(ctx: ExtensionContext): PolicyContext {
     return {
       mode: currentMode(), cwd: ctx.cwd, roots: roots(ctx.cwd), readRoots: readRoots(ctx.cwd), rules: rules(), selfPaths: selfPaths(),
-      agentIsUngated: (input) => agentIsUngated(ctx.cwd, input),
+      agentIsUngated: (input) => agentIsUngated(ctx.cwd, input), tempRoots: temporaryRoots(),
     };
   }
 

@@ -14,15 +14,15 @@
     "@modelcontextprotocol/server-filesystem": "2026.8.31",
     "@narumitw/pi-usage": "0.61.0",
     "@tintinweb/pi-subagents": "0.19.0",
-    "pi-advisor-flow": "0.8.0",
+    "pi-advisor-flow": "0.8.1",
     "pi-lens": "file:../../vendor/pi-lens-4.2.1-pi0871.tgz",
-    "pi-mcp-adapter": "file:../../vendor/pi-mcp-adapter-2.36.0-pi0871.tgz",
+    "pi-mcp-adapter": "2.37.0",
     "pi-open-tui": "0.3.8",
     "pi-web-access": "0.31.0",
     "typescript": "5.9.3",
     "typescript-language-server": "6.0.0",
     "pi-goal-x": "0.31.8",
-    "pi-background-tasks": "file:../../vendor/pi-background-tasks-2.6.3-pi0871.tgz",
+    "pi-background-tasks": "file:../../vendor/pi-background-tasks-2.6.5-pi0871.tgz",
     "@pi-archimedes/image-paste": "2.8.0",
     "@mariozechner/clipboard": "0.3.9"
   },
@@ -30,11 +30,11 @@
   "piPlatform": {
     "localPackages": {
       "pi-background-tasks": {
-        "version": "2.6.3",
-        "source": "../../vendor/pi-background-tasks-2.6.3-pi0871.tgz",
-        "sha256": "1d177bb4f8a27d4563cac8b64085cb0d285e022266c0ce0b398c48aebb894839",
-        "upstreamIntegrity": "sha512-DlQoZdfaqBtrxwwi4wZKl5TE50KVuJpUHMcAeXc0DJKYDTZIDyrGsVrjm6rESSaC+Ajac6MNWoj/TDchbeQvEw==",
-        "upstreamTarball": "https://registry.npmjs.org/pi-background-tasks/-/pi-background-tasks-2.6.3.tgz",
+        "version": "2.6.5",
+        "source": "../../vendor/pi-background-tasks-2.6.5-pi0871.tgz",
+        "sha256": "24fc8ad1e592e8fe1c6464f3fcf1ea62712b93bb332e6ee7c2391d9f34e74c8e",
+        "upstreamIntegrity": "sha512-eygqvf+tPiEPF5f0X/UknyLzJoSiw30YRihdJKE+S7Z1JvLr53geUzl5od85X/m4D/bFeJ0iiE1b+FTor3mW5g==",
+        "upstreamTarball": "https://registry.npmjs.org/pi-background-tasks/-/pi-background-tasks-2.6.5.tgz",
         "reason": "Peer metadata adds exactly Pi 0.87.1; runtime changes are tracked separately in assets/patches.json."
       },
       "pi-lens": {
@@ -43,14 +43,6 @@
         "sha256": "7c9cbc005f5c30a2345509930fd0749ab5db832002ca152023e323bc997c1dfc",
         "upstreamIntegrity": "sha512-nRF5I/xdYZ1bZoOcTVCbRPV81TsCvkBdyxCtx+nZiRju76S18COFTnj8oNmSV7LAfatiRy8r5pHl0dcc0FtaAw==",
         "upstreamTarball": "https://registry.npmjs.org/pi-lens/-/pi-lens-4.2.1.tgz",
-        "reason": "Peer metadata adds exactly Pi 0.87.1; runtime changes are tracked separately in assets/patches.json."
-      },
-      "pi-mcp-adapter": {
-        "version": "2.36.0",
-        "source": "../../vendor/pi-mcp-adapter-2.36.0-pi0871.tgz",
-        "sha256": "9e9fab8c4f71bc864467ba10e3fd6f5e060faac7629bec7e5f5f6a27ebce81b6",
-        "upstreamIntegrity": "sha512-aX7Hf1FMGoHFjjx2Y4t12Hkue83CiBQmZaeQQ0mg+2wxOzbIOYdWzEkh1bmKlLHKiH6zRWlxWitsr+RaiXvoRQ==",
-        "upstreamTarball": "https://registry.npmjs.org/pi-mcp-adapter/-/pi-mcp-adapter-2.36.0.tgz",
         "reason": "Peer metadata adds exactly Pi 0.87.1; runtime changes are tracked separately in assets/patches.json."
       }
     }

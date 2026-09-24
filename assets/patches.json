@@ -119,13 +119,74 @@
       ]
     },
     {
+      "package": "@tintinweb/pi-subagents",
+      "versions": {
+        "current": "0.19.0"
+      },
+      "file": "src/index.ts",
+      "originalSha256": "622d44b11e615ec0509f13e858dcad4a40789e4613c03583930327f15d9ec6a9",
+      "patchedSha256": "3b5dce1d407c553fc690609171b612dc995d219eca64b3fca5c493623f6b00dd",
+      "edits": [
+        {
+          "before": "import { defineTool, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext, getAgentDir, getSettingsListTheme } from \"@earendil-works/pi-coding-agent\";",
+          "after": "import { defineTool, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext, getAgentDir, getMarkdownTheme, getSettingsListTheme, keyHint } from \"@earendil-works/pi-coding-agent\";",
+          "count": 1
+        },
+        {
+          "before": "import { Container, Key, matchesKey, type SettingItem, SettingsList, Spacer, Text } from \"@earendil-works/pi-tui\";",
+          "after": "import { Container, Key, Markdown, matchesKey, type SettingItem, SettingsList, Spacer, stripTerminalSequences, Text } from \"@earendil-works/pi-tui\";",
+          "count": 1
+        },
+        {
+          "before": "      function renderOne(d: NotificationDetails): string {\n",
+          "after": "      // Local integration: an expanded notification shows each result preview as Markdown, so a row is built from components.\n      function renderOne(d: NotificationDetails): Container {\n        const row = new Container();\n",
+          "count": 1
+        },
+        {
+          "before": "          const lines = d.resultPreview.split(\"\\n\").slice(0, 30);\n          for (const l of lines) line += \"\\n\" + theme.fg(\"dim\", `  ${l}`);\n",
+          "after": "          row.addChild(new Text(line, 0, 0));\n          row.addChild(new Markdown(d.resultPreview.split(\"\\n\").slice(0, 30).join(\"\\n\"), 2, 0, getMarkdownTheme(), { color: (t: string) => theme.fg(\"dim\", t) }));\n          line = \"\";\n",
+          "count": 1
+        },
+        {
+          "before": "          line += \"\\n  \" + theme.fg(\"muted\", `transcript: ${d.outputFile}`);\n        }\n\n        return line;\n",
+          "after": "          line += (line ? \"\\n  \" : \"  \") + theme.fg(\"muted\", `transcript: ${d.outputFile}`);\n        }\n\n        if (line) row.addChild(new Text(line, 0, 0));\n        return row;\n",
+          "count": 1
+        },
+        {
+          "before": "      const rendered = all.map(renderOne);\n",
+          "after": "      const rendered: Array<Container | Text> = all.map(renderOne);\n",
+          "count": 1
+        },
+        {
+          "before": "          rendered.unshift(theme.fg(\"dim\", `${all.length} agents · ${formatTokens(tokens)} · ${total}`));\n",
+          "after": "          rendered.unshift(new Text(theme.fg(\"dim\", `${all.length} agents · ${formatTokens(tokens)} · ${total}`), 0, 0));\n",
+          "count": 1
+        },
+        {
+          "before": "      return new Text(rendered.join(\"\\n\"), 0, 0);\n",
+          "after": "      const out = new Container();\n      for (const c of rendered) out.addChild(c);\n      return out;\n",
+          "count": 1
+        },
+        {
+          "before": "            const lines = resultText.split(\"\\n\").slice(0, 50);\n            for (const l of lines) {\n              line += \"\\n\" + theme.fg(\"dim\", `  ${l}`);\n            }\n            if (resultText.split(\"\\n\").length > 50) {\n              line += \"\\n\" + theme.fg(\"muted\", \"  ... (use get_subagent_result with verbose for full output)\");\n            }\n",
+          "after": "            // Local integration: the expanded result renders as Markdown, under the same 50-line cap and notice.\n            const container = new Container();\n            container.addChild(new Text(line, 0, 0));\n            container.addChild(new Markdown(resultText.split(\"\\n\").slice(0, 50).join(\"\\n\"), 2, 0, getMarkdownTheme(), { color: (t: string) => theme.fg(\"dim\", t) }));\n            if (resultText.split(\"\\n\").length > 50) {\n              container.addChild(new Text(theme.fg(\"muted\", \"  ... (use get_subagent_result with verbose for full output)\"), 0, 0));\n            }\n            return container;\n",
+          "count": 1
+        },
+        {
+          "before": "    execute: async (_toolCallId, params, signal, _onUpdate, _ctx) => {\n",
+          "after": "    // Local integration: expanded, a finished agent's output renders as Markdown; every other view keeps Pi's plain 10-line fallback.\n    renderResult(result, { expanded }, theme, renderContext) {\n      const text = stripTerminalSequences(result.content[0]?.type === \"text\" ? result.content[0].text : \"\").replace(/[\\u0000-\\u0008\\u000b-\\u001f\\ufff9-\\ufffb]/g, \"\");\n      const plain = (s: string) => new Text(s.split(\"\\n\").map((l) => theme.fg(\"toolOutput\", l)).join(\"\\n\"), 0, 0);\n      const bodyAt = text.indexOf(\"\\n\\n\") + 2;\n      if (expanded && !renderContext.isError && bodyAt > 1 && !/^Type: .*\\| Status: (?:running|error)\\b/m.test(text.slice(0, bodyAt))) {\n        const convAt = text.indexOf(\"\\n\\n--- Agent Conversation ---\\n\", bodyAt);\n        const box = new Container();\n        box.addChild(plain(text.slice(0, bodyAt - 1)));\n        box.addChild(new Markdown(text.slice(bodyAt, convAt < 0 ? undefined : convAt), 0, 0, getMarkdownTheme(), { color: (t: string) => theme.fg(\"toolOutput\", t) }));\n        if (convAt >= 0) box.addChild(plain(text.slice(convAt + 1)));\n        return box;\n      }\n      const lines = text.split(\"\\n\");\n      const more = expanded ? 0 : Math.max(0, lines.length - 10);\n      const hint = more ? `${theme.fg(\"muted\", `\\n... (${more} more lines,`)} ${keyHint(\"app.tools.expand\", \"to expand\")}${theme.fg(\"muted\", \")\")}` : \"\";\n      return new Text(lines.slice(0, lines.length - more).map((l) => theme.fg(\"toolOutput\", l)).join(\"\\n\") + hint, 0, 0);\n    },\n    execute: async (_toolCallId, params, signal, _onUpdate, _ctx) => {\n",
+          "count": 1
+        }
+      ]
+    },
+    {
       "package": "pi-advisor-flow",
       "versions": {
-        "current": "0.8.0"
+        "current": "0.8.1"
       },
       "file": "dist/index.js",
-      "originalSha256": "5e7cac4ff65e6f7cf0e152862d5a23fbc820ee1e9fe6d55568866be5b4fdb732",
-      "patchedSha256": "f720a12c803c5dcfacda715ed6398a28133d71f5a57a3b1af93527c533eb4b0c",
+      "originalSha256": "44a20e7858d8809aeb5f27d7259b093b5e30ad6a2eca259ec67a66db62eb9c61",
+      "patchedSha256": "5c78391d8201366880ccb2a388c9fd0ab6234f342b12b2fd711367153554ccb2",
       "edits": [
         {
           "before": "    ref\n  };\n};\nvar ADVISOR_STREAM_UPDATE_INTERVAL_MS",
@@ -142,11 +203,11 @@
     {
       "package": "pi-background-tasks",
       "versions": {
-        "current": "2.6.3"
+        "current": "2.6.5"
       },
       "file": "dist/src/extension.js",
       "originalSha256": "255f3684c00a7f9d36df2741a279ca9840ed138cb1581e32dfa64885d7b211e9",
-      "patchedSha256": "114bad74a312a4b1e0f9a6e4e53f1cd8e9393f16d2363eac73f5b67632b37b67",
+      "patchedSha256": "c4aa686710e3de93d7fb66976c506797d0bfdfa53a829eb6fce8ae36679e3c92",
       "edits": [
         {
           "before": "    const config = parseBackgroundTasksConfig();\n",
@@ -155,7 +216,7 @@
         },
         {
           "before": "        description: `Start a named long-running shell command in the background and return immediately with a task ID and output path. By default, completed, failed, or killed terminal state is delivered automatically as <background-task-notification> and starts a follow-up agent turn; do not sleep or poll merely to wait. Output is written to .pi/tasks and model-visible logs are bounded to ${formatSize(MAX_LOG_BYTES)}.`,\n        promptSnippet: 'Start a named long-running shell command; default terminal notification wakes a follow-up turn, so yield instead of polling',\n        promptGuidelines: [\n            'Use bg_run instead of bash for commands expected to run for a long time, such as test suites, dev servers, watchers, or builds.',\n            'Always set isAgent: true only when the background task launches an LLM/agent process; set isAgent: false for scripts, tests, dev servers, sleeps, and ordinary shell commands.',\n            'When using bg_run, always set name to a concise 2-6 word human-readable label for the footer task dock; do not use the raw command as the name unless it is already short and meaningful.',\n            'bg_run returns immediately. With notifyOnCompletion:true and triggerOnCompletion:true (both defaults), completed, failed, or killed terminal state is delivered as <background-task-notification> and automatically starts a follow-up agent turn.',\n            'After a default bg_run launch, continue only independent useful work that does not merely wait for the task; otherwise briefly acknowledge it if useful, then end the current turn. Do not call sleep, bg_status, or bg_logs merely to wait; the terminal notification will wake you.',\n            'Treat <background-task-notification> as durable terminal truth. Do not call bg_status to reconfirm it; call bg_logs only when the task output is needed.',\n            'Use bg_status/bg_logs only when the user explicitly requests an update, automatic notification or wake-up was deliberately disabled, there is concrete evidence the task is hung, or a terminal notification arrived and output details are needed.',\n            'Do not set notifyOnCompletion:false or triggerOnCompletion:false unless intentionally opting out of automatic completion handling.',\n        ],\n",
-          "after": "        description: `Start a named shell job in the background and return its task ID and output path. Completion notifies the UI without starting a model turn by default. Logs are bounded to ${formatSize(MAX_LOG_BYTES)}.`,\n        promptSnippet: 'Run a shell job without blocking; completion notification does not wake the model by default',\n        promptGuidelines: [\n            'Use for scripts, tests, builds, servers and watchers; set isAgent:false. Model delegation uses the Agent tool.',\n            'Set a concise name. Continue independent work after starting a job.',\n            'triggerOnCompletion defaults to false. Set true only when automatic follow-up is part of the user-requested workflow.',\n            'Read bg_status/bg_logs when the result is needed; avoid repetitive polling.',\n        ],\n",
+          "after": "        description: `Start a named shell job in the background and return its task ID and output path. When it ends, a <background-task-notification> is delivered; it starts a new agent turn only with triggerOnCompletion:true. Logs are bounded to ${formatSize(MAX_LOG_BYTES)}.`,\n        promptSnippet: 'Run a shell job without blocking; set triggerOnCompletion:true when your next step needs its result',\n        promptGuidelines: [\n            'Use for scripts, tests, builds, servers and watchers; set isAgent:false. Model delegation uses the Agent tool.',\n            'Set a concise name. Continue independent work after starting a job.',\n            'Set triggerOnCompletion:true when your next step depends on the job result, such as tests or a build you must check before continuing. You are woken when it ends, so do not sleep or poll; if no independent work is left, end your turn.',\n            'Leave triggerOnCompletion false (the default) for servers, watchers and jobs whose result is not needed right away; read bg_status/bg_logs when you need the result, without tight polling.',\n        ],\n",
           "count": 1
         },
         {
@@ -165,7 +226,23 @@
         },
         {
           "before": "Default: true for bg_run; requires notifyOnCompletion.",
-          "after": "Default: false; requires notifyOnCompletion.",
+          "after": "Default: false. Set true when your next step depends on the result of this job; requires notifyOnCompletion.",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "package": "pi-background-tasks",
+      "versions": {
+        "current": "2.6.5"
+      },
+      "file": "dist/src/core/common.js",
+      "originalSha256": "9554f7fe0d79aa4dc36a468b41165001be3d392cec252fcc66452cbebd0b1e20",
+      "patchedSha256": "1aefb46e91b2ea3071c06349a2251cf18b75ada2c6808cdb7bf104a5ef1a7ef4",
+      "edits": [
+        {
+          "before": "                'Next action: automatic wake-up was explicitly disabled; use bg_status/bg_logs only when deliberate monitoring is required, without tight polling.',",
+          "after": "                // Local integration: pi-config defaults triggerOnCompletion to false, so this is not an explicit opt-out.\n                'Next action: this job will not wake you. If you need its result, check bg_status/bg_logs later without tight polling, or start such jobs with triggerOnCompletion:true.',",
           "count": 1
         }
       ]

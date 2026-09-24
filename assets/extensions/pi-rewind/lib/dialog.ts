@@ -42,8 +42,26 @@ export interface DialogDeps {
   is(data: string, key: string): boolean;
 }
 
+/**
+ * Mục ngoài danh sách prompt: "top" nằm trên prompt cũ nhất (phiên trước, lần khôi phục bị gián đoạn),
+ * "bottom" nằm dưới (current) (Redo). Chọn mục mở màn hình xác nhận riêng; "Never mind" tự thêm.
+ */
+export interface MenuItem {
+  key: string;
+  label: string;
+  detail?: string;
+  position: "top" | "bottom";
+  warning?: boolean;
+  title: string;
+  lines: string[];
+  options: { value: string; label: string }[];
+}
+
+type Entry = { row: RewindRow } | { item: MenuItem } | { current: true };
+
 export interface DialogOptions {
   rows: RewindRow[];
+  items?: MenuItem[];
   preselectedEntryId?: string;
   canSummarize: boolean;
   /** Theo dõi bash bằng git đang bật cho workspace này. */
@@ -53,6 +71,7 @@ export interface DialogOptions {
   /** undefined: prompt không có checkpoint nên không khôi phục code được. */
   restoreStats(row: RewindRow): Promise<RowStats | undefined>;
   execute(choice: RewindChoice): Promise<void>;
+  runItem?(key: string, value: string): Promise<void>;
   done(): void;
   requestRender(): void;
   now?: () => number;
@@ -94,14 +113,16 @@ export class RewindDialog {
   private readonly options: DialogOptions;
   private readonly theme: ThemeLike;
   private readonly deps: DialogDeps;
+  private readonly entries: Entry[];
   private selected: number;
   private readonly stats = new Map<string, RowStats | null>();
   private confirming: RewindRow | undefined;
+  private activeItem: MenuItem | undefined;
   private restore: RowStats | undefined;
   private restoreReady = false;
   private focus = 0;
   private readonly inputs = new Map<RewindAction, string>();
-  private busy: RewindAction | undefined;
+  private busy: string | undefined;
   private width = 80;
   private error: string | undefined;
   private disposed = false;
@@ -110,7 +131,14 @@ export class RewindDialog {
     this.options = options;
     this.theme = theme;
     this.deps = deps;
-    this.selected = options.rows.length; // "(current)"
+    const items = options.items ?? [];
+    this.entries = [
+      ...items.filter((item) => item.position === "top").map((item) => ({ item })),
+      ...options.rows.map((row) => ({ row })),
+      { current: true as const },
+      ...items.filter((item) => item.position === "bottom").map((item) => ({ item })),
+    ];
+    this.selected = this.entries.findIndex((entry) => "current" in entry);
     for (const row of options.rows) {
       options.rowStats(row).then((value) => this.update(() => this.stats.set(row.entryId, value)), () => this.update(() => this.stats.set(row.entryId, null)));
     }
@@ -131,7 +159,7 @@ export class RewindDialog {
   }
 
   private get count(): number {
-    return this.options.rows.length + 1;
+    return this.entries.length;
   }
 
   private openConfirm(row: RewindRow): void {
@@ -179,7 +207,12 @@ export class RewindDialog {
       else if (is(data, "enter")) this.update(() => {
         this.error = undefined;
         this.confirming = undefined;
+        this.activeItem = undefined;
       });
+      return;
+    }
+    if (this.activeItem) {
+      this.handleItemInput(data, this.activeItem);
       return;
     }
     if (this.confirming) {
@@ -194,10 +227,49 @@ export class RewindDialog {
     if (is(data, "pageUp")) return this.update(() => (this.selected = Math.max(0, this.selected - this.visibleCount())));
     if (is(data, "pageDown")) return this.update(() => (this.selected = Math.min(this.count - 1, this.selected + this.visibleCount())));
     if (is(data, "enter")) {
-      const row = this.options.rows[this.selected];
-      if (!row) return this.options.done(); // "(current)"
-      this.update(() => this.openConfirm(row));
+      const entry = this.entries[this.selected];
+      if (!entry || "current" in entry) return this.options.done();
+      if ("item" in entry) return this.update(() => {
+        this.activeItem = entry.item;
+        this.focus = 0;
+      });
+      this.update(() => this.openConfirm(entry.row));
     }
+  }
+
+  private itemOptions(item: MenuItem): { value: string; label: string }[] {
+    return [...item.options, { value: "nevermind", label: "Never mind" }];
+  }
+
+  private handleItemInput(data: string, item: MenuItem): void {
+    const { is } = this.deps;
+    const options = this.itemOptions(item);
+    const back = () => this.update(() => (this.activeItem = undefined));
+    if (is(data, "escape")) return back();
+    if (is(data, "up")) return this.update(() => (this.focus = (this.focus - 1 + options.length) % options.length));
+    if (is(data, "down")) return this.update(() => (this.focus = (this.focus + 1) % options.length));
+    let index = -1;
+    if (is(data, "enter")) index = Math.min(this.focus, options.length - 1);
+    else if (/^[1-9]$/u.test(data) && Number(data) <= options.length) index = Number(data) - 1;
+    if (index < 0) return;
+    const option = options[index];
+    if (option.value === "nevermind") return back();
+    const run = this.options.runItem;
+    if (!run) return;
+    this.update(() => {
+      this.focus = index;
+      this.busy = option.value;
+    });
+    run(item.key, option.value).then(
+      () => {
+        this.busy = undefined;
+        this.options.done();
+      },
+      (error: unknown) => this.update(() => {
+        this.busy = undefined;
+        this.error = error instanceof Error ? error.message : String(error);
+      }),
+    );
   }
 
   private handleConfirmInput(data: string): void {
@@ -264,10 +336,12 @@ export class RewindDialog {
       for (const line of this.error.split("\n")) lines.push(` ${t.fg("error", line)}`);
       lines.push("");
       lines.push(` ${t.fg("dim", "enter to go back · esc to close")}`);
-    } else if (this.options.rows.length === 0) {
+    } else if (this.entries.length === 1) {
       lines.push(` ${t.fg("muted", "Nothing to rewind to yet.")}`);
       lines.push("");
       lines.push(` ${t.fg("dim", "esc to cancel")}`);
+    } else if (this.activeItem) {
+      this.renderItem(lines, this.activeItem);
     } else if (this.confirming) {
       this.renderConfirm(lines, this.confirming);
     } else {
@@ -295,11 +369,20 @@ export class RewindDialog {
     for (let index = start; index < end; index++) {
       const active = index === this.selected;
       const pointer = active ? t.bold(t.fg("accent", `${POINTER} `)) : "  ";
-      const row = this.options.rows[index];
-      if (!row) {
+      const entry = this.entries[index];
+      if ("current" in entry) {
         lines.push(` ${pointer}${t.italic(active ? t.fg("accent", "(current)") : "(current)")}`);
+        if (index < end - 1) lines.push("");
         continue;
       }
+      if ("item" in entry) {
+        const { item } = entry;
+        lines.push(` ${pointer}${active ? t.fg("accent", item.label) : item.warning ? t.fg("warning", item.label) : item.label}`);
+        if (item.detail) lines.push(`   ${t.fg("dim", this.deps.truncate(oneLine(item.detail), Math.max(10, width - 4)))}`);
+        lines.push("");
+        continue;
+      }
+      const { row } = entry;
       const text = this.deps.truncate(oneLine(row.text), Math.max(10, width - 14));
       lines.push(` ${pointer}${active ? t.fg("accent", text) : text}`);
       if (!row.checkpointed) {
@@ -314,6 +397,27 @@ export class RewindDialog {
     }
     if (end < this.count) lines.push(` ${t.fg("dim", `↓ ${this.count - end} more below`)}`);
     lines.push(` ${t.fg("dim", "enter to continue · esc to cancel")}`);
+  }
+
+  private renderItem(lines: string[], item: MenuItem): void {
+    const t = this.theme;
+    const width = Math.max(10, this.width - 2);
+    for (const line of this.deps.wrap(`${item.title}:`, width)) lines.push(` ${line}`);
+    for (const text of item.lines) for (const line of this.deps.wrap(text, width)) lines.push(` ${t.fg("dim", line)}`);
+    lines.push("");
+    if (this.busy) {
+      lines.push(` ${t.fg("accent", "⠿")} Working…`);
+      return;
+    }
+    const options = this.itemOptions(item);
+    options.forEach((option, index) => {
+      const active = index === Math.min(this.focus, options.length - 1);
+      const pointer = active ? t.bold(t.fg("accent", `${POINTER} `)) : "  ";
+      const label = `${index + 1}. ${option.label}`;
+      lines.push(` ${pointer}${active ? t.fg("accent", label) : label}`);
+    });
+    lines.push("");
+    lines.push(` ${t.fg("dim", "enter to select · esc to go back")}`);
   }
 
   private renderConfirm(lines: string[], row: RewindRow): void {

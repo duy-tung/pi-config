@@ -40,7 +40,7 @@ export function approvalGranted(summary: string): string {
 /** Mục system prompt cho agent chính theo mode. */
 export function modeInstructions(mode: PermissionMode): string {
   if (mode === "bypass") {
-    return "Bypass permissions mode is active: tool calls run without permission checks, except the user's explicit deny rules. Take extra care with destructive, irreversible or external actions, and confirm with the user when their intent is unclear.";
+    return "Bypass permissions mode is active: tool calls run without permission checks, except the user's deny and ask rules; the user is asked before recursive deletes outside the system temp directory. Take extra care with destructive, irreversible or external actions, and confirm with the user when their intent is unclear.";
   }
   return [
     "Auto mode is active: an automatic permission classifier checks riskier tool calls before they run, and there are no approval prompts. Keep working without asking for routine confirmations.",
@@ -52,7 +52,7 @@ export function modeInstructions(mode: PermissionMode): string {
 export const BYPASS_WARNING = [
   "WARNING: Pi running in Bypass Permissions mode",
   "",
-  "In Bypass Permissions mode, Pi will not check or ask before running potentially dangerous commands (only your deny rules still apply).",
+  "In Bypass Permissions mode, Pi will not check or ask before running potentially dangerous commands. Only your deny and ask rules still apply, and Pi still asks before recursive deletes outside the temp directory.",
   "Use it only in a sandboxed container or VM with restricted internet access that can easily be restored if damaged.",
   "By proceeding, you accept all responsibility for actions taken in Bypass Permissions mode.",
 ].join("\n");

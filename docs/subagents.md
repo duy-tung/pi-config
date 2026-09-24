@@ -24,7 +24,7 @@ Parent có thể gọi `Agent` với `subagent_type` tương ứng. Mỗi prompt
 
 Model/thinking ghim trong file role được ưu tiên hơn tham số tool. Chọn role theo công việc và kiểm model thực trong kết quả khi tùy chỉnh cấu hình.
 
-`/agents` quản lý agent; `get_subagent_result` lấy kết quả; `steer_subagent` gửi bổ sung theo ID.
+`/agents` quản lý agent; `get_subagent_result` lấy kết quả; `steer_subagent` gửi bổ sung theo ID. Khi mở rộng (`Ctrl+O`), kết quả của `Agent`, thông báo completion và `get_subagent_result` hiện dạng Markdown (tiêu đề, danh sách, code, bảng); dạng thu gọn, lỗi và agent đang chạy giữ văn bản thô như trước. Đây là bản vá `src/index.ts` của pi-subagents, chỉ đổi phần hiển thị, không đổi nội dung trả cho model.
 
 Gõ `@role nội dung` ở prompt (`agentMentions: "direct"`) khởi động agent ngay, lấy nội dung bạn gõ làm task, không gọi model parent; agent đang chạy thì nhận tin nhắn đó. Chế độ `"model"` của upstream nhờ một bản sao hội thoại viết prompt giao việc, nhưng phần sao chép này lỗi trên Pi 0.87 (tự quay về chạy thẳng) nên không dùng.
 

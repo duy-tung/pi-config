@@ -9,13 +9,13 @@
 | Pi coding agent | 0.87.1 | [earendil-works/pi](https://github.com/earendil-works/pi) | [MIT — Mario Zechner](vendor/pi.LICENSE) |
 | pi-subagents | 0.19.0 | [tintinweb/pi-subagents](https://github.com/tintinweb/pi-subagents) | [MIT — tintinweb](vendor/pi-subagents.LICENSE) |
 | pi-open-tui | 0.3.8 | [OldSuns/pi-open-tui](https://github.com/OldSuns/pi-open-tui) | [MIT — pi-open-tui contributors](vendor/pi-open-tui.LICENSE) |
-| pi-advisor-flow | 0.8.0 | [philipbrembeck/pi-advisor](https://github.com/philipbrembeck/pi-advisor) | [MIT — Philip Brembeck](vendor/pi-advisor-flow.LICENSE) |
+| pi-advisor-flow | 0.8.1 | [philipbrembeck/pi-advisor](https://github.com/philipbrembeck/pi-advisor) | [MIT — Philip Brembeck](vendor/pi-advisor-flow.LICENSE) |
 | @pi-archimedes/image-paste | 2.8.0 | [danielcherubini/pi-archimedes](https://github.com/danielcherubini/pi-archimedes) | [MIT](vendor/pi-archimedes.LICENSE) |
 | pi-web-access | 0.31.0 | [nicobailon/pi-web-access](https://github.com/nicobailon/pi-web-access) | [MIT — Nico Bailon](vendor/pi-web-access.LICENSE) |
 | @gotgenes/pi-anthropic-auth | 3.2.2 | [gotgenes/pi-anthropic-auth](https://github.com/gotgenes/pi-anthropic-auth) | [MIT — Christopher D. Lasher](vendor/pi-anthropic-auth.LICENSE) |
 | @narumitw/pi-usage | 0.61.0 | [narumiruna/pi-extensions](https://github.com/narumiruna/pi-extensions) | [MIT — narumiruna](vendor/pi-usage.LICENSE) |
 
-Các tarball `vendor/*-pi0871.tgz` giữ source npm và giấy phép gốc, chỉ bổ sung `0.87.1` vào peer metadata của pi-background-tasks, pi-lens và pi-mcp-adapter. URL/integrity upstream và SHA256 bản đóng gói được ghi trong `manifests/current/package.json`. Script `scripts/rebuild-vendor.py` kiểm nguồn và tái tạo các tarball trên môi trường phát triển có Python 3.12 trở lên và curl; máy cài Pi không cần Python.
+Các tarball `vendor/*-pi0871.tgz` giữ source npm và giấy phép gốc, chỉ bổ sung `0.87.1` vào peer metadata của pi-background-tasks và pi-lens. URL/integrity upstream và SHA256 bản đóng gói được ghi trong `manifests/current/package.json`. Script `scripts/rebuild-vendor.py` kiểm nguồn và tái tạo các tarball trên môi trường phát triển có Python 3.12 trở lên và curl; máy cài Pi không cần Python.
 
 Nguồn bổ sung: [pi-goal-x](https://github.com/tmonk/pi-goal-x), [pi-background-tasks](https://github.com/ismailsaleekh/pi-background-tasks). Giấy phép của các package nằm nguyên trong tarball.
 
@@ -25,7 +25,7 @@ Nguồn bổ sung: [pi-goal-x](https://github.com/tmonk/pi-goal-x), [pi-backgrou
 
 `native-web-search` và `claude-usage` (`assets/extensions`) là mã riêng của pi-config (MIT). Tìm kiếm Claude dùng server tool `web_search_20250305` theo cách WebSearch của Claude Code (request phụ), với prompt viết riêng; trường của `/api/oauth/usage` và header `anthropic-ratelimit-unified-*` tham khảo Claude Code và [pi-usage-meters](https://github.com/Quigleybits/pi-usage-meters) (MIT), không chép mã.
 
-Tám bản vá runtime: footer tối giản, quota Codex/Claude cạnh model, context kèm token/cửa sổ; chuyển lifecycle child session cho cổng permission (pi-auto-mode) và cho entry thư mục của package khớp tên package trong `extensions` của role; gọi advisor qua ModelRuntime; giới hạn background vào shell jobs với notification không tự đánh thức model mặc định; giữ image-paste preview ở UI để ảnh không vào context hai lần; cho bước current-model của pi-web-access dùng native search Claude qua `native-web-search`; giữ effort theo lượt của Opus 5.5 khi pi-anthropic-auth shape request OAuth; pi-usage không truy vấn quota hay đặt timer trong phiên không có UI (Agent con). Background attribution entrypoint không được nạp; Claude auth do pi-anthropic-auth quản lý. Mọi bản vá kiểm phiên bản và SHA256 source/kết quả. Các tác giả upstream không bảo trợ hoặc chứng nhận bản phân phối này.
+Mười bản vá runtime: footer tối giản, quota Codex/Claude cạnh model, context kèm token/cửa sổ; chuyển lifecycle child session cho cổng permission (pi-auto-mode) và cho entry thư mục của package khớp tên package trong `extensions` của role; hiện kết quả subagent dạng Markdown khi mở rộng; gọi advisor qua ModelRuntime; giới hạn background vào shell jobs với notification không tự đánh thức model mặc định, mô tả và kết quả `bg_run` nói khi nào bật `triggerOnCompletion`; giữ image-paste preview ở UI để ảnh không vào context hai lần; cho bước current-model của pi-web-access dùng native search Claude qua `native-web-search`; giữ effort theo lượt của Opus 5.5 khi pi-anthropic-auth shape request OAuth; pi-usage không truy vấn quota hay đặt timer trong phiên không có UI (Agent con). Background attribution entrypoint không được nạp; Claude auth do pi-anthropic-auth quản lý. Mọi bản vá kiểm phiên bản và SHA256 source/kết quả. Các tác giả upstream không bảo trợ hoặc chứng nhận bản phân phối này.
 
 ## Dependency được tải khi cài đặt
 

@@ -66,8 +66,9 @@ test('resources remain recoverable when install directories use different volume
   } finally {fs.renameSync=rename;}
 });
 test('updating settings preserves extension exclusions and deny rules, migrating pi-permission-system denials',t=>{
-  const f=fixture(t),settings=owned(f,'agent/settings.json',{extensions:['-/user/optional.ts'],permissions:{deny:['Path(/user/extra.key)']}});
-  owned(f,'agent/extensions/pi-permission-system/config.json',{permission:{'*':'ask',mcpScript:'deny',path:{'*':'allow','/private/token.json':'deny','~/.ssh/*':'deny'},bash:{'*':'ask','git push*':'deny'}}});
+  // Bash(rm -rf *) của bản cài cũ (và của pi-permission-system) được bỏ: pi-auto-mode hỏi trước khi xoá đệ quy.
+  const f=fixture(t),settings=owned(f,'agent/settings.json',{extensions:['-/user/optional.ts'],permissions:{deny:['Path(/user/extra.key)','Bash(rm -rf *)']}});
+  owned(f,'agent/extensions/pi-permission-system/config.json',{permission:{'*':'ask',mcpScript:'deny',path:{'*':'allow','/private/token.json':'deny','~/.ssh/*':'deny'},bash:{'*':'ask','git push*':'deny','rm -rf *':'deny'}}});
   const file=preserveLocalControls({path:settings,content:JSON.stringify({extensions:['palette.ts'],permissions:{deny:['Bash(sudo *)']}}),mode:0o600});
   const next=JSON.parse(file.content);
   assert.deepEqual(next.extensions,['-/user/optional.ts','palette.ts']);

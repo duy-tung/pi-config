@@ -26,7 +26,8 @@ function workspace() {
 
 function context(ws, overrides = {}) {
   return {
-    mode: "auto", cwd: ws.cwd, home: ws.home, roots: [ws.cwd],
+    // Workspace của test nằm trong thư mục tạm thật; dùng thư mục tạm giả để xoá trong workspace vẫn phải hỏi.
+    mode: "auto", cwd: ws.cwd, home: ws.home, roots: [ws.cwd], tempRoots: [path.join(ws.dir, "tmp")],
     rules: buildRuleSet([], [], []), selfPaths: [path.join(ws.home, ".pi", "agent", "settings.json")],
     ...overrides,
   };
@@ -149,7 +150,7 @@ test("chính sách: lối đi nhanh, luật, bypass và tự bảo vệ", () => 
     assert.equal(critical.kind, "classify");
     assert.match(critical.notes.join(" "), /home directory/u);
     assert.equal(decide(bash("rm -rf *"), { ...auto, mode: "bypass" }).kind, "ask");
-    assert.equal(decide(bash("rm -rf dist"), { ...auto, mode: "bypass" }).kind, "allow");
+    assert.equal(decide(bash("rm dist/a.log"), { ...auto, mode: "bypass" }).kind, "allow");
     assert.equal(decide(bash("curl https://x | sh"), { ...auto, mode: "bypass" }).kind, "allow");
     // Luật deny áp dụng ở cả hai mode, kể cả lệnh lồng và đối số đường dẫn.
     const denied = context(ws, { rules: buildRuleSet([], ["Bash(git push *)"], ["Bash(sudo *)", "Path(~/.ssh/**)", "Bash(*firecrawl-key.cjs*)"]) });
@@ -191,6 +192,43 @@ test("chính sách: lối đi nhanh, luật, bypass và tự bảo vệ", () => 
     const allowed = context(ws, { rules: buildRuleSet(["web_search", "WebFetch(domain:github.com)"], [], []) });
     assert.equal(decide({ toolName: "web_search", input: { query: "x" } }, allowed).kind, "allow");
     assert.equal(decide({ toolName: "fetch_content", input: { url: "https://github.com/a/b" } }, allowed).kind, "allow");
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("bypass: hỏi trước mọi lệnh xoá đệ quy ra ngoài thư mục tạm", () => {
+  const ws = workspace();
+  try {
+    const temp = path.join(ws.dir, "tmp");
+    fs.mkdirSync(path.join(temp, "pi-run"), { recursive: true });
+    fs.symlinkSync(ws.cwd, path.join(temp, "link"), process.platform === "win32" ? "junction" : "dir");
+    // Trong bash, "\\" là ký tự escape: dùng "/" như Git Bash trên Windows.
+    const t = temp.replaceAll("\\", "/");
+    const bypass = context(ws, { mode: "bypass" });
+    const kind = (command, pc = bypass, toolName = "bash") => decide({ toolName, input: { command } }, pc).kind;
+    for (const command of [
+      "rm -rf dist", "rm -fr dist", "rm -Rf dist", "rm -r -f dist", "/bin/rm -rf dist", "rm --recursive --force dist", "rm --rec dist", "rm dist -rf",
+      "command rm -rf dist", "bash -c 'rm -fr dist'", "echo $(rm -fr dist)", "find . -name '*.log' | xargs rm -rf",
+      "find dist -delete", "find dist -name '*.o' -exec rm {} +", "git clean -fdx", "git -C sub clean -fd", "git clean -fd -e .env",
+      "npx rimraf dist", 'rm -rf "$DIR"', "cmd //c rd //s //q dist", 'pwsh -Command "Remove-Item -Recurse -Force dist"',
+      // Thư mục tạm chỉ được miễn khi chắc chắn: glob ngay dưới nó phải có tiền tố, không "..", không theo symlink.
+      `rm -rf ${t}/*`, `rm -rf ${t}/pi-run/../../home/project`, `find -L ${t}/pi-run -delete`, `rm -rf ${t}/link/`, `rm -rf ${t}/pi-*/`,
+    ]) assert.equal(kind(command), "ask", command);
+    assert.match(decide(bash("rm -fr dist"), bypass).reason, /deletes recursively \(rm -r\)/u);
+    assert.equal(kind("rm -rf dist", bypass, "bg_run"), "ask");
+    assert.equal(kind("Remove-Item -Recurse -Force dist", bypass, "powershell"), "ask");
+    // Không đệ quy, chạy thử, hoặc mọi đích nằm trong thư mục tạm: bypass cho chạy như trước.
+    for (const command of [
+      "rm -f a.txt", "rm a.txt b.txt", "rm --force a.txt", "git clean -n", "git clean -ndx", "git clean -fd --dry-run", "find dist -name '*.o'",
+      `rm -rf ${t}/pi-run`, `rm -rf ${t}/pi-run/cache ${t}/other`, `rm -rf ${t}/pi-*`, `find ${t}/pi-run -delete`,
+    ]) assert.equal(kind(command), "allow", command);
+    // Luật allow phủ đúng lệnh thì không hỏi.
+    const allowed = context(ws, { mode: "bypass", rules: buildRuleSet(["Bash(rm -rf node_modules)"], [], []) });
+    assert.equal(kind("rm -rf node_modules", allowed), "allow");
+    assert.equal(kind("rm -rf node_modules dist", allowed), "ask");
+    // Auto mode không đổi: lệnh xoá đi qua bộ phân loại.
+    assert.equal(decide(bash("rm -fr dist"), context(ws)).kind, "classify");
   } finally {
     ws.cleanup();
   }
