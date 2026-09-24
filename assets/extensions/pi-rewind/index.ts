@@ -5,12 +5,15 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@e
 import { buildSessionContext, estimateTokens, generateSummaryWithUsage, getAgentDir, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { isKeyRelease, isKeyRepeat, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { loadConfig } from "./lib/config.ts";
-import { type DialogDeps, describeFiles, oneLine, type RewindChoice, RewindDialog, type RewindRow, type RowStats } from "./lib/dialog.ts";
+import {
+  type DialogDeps, describeFiles, type MenuItem, oneLine, relativeTime, type RewindChoice, RewindDialog, type RewindRow, type RowStats,
+} from "./lib/dialog.ts";
 import { bufferDiffCounts } from "./lib/diff.ts";
 import { GitWatcher, type WatchWindow } from "./lib/gitwatch.ts";
-import { type Checkpoint, ENTRY_TYPE, History, type RestoreMode, type RewindEntry, type SessionEntryLike } from "./lib/history.ts";
+import { type Checkpoint, ENTRY_TYPE, History, type RestoreMode, type RewindEntry, type RewindRecord, type SessionEntryLike } from "./lib/history.ts";
+import { type Journal, JournalStore, planRecovery } from "./lib/journal.ts";
 import { resolveToolPath } from "./lib/paths.ts";
-import { applyRestore, describeRestore, planRestore, planStats } from "./lib/restore.ts";
+import { applyRestore, type DiffStats, describeRestore, type PlanItem, planRestore, planStats } from "./lib/restore.ts";
 import { BlobStore, Capturer, type FileVersion } from "./lib/store.ts";
 
 /**
@@ -19,12 +22,15 @@ import { BlobStore, Capturer, type FileVersion } from "./lib/store.ts";
  * - edit/write: lưu nội dung trước lần sửa đầu tiên trong lượt.
  * - bash/Agent (trong git worktree): so git status trước/sau để biết file bị đổi.
  * - Khôi phục code chỉ đụng tới file agent đã theo dõi; hội thoại dùng navigateTree.
+ * - Nhật ký phục hồi quanh mỗi lần khôi phục; Pi thoát giữa chừng thì /rewind cho hoàn tất hoặc hoàn tác.
+ * - Menu còn có Redo (hoàn tác lần rewind gần nhất) và "Resume previous session" sau /clear hoặc /new.
  */
 export default function piRewind(pi: ExtensionAPI) {
   const agentDir = getAgentDir();
   const config = loadConfig(agentDir);
   const store = new BlobStore(config.storageDir);
   const capturer = new Capturer(store, { maxBytes: config.maxFileBytes });
+  const journals = new JournalStore(config.storageDir);
   let notifyContext: ExtensionContext | undefined;
   const watcher = new GitWatcher(capturer, {
     slowMs: config.watchSlowMs,
@@ -39,6 +45,8 @@ export default function piRewind(pi: ExtensionAPI) {
   let lastInputSource: string | undefined;
   let promptDepth = 0;
   let unsubscribeInput: (() => void) | undefined;
+  /** Phiên vừa rời bằng /clear hoặc /new: menu cho quay lại. */
+  let previousSession: string | undefined;
   const windows = new Map<string, WatchWindow>();
   const bashTracked = new Map<string, boolean>();
 
@@ -70,14 +78,21 @@ export default function piRewind(pi: ExtensionAPI) {
     append(data);
   }
 
-  pi.on("session_start", (_event, ctx) => {
+  pi.on("session_start", (event, ctx) => {
     history = History.fromEntries(ctx.sessionManager.getEntries() as SessionEntryLike[]);
     current = history.checkpoints.at(-1);
     pending = undefined;
     awaitingPrompt = false;
     notifyContext = ctx;
-    if (config.enabled) installDoubleEscape(ctx);
+    previousSession = event.reason === "new" ? event.previousSessionFile : undefined;
     scheduleGc();
+    if (!config.enabled) return;
+    installDoubleEscape(ctx);
+    const interrupted = journals.interrupted();
+    if (interrupted.length && ctx.hasUI) {
+      const files = interrupted.flatMap((journal) => Object.keys(journal.files));
+      ctx.ui.notify(`Rewind: Pi exited while restoring the code in ${describeFiles(files)}. Open /rewind to finish or undo that restore.`, "warning");
+    }
   });
 
   pi.on("session_shutdown", () => {
@@ -208,6 +223,7 @@ export default function piRewind(pi: ExtensionAPI) {
         fs.mkdirSync(config.storageDir, { recursive: true, mode: 0o700 });
         fs.writeFileSync(marker, new Date().toISOString());
         store.gc(config.retentionDays * 24 * 3600 * 1000);
+        journals.gc(config.retentionDays * 24 * 3600 * 1000);
       } catch {
         /* dọn dẹp là best-effort */
       }
@@ -283,7 +299,10 @@ export default function piRewind(pi: ExtensionAPI) {
   // ---------------------------------------------------------------- hành động
 
   async function restoreCode(ctx: ExtensionCommandContext, targets: Map<string, FileVersion>): Promise<Record<string, FileVersion>> {
-    const plan = planRestore(targets, capturer);
+    return applyPlan(ctx, planRestore(targets, capturer));
+  }
+
+  async function applyPlan(ctx: ExtensionCommandContext, plan: PlanItem[]): Promise<Record<string, FileVersion>> {
     const previous: Record<string, FileVersion> = {};
     for (const item of plan) if (item.target.kind !== "unprotected") previous[item.file] = item.current;
     if (!plan.length) return previous;
@@ -292,6 +311,16 @@ export default function piRewind(pi: ExtensionAPI) {
     if (message.error) throw new Error(`Failed to restore the code:\n${message.error}`);
     if (message.warning) ctx.ui.notify(message.warning, "warning");
     return previous;
+  }
+
+  /** Chạy một lần khôi phục trong nhật ký phục hồi; nhật ký chỉ còn lại khi Pi thoát giữa chừng. */
+  async function journaled<T>(ctx: ExtensionContext, plan: PlanItem[], checkpointId: string | undefined, work: () => Promise<T>): Promise<T> {
+    const id = plan.length ? journals.begin({ sessionFile: ctx.sessionManager.getSessionFile(), checkpointId }, plan) : undefined;
+    try {
+      return await work();
+    } finally {
+      if (id) journals.end(id);
+    }
   }
 
   async function settle(ctx: ExtensionCommandContext): Promise<void> {
@@ -310,26 +339,29 @@ export default function piRewind(pi: ExtensionAPI) {
       case "code":
       case "both": {
         if (!checkpoint) throw new Error("Failed to restore the code:\nThis message has no code checkpoint.");
-        const previous = await restoreCode(ctx, history.targetsFor(checkpoint));
-        if (choice.action === "both") {
-          const leafBefore = ctx.sessionManager.getLeafId();
-          try {
-            await navigate(ctx, choice.entryId);
-          } catch (error) {
-            // Hội thoại không đổi thì trả code về như trước, không để rewind nửa vời.
-            if (ctx.sessionManager.getLeafId() === leafBefore) {
-              await restoreCode(ctx, new Map(Object.entries(previous)));
+        const plan = planRestore(history.targetsFor(checkpoint), capturer);
+        await journaled(ctx, plan, checkpoint.id, async () => {
+          const previous = await applyPlan(ctx, plan);
+          if (choice.action === "both") {
+            const leafBefore = ctx.sessionManager.getLeafId();
+            try {
+              await navigate(ctx, choice.entryId);
+            } catch (error) {
+              // Hội thoại không đổi thì trả code về như trước, không để rewind nửa vời.
+              if (ctx.sessionManager.getLeafId() === leafBefore) {
+                await restoreCode(ctx, new Map(Object.entries(previous)));
+                throw error;
+              }
+              record(choice.action, checkpoint.id, previous);
               throw error;
             }
-            record(choice.action, checkpoint.id, previous);
-            throw error;
           }
-        }
-        record(choice.action, checkpoint.id, previous);
-        if (choice.action === "code") {
-          const count = Object.keys(previous).length;
-          ctx.ui.notify(count ? `Restored the code in ${describeFiles(Object.keys(previous))}.` : "The code has not changed (nothing was restored).", "info");
-        }
+          record(choice.action, checkpoint.id, previous);
+          if (choice.action === "code") {
+            const count = Object.keys(previous).length;
+            ctx.ui.notify(count ? `Restored the code in ${describeFiles(Object.keys(previous))}.` : "The code has not changed (nothing was restored).", "info");
+          }
+        });
         return;
       }
       case "conversation":
@@ -386,6 +418,154 @@ export default function piRewind(pi: ExtensionAPI) {
     if (result.cancelled) throw new Error("Failed to summarize:\nNavigation was cancelled.");
   }
 
+  // ---------------------------------------------------------------- Redo, phiên trước, phục hồi
+
+  interface RedoPlan {
+    record: RewindRecord;
+    stats: DiffStats;
+    conversation: boolean;
+    /** Việc Redo sẽ làm; rỗng nghĩa là code và hội thoại đã khớp. */
+    parts: string[];
+  }
+
+  function redoPlan(ctx: ExtensionContext): RedoPlan | undefined {
+    const record = history.lastUndoneRewind();
+    if (!record) return undefined;
+    const stats = planStats(planRestore(record.previous, capturer), store);
+    const conversation = record.mode !== "code" && !!record.fromLeafId && record.fromLeafId !== ctx.sessionManager.getLeafId();
+    const parts: string[] = [];
+    if (conversation) parts.push("return to the conversation from before the rewind");
+    if (stats.filesChanged.length) parts.push(`restore the code +${stats.insertions} -${stats.deletions} in ${describeFiles(stats.filesChanged)}`);
+    return { record, stats, conversation, parts };
+  }
+
+  /** Hoàn tác lần rewind gần nhất: đưa code về ngay trước lần rewind và quay lại nhánh hội thoại cũ. */
+  async function redo(ctx: ExtensionCommandContext, info: RedoPlan): Promise<void> {
+    await settle(ctx);
+    const plan = planRestore(info.record.previous, capturer);
+    await journaled(ctx, plan, undefined, async () => {
+      if (info.stats.filesChanged.length) await applyPlan(ctx, plan);
+      if (info.conversation && info.record.fromLeafId) {
+        const result = await ctx.navigateTree(info.record.fromLeafId, { summarize: false });
+        if (result.cancelled) throw new Error("Failed to redo:\nNavigation was cancelled.");
+      }
+      append({ v: 1, kind: "redo", rewindId: info.record.id, at: Date.now() });
+    });
+  }
+
+  /** Tên hoặc prompt đầu tiên của một file phiên (đọc tối đa 1 MiB đầu). */
+  function sessionTitle(file: string): string {
+    let text = "";
+    try {
+      const fd = fs.openSync(file, "r");
+      try {
+        const buffer = Buffer.alloc(1024 * 1024);
+        text = buffer.subarray(0, fs.readSync(fd, buffer, 0, buffer.length, 0)).toString("utf8");
+      } finally {
+        fs.closeSync(fd);
+      }
+    } catch {
+      return path.basename(file);
+    }
+    let name: string | undefined;
+    let prompt: string | undefined;
+    for (const line of text.split("\n")) {
+      try {
+        const entry = JSON.parse(line) as SessionEntryLike & { name?: unknown };
+        if (entry.type === "session_info" && typeof entry.name === "string") name = entry.name;
+        if (!prompt && entry.type === "message" && entry.message?.role === "user") prompt = textOf(entry.message.content);
+      } catch {
+        /* dòng cuối bị cắt */
+      }
+    }
+    return oneLine(name?.trim() || prompt || path.basename(file));
+  }
+
+  function menuItems(ctx: ExtensionContext): MenuItem[] {
+    const items: MenuItem[] = [];
+    const now = Date.now();
+    for (const journal of journals.interrupted()) {
+      const files = describeFiles(Object.keys(journal.files));
+      items.push({
+        key: `recover:${journal.id}`, position: "top", warning: true,
+        label: "⚠ Interrupted code restore", detail: `${files} · ${relativeTime(journal.at, now)}`,
+        title: "Confirm you want to recover the interrupted code restore",
+        lines: [
+          `Pi exited while restoring the code in ${files} (${relativeTime(journal.at, now)}), so some files may be restored and others not.`,
+          "Files changed another way since then are left untouched.",
+        ],
+        options: [
+          { value: "finish", label: "Finish the restore" },
+          { value: "undo", label: "Undo it (back to before the restore)" },
+          { value: "dismiss", label: "Dismiss (leave the files as they are)" },
+        ],
+      });
+    }
+    if (previousSession && fs.existsSync(previousSession)) {
+      const title = sessionTitle(previousSession);
+      let modified: number | undefined;
+      try {
+        modified = fs.statSync(previousSession).mtimeMs;
+      } catch {
+        /* vừa bị xóa */
+      }
+      items.push({
+        key: "resume", position: "top", label: "Resume previous session",
+        detail: modified === undefined ? title : `${title} · ${relativeTime(modified, now)}`,
+        title: "Confirm you want to resume the previous session",
+        lines: [title, "This session stays available in /resume."],
+        options: [{ value: "resume", label: "Resume previous session" }],
+      });
+    }
+    const redoInfo = redoPlan(ctx);
+    if (redoInfo?.parts.length) {
+      const what = redoInfo.parts.join(" and ");
+      items.push({
+        key: "redo", position: "bottom", label: "Redo", detail: `Undo the last rewind: ${what}`,
+        title: "Confirm you want to redo", lines: [`This will ${what}.`], options: [{ value: "redo", label: "Redo" }],
+      });
+    }
+    return items;
+  }
+
+  /** Hoàn tất hoặc hoàn tác lần khôi phục bị gián đoạn; file đã đổi theo cách khác được để nguyên. */
+  async function recover(ctx: ExtensionCommandContext, journal: Journal, action: string): Promise<void> {
+    if (action === "dismiss") {
+      journals.end(journal.id);
+      return;
+    }
+    await settle(ctx);
+    const direction = action === "undo" ? "undo" : "finish";
+    const { plan, changed } = planRecovery(journal, direction, capturer);
+    if (plan.length) {
+      const message = describeRestore(await applyRestore(plan, store, capturer, { queue: withFileMutationQueue }));
+      if (message.error) throw new Error(`Failed to recover the restore:\n${message.error}`);
+      if (message.warning) ctx.ui.notify(message.warning, "warning");
+    }
+    // Hoàn tất ngay trong phiên đã rewind: ghi lại như một lần rewind code để Redo đưa code về như trước.
+    if (direction === "finish" && journal.checkpointId && history.byId.has(journal.checkpointId) && journal.sessionFile === ctx.sessionManager.getSessionFile()) {
+      const previous = Object.fromEntries(Object.entries(journal.files).filter(([file]) => !changed.includes(file)).map(([file, item]) => [file, item.before]));
+      append({ v: 1, kind: "rewind", id: randomUUID(), at: Date.now(), checkpointId: journal.checkpointId, mode: "code", fromLeafId: ctx.sessionManager.getLeafId(), previous });
+    }
+    journals.end(journal.id);
+    const done = direction === "finish" ? "Finished the interrupted restore" : "Undid the interrupted restore";
+    if (changed.length) ctx.ui.notify(`${done}, but left ${describeFiles(changed)} untouched: changed since the restore was interrupted.`, "warning");
+    else ctx.ui.notify(`${done}.`, "info");
+  }
+
+  /** Mục menu đã chọn. Trả về phiên cần chuyển tới sau khi đóng menu (switchSession thay context). */
+  async function runItem(ctx: ExtensionCommandContext, key: string, value: string): Promise<string | undefined> {
+    if (key === "resume") return previousSession;
+    if (key === "redo") {
+      const info = redoPlan(ctx);
+      if (info?.parts.length) await redo(ctx, info);
+      return undefined;
+    }
+    const journal = journals.interrupted().find((item) => `recover:${item.id}` === key);
+    if (journal) await recover(ctx, journal, value);
+    return undefined;
+  }
+
   // ---------------------------------------------------------------- lệnh
 
   const deps: DialogDeps = {
@@ -405,12 +585,14 @@ export default function piRewind(pi: ExtensionAPI) {
       return;
     }
     const rows = buildRows(ctx);
+    const items = menuItems(ctx);
     const canSummarize = !!ctx.model;
     const tracked = bashTracked.get(ctx.cwd) ?? (await watcher.topLevel(ctx.cwd)) !== null;
+    let switchTo: string | undefined;
     if (ctx.mode === "tui") {
       let restoredPrompt: string | undefined;
       await ctx.ui.custom<void>((tui, theme, _keybindings, done) => new RewindDialog({
-        rows, canSummarize, bashTracked: tracked,
+        rows, items, canSummarize, bashTracked: tracked,
         terminalRows: () => (tui as unknown as { terminal?: { rows?: number } }).terminal?.rows ?? 24,
         rowStats, restoreStats,
         execute: async (choice) => {
@@ -419,27 +601,53 @@ export default function piRewind(pi: ExtensionAPI) {
             restoredPrompt = promptText(ctx, choice.entryId);
           }
         },
+        runItem: async (key, value) => {
+          switchTo = await runItem(ctx, key, value);
+        },
         done: () => done(undefined),
         requestRender: () => tui.requestRender(),
       }, theme, deps));
       // Đóng dialog, Pi trả lại nội dung editor lúc mở (rỗng) và ghi đè prompt mà
       // navigateTree vừa đặt; đặt lại prompt như Claude Code để sửa và gửi lại.
       if (restoredPrompt && !ctx.ui.getEditorText().trim()) ctx.ui.setEditorText(restoredPrompt);
-      return;
+    } else {
+      switchTo = await rewindWithDialogs(ctx, rows, items, canSummarize);
     }
-    await rewindWithDialogs(ctx, rows, canSummarize);
+    if (switchTo) {
+      await settle(ctx);
+      await ctx.switchSession(switchTo);
+    }
   }
 
   /** RPC: dùng select/input chuẩn thay cho component TUI. */
-  async function rewindWithDialogs(ctx: ExtensionCommandContext, rows: RewindRow[], canSummarize: boolean): Promise<void> {
-    if (!rows.length) {
+  async function rewindWithDialogs(ctx: ExtensionCommandContext, rows: RewindRow[], items: MenuItem[], canSummarize: boolean): Promise<string | undefined> {
+    const top = items.filter((item) => item.position === "top");
+    const bottom = items.filter((item) => item.position === "bottom");
+    if (!rows.length && !items.length) {
       ctx.ui.notify("Nothing to rewind to yet.", "info");
-      return;
+      return undefined;
     }
-    const labels = rows.map((row, index) => `${index + 1}. ${oneLine(row.text).slice(0, 120)}${row.checkpointed ? "" : " (no code restore)"}`);
+    const labels = [
+      ...top.map((item) => item.label),
+      ...rows.map((row, index) => `${index + 1}. ${oneLine(row.text).slice(0, 120)}${row.checkpointed ? "" : " (no code restore)"}`),
+      ...bottom.map((item) => item.label),
+    ];
     const picked = await ctx.ui.select("Rewind: restore the code and/or conversation to the point before…", labels);
-    const row = picked ? rows[labels.indexOf(picked)] : undefined;
-    if (!row) return;
+    const index = picked === undefined ? -1 : labels.indexOf(picked);
+    if (index < 0) return undefined;
+    const item = index < top.length ? top[index] : index >= top.length + rows.length ? bottom[index - top.length - rows.length] : undefined;
+    if (item) {
+      const option = await ctx.ui.select(`${item.title}: ${item.lines.join(" ")}`, [...item.options.map((entry) => entry.label), "Never mind"]);
+      const value = item.options.find((entry) => entry.label === option)?.value;
+      if (!value) return undefined;
+      try {
+        return await runItem(ctx, item.key, value);
+      } catch (error) {
+        ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
+        return undefined;
+      }
+    }
+    const row = rows[index - top.length];
     const stats = await restoreStats(row);
     const options = stats?.filesChanged.length
       ? ["Restore code and conversation", "Restore conversation", "Restore code"]
@@ -451,7 +659,7 @@ export default function piRewind(pi: ExtensionAPI) {
       "Restore code and conversation": "both", "Restore conversation": "conversation", "Restore code": "code",
       "Summarize from here": "summarize", "Summarize up to here": "summarize_up_to",
     } as const)[option as "Restore code"];
-    if (!action) return;
+    if (!action) return undefined;
     const instructions = action === "summarize" || action === "summarize_up_to"
       ? (await ctx.ui.input("Add context (optional)", "add context (optional)"))?.trim() || undefined
       : undefined;
@@ -460,6 +668,7 @@ export default function piRewind(pi: ExtensionAPI) {
     } catch (error) {
       ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
     }
+    return undefined;
   }
 
   const description = "Rewind the conversation and/or code to a previous point, or summarize from a selected message";
@@ -468,37 +677,37 @@ export default function piRewind(pi: ExtensionAPI) {
   pi.registerCommand("undo", { description: "Alias for /rewind", handler: async (_args, ctx) => openRewind(ctx) });
 
   pi.registerCommand("redo", {
-    description: "Undo the last /rewind: bring back the code and conversation from before it",
+    description: "Undo the last /rewind: bring back the code and conversation from before it (also in the /rewind menu)",
     handler: async (_args, ctx) => {
-      const record = history.lastUndoneRewind();
-      if (!record) {
+      const info = redoPlan(ctx);
+      if (!info) {
         ctx.ui.notify("Nothing to redo.", "info");
         return;
       }
-      const plan = planRestore(record.previous, capturer);
-      const stats = planStats(plan, store);
-      const leaf = ctx.sessionManager.getLeafId();
-      const parts: string[] = [];
-      const conversation = record.mode !== "code" && !!record.fromLeafId && record.fromLeafId !== leaf;
-      if (conversation) parts.push("return to the conversation from before the rewind");
-      if (stats.filesChanged.length) parts.push(`restore the code +${stats.insertions} -${stats.deletions} in ${describeFiles(stats.filesChanged)}`);
-      if (!parts.length) {
-        append({ v: 1, kind: "redo", rewindId: record.id, at: Date.now() });
+      if (!info.parts.length) {
+        append({ v: 1, kind: "redo", rewindId: info.record.id, at: Date.now() });
         ctx.ui.notify("Nothing to redo: the code and conversation already match.", "info");
         return;
       }
-      if (ctx.hasUI && !(await ctx.ui.confirm("Redo", `This will ${parts.join(" and ")}.`))) return;
-      await settle(ctx);
+      if (ctx.hasUI && !(await ctx.ui.confirm("Redo", `This will ${info.parts.join(" and ")}.`))) return;
       try {
-        if (stats.filesChanged.length) await restoreCode(ctx, record.previous);
-        if (conversation && record.fromLeafId) {
-          const result = await ctx.navigateTree(record.fromLeafId, { summarize: false });
-          if (result.cancelled) throw new Error("Navigation was cancelled.");
-        }
-        append({ v: 1, kind: "redo", rewindId: record.id, at: Date.now() });
+        await redo(ctx, info);
       } catch (error) {
         ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
       }
+    },
+  });
+
+  // Như /clear của Claude Code: phiên mới; /rewind của phiên mới có mục "Resume previous session".
+  pi.registerCommand("clear", {
+    description: "Start a new session (like /new); /rewind there can resume this one",
+    handler: async (_args, ctx) => {
+      await settle(ctx);
+      await ctx.newSession({
+        withSession: async (next) => {
+          if (next.hasUI && config.enabled) next.ui.notify("Started a new session. /rewind → Resume previous session goes back.", "info");
+        },
+      });
     },
   });
 }

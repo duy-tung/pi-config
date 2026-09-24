@@ -40,7 +40,7 @@ Chạy `pi` để mở Claude Opus 5.5/high với toàn bộ công cụ. Các wo
 | Goal dài hạn | `/goal`, `/goal-status`, `/goal-pause`, `/goal-resume` |
 | Shell job nền | `/bg --name "Dev server" npm run dev`, `/jobs`, `/logs`, `/kill` |
 | Ý kiến cố vấn | `/advisor`, `/advisor-manual`, `/advisor-off` |
-| Rewind code/hội thoại | `Esc Esc`, `/rewind` (`/checkpoint`, `/undo`), `/redo` |
+| Rewind code/hội thoại | `Esc Esc`, `/rewind` (`/checkpoint`, `/undo`), `/redo`; `/clear` mở phiên mới |
 | Permission | `Shift+Tab` (auto ⇄ bypass), `/permissions`, `/auto-mode` |
 | Model và reasoning | `/model`, `/thinking`, `Alt+T` đổi mức thinking |
 | Công cụ và giao diện | `/agents`, `/usage`, `/claude-usage`, `/mcp`, `/lens-health`, `/open-tui` |
@@ -49,9 +49,9 @@ Chạy `pi` để mở Claude Opus 5.5/high với toàn bộ công cụ. Các wo
 
 Goal chỉ bắt đầu khi được yêu cầu. Auditor tắt mặc định; mỗi lần tạo hoặc resume có tối đa 10 lượt tự tiếp tục do goal extension khởi động. Giới hạn này không tính các tool call trong một lượt hay request do extension khác khởi động.
 
-Background cung cấp shell jobs; completion chỉ thông báo, không tự mở lượt model theo mặc định. `bg_run` có thể nhận `triggerOnCompletion:true` cho workflow người dùng yêu cầu tự theo dõi. Model delegation dùng `Agent`.
+Background cung cấp shell jobs; completion chỉ thông báo, không tự mở lượt model theo mặc định. Mô tả `bg_run` dặn model đặt `triggerOnCompletion:true` khi bước sau cần kết quả của job (test, build phải xem trước khi làm tiếp): job xong sẽ mở lượt mới, nên model kết thúc lượt thay vì chờ hay hỏi trạng thái liên tục. Dev server và watcher giữ mặc định. Model delegation dùng `Agent`.
 
-Rewind (`pi-rewind`, extension của repo) theo giao diện `/rewind` của Claude Code: mỗi prompt có checkpoint; `Esc Esc` hoặc `/rewind` mở danh sách prompt kèm số dòng đã đổi, rồi chọn khôi phục code, hội thoại, cả hai, hoặc tóm tắt từ/đến prompt đó. File do `edit`/`write` sửa luôn được theo dõi; file do `bash`/`Agent` sửa được theo dõi trong git worktree. `/redo` hoàn tác lần rewind gần nhất. Chi tiết và giới hạn: [docs/rewind.md](docs/rewind.md).
+Rewind (`pi-rewind`, extension của repo) theo giao diện `/rewind` của Claude Code: mỗi prompt có checkpoint; `Esc Esc` hoặc `/rewind` mở danh sách prompt kèm số dòng đã đổi, rồi chọn khôi phục code, hội thoại, cả hai, hoặc tóm tắt từ/đến prompt đó. File do `edit`/`write` sửa luôn được theo dõi; file do `bash`/`Agent` sửa được theo dõi trong git worktree. Mục Redo trong menu (hoặc `/redo`) hoàn tác lần rewind gần nhất. `/clear` mở phiên mới như `/new`, và menu của phiên mới có mục quay lại phiên cũ. Nếu Pi thoát giữa lúc khôi phục code, menu cho hoàn tất hoặc hoàn tác lần khôi phục đó. Chi tiết và giới hạn: [docs/rewind.md](docs/rewind.md).
 
 Permission (`pi-auto-mode`, extension của repo) có hai mode như Claude Code. **Auto** là mặc định: thao tác đọc, lệnh chỉ đọc và sửa file trong project chạy ngay; lệnh khác qua bộ phân loại (model `gpt-6-sol`) chỉ thấy tin nhắn của người dùng và lệnh của agent. Lệnh bị chặn trả lý do cho agent để đi đường an toàn hơn; 3 lần chặn liên tiếp hoặc 20 lần trong phiên thì hỏi người dùng. **Bypass** chạy mọi thứ trừ luật deny và `rm` vào đường dẫn quan trọng. `Shift+Tab` đổi mode, `/permissions` xem và duyệt lại lệnh bị chặn. Chi tiết: [docs/auto-mode.md](docs/auto-mode.md).
 
@@ -82,7 +82,7 @@ Agent có context riêng và không giới hạn số lượt; dừng agent bằ
 ## Công cụ và mặc định
 
 - Web: `web_search` dùng native search của model hiện tại khi là Codex/OpenAI (Astra, Sol) hoặc Claude; model khác (GLM) dùng Exa (endpoint MCP miễn phí, không cần key) rồi Firecrawl; lỗi mạng, quota, phản hồi hỏng chuyển sang provider kế tiếp. `fetch_content`, `get_search_content` dùng Firecrawl và kho kết quả. Phiên mới hiện `web_enable` để model bật web tools. CLI và skills hỗ trợ workflow bổ sung. Chi tiết: [docs/claude.md](docs/claude.md).
-- MCP filesystem: công cụ đọc trong workspace, kết nối khi cần.
+- MCP filesystem: công cụ đọc trong workspace, kết nối khi cần. `mcp.json` đặt `allowInstall: false`: agent không tự cài thêm server MCP.
 - Code intelligence: pi-lens, TypeScript language server cài sẵn; Go/Rust/Python dùng language server của máy hoặc project.
 - Native compaction bật: reserve 16.384, giữ gần nhất 20.000 token.
 - Cache warming, auditor goal và advisor auto tắt. Goal và background follow-up chỉ chạy theo thao tác/cấu hình đã chọn.
@@ -93,7 +93,7 @@ Agent có context riêng và không giới hạn số lượt; dừng agent bằ
 
 `pi-models` xem cấu hình model. `pi-doctor` kiểm dependency và checksum bản vá. `pi-test` kiểm workflow và Agent bằng provider giả trong thư mục tạm, không gọi model trả phí.
 
-Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều hành: bộ phân loại có thể sai. Luật `permissions.deny` (file bí mật, `sudo`, `rm -rf`...) áp dụng ở cả hai mode. Project cần được trust trước khi dùng cấu hình của project; settings của project không bật được bypass hay thêm luật allow. Nguồn web là dữ liệu để tham khảo, không phải instruction.
+Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều hành: bộ phân loại có thể sai. Luật `permissions.deny` (file bí mật, `sudo`...) áp dụng ở cả hai mode; bypass vẫn hỏi trước lệnh xoá đệ quy ra ngoài thư mục tạm (`rm -fr`, `find -delete`, `git clean`...). Project cần được trust trước khi dùng cấu hình của project; settings của project không bật được bypass hay thêm luật allow. Nguồn web là dữ liệu để tham khảo, không phải instruction.
 
 ## Phiên bản
 
@@ -101,21 +101,21 @@ Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều
 |---|---|
 | `@tintinweb/pi-subagents` | 0.19.0 |
 | `@gotgenes/pi-anthropic-auth` | 3.2.2 |
-| `pi-mcp-adapter` | 2.36.0 |
+| `pi-mcp-adapter` | 2.37.0 |
 | `pi-web-access` | 0.31.0 |
 | `@juicesharp/rpiv-ask-user-question`, `rpiv-todo` | 2.11.0 |
 | `@narumitw/pi-usage` | 0.61.0 |
 | `pi-lens` | 4.2.1 |
-| `pi-background-tasks` | 2.6.3 |
+| `pi-background-tasks` | 2.6.5 |
 | `pi-goal-x` | 0.31.8 |
-| `pi-advisor-flow` | 0.8.0 |
+| `pi-advisor-flow` | 0.8.1 |
 | `pi-open-tui` | 0.3.8 |
 | `@pi-archimedes/image-paste` | 2.8.0 |
 | `@mariozechner/clipboard` | 0.3.9 |
 | Firecrawl CLI | 1.24.4 |
 | Engineering và Firecrawl skills | Commit trong [sources.lock.json](sources.lock.json) |
 
-Các manifest và lockfile nằm trong [manifests](manifests). Ba package có peer range chưa gồm Pi 0.87.1 (pi-lens, pi-mcp-adapter, pi-background-tasks) được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json).
+Các manifest và lockfile nằm trong [manifests](manifests). Hai package có peer range chưa gồm Pi 0.87.1 (pi-lens, pi-background-tasks) được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json).
 
 ## Quản lý cấu hình
 

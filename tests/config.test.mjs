@@ -96,6 +96,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
     const forward = (value) => value.replaceAll("\\", "/");
     for (const profile of Object.values(profiles)) {
       const mcp = json(p.join(profile.agentDir, "mcp.json"));
+      assert.deepEqual(mcp.settings, { hostConfigDiscovery: "off", allowInstall: false });
       const server = mcp.mcpServers.workspace;
       assert.equal(server.command, options.nodePath);
       assert.deepEqual(server.args, [p.join(options.root, "bin", "workspace-mcp.mjs")]);
@@ -111,6 +112,8 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.ok(deny.includes("mcpScript"));
       assert.ok(deny.includes("Bash(*firecrawl-key.cjs*)"));
       assert.ok(deny.includes("!Path(*.env.example)"));
+      // Xoá đệ quy do pi-auto-mode hỏi (bypass) hoặc phân loại (auto), không chặn cứng theo một cách viết cờ.
+      assert.ok(!deny.some((rule) => rule.startsWith("Bash(rm ")));
       assert.equal(settings.permissions.defaultMode, "auto");
       assert.equal(settings.autoMode.model, "openai-codex/gpt-6-sol");
       assert.ok(settings.extensions.at(-1).endsWith("pi-auto-mode"), "pi-auto-mode phải nạp sau cùng");

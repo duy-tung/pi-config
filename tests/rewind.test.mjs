@@ -8,6 +8,7 @@ import { RewindDialog, describeCode, relativeTime } from "../assets/extensions/p
 import { lineDiffCounts } from "../assets/extensions/pi-rewind/lib/diff.ts";
 import { GitWatcher } from "../assets/extensions/pi-rewind/lib/gitwatch.ts";
 import { History } from "../assets/extensions/pi-rewind/lib/history.ts";
+import { JournalStore, planRecovery } from "../assets/extensions/pi-rewind/lib/journal.ts";
 import { resolveToolPath } from "../assets/extensions/pi-rewind/lib/paths.ts";
 import { applyRestore, describeRestore, planRestore, planStats } from "../assets/extensions/pi-rewind/lib/restore.ts";
 import { ABSENT, BlobStore, Capturer } from "../assets/extensions/pi-rewind/lib/store.ts";
@@ -219,4 +220,96 @@ test("hộp thoại Rewind: danh sách, xác nhận, lựa chọn như Claude Co
   assert.equal(closed, true);
   assert.equal(relativeTime(0, 3 * 3600 * 1000), "3 hours ago");
   assert.equal(describeCode("code", true, { filesChanged: [], insertions: 0, deletions: 0 }), "The code has not changed (nothing will be restored).");
+});
+
+test("hộp thoại Rewind: phiên trước ở trên, Redo dưới (current), mỗi mục có màn hình xác nhận", async () => {
+  const theme = { fg: (_color, text) => text, bold: (text) => text, italic: (text) => text };
+  const deps = { truncate: (text, width) => text.slice(0, width), width: (text) => text.length, wrap: (text) => [text], is: (data, key) => data === key };
+  const ran = [];
+  let closed = 0;
+  const options = (items, rows = []) => ({
+    rows, items, canSummarize: false, bashTracked: true, terminalRows: () => 40,
+    rowStats: async () => null, restoreStats: async () => undefined, execute: async () => {},
+    runItem: async (key, value) => { ran.push([key, value]); }, done: () => { closed++; }, requestRender: () => {},
+  });
+  const resume = {
+    key: "resume", position: "top", label: "Resume previous session", detail: "fix the login bug · 2 minutes ago",
+    title: "Confirm you want to resume the previous session", lines: ["fix the login bug"], options: [{ value: "resume", label: "Resume previous session" }],
+  };
+  const redo = {
+    key: "redo", position: "bottom", label: "Redo", detail: "Undo the last rewind: restore the code +1 -0 in a.ts",
+    title: "Confirm you want to redo", lines: ["This will restore the code +1 -0 in a.ts."], options: [{ value: "redo", label: "Redo" }],
+  };
+  // Phiên mới sau /clear: không có prompt, vẫn có mục quay lại phiên trước.
+  const empty = new RewindDialog(options([resume]), theme, deps);
+  let screen = empty.render(80).join("\n");
+  assert.doesNotMatch(screen, /Nothing to rewind to yet/u);
+  assert.ok(screen.indexOf("Resume previous session") < screen.indexOf("(current)"));
+  assert.match(screen, /fix the login bug · 2 minutes ago/u);
+  empty.handleInput("up");
+  empty.handleInput("enter");
+  screen = empty.render(80).join("\n");
+  assert.match(screen, /Confirm you want to resume the previous session:/u);
+  assert.match(screen, /1\. Resume previous session/u);
+  assert.match(screen, /2\. Never mind/u);
+  empty.handleInput("2");
+  assert.match(empty.render(80).join("\n"), /❯ Resume previous session/u);
+  empty.handleInput("enter");
+  empty.handleInput("1");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(ran, [["resume", "resume"]]);
+  assert.equal(closed, 1);
+  // Redo nằm dưới (current).
+  const rows = [{ entryId: "u1", text: "first prompt", timestamp: 0, checkpointed: true }];
+  const withRedo = new RewindDialog(options([redo], rows), theme, deps);
+  screen = withRedo.render(80).join("\n");
+  assert.ok(screen.indexOf("(current)") < screen.indexOf("Redo"));
+  withRedo.handleInput("down");
+  withRedo.handleInput("enter");
+  assert.match(withRedo.render(80).join("\n"), /This will restore the code \+1 -0 in a\.ts\./u);
+  withRedo.handleInput("enter");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(ran.at(-1), ["redo", "redo"]);
+  // Không prompt, không mục nào: như trước.
+  assert.match(new RewindDialog(options([]), theme, deps).render(80).join("\n"), /Nothing to rewind to yet/u);
+});
+
+test("nhật ký phục hồi: chỉ nhận lần khôi phục của process đã chết, hoàn tất/hoàn tác không đè file đã đổi", async () => {
+  const { dir, work, store, capturer, cleanup } = sandbox();
+  try {
+    const journals = new JournalStore(path.join(dir, "store"));
+    const [a, b, c] = ["a.txt", "b.txt", "c.txt"].map((name) => path.join(work, name));
+    fs.writeFileSync(a, "A-now\n");
+    fs.writeFileSync(b, "B-now\n");
+    fs.writeFileSync(c, "C-now\n");
+    const version = (text) => ({ kind: "file", sha: store.put(Buffer.from(text)), size: text.length, mode: 0o644, dir: work });
+    const plan = [a, b, c].map((file) => ({ file, current: capturer.capture(file), target: version(`${path.basename(file)}-old\n`) }));
+    const id = journals.begin({ sessionFile: "/s.jsonl", checkpointId: "c1" }, plan);
+    // Process hiện tại còn sống: đang khôi phục, không phải bị gián đoạn.
+    assert.deepEqual(journals.interrupted(), []);
+    const [journal] = journals.interrupted(() => false);
+    assert.equal(journal.id, id);
+    assert.equal(journal.checkpointId, "c1");
+    // Pi chết sau khi ghi a; c bị sửa tay sau đó.
+    fs.writeFileSync(a, "a.txt-old\n");
+    fs.writeFileSync(c, "C-edited\n");
+    capturer.forget(a);
+    capturer.forget(c);
+    const finish = planRecovery(journal, "finish", capturer);
+    assert.deepEqual(finish.plan.map((item) => path.basename(item.file)), ["b.txt"]);
+    assert.deepEqual(finish.changed.map((file) => path.basename(file)), ["c.txt"]);
+    const undo = planRecovery(journal, "undo", capturer);
+    assert.deepEqual(undo.plan.map((item) => path.basename(item.file)), ["a.txt"]);
+    await applyRestore(undo.plan, store, capturer);
+    assert.equal(fs.readFileSync(a, "utf8"), "A-now\n");
+    assert.equal(fs.readFileSync(c, "utf8"), "C-edited\n");
+    journals.end(id);
+    assert.deepEqual(journals.interrupted(() => false), []);
+    // Quá hạn lưu giữ thì bị dọn (blob có thể đã mất).
+    journals.begin({}, plan);
+    journals.gc(1000, Date.now() + 5000);
+    assert.equal(fs.readdirSync(journals.dir).length, 0);
+  } finally {
+    cleanup();
+  }
 });

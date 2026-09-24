@@ -56,6 +56,23 @@ export function isInside(dir: string, file: string): boolean {
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
+/** Thư mục tạm của hệ thống (thêm /tmp ngoài Windows). */
+export function temporaryRoots(): string[] {
+  return [...new Set([os.tmpdir(), ...(process.platform === "win32" ? [] : ["/tmp"])])];
+}
+
+/**
+ * Đường dẫn thật của file nằm hẳn bên trong (strict) hoặc là đường dẫn thật của một thư mục tạm.
+ * Symlink trong thư mục tạm trỏ ra ngoài thì không tính.
+ */
+export function insideTemporary(file: string, temp: string[], strict = true): boolean {
+  const real = caseFold(realPath(file));
+  return temp.some((dir) => {
+    const root = caseFold(realPath(dir));
+    return (!strict || real !== root) && isInside(root, real);
+  });
+}
+
 /** Nằm trong một trong các thư mục gốc; so cả đường dẫn logic lẫn đường dẫn thật. */
 export function insideAny(roots: string[], file: string): boolean {
   const resolved = path.resolve(file);

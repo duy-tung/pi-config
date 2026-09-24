@@ -8,7 +8,9 @@
 - Danh sách prompt trên nhánh hiện tại, cũ ở trên; dòng dưới mỗi prompt là thay đổi code trong lượt đó (`auth.ts +12 -3`, `3 files changed …`, `No code changes`). Prompt không có checkpoint hiện `⚠ No code restore`. Chọn `(current)` để đóng.
 - Sau khi chọn prompt: `Restore code and conversation`, `Restore conversation`, `Restore code`, `Summarize from here`, `Summarize up to here`, `Never mind`. Hai lựa chọn tóm tắt nhận thêm chỉ dẫn (`add context (optional)`). Màn hình xác nhận ghi rõ số dòng và file sẽ được khôi phục.
 - Khôi phục hội thoại đưa prompt đã chọn trở lại editor để sửa và gửi lại. Nhánh cũ vẫn còn trong `/tree`.
-- `/redo` hoàn tác lần rewind gần nhất: đưa code về trạng thái ngay trước khi rewind và quay lại nhánh hội thoại cũ.
+- **Redo** nằm dưới `(current)` khi có lần rewind để hoàn tác: đưa code về trạng thái ngay trước khi rewind và quay lại nhánh hội thoại cũ. Lệnh `/redo` làm cùng việc đó.
+- `/clear` mở phiên mới như `/new`. Trong phiên mới, `Esc Esc` hoặc `/rewind` có mục **Resume previous session** ở đầu danh sách để quay lại phiên vừa rời. Mục này cũng có sau `/new`. Phiên cũ phải đã có câu trả lời, vì Pi chỉ ghi phiên ra đĩa từ lúc đó.
+- Nếu Pi thoát giữa lúc khôi phục code, lần mở Pi sau sẽ báo, và `/rewind` có mục **⚠ Interrupted code restore** với ba lựa chọn: `Finish the restore`, `Undo it` (về như trước khi khôi phục) hoặc `Dismiss` (để nguyên file). Chỉ file còn ở nội dung trước hoặc sau lần khôi phục mới được ghi; file đã bị sửa theo cách khác được để nguyên và báo tên.
 
 `doubleEscapeAction` được đặt là `"none"` để `Esc Esc` mở Rewind thay cho `/tree`; `/tree`, `/fork` vẫn dùng bằng lệnh. Nếu đổi lại `doubleEscapeAction` trong `/settings`, `Esc Esc` làm theo lựa chọn đó của Pi và Rewind chỉ mở bằng `/rewind`.
 
@@ -26,6 +28,7 @@ Khôi phục code chỉ đụng tới file đã theo dõi trong phiên, giống 
 
 - Metadata checkpoint là custom entry `pi-rewind` trong file phiên (không vào context model), nên còn sau `/resume` và đi theo nhánh hội thoại.
 - Nội dung file nằm trong kho theo SHA-256 tại `rewind.storageDir` (installer đặt `<root>/state/rewind`), quyền 0600. Blob không được dùng trong 30 ngày (`retentionDays`) bị dọn tối đa mỗi ngày một lần.
+- Trước mỗi lần ghi file để khôi phục (rewind, Redo), pi-rewind ghi nhật ký phục hồi vào `journal/` trong thư mục đó: danh sách file cùng nội dung trước và sau. Nhật ký bị xóa khi xong, kể cả khi lỗi. Nhật ký còn lại mà process ghi nó đã chết là lần khôi phục bị gián đoạn. Nhật ký quá `retentionDays` bị dọn cùng blob.
 
 ## Cấu hình
 
@@ -44,4 +47,6 @@ Bố cục, nhãn và thông báo lấy theo Claude Code 2.1.x (component Rewind
 | Esc Esc bắt byte thô, bị sự kiện nhả phím của kitty protocol kích hoạt, không biết focus | Lọc nhả/lặp phím, chỉ tính khi editor chính giữ focus, trống và agent rảnh |
 | Ghi vào `.git` của người dùng hoặc kho không giới hạn | Chỉ đọc git (`--no-optional-locks`); kho riêng theo SHA-256, dọn theo hạn |
 
-Chưa làm (có thể bổ sung): snapshot toàn bộ worktree bằng shadow git như `pi-tree-rewind` cho file bị ignore hoặc ngoài git, ghi file kiểu giao dịch/nhật ký phục hồi khi crash giữa lúc khôi phục, mang checkpoint sang phiên tạo bằng `/fork`, hỏi khôi phục code khi điều hướng bằng `/tree`.
+Redo trong menu, `/clear` kèm Resume previous session và khôi phục sau khi Pi thoát giữa chừng lấy ý tưởng từ `pi-simple-rewind` 0.7.0 (bản riêng, chưa phát hành), viết lại cho pi-rewind.
+
+Chưa làm (có thể bổ sung): snapshot toàn bộ worktree bằng shadow git như `pi-tree-rewind` cho file bị ignore hoặc ngoài git, mang checkpoint sang phiên tạo bằng `/fork`, hỏi khôi phục code khi điều hướng bằng `/tree`.

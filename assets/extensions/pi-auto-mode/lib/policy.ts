@@ -1,14 +1,16 @@
 import os from "node:os";
 import path from "node:path";
 import type { PermissionMode } from "./config.ts";
-import { criticalPathReason, insideAny, isSelfProtected, protectedReason, resolveShellPath, resolveToolPath } from "./paths.ts";
+import {
+  criticalPathReason, insideAny, insideTemporary, isSelfProtected, protectedReason, resolveShellPath, resolveToolPath, temporaryRoots,
+} from "./paths.ts";
 import { allowCoversShell, firstMatch, type RuleMatchTarget, type RuleSet } from "./rules.ts";
 import { analyzeShell, commandName, commandText, isReadOnlyCommand, isReadOnlyShell, type ShellAnalysis, type SimpleCommand } from "./shell.ts";
 
 /**
  * Quyết định tất định cho một lời gọi tool, trước khi cần tới bộ phân loại.
- * Thứ tự theo Claude Code: deny → ask → rm vào đường dẫn quan trọng → bypass
- * → tự bảo vệ → lối đi nhanh (chỉ bao giờ nói "an toàn") → bộ phân loại.
+ * Thứ tự theo Claude Code: deny → ask → rm vào đường dẫn quan trọng → (bypass: xoá đệ quy)
+ * → bypass → tự bảo vệ → lối đi nhanh (chỉ bao giờ nói "an toàn") → bộ phân loại.
  */
 export type Decision =
   | { kind: "allow"; via: string }
@@ -29,6 +31,8 @@ export interface PolicyContext {
   selfPaths: string[];
   /** Agent (tintinweb) sẽ chạy không có extension, tức là không có cổng permission. */
   agentIsUngated?: (input: Record<string, unknown>) => boolean;
+  /** Thư mục tạm: xoá đệ quy bên trong không cần hỏi khi bypass; mặc định temporaryRoots(). */
+  tempRoots?: string[];
 }
 
 export interface ToolCall {
@@ -61,6 +65,8 @@ export interface CallFacts {
   /** Đường dẫn ghi (edit/write) hoặc đối số đường dẫn của lệnh shell. */
   paths: string[];
   critical?: string;
+  /** Lệnh xoá đệ quy có đích ngoài thư mục tạm (hoặc không kiểm được), vd "rm -r". */
+  removal?: string;
   writesSelf?: boolean;
   /** Tóm tắt ngắn để hiển thị. */
   summary: string;
@@ -139,6 +145,133 @@ function criticalRemoval(analysis: ShellAnalysis, cwd: string, home: string): st
   return undefined;
 }
 
+interface RemovalTarget {
+  word: string;
+  literal: boolean;
+  glob: boolean;
+}
+
+interface Removal {
+  label: string;
+  targets: RemovalTarget[];
+  /** Đích đến từ stdin hoặc script lồng (xargs, cmd /c, PowerShell): không kiểm được. */
+  opaque?: boolean;
+}
+
+const FIND_EXEC = new Set(["-exec", "-execdir", "-ok", "-okdir"]);
+const PACKAGE_RUNNERS = new Set(["npx", "pnpx", "bunx"]);
+const CMD_RECURSIVE = /\b(?:rd|rmdir|del|erase)\b[^&|]*\s\/\/?s\b/iu;
+const POWERSHELL_RECURSIVE = /\b(?:Remove-Item|ri|rm|rmdir|rd|del|erase)\b[^;|\n]*\s-r(?:e(?:c(?:u(?:r(?:s(?:e)?)?)?)?)?)?\b/iu;
+
+/**
+ * Lệnh xoá đệ quy: rm -r với mọi thứ tự/cách viết cờ, find -delete hoặc -exec rm, git clean
+ * (trừ -n), rimraf, rd /s của cmd và Remove-Item -Recurse của PowerShell.
+ */
+function recursiveRemovals(analysis: ShellAnalysis): Removal[] {
+  const result: Removal[] = [];
+  for (const command of analysis.commands) {
+    const name = commandName(command);
+    const args = command.words.slice(1);
+    const at = (index: number): RemovalTarget => ({ word: args[index], literal: command.literal[index + 1], glob: command.glob[index + 1] });
+    if (name === "rm") {
+      let options = true;
+      let recursive = false;
+      const targets: RemovalTarget[] = [];
+      args.forEach((word, index) => {
+        if (options && word === "--") options = false;
+        // GNU getopt nhận tiền tố duy nhất của tùy chọn dài: --rec, --recur... đều là --recursive.
+        else if (options && word.startsWith("--")) recursive ||= word.length > 2 && "--recursive".startsWith(word);
+        else if (options && word.length > 1 && word.startsWith("-")) recursive ||= /[rR]/u.test(word);
+        else targets.push(at(index));
+      });
+      // xargs lấy đích từ stdin.
+      if (recursive && (targets.length || command.wrapped === "xargs")) result.push({ label: "rm -r", targets, opaque: command.wrapped === "xargs" });
+    } else if (name === "find") {
+      let index = 0;
+      let follows = false;
+      // Tùy chọn đứng trước điểm bắt đầu: -H -L -P -D debugopts -Olevel.
+      while (index < args.length && /^-(?:[HLP]|D|O\d*)$/u.test(args[index])) {
+        follows ||= args[index] === "-L";
+        index += args[index] === "-D" ? 2 : 1;
+      }
+      const targets: RemovalTarget[] = [];
+      for (; index < args.length && !/^[-(!),]/u.test(args[index]); index++) targets.push(at(index));
+      const expression = args.slice(index);
+      const deletes = expression.includes("-delete");
+      const execRm = expression.some((word, i) => FIND_EXEC.has(word) && /(?:^|\/)rm$/u.test(expression[i + 1] ?? ""));
+      if (deletes || execRm) {
+        result.push({
+          label: deletes ? "find -delete" : "find -exec rm", targets: targets.length ? targets : [{ word: ".", literal: true, glob: false }],
+          // Theo symlink (-L, -follow) thì có thể xoá ra ngoài điểm bắt đầu.
+          opaque: follows || expression.includes("-follow"),
+        });
+      }
+    } else if (name === "git") {
+      let index = 0;
+      let tree: RemovalTarget = { word: ".", literal: true, glob: false };
+      while (index < args.length && args[index].startsWith("-")) {
+        const option = args[index];
+        if (option === "-C" || option === "--work-tree") {
+          if (index + 1 < args.length) tree = at(index + 1);
+          index += 2;
+        } else if (option.startsWith("--work-tree=")) {
+          tree = { word: option.slice("--work-tree=".length), literal: command.literal[index + 1], glob: false };
+          index++;
+        } else {
+          index += ["-c", "--git-dir", "--namespace", "--config-env", "--super-prefix"].includes(option) ? 2 : 1;
+        }
+      }
+      if (args[index] !== "clean") continue;
+      let dryRun = false;
+      for (let i = index + 1; i < args.length; i++) {
+        const word = args[i];
+        if (word === "--") break;
+        if (word === "--dry-run") dryRun = true;
+        else if (word === "--exclude") i++;
+        else if (/^-[^-]/u.test(word)) {
+          // Cụm cờ ngắn; -e nhận giá trị (dính liền hoặc là từ kế tiếp).
+          const cluster = word.slice(1);
+          const exclude = cluster.indexOf("e");
+          if ((exclude < 0 ? cluster : cluster.slice(0, exclude)).includes("n")) dryRun = true;
+          if (exclude === cluster.length - 1) i++;
+        }
+      }
+      // Pathspec chỉ thu hẹp phạm vi: xét cả cây làm việc (git clean bắt đầu từ thư mục hiện tại hoặc -C).
+      if (!dryRun) result.push({ label: "git clean", targets: [tree] });
+    } else if (name === "rimraf" || (PACKAGE_RUNNERS.has(name) && /^rimraf(?:@|$)/u.test(args.find((word) => !word.startsWith("-")) ?? ""))) {
+      const start = name === "rimraf" ? 0 : args.findIndex((word) => !word.startsWith("-")) + 1;
+      const targets: RemovalTarget[] = [];
+      for (let index = start; index < args.length; index++) if (!args[index].startsWith("-")) targets.push(at(index));
+      if (targets.length) result.push({ label: "rimraf", targets });
+    } else if (/^cmd(?:\.exe)?$/iu.test(name)) {
+      const script = args.findIndex((word) => /^\/\/?[ck]$/iu.test(word));
+      if (script >= 0 && CMD_RECURSIVE.test(args.slice(script + 1).join(" "))) result.push({ label: "rd /s", targets: [], opaque: true });
+    } else if (/^(?:powershell|pwsh)(?:\.exe)?$/iu.test(name) && POWERSHELL_RECURSIVE.test(args.join(" "))) {
+      result.push({ label: "Remove-Item -Recurse", targets: [], opaque: true });
+    }
+  }
+  return result;
+}
+
+/**
+ * Đích nằm hẳn trong thư mục tạm: chữ thuần, không có "..", đường dẫn thật (sau symlink) ở bên trong.
+ * Glob chỉ được ở thành phần cuối (rm không theo symlink của mục khớp, trừ khi có "/" phía sau), và
+ * glob ngay dưới thư mục tạm phải có tiền tố: /tmp/pi-test-* được, /tmp/* thì không.
+ */
+function temporaryTarget(target: RemovalTarget, cwd: string, home: string, temp: string[]): boolean {
+  if (!target.literal || /(?:^|[\\/])\.\.(?:[\\/]|$)/u.test(target.word)) return false;
+  if (!target.glob) return insideTemporary(resolveShellPath(target.word, cwd, home), temp);
+  const first = target.word.search(/[*?[]/u);
+  if (/[\\/]/u.test(target.word.slice(first))) return false;
+  const head = `${target.word.slice(0, first)}x`;
+  return insideTemporary(resolveShellPath(path.dirname(head), cwd, home), temp, path.basename(head) === "x");
+}
+
+function removalOutsideTemp(removals: Removal[], cwd: string, home: string, temp: string[]): string | undefined {
+  const outside = removals.filter((item) => item.opaque || !item.targets.length || !item.targets.every((target) => temporaryTarget(target, cwd, home, temp)));
+  return outside.length ? [...new Set(outside.map((item) => item.label))].join(", ") : undefined;
+}
+
 function summarize(toolName: string, input: Record<string, unknown>): string {
   const pick = (value: unknown) => (typeof value === "string" ? value : undefined);
   const text = pick(input.command) ?? pick(input.path) ?? pick(input.url) ?? pick(input.query) ??
@@ -159,9 +292,13 @@ export function describeCall(call: ToolCall, pc: PolicyContext): CallFacts {
       : analyzeShell(command);
     const readOnly = isReadOnlyShell(analysis);
     const paths = shellPaths(analysis, pc.cwd, home);
+    const removals = toolName === "powershell"
+      ? (POWERSHELL_RECURSIVE.test(command) || CMD_RECURSIVE.test(command) ? [{ label: "Remove-Item -Recurse", targets: [], opaque: true }] : [])
+      : recursiveRemovals(analysis);
     return {
       kind: "shell", analysis, readOnly, paths, summary,
       critical: criticalRemoval(analysis, pc.cwd, home),
+      removal: removalOutsideTemp(removals, pc.cwd, home, pc.tempRoots ?? temporaryRoots()),
       writesSelf: !readOnly && paths.some((file) => isSelfProtected(file, pc.selfPaths)),
       target: { toolName, commands: analysis.commands.map(commandText), raw: command, paths, writes: !readOnly },
     };
@@ -270,6 +407,15 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
     // Claude Code: auto mode đưa cho bộ phân loại, bypass vẫn phải hỏi người dùng.
     if (pc.mode === "bypass") return { kind: "ask", reason: `This command ${facts.critical}.` };
     notes.push(`this command ${facts.critical}`);
+  }
+
+  // Riêng pi-config: bypass hỏi trước mọi lệnh xoá đệ quy ra ngoài thư mục tạm, trừ khi luật allow phủ
+  // đúng lệnh (vd Bash(rm -rf node_modules)). Auto mode đã gửi các lệnh này cho bộ phân loại.
+  if (pc.mode === "bypass" && facts.removal) {
+    const analysis = facts.analysis;
+    const covered = !!analysis?.plain &&
+      allowCoversShell(pc.rules.allow, analysis.commands.filter((command) => !isReadOnlyCommand(command)).map(commandText));
+    if (!covered) return { kind: "ask", reason: `This command deletes recursively (${facts.removal}).` };
   }
 
   if (pc.mode === "bypass") return { kind: "allow", via: "bypass" };
