@@ -2,10 +2,10 @@
 
 Giao tiếp và tài liệu vận hành bằng tiếng Việt. Repo mô tả bộ cài và cấu hình Pi hiện hành cho Windows, Linux, macOS.
 
-- Cấu hình chuẩn: parent Claude Opus 5.5/high; researcher GLM/max; worker, debugger GPT-6 Sol/max; reviewer GPT-6 Astra/high. Agent không giới hạn số lượt. Một runtime Pi 0.87.1, một cấu hình main; dùng Agent của @tintinweb/pi-subagents và slash command trong cùng phiên.
+- Cấu hình chuẩn: parent Claude Opus 5.5/high; researcher GLM/max; worker, debugger GPT-6 Sol/max; reviewer, advisor, goal auditor và Oracle GPT-6 Astra/high. Agent không giới hạn số lượt. Một runtime Pi 0.87.1, một cấu hình main; dùng Agent của @tintinweb/pi-subagents và slash command trong cùng phiên.
 - Ghim phiên bản dependency, nguồn skills và checksum bản vá. Chỉ đổi phiên bản hoặc phân vai theo phạm vi yêu cầu.
 - Goal, shell jobs, rewind (pi-rewind) và advisor phải dùng được trong cùng phiên; background chỉ cung cấp shell jobs, model delegation dùng Agent. Giữ context riêng và quyền công cụ của từng role; model/thinking trong role được ưu tiên hơn tham số Agent.
-- Giữ auditor, advisor auto, cache warming và workflow tính phí tự động tắt trong cấu hình mặc định. Codex fast mode là ngoại lệ đã chọn: bật mặc định, tắt bằng `/fast`.
+- Giữ cache warming và workflow tính phí tự động tắt trong cấu hình mặc định. Ngoại lệ đã chọn: Codex fast mode (tắt bằng `/fast`); advisor luôn bật cho parent, gọi khi lỗi lặp lại và trước khi báo xong, tối đa 5 lần mỗi phiên, không có gate cứng chặn phiên; goal auditor và Oracle bật. Lệnh của auditor phải qua cổng permission như subagent.
 - Repo không chứa credential, token, dữ liệu phiên, log riêng hoặc đường dẫn máy nguồn. Auth và tùy chỉnh người dùng phải được bảo toàn khi cài lại.
 - Installer phải idempotent, kiểm quyền sở hữu file bằng manifest/checksum và báo rõ file đã được người dùng sửa. Chỉ lưu trữ tài nguyên thuộc installer, chưa sửa và không còn được tham chiếu.
 - Dùng root, agent-dir và bin-dir tạm để kiểm thử; không chạy installer đè lên Pi đang dùng trên máy phát triển.

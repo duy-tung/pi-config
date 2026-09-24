@@ -50,10 +50,10 @@ test("insertFile chỉ đọc file trong assets/patches", async () => {
   }
 });
 
-test("metadata ghim mười bản vá cho một runtime", async () => {
+test("metadata ghim mười một bản vá cho một runtime", async () => {
   const data = await loadPatchData();
   assert.equal(data.schemaVersion, 1);
-  assert.equal(data.patches.length, 10);
+  assert.equal(data.patches.length, 11);
   for (const spec of data.patches) {
     assert.match(spec.originalSha256, /^[a-f0-9]{64}$/);
     assert.match(spec.patchedSha256, /^[a-f0-9]{64}$/);
@@ -64,5 +64,15 @@ test("metadata ghim mười bản vá cho một runtime", async () => {
   const insertion = webAccess.edits.find((edit) => edit.insertFile);
   assert.equal(insertion.insertFile, "pi-web-access/anthropic-search.js");
   assert.equal(insertion.insert, (await readFile(new URL("../assets/patches/pi-web-access/anthropic-search.js", import.meta.url), "utf8")).replace(/\r\n/g, "\n"));
+  // Advisor: dòng ngân sách cố định để system prompt không đổi sau mỗi lần hỏi (giữ prompt cache của executor).
+  const advisor = data.patches.find((spec) => spec.package === "pi-advisor-flow");
+  const budget = advisor.edits.find((edit) => edit.before.includes("Advisor calls remaining this session"));
+  assert.ok(budget && !budget.after.includes("remainingCalls"));
+  // Mỗi phiên bắt đầu với advisor tắt, chỉ bật khi alwaysOn kích hoạt thành công: /advisor-off giữ qua phiên sau.
+  assert.ok(advisor.edits.some((edit) => edit.before.includes("if (alwaysOnRef)") && edit.after.includes("runtime.flowEnabled()")));
+  // Goal auditor: bash qua cổng permission của phiên cha.
+  const auditor = data.patches.find((spec) => spec.package === "pi-goal-x");
+  assert.equal(auditor.file, "extensions/goal-auditor.ts");
+  assert.ok(auditor.edits.some((edit) => edit.after.includes("subagents:child:session-created")));
   await assert.rejects(applyPatches({ root: os.tmpdir(), runtimes: ["../escape"] }), /Runtime phải/);
 });

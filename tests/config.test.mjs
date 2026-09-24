@@ -143,7 +143,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
     }
   });
 
-  test(`${platform}: không xuất credential, không tự bật tác vụ có phí`, () => {
+  test(`${platform}: không xuất credential; advisor, goal auditor và Oracle đúng cấu hình đã chọn`, () => {
     const { p, options, files, json, profiles } = fixture(platform);
     assert.equal(new Set(files.map(({ path: file }) => file)).size, files.length);
     for (const file of files) {
@@ -155,18 +155,32 @@ for (const platform of ["darwin", "linux", "win32"]) {
     for (const profile of Object.values(profiles)) {
       if (profile.packages.includes("pi-advisor-flow")) {
       const advisor = json(p.join(profile.agentDir, "advisor.json"));
-      assert.equal(advisor.alwaysOn, false);
-      assert.equal(advisor.advisorAutoLoopGate, false);
-      assert.equal(advisor.executor, "openai-codex/gpt-6-sol");
-      assert.equal(advisor.executorEffort, "high");
+      const settings = json(p.join(profile.agentDir, "settings.json"));
+      // Luôn bật với executor là chính model mặc định (Opus/high), nên mở phiên không đổi model.
+      assert.equal(advisor.alwaysOn, true);
+      assert.equal(advisor.executor, `${settings.defaultProvider}/${settings.defaultModel}`);
+      assert.equal(advisor.executorEffort, settings.defaultThinkingLevel);
       assert.equal(advisor.advisor, "openai-codex/gpt-6-astra");
       assert.equal(advisor.advisorEffort, "high");
+      // Gate là hướng dẫn trong prompt: khi lỗi lặp lại và trước khi báo xong; không có gate cứng chặn phiên.
+      assert.deepEqual([advisor.advisorPlanGate, advisor.advisorFailureGate, advisor.advisorCompletionGate], [false, true, true]);
+      assert.equal(advisor.advisorAutoLoopGate, false);
+      assert.equal(advisor.gateFailureMode, "warn-and-continue");
+      assert.equal(advisor.advisorMaxCallsPerSession, 5);
+      // Diff đầy đủ chiếm tối đa một nửa contextMaxChars: 20.000 ký tự diff, còn ít nhất 40.000 cho hội thoại.
+      assert.equal(advisor.advisorGitContext, "full");
+      assert.ok(advisor.contextMaxChars >= 2 * advisor.advisorGitContextMaxChars);
+      assert.equal(advisor.advisorRedactSecrets, true);
+      assert.equal(advisor.advisorTrackedFileContent, false);
+      assert.equal(advisor.advisorUntrackedContent, false);
       } else assert.ok(!files.some(file => file.path === p.join(profile.agentDir,"advisor.json")));
       if (profile.packages.includes("pi-goal-x")) {
-      const auditor = json(p.join(profile.agentDir, "pi-goal-x-settings.json"));
-      assert.equal(auditor.provider, "openai-codex");
-      assert.equal(auditor.model, "gpt-6-sol");
-      assert.equal(json(p.join(profile.agentDir, "pi-goal-x-settings.json")).disabled, true);
+      const goal = json(p.join(profile.agentDir, "pi-goal-x-settings.json"));
+      assert.equal(goal.disabled, false);
+      assert.deepEqual([goal.provider, goal.model, goal.thinkingLevel], ["openai-codex", "gpt-6-astra", "high"]);
+      assert.equal(goal.auditorProjectResources, false);
+      assert.deepEqual(goal.oracle, { enabled: true, provider: "openai-codex", model: "gpt-6-astra", thinkingLevel: "high" });
+      assert.equal(goal.maxAutonomousRuns, 10);
       } else assert.ok(!files.some(file => file.path === p.join(profile.agentDir,"pi-goal-x-settings.json")));
       assert.equal(json(p.join(profile.agentDir, "settings.json")).cacheWarming, "off");
       if (profile.packages.includes("@tintinweb/pi-subagents")) assert.equal(json(p.join(profile.agentDir, "subagents.json")).fallbackSubagent, "none");

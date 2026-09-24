@@ -49,6 +49,9 @@ Object.assign(settings, {
 });
 if (settings.rewind) settings.rewind.storageDir = path.join(fixture, "rewind");
 writeJson(path.join(agentDir, "settings.json"), settings);
+// Advisor luôn bật của bản cài, executor là model giả của parent thay cho Opus (fixture không có auth Claude).
+const advisorFile = path.join(agentDir, "advisor.json");
+writeJson(advisorFile, { ...readJson(advisorFile), executor: "config-test/parent" });
 writeJson(path.join(agentDir, "auth.json"), {});
 // Explicitly replace web config rather than copying a live credential command.
 writeJson(path.join(agentDir, "web-search.json"), {
@@ -231,6 +234,70 @@ await check('foreground completion returns inline without another parent generat
   await delay(200);
   assert.equal(control.seen.filter(x=>x.key==='parent_completion').length,2);
   assert.equal(session.isStreaming,false);assert.equal(session.pendingMessageCount,0);
+});
+// Một prompt của parent theo kịch bản, không qua Agent; chờ cả lượt goal tự tiếp tục chạy xong.
+async function turn(key, steps) {
+  control.plans[key]=steps;control.fallbackKey=key;
+  const before=session.messages.length;
+  await session.prompt(`CASE:${key}`);
+  await delay(50);
+  const deadline=Date.now()+15000;
+  while(session.isStreaming||session.pendingMessageCount>0){
+    if(Date.now()>deadline)throw new Error('Fixture session did not settle within 15 seconds');
+    await delay(50);
+  }
+  return session.messages.slice(before).filter(m=>m.role==='toolResult');
+}
+// Phần đầu request (system prompt và khai báo tool trước user message đầu tiên): đổi phần này thì mất prompt cache.
+const head=entry=>{const first=entry.messages.findIndex(m=>m.role==='user');return JSON.stringify([entry.systemPrompt??null,entry.messages.slice(0,first<0?0:first)]);};
+await check('advisor Astra/high is always on for the parent and a consultation keeps the system prompt',async()=>{
+  assert.ok(session.getActiveToolNames().includes('ask_advisor'),'alwaysOn phải bật advisor khi mở phiên');
+  control.plans.advisor=[final('Verdict: sound\n\nADVISOR_FIXTURE_OK')];
+  const out=await turn('advisor-one',[[tool('ask_advisor',{})],final('DONE')]);
+  assert.equal(out[0]?.isError,false,JSON.stringify(out));assert.match(JSON.stringify(out),/ADVISOR_FIXTURE_OK/);
+  await turn('advisor-two',[final('DONE')]);
+  const advice=control.seen.filter(x=>x.key==='advisor');
+  assert.equal(advice.length,1);assert.equal(advice[0].model,'gpt-6-astra');assert.equal(advice[0].options.reasoning,'high');
+  const [one,two]=['advisor-one','advisor-two'].map(key=>head(control.seen.find(x=>x.key===key)));
+  assert.equal(one,two,'System prompt không được đổi sau mỗi lần hỏi advisor');
+  assert.match(one,/after two consecutive materially equivalent failed attempts/);
+  assert.match(one,/Before declaring success, use ask_advisor/);
+  assert.match(one,/Advisor calls are limited to 5 per session/);
+  assert.doesNotMatch(one,/Before committing to a materially consequential plan/);
+});
+await check('goal auditor uses Astra/high and its bash passes the permission gate like a subagent',async()=>{
+  control.plans.auditor=[[tool('bash',{command:'printf denied > audit-denied.txt',timeout:10})],
+    [tool('bash',{command:'printf allowed > audit-allowed.txt',timeout:10})],final('Checked the workspace.\n<approved/>')];
+  // Lệnh đầu bị bộ phân loại chặn (hai giai đoạn), lệnh sau được phép.
+  control.classifier.push('<block>yes</block>','<block>yes</block><rule>Persistence</rule><reason>Fixture block.</reason>');
+  const out=await turn('goal-audit',[[tool('create_goal',{objective:'Fixture goal: audit the workspace.'})],
+    [tool('update_goal',{status:'complete',completion_summary:'Fixture work is done.'})],final('GOAL_DONE')]);
+  assert.ok(out.length===2&&out.every(m=>!m.isError),JSON.stringify(out));
+  assert.match(JSON.stringify(out),/Goal audit approved/);
+  const audits=control.seen.filter(x=>x.key==='auditor');
+  assert.equal(audits.length,3);
+  assert.ok(audits.every(x=>x.model==='gpt-6-astra'&&x.options.reasoning==='high'));
+  assert.ok(audits[0].tools.includes('bash'));
+  assert.equal(fs.existsSync(path.join(cwd,'audit-denied.txt')),false);
+  assert.equal(fs.readFileSync(path.join(cwd,'audit-allowed.txt'),'utf8'),'allowed');
+  const reviewed=control.seen.filter(x=>x.key==='classifier').map(x=>JSON.stringify(x.messages));
+  assert.ok(reviewed.some(text=>text.includes('audit-denied.txt')&&text.includes('delegated_task')),'Auditor phải qua bộ phân loại như phiên con');
+  assert.ok(reviewed.some(text=>text.includes('audit-allowed.txt')));
+});
+await check('/advisor-off lasts into the next session; alwaysOn brings the advisor back',async()=>{
+  await session.prompt('/advisor-off');
+  assert.ok(!session.getActiveToolNames().includes('ask_advisor'));
+  assert.equal(readJson(advisorFile).alwaysOn,false);
+  // Pi bật mọi tool của extension khi mở phiên; bản vá đưa advisor về trạng thái tắt trừ khi alwaysOn.
+  const toolsOfNewSession=async()=>{
+    const freshLoader=new sdk.DefaultResourceLoader({cwd,agentDir});await freshLoader.reload();
+    const {session:fresh}=await sdk.createAgentSession({cwd,agentDir,resourceLoader:freshLoader,modelRuntime:runtime,sessionManager:sdk.SessionManager.inMemory(cwd)});
+    try{await fresh.bindExtensions({uiContext:ui,mode:'rpc',onError:error=>errors.push(error)});return fresh.getActiveToolNames();}
+    finally{await fresh.extensionRunner.emit({type:'session_shutdown',reason:'quit'});fresh.dispose();}
+  };
+  assert.ok(!(await toolsOfNewSession()).includes('ask_advisor'),'Phiên mới sau /advisor-off không được bật advisor');
+  writeJson(advisorFile,{...readJson(advisorFile),alwaysOn:true});
+  assert.ok((await toolsOfNewSession()).includes('ask_advisor'));
 });
 await session.extensionRunner.emit({type:'session_shutdown',reason:'quit'});session.dispose();
 const failed=results.some(r=>r.status==='FAIL')||errors.length>0||networkAttempts.length>0;
