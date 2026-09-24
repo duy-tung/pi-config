@@ -59,6 +59,8 @@ Mỗi tool call đi qua các bước sau, dừng ở bước đầu tiên có k�
 
 Spawn `Agent` luôn qua bộ phân loại (xét nội dung task). Trong auto mode, agent `isolated: true`, `extensions: false` hoặc danh sách extension thiếu `pi-auto-mode` bị chặn vì child sẽ chạy không có cổng. Liên kết cha–con dùng sự kiện `subagents:child:session-created` do bản vá runtime của pi-subagents phát.
 
+Completion auditor của goal (pi-goal-x) cũng là phiên con: bản vá nạp riêng pi-auto-mode đã cấu hình trong `settings.json` vào phiên auditor và phát cùng sự kiện, nên lệnh `bash` của auditor được duyệt như của subagent. Nếu `settings.json` không có pi-auto-mode, auditor chạy như upstream.
+
 ## Cấu hình
 
 `settings.json` của agent (settings của project không được đọc, để repo không tự nới quyền):

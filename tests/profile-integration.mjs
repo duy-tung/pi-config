@@ -65,7 +65,8 @@ writeJson(credentialFile, {"fixture-secret": {type: "api_key", key: "synthetic-p
 if (configuration.packages.includes("pi-advisor-flow")) {
   const advisorFile = path.join(agentDir, "advisor.json");
   const advisor = readJson(advisorFile);
-  Object.assign(advisor, { executor: "config-test/parent", advisor: "config-test/worker", alwaysOn: false });
+  // Giữ alwaysOn và gate của bản cài; chỉ thay model bằng model giả.
+  Object.assign(advisor, { executor: "config-test/parent", advisor: "config-test/worker" });
   writeJson(advisorFile, advisor);
 }
 // Dùng routing web của bản cài nhưng thay credential command bằng giá trị giả; bật thêm tuỳ chọn tìm bằng
@@ -396,7 +397,8 @@ if (configuration.packages.includes("pi-background-tasks")) {
   });
 }
 if (configuration.packages.includes("pi-advisor-flow")) {
-  await check("advisor uses second fixture model through patched ModelRuntime", async () => {
+  await check("advisor is on from startup and uses second fixture model through patched ModelRuntime", async () => {
+    assert.ok(session.getActiveToolNames().includes("ask_advisor"), "alwaysOn phải bật advisor khi mở phiên");
     await session.prompt("/advisor");
     control.plans.advice = [final("ADVISOR_APPROVED_FIXTURE")];
     const result = await run("advisor", [[tool("ask_advisor", { question: "CASE:advice Review local fixture.", gitContext: "none" })]]);

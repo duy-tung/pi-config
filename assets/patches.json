@@ -186,7 +186,7 @@
       },
       "file": "dist/index.js",
       "originalSha256": "44a20e7858d8809aeb5f27d7259b093b5e30ad6a2eca259ec67a66db62eb9c61",
-      "patchedSha256": "5c78391d8201366880ccb2a388c9fd0ab6234f342b12b2fd711367153554ccb2",
+      "patchedSha256": "899fc60fea95aca6b04a8d927a9c46334d3326596abf0de0738a5d5d0b68b532",
       "edits": [
         {
           "before": "    ref\n  };\n};\nvar ADVISOR_STREAM_UPDATE_INTERVAL_MS",
@@ -196,6 +196,57 @@
         {
           "before": "var collectTextStream = async (resolved, options, streamModel = stream) => {",
           "after": "var collectTextStream = async (resolved, options, streamModel = resolved.streamModel) => {",
+          "count": 1
+        },
+        {
+          "before": "    const budget = isSimpleMode() ? undefined : session.remainingCalls(getAdvisorMaxCallsPerSession());\n    if (budget !== undefined) {\n      guidelines.push(`Advisor calls remaining this session: ${budget}.\nReserve calls for material decisions, repeated failures, or final review.`);\n",
+          "after": "    // Local integration: a fixed budget line keeps the system prompt, and so the executor's prompt cache,\n    // unchanged after each consultation; ask_advisor itself reports when the budget is exhausted.\n    const budget = isSimpleMode() ? undefined : getAdvisorMaxCallsPerSession();\n    if (budget !== undefined) {\n      guidelines.push(`Advisor calls are limited to ${budget} per session; ask_advisor reports when none remain.\nReserve calls for material decisions, repeated failures, or final review.`);\n",
+          "count": 1
+        },
+        {
+          "before": "      loadConfig(ctx);\n      if (alwaysOnRef) {\n        await activateAdvisor(\"\", ctx, false);\n      }\n",
+          "after": "      loadConfig(ctx);\n      // Local integration: Pi activates every extension tool when a session starts. Start with the flow off so\n      // it is on only after a successful alwaysOn activation (or /advisor), as documented upstream; /advisor-off\n      // then lasts across sessions.\n      if (runtime.flowEnabled()) {\n        runtime.pi.setActiveTools(runtime.pi.getActiveTools().filter((name) => name !== \"ask_advisor\" && name !== \"record_advisor_outcome\"));\n      }\n      if (alwaysOnRef) {\n        await activateAdvisor(\"\", ctx, false);\n      }\n",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "package": "pi-goal-x",
+      "versions": {
+        "current": "0.31.8"
+      },
+      "file": "extensions/goal-auditor.ts",
+      "originalSha256": "498ad6b3273b575c86ba28a6a155e9f73b343b99b5f8d601fcd311095c45881a",
+      "patchedSha256": "f6cf523e6c104d8418fb3e617bab9543a9bb9e8239af68bf3be9098a90078cfe",
+      "edits": [
+        {
+          "before": "\tcreateAgentSession,\n\tcreateExtensionRuntime,\n\tdefineTool,\n",
+          "after": "\tcreateAgentSession,\n\tcreateEventBus,\n\tcreateExtensionRuntime,\n\tDefaultResourceLoader,\n\tdefineTool,\n\tgetAgentDir,\n",
+          "count": 1
+        },
+        {
+          "before": "export async function runGoalCompletionAuditor(args: {\n",
+          "after": "/**\n * Local integration: the auditor's bash goes through the parent's permission gate. The gate the\n * user configured (pi-auto-mode in settings.json extensions) loads alone into the isolated auditor\n * session, which then announces itself as a child of the parent session with the same events as a\n * pi-subagents child: it follows the parent's permission mode, takes intent from the parent's user\n * messages and asks through the parent's UI. Without a configured gate the auditor runs as upstream.\n */\nasync function auditorPermissionGate(ctx: ExtensionContext): Promise<{\n\tloader: ResourceLoader;\n\tbind(session: { sessionId: string; bindExtensions(bindings: Record<string, never>): Promise<void> }): Promise<() => void>;\n} | undefined> {\n\tconst agentDir = getAgentDir();\n\tlet entries: unknown[];\n\ttry {\n\t\tconst settings = JSON.parse(fs.readFileSync(path.join(agentDir, \"settings.json\"), \"utf8\")) as { extensions?: unknown };\n\t\tentries = Array.isArray(settings.extensions) ? settings.extensions : [];\n\t} catch {\n\t\treturn undefined;\n\t}\n\tconst entry = entries.map((item) => (typeof item === \"string\" ? item.trim().replace(/^\\+/u, \"\") : \"\"))\n\t\t.find((item) => item !== \"\" && !/^[-!]/u.test(item) && path.basename(item.replace(/[\\\\/]+$/u, \"\")) === \"pi-auto-mode\");\n\tif (!entry) return undefined;\n\tconst events = createEventBus();\n\tconst loader = new DefaultResourceLoader({\n\t\tcwd: ctx.cwd, agentDir, eventBus: events, settingsManager: SettingsManager.inMemory({}),\n\t\tnoExtensions: true, additionalExtensionPaths: [path.resolve(agentDir, entry)],\n\t\tnoSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,\n\t\tsystemPromptOverride: () => makeAuditorResourceLoader().getSystemPrompt(),\n\t\tappendSystemPromptOverride: () => [],\n\t});\n\tawait loader.reload();\n\tconst { extensions, errors } = loader.getExtensions();\n\tif (errors.length || extensions.length !== 1) {\n\t\tthrow new Error(`Auditor permission gate did not load: ${errors.map((item) => item.error).join(\"; \") || entry}`);\n\t}\n\treturn {\n\t\tloader,\n\t\tasync bind(session) {\n\t\t\tconst identity = { sessionId: session.sessionId, parentSessionId: ctx.sessionManager.getSessionId() };\n\t\t\tevents.emit(\"subagents:child:session-created\", identity);\n\t\t\tconst release = () => events.emit(\"subagents:child:disposed\", { sessionId: session.sessionId });\n\t\t\ttry {\n\t\t\t\tawait session.bindExtensions({});\n\t\t\t} catch (error) {\n\t\t\t\trelease();\n\t\t\t\tthrow error;\n\t\t\t}\n\t\t\treturn release;\n\t\t},\n\t};\n}\n\nexport async function runGoalCompletionAuditor(args: {\n",
+          "count": 1
+        },
+        {
+          "before": "\t\tconst projectResources = args.settings?.auditorProjectResources === true;\n\t\tconst { session } = await createSession({\n",
+          "after": "\t\tconst projectResources = args.settings?.auditorProjectResources === true;\n\t\t// Local integration: the parent's permission gate reviews the auditor's bash (auditorPermissionGate).\n\t\tconst gate = projectResources ? undefined : await auditorPermissionGate(args.ctx);\n\t\tconst { session } = await createSession({\n",
+          "count": 1
+        },
+        {
+          "before": "\t\t\t\t: { resourceLoader: makeAuditorResourceLoader() }),\n",
+          "after": "\t\t\t\t: { resourceLoader: gate?.loader ?? makeAuditorResourceLoader() }),\n",
+          "count": 1
+        },
+        {
+          "before": "\t\t} as Parameters<typeof createAgentSession>[0]);\n\t\tconst unsubscribe = session.subscribe((event) => {\n",
+          "after": "\t\t} as Parameters<typeof createAgentSession>[0]);\n\t\tlet releaseGate: (() => void) | undefined;\n\t\ttry {\n\t\t\treleaseGate = await gate?.bind(session);\n\t\t} catch (error) {\n\t\t\tsession.dispose?.();\n\t\t\tthrow error;\n\t\t}\n\t\tconst unsubscribe = session.subscribe((event) => {\n",
+          "count": 1
+        },
+        {
+          "before": "\t\t\tunsubscribe();\n   session.dispose?.();\n",
+          "after": "\t\t\tunsubscribe();\n   session.dispose?.();\n\t\t\treleaseGate?.();\n",
           "count": 1
         }
       ]

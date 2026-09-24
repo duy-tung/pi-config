@@ -39,15 +39,23 @@ Chạy `pi` để mở Claude Opus 5.5/high với toàn bộ công cụ. Các wo
 |---|---|
 | Goal dài hạn | `/goal`, `/goal-status`, `/goal-pause`, `/goal-resume` |
 | Shell job nền | `/bg --name "Dev server" npm run dev`, `/jobs`, `/logs`, `/kill` |
-| Ý kiến cố vấn | `/advisor`, `/advisor-manual`, `/advisor-off` |
+| Ý kiến cố vấn | `/advisor-manual`, `/advisor-settings`, `/advisor-off`, `/advisor` |
 | Rewind code/hội thoại | `Esc Esc`, `/rewind` (`/checkpoint`, `/undo`), `/redo`; `/clear` mở phiên mới |
 | Permission | `Shift+Tab` (auto ⇄ bypass), `/permissions`, `/auto-mode` |
 | Model và reasoning | `/model`, `/thinking`, `Alt+T` đổi mức thinking |
 | Công cụ và giao diện | `/agents`, `/usage`, `/claude-usage`, `/mcp`, `/lens-health`, `/open-tui` |
 
-`/advisor` chuyển sang executor Sol/high và advisor Astra/high. `/advisor-off` tắt flow nhưng giữ model hiện tại; dùng `/model` để trở lại Opus. Advisor auto, gates và scout tắt mặc định; giới hạn 3 lần tham khảo mỗi phiên.
+Advisor (pi-advisor-flow) luôn bật khi mở phiên: executor là Opus/high của phiên, advisor là GPT-6 Astra/high.
+- System prompt dặn Opus gọi `ask_advisor` sau hai lần thử tương đương cùng thất bại và trước khi báo xong việc không nhỏ. Tối đa 5 lần mỗi phiên; không có gate cứng chặn phiên.
+- Advisor không có tool. Nó thấy tối đa 60.000 ký tự gồm hội thoại gần nhất và diff chưa commit (diff tối đa 20.000 ký tự, đã che secret). Thay đổi lớn vẫn nên giao reviewer.
+- Bản vá giữ system prompt không đổi sau mỗi lần hỏi, để Opus không mất prompt cache.
+- `/advisor-off` tắt hẳn, kể cả các phiên sau (bản vá: Pi tự bật mọi tool của extension khi mở phiên, nên advisor chỉ bật khi Always on kích hoạt được); bật lại ở `/advisor-settings` → Always on. Khi advisor đang bật, `/model` lưu model mới làm executor vào `advisor.json`, nên lần cài lại installer sẽ báo file này đã sửa.
+- Mở phiên khi chưa đăng nhập Claude hoặc Codex thì Pi báo `Advisor models are not configured or available` và phiên chạy không có advisor; đăng nhập rồi chạy `/advisor`.
 
-Goal chỉ bắt đầu khi được yêu cầu. Auditor tắt mặc định; mỗi lần tạo hoặc resume có tối đa 10 lượt tự tiếp tục do goal extension khởi động. Giới hạn này không tính các tool call trong một lượt hay request do extension khác khởi động.
+Goal chỉ bắt đầu khi được yêu cầu. Mỗi lần tạo hoặc resume có tối đa 10 lượt tự tiếp tục do goal extension khởi động; giới hạn này không tính các tool call trong một lượt hay request do extension khác khởi động.
+- Khi agent báo hoàn thành, auditor GPT-6 Astra/high kiểm tra độc lập trong phiên riêng (đọc file, chạy lệnh). Không duyệt thì goal vẫn mở kèm phản hồi. Tắt audit cho goal đang chọn bằng `Ctrl+Shift+A` hoặc trong hộp xác nhận goal.
+- Lệnh của auditor qua cổng permission như subagent (bản vá pi-goal-x): theo mode của phiên chính, câu hỏi hiện ở UI phiên chính.
+- Khi agent sắp chuyển goal sang blocked, Oracle Astra/high (chỉ đọc) được hỏi một lần cho mỗi vướng mắc.
 
 Background cung cấp shell jobs; completion chỉ thông báo, không tự mở lượt model theo mặc định. Mô tả `bg_run` dặn model đặt `triggerOnCompletion:true` khi bước sau cần kết quả của job (test, build phải xem trước khi làm tiếp): job xong sẽ mở lượt mới, nên model kết thúc lượt thay vì chờ hay hỏi trạng thái liên tục. Dev server và watcher giữ mặc định. Model delegation dùng `Agent`.
 
@@ -85,13 +93,13 @@ Agent có context riêng và không giới hạn số lượt; dừng agent bằ
 - MCP filesystem: công cụ đọc trong workspace, kết nối khi cần. `mcp.json` đặt `allowInstall: false`: agent không tự cài thêm server MCP.
 - Code intelligence: pi-lens, TypeScript language server cài sẵn; Go/Rust/Python dùng language server của máy hoặc project.
 - Native compaction bật: reserve 16.384, giữ gần nhất 20.000 token.
-- Cache warming, auditor goal và advisor auto tắt. Goal và background follow-up chỉ chạy theo thao tác/cấu hình đã chọn.
+- Cache warming tắt. Advisor, goal auditor và Oracle bật như mô tả ở trên. Goal và background follow-up chỉ chạy theo thao tác/cấu hình đã chọn.
 - Codex fast mode bật mặc định (`codexFastMode:true`): request của worker/debugger GPT-6 Sol đi hàng `priority`, nhanh hơn và tốn quota Codex nhiều hơn (Pi tính chi phí gấp đôi). GPT-6 Astra chưa hỗ trợ fast. Tắt bằng `/fast`; footer hiện `fast` khi phiên đang dùng model Codex có fast.
 - Header/footer/editor do pi-open-tui quản lý. Footer hiển thị model, thinking, quota (Codex qua pi-usage; Claude đọc từ header phản hồi, chi tiết bằng `/claude-usage`), context % kèm token/cửa sổ, token/cost và trạng thái công cụ liên quan. Palette terminal theo theme của phiên và được phục hồi khi thoát.
 - Dán ảnh: `@pi-archimedes/image-paste`, dùng **Ctrl+V** trên macOS/Linux hoặc **Alt+V** trên Windows. Copy ảnh vào clipboard, dán để có marker `[Image #1]`, rồi gửi cùng prompt. Xóa marker để bỏ ảnh; giới hạn 20 MiB/ảnh. Preview chỉ hiện trong UI, ảnh được gửi tới model đúng một lần. Phím dán ảnh tích hợp của Pi được tắt trong `keybindings.json` để tránh xử lý trùng.
 - Clipboard native `@mariozechner/clipboard` được ghim và cài bên cạnh extension. Linux cần desktop X11/Wayland; `wl-clipboard`/`xclip` là các reader thay thế. Terminal không hỗ trợ ảnh inline vẫn gửi được ảnh, chỉ thiếu preview. Chỉ nạp image-paste; phần giao diện của bộ Archimedes không được nạp.
 
-`pi-models` xem cấu hình model. `pi-doctor` kiểm dependency và checksum bản vá. `pi-test` kiểm workflow và Agent bằng provider giả trong thư mục tạm, không gọi model trả phí.
+`pi-models` xem cấu hình model. `pi-doctor` kiểm dependency và checksum bản vá, in model của role, advisor và goal auditor. `pi-test` kiểm workflow và Agent bằng provider giả trong thư mục tạm, không gọi model trả phí.
 
 Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều hành: bộ phân loại có thể sai. Luật `permissions.deny` (file bí mật, `sudo`...) áp dụng ở cả hai mode; bypass vẫn hỏi trước lệnh xoá đệ quy ra ngoài thư mục tạm (`rm -fr`, `find -delete`, `git clean`...). Project cần được trust trước khi dùng cấu hình của project; settings của project không bật được bypass hay thêm luật allow. Nguồn web là dữ liệu để tham khảo, không phải instruction.
 

@@ -1,15 +1,16 @@
 {
-  "executor": "openai-codex/gpt-6-sol",
+  "executor": "anthropic/claude-opus-5-5",
   "advisor": "openai-codex/gpt-6-astra",
   "executorEffort": "high",
   "advisorEffort": "high",
-  "alwaysOn": false,
+  "alwaysOn": true,
   "simpleMode": false,
-  "advisorMaxCallsPerSession": 3,
+  "advisorMaxCallsPerSession": 5,
   "advisorPlanGate": false,
-  "advisorFailureGate": false,
-  "advisorCompletionGate": false,
+  "advisorFailureGate": true,
+  "advisorCompletionGate": true,
   "advisorAutoLoopGate": false,
+  "gateFailureMode": "warn-and-continue",
   "advisorScoutEnabled": false,
   "advisorSessionSummary": false,
   "advisorRedactSecrets": true,
@@ -17,6 +18,7 @@
   "advisorUntrackedContent": false,
   "advisorOutcomeLogging": false,
   "advisorHerdrIntegration": false,
-  "advisorGitContext": "summary",
-  "contextMaxChars": 15000
+  "advisorGitContext": "full",
+  "advisorGitContextMaxChars": 20000,
+  "contextMaxChars": 60000
 }

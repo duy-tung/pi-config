@@ -53,6 +53,19 @@ for(const [name,p] of Object.entries(profiles)){
       else if(enabled.size&&!enabled.has(model))warnings.push(`${name}: role ${role} dùng ${model} ngoài enabledModels`);
     }
   }
+  const advisorFile=path.join(p.agentDir,'advisor.json');
+  if(p.packages.includes('pi-advisor-flow')&&fs.existsSync(advisorFile)){
+    const advisor=read(advisorFile),main=`${s.defaultProvider}/${s.defaultModel}`;
+    console.log(`  advisor: ${advisor.advisor??'?'} (${advisor.advisorEffort??'?'})${advisor.alwaysOn===true?`, luôn bật, tối đa ${advisor.advisorMaxCallsPerSession??'∞'} lần/phiên`:', tắt'}`);
+    // alwaysOn đặt model của phiên thành executor mỗi lần mở phiên.
+    if(advisor.alwaysOn===true&&advisor.executor&&advisor.executor!==main)
+      warnings.push(`${name}: advisor.json bật alwaysOn với executor ${advisor.executor}; mỗi phiên sẽ chuyển từ ${main} sang model này`);
+  }
+  const goalFile=path.join(p.agentDir,'pi-goal-x-settings.json');
+  if(p.packages.includes('pi-goal-x')&&fs.existsSync(goalFile)){
+    const goal=read(goalFile),label=item=>`${item.provider??'?'}/${item.model??'?'} (${item.thinkingLevel??'?'})`;
+    console.log(`  goal auditor: ${goal.disabled===true?'tắt':label(goal)}; Oracle: ${goal.oracle?.enabled===true?label(goal.oracle):'tắt'}`);
+  }
   if(s.modelThinkingLevels?.['opencode-go/glm-5.3-flash']!=='max')errors.push(`${name}: GLM effort phải max`);
 }
 for(const source of Object.keys(state.sources))if(!fs.existsSync(path.join(root,'sources',source)))errors.push(`Thiếu skills source: ${source}`);
