@@ -5,8 +5,8 @@ import { evaluate, JEV_PRICE_PER_MTOK, type JevAccess } from "./jev.ts";
 import type { Decision, ToolCall } from "./policy.ts";
 import { buildSystemPrompt, type PromptSlots } from "./prompt.ts";
 import {
-  describeVerdict, executedScripts, judgeScreen, type ScreenAction, type ScreenEnvironment, screenable, screenQuestions, screenState,
-  type ScreenVerdict,
+  describeVerdict, executedScripts, judgeScreen, packageScripts, type ScreenAction, type ScreenEnvironment, screenable, screenQuestions,
+  screenState, type ScreenVerdict,
 } from "./screen.ts";
 import { buildTranscript, type SessionEntryLike } from "./transcript.ts";
 
@@ -205,9 +205,88 @@ export function formatReport(outcomes: EvalOutcome[], label: string, screenOnly 
   lines.push(`Latency p50 ${percentile(0.5)} ms, p90 ${percentile(0.9)} ms${tokens ? ` · Jev input ${tokens} tokens ≈ $${(tokens * JEV_PRICE_PER_MTOK / 1e6).toFixed(5)}` : ""}`, "");
   for (const item of outcomes) {
     const ok = item.got === item.expect;
-    const mark = item.got === "unavailable" || item.got === "skipped" ? "?" : ok ? "✓" : "✗";
+    // Chỉ Jev: hành động hợp lệ bị gắn cờ không phải lỗi, nó sang giai đoạn 2 (một lần gọi LLM).
+    const toStage2 = screenOnly && item.expect === "allow" && item.got === "block";
+    const mark = item.got === "unavailable" || item.got === "skipped" ? "?" : ok ? "✓" : toStage2 ? "→" : "✗";
+    const got = screenOnly && item.got === "block" ? "stage 2" : item.got;
     const detail = item.screenDetail ? ` — Jev ${item.screenDetail}` : "";
-    lines.push(`${mark} [${item.expect} → ${item.got}] ${item.name} (${item.via}${item.stage ? `, stage ${item.stage}` : ""}${item.ms ? `, ${item.ms} ms` : ""})${!ok && item.reason ? ` — ${item.reason}` : ""}${detail}`);
+    lines.push(`${mark} [${item.expect} → ${got}] ${item.name} (${item.via}${item.stage ? `, stage ${item.stage}` : ""}${item.ms ? `, ${item.ms} ms` : ""})${!ok && item.reason ? ` — ${item.reason}` : ""}${detail}`);
   }
   return lines.join("\n");
 }
+
+// ---------------------------------------------------------------------------
+// Bộ lệnh hiệu chỉnh giai đoạn 1 (eval/screen-cases.json): chỉ lệnh, nhãn theo rủi ro tự thân
+// ---------------------------------------------------------------------------
+
+export interface ScreenCorpus {
+  description?: string;
+  /** Script package.json cố định cho `npm test`, `npm run build`... */
+  packageScripts?: Record<string, string>;
+  clear: string[];
+  flag: string[];
+  either?: string[];
+}
+
+export interface CorpusOutcome {
+  command: string;
+  label: "clear" | "flag" | "either";
+  kind: ScreenOutcome["kind"];
+  detail?: string;
+  tokens?: number;
+  ms: number;
+}
+
+export async function runScreenCorpus(
+  corpus: ScreenCorpus, screen: (action: ScreenAction) => Promise<ScreenRun>, concurrency = 6, onProgress?: (done: number, total: number) => void,
+): Promise<CorpusOutcome[]> {
+  const items = [
+    ...corpus.clear.map((command) => ({ command, label: "clear" as const })),
+    ...corpus.flag.map((command) => ({ command, label: "flag" as const })),
+    ...(corpus.either ?? []).map((command) => ({ command, label: "either" as const })),
+  ];
+  const scripts = corpus.packageScripts ?? {};
+  const outcomes: CorpusOutcome[] = new Array(items.length);
+  let next = 0;
+  let done = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const index = next++;
+      const item = items[index];
+      const started = Date.now();
+      const run = await screen({
+        toolName: "bash", input: { command: item.command },
+        packageScripts: packageScripts(item.command, EVAL_ENVIRONMENT.workingDirectory, () => scripts),
+      });
+      outcomes[index] = {
+        ...item, kind: run.outcome.kind, tokens: run.tokens, ms: Date.now() - started,
+        detail: run.verdict ? describeVerdict(run.verdict) : run.outcome.kind === "unavailable" ? run.outcome.reason : undefined,
+      };
+      onProgress?.(++done, items.length);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, concurrency) }, worker));
+  return outcomes;
+}
+
+export function formatScreenCorpus(outcomes: CorpusOutcome[], label: string): string {
+  const of = (name: CorpusOutcome["label"]) => outcomes.filter((item) => item.label === name);
+  const missed = of("flag").filter((item) => item.kind === "clear");
+  const sent = of("clear").filter((item) => item.kind === "flag");
+  const unavailable = outcomes.filter((item) => item.kind === "unavailable");
+  const pct = (part: number, whole: number) => (whole ? `${Math.round((part / whole) * 1000) / 10}%` : "-");
+  const tokens = outcomes.reduce((sum, item) => sum + (item.tokens ?? 0), 0);
+  const times = outcomes.filter((item) => item.kind !== "unavailable").map((item) => item.ms).sort((a, b) => a - b);
+  const percentile = (p: number) => (times.length ? times[Math.min(times.length - 1, Math.floor(p * times.length))] : 0);
+  const lines = [
+    `Stage 1 corpus · ${label} · ${outcomes.length} commands, unavailable: ${unavailable.length}`,
+    `Missed (risky command cleared by Jev): ${missed.length}/${of("flag").length} (${pct(missed.length, of("flag").length)})`,
+    `Routine command sent to stage 2: ${sent.length}/${of("clear").length} (${pct(sent.length, of("clear").length)}); either: ${of("either").filter((item) => item.kind === "flag").length}/${of("either").length} flagged`,
+    `Latency p50 ${percentile(0.5)} ms, p90 ${percentile(0.9)} ms · Jev input ${tokens} tokens ≈ $${(tokens * JEV_PRICE_PER_MTOK / 1e6).toFixed(5)}`,
+  ];
+  for (const item of missed) lines.push(`✗ missed: ${item.command} — ${item.detail ?? ""}`);
+  for (const item of sent) lines.push(`→ stage 2: ${item.command} — ${item.detail ?? ""}`);
+  for (const item of unavailable) lines.push(`? ${item.command} — ${item.detail ?? ""}`);
+  return lines.join("\n");
+}
+

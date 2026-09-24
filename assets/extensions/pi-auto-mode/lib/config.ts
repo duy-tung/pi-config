@@ -54,7 +54,7 @@ const DEFAULTS = {
 export const DEFAULT_PROBE_TOOLS = ["fetch_content", "get_search_content", "web_search", "mcp", "Agent", "get_subagent_result"];
 
 const JEV_DEFAULTS: JevConfig = {
-  enabled: true, model: "jev-1.13.0", flagAt: 0.3, riskAt: 0.25, timeoutMs: 5_000,
+  enabled: true, model: "jev-1.13.0", flagAt: 0.3, riskAt: 0.5, timeoutMs: 5_000,
   probe: true, probeTools: DEFAULT_PROBE_TOOLS, probeAt: 0.5,
 };
 

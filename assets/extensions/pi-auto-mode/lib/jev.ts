@@ -151,6 +151,7 @@ const SECRET_PATTERNS: RegExp[] = [
   /\bAIza[0-9A-Za-z_-]{35}\b/gu,
   /\bfc-[a-f0-9]{24,}\b/gu,
   /\bnpm_[A-Za-z0-9]{30,}\b/gu,
+  /\bapikey_[a-f0-9]{16,}_[a-f0-9]{32,}\b/giu,
   /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/gu,
   /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{16,}/gu,
   /(:\/\/[^\s:/@]+:)[^\s@/]{4,}@/gu,

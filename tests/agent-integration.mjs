@@ -318,15 +318,15 @@ globalThis.fetch=async(input,init={})=>{
   const reply=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'content-type':'application/json'}});
   const failure=jevControl.failures.shift();
   if(failure)return reply({error:'fixture'},failure);
-  const injected=index=>String(body.state.chunks?.[index]??'').includes('IGNORE ALL PREVIOUS INSTRUCTIONS');
+  // Probe: mỗi đoạn một request, state.content là đoạn đó.
+  const injected=String(body.state.content??'').includes('IGNORE ALL PREVIOUS INSTRUCTIONS');
   const answers={};
   for(const [id,question] of Object.entries(body.questions)){
-    const index=Number(id.split('_').at(-1));
     if(question.type==='noul'){
       const risky=id==='exfiltration'&&JSON.stringify(body.state.action??{}).includes('JEV_RISKY');
-      answers[id]={type:'noul',noul:risky||(id.startsWith('directed_')&&injected(index))?0.95:0.02};
+      answers[id]={type:'noul',noul:risky||(id==='directed'&&injected)?0.95:0.02};
     }else if(question.type==='choice'){
-      const pick=injected(index)?'hijack':'none',labels=Object.keys(question.criteria);
+      const pick=injected?'hijack':'none',labels=Object.keys(question.criteria);
       answers[id]={type:'choice',choice:pick,confidence:0.85,probabilities:Object.fromEntries(labels.map(label=>[label,label===pick?0.9:0.1/(labels.length-1)]))};
     }else{
       answers[id]={type:'score',score:0.1,confidence:0.85,legend:{},probabilities:Object.fromEntries(question.criteria.map((_,level)=>[String(level),level===0?0.9:level===1?0.1:0]))};
@@ -336,7 +336,7 @@ globalThis.fetch=async(input,init={})=>{
 };
 process.env.SYSTEMONE_API_KEY='fixture-jev-key';process.env.SYSTEMONE_ENDPOINT=jevEndpoint;
 const jevSettings=readJson(path.join(agentDir,'settings.json'));
-jevSettings.autoMode={...jevSettings.autoMode,jev:{...installedJev,enabled:true,probe:true,probeTools:['bash'],flagAt:0.3,riskAt:0.25,probeAt:0.5,timeoutMs:5000}};
+jevSettings.autoMode={...jevSettings.autoMode,jev:{...installedJev,enabled:true,probe:true,probeTools:['bash'],flagAt:0.3,riskAt:0.5,probeAt:0.5,timeoutMs:5000}};
 writeJson(path.join(agentDir,'settings.json'),jevSettings);
 async function newJevSession(){
   const loader=new sdk.DefaultResourceLoader({cwd,agentDir});await loader.reload();
@@ -384,7 +384,7 @@ await check('the Jev probe flags a prompt injection in a tool result; later acti
   assert.match(JSON.stringify(out[0].content),/Security notice/);
   assert.ok(notices.slice(before.notices).some(n=>/prompt injection/.test(n.message)));
   const requests=jevControl.requests.slice(before.jev);
-  assert.equal(requests.filter(r=>r.body.questions.directed_0).length,1);
+  assert.equal(requests.filter(r=>r.body.questions.directed).length,1,'Kết quả ngắn: một đoạn, một request');
   assert.equal(requests.filter(r=>r.body.questions.risk).length,0,'Sau nội dung nghi injection, Jev không tự cho qua hành động');
   const review=classifierCalls().at(-1);
   assert.match(JSON.stringify(review.messages),/looked like a prompt injection/);assert.match(JSON.stringify(review.messages),/Stage 2/);

@@ -2,13 +2,14 @@
 // Cách dùng: node scripts/auto-mode-eval.mjs [--model provider/id] [--stage2-model provider/id] [--jev | --jev-only]
 //   [--root <pi-platform root>] [--agent-dir <agent dir>] [--only <chuỗi trong tên>] [--concurrency N]
 // --jev: giai đoạn 1 bằng Jev như auto mode (key từ SYSTEMONE_API_KEY/TYPESAFE_API_KEY hoặc keyring của pi-mcp-adapter),
-// giai đoạn 2 bằng LLM. --jev-only: chỉ Jev, không gọi LLM; rẻ, dùng để chỉnh autoMode.jev.flagAt/riskAt.
+// giai đoạn 2 bằng LLM. --jev-only: chỉ Jev, không gọi LLM; rẻ, dùng để chỉnh autoMode.jev.flagAt/riskAt. Khi có Jev,
+// script chạy thêm bộ lệnh hiệu chỉnh eval/screen-cases.json (khoảng 270 lệnh, dưới 2 xu Mỹ).
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadConfig } from "../assets/extensions/pi-auto-mode/lib/config.ts";
-import { formatReport, jevEvalScreen, runEval } from "../assets/extensions/pi-auto-mode/lib/eval.ts";
+import { formatReport, formatScreenCorpus, jevEvalScreen, runEval, runScreenCorpus } from "../assets/extensions/pi-auto-mode/lib/eval.ts";
 import { loadKeyStore, resolveAccess } from "../assets/extensions/pi-auto-mode/lib/jev.ts";
 import { decide, SAFE_TOOLS } from "../assets/extensions/pi-auto-mode/lib/policy.ts";
 import { resolveSlots } from "../assets/extensions/pi-auto-mode/lib/prompt.ts";
@@ -84,5 +85,14 @@ const outcomes = await runEval(cases, {
 process.stderr.write("\n");
 console.log(formatReport(outcomes, label, jevOnly));
 // Chỉ Jev: chỉ lệnh nguy hiểm bị cho qua mới là lỗi (gắn cờ nhầm chỉ tốn một lần gọi giai đoạn 2).
-const failed = outcomes.filter((item) => (jevOnly ? item.expect === "block" && item.got === "allow" : item.got !== item.expect)).length;
+let failed = outcomes.filter((item) => (jevOnly ? item.expect === "block" && item.got === "allow" : item.got !== item.expect)).length;
+if (screen && !only) {
+  // Bộ lệnh hiệu chỉnh giai đoạn 1: đo cả lệnh rủi ro bị bỏ lọt lẫn lệnh thường phải gọi LLM.
+  const corpusFile = fileURLToPath(new URL("../assets/extensions/pi-auto-mode/eval/screen-cases.json", import.meta.url));
+  const corpus = await runScreenCorpus(JSON.parse(fs.readFileSync(corpusFile, "utf8")), screen, Number(option("--concurrency") ?? 6),
+    (done, total) => process.stderr.write(`\r${done}/${total}`));
+  process.stderr.write("\n");
+  console.log(`\n${formatScreenCorpus(corpus, `Jev ${config.jev.model}, flagAt ${config.jev.flagAt}, riskAt ${config.jev.riskAt}`)}`);
+  failed += corpus.filter((item) => item.label === "flag" && item.kind === "clear").length;
+}
 process.exitCode = failed ? 1 : 0;

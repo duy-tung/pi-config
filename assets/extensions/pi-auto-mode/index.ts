@@ -10,17 +10,17 @@ import { evaluate, JEV_DEFAULT_ENDPOINT, JEV_PRICE_PER_MTOK, type JevAccess, Jev
 import * as text from "./lib/messages.ts";
 import { type CallFacts, decide, describeCall, type PolicyContext, SAFE_TOOLS, type ToolCall } from "./lib/policy.ts";
 import { protectedReason, resolveToolPath, temporaryRoots } from "./lib/paths.ts";
-import { judgeProbe, PROBE_WARNING, probeChunks, probeQuestions, probeState, resultText, shouldProbe } from "./lib/probe.ts";
+import { judgeProbe, PROBE_QUESTIONS, PROBE_WARNING, probeChunks, probeState, resultText, shouldProbe } from "./lib/probe.ts";
 import { buildSystemPrompt, DEFAULT_ALLOW, DEFAULT_ENVIRONMENT, DEFAULT_HARD_DENY, DEFAULT_SOFT_DENY, resolveSlots } from "./lib/prompt.ts";
 import { buildRuleSet, firstMatch } from "./lib/rules.ts";
 import {
-  describeVerdict, executedScripts, judgeScreen, packageScripts, type ScreenAction, type ScreenEnvironment, screenable,
-  screenQuestions, screenState, type ScreenVerdict,
+  describeVerdict, executedScripts, judgeScreen, localPackageFacts, packageScripts, type ScreenAction, type ScreenEnvironment,
+  screenable, screenQuestions, screenState, type ScreenVerdict,
 } from "./lib/screen.ts";
 import { callKey, LIMITS, PermissionState } from "./lib/state.ts";
 import { isChild, linkChild, registerRoot, rootFor, type RootHandle, unlinkChild, unregisterRoot } from "./lib/subagents.ts";
 import { buildTranscript, ENTRY_TYPE, humanMessages, type SessionEntryLike } from "./lib/transcript.ts";
-import { type EvalCase, formatReport, jevEvalScreen, runEval } from "./lib/eval.ts";
+import { type EvalCase, formatReport, formatScreenCorpus, jevEvalScreen, runEval, runScreenCorpus, type ScreenCorpus } from "./lib/eval.ts";
 
 const WIDGET = "pi-auto-mode";
 const MCP_APPROVAL_EVENT = "pi-mcp-adapter:tool-approval-request";
@@ -387,7 +387,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
     if (access?.status !== "ready") return { kind: "unavailable", reason: access?.status === "unavailable" ? access.message : "no Jev API key" };
     const command = typeof call.input.command === "string" ? call.input.command : "";
     const action: ScreenAction = {
-      toolName: call.toolName, input: call.input, notes,
+      toolName: call.toolName, input: call.input, notes: command ? [...notes, ...localPackageFacts(command, ctx.cwd)] : notes,
       scripts: command ? executedScripts(command, ctx.cwd, roots(ctx.cwd)) : [],
       packageScripts: command ? packageScripts(command, ctx.cwd) : [],
     };
@@ -579,14 +579,16 @@ export default function piAutoMode(pi: ExtensionAPI) {
     const access = await jevAccess;
     if (access?.status !== "ready") return undefined;
     const chunks = probeChunks(body);
+    const started = Date.now();
     try {
-      const result = await evaluate(access, { model: config.jev.model, state: probeState(event.toolName, chunks), questions: probeQuestions(chunks.length) },
-        { signal: ctx.signal, timeoutMs: config.jev.timeoutMs });
-      recordUsage(result.inputTokens);
+      // Mỗi đoạn một request, gửi song song; một request lỗi thì bỏ qua lần quét này (probe chỉ cảnh báo).
+      const results = await Promise.all(chunks.map((chunk) => evaluate(access, { model: config.jev.model, state: probeState(event.toolName, chunk), questions: PROBE_QUESTIONS },
+        { signal: ctx.signal, timeoutMs: config.jev.timeoutMs })));
+      for (const result of results) recordUsage(result.inputTokens);
       jevStats.probes++;
-      const verdict = judgeProbe(result.answers, chunks.length, config.jev.probeAt);
+      const verdict = judgeProbe(results.map((result) => result.answers), config.jev.probeAt);
       log({
-        event: "probe", tool: event.toolName, ms: result.ms, flagged: verdict.flagged, chunks: chunks.length,
+        event: "probe", tool: event.toolName, ms: Date.now() - started, flagged: verdict.flagged, chunks: chunks.length,
         directed: Number(verdict.directed.toFixed(3)), hijack: Number(verdict.hijack.toFixed(3)),
       });
       if (!verdict.flagged) return undefined;
@@ -851,7 +853,12 @@ export default function piAutoMode(pi: ExtensionAPI) {
           timeoutMs: config.timeoutMs, stage2Reasoning: config.stage2Reasoning,
           decide: (call) => decide(call, evalContext), skipTools: SAFE_TOOLS, concurrency: jevOnly ? 6 : 3, screen, screenOnly: jevOnly,
         });
-        const report = formatReport(outcomes, label, jevOnly);
+        let report = formatReport(outcomes, label, jevOnly);
+        const corpusFile = path.join(path.dirname(file), "screen-cases.json");
+        if (jevOnly && screen && fs.existsSync(corpusFile)) {
+          const corpus = await runScreenCorpus(JSON.parse(fs.readFileSync(corpusFile, "utf8")) as ScreenCorpus, screen);
+          report += `\n\n${formatScreenCorpus(corpus, `Jev ${config.jev.model}, flagAt ${config.jev.flagAt}, riskAt ${config.jev.riskAt}`)}`;
+        }
         if (ctx.hasUI) await ctx.ui.editor("Auto mode eval (read-only view)", report);
         return;
       }

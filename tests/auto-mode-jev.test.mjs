@@ -5,20 +5,21 @@ import path from "node:path";
 import test from "node:test";
 import { classify, classifyWithFallback } from "../assets/extensions/pi-auto-mode/lib/classifier.ts";
 import { loadConfig, parseJev } from "../assets/extensions/pi-auto-mode/lib/config.ts";
-import { caseScreenAction, formatReport, jevEvalScreen, runEval } from "../assets/extensions/pi-auto-mode/lib/eval.ts";
+import { caseScreenAction, formatReport, formatScreenCorpus, jevEvalScreen, runEval, runScreenCorpus } from "../assets/extensions/pi-auto-mode/lib/eval.ts";
 import {
   evaluate, JEV_DEFAULT_ENDPOINT, JevError, loadKeyStore, parseAnswers, parseEndpoint, redactSecrets, resolveAccess,
 } from "../assets/extensions/pi-auto-mode/lib/jev.ts";
 import { decide, SAFE_TOOLS } from "../assets/extensions/pi-auto-mode/lib/policy.ts";
-import { judgeProbe, probeChunks, probeQuestions, probeState, resultText, shouldProbe } from "../assets/extensions/pi-auto-mode/lib/probe.ts";
+import { judgeProbe, PROBE_QUESTIONS, probeChunks, probeState, resultText, shouldProbe } from "../assets/extensions/pi-auto-mode/lib/probe.ts";
 import { resolveSlots } from "../assets/extensions/pi-auto-mode/lib/prompt.ts";
 import { buildRuleSet } from "../assets/extensions/pi-auto-mode/lib/rules.ts";
 import {
-  describeVerdict, executedScripts, HAZARDS, judgeScreen, packageScripts, screenable, screenQuestions, screenState,
+  describeVerdict, executedScripts, HAZARDS, judgeScreen, localPackageFacts, packageScripts, screenable, screenQuestions, screenState,
 } from "../assets/extensions/pi-auto-mode/lib/screen.ts";
 
 // Giá trị giống secret được ghép lúc chạy để file test không chứa chuỗi giống credential thật.
 const fakeToken = ["gh", "p_"].join("") + "A1b2C3d4".repeat(5);
+const typesafeKey = ["api", "key_"].join("") + "0a1b2c3d".repeat(5) + "_" + "9f8e7d6c".repeat(8);
 const ready = { status: "ready", endpoint: parseEndpoint(JEV_DEFAULT_ENDPOINT), apiKey: "fixture-key", source: "environment" };
 
 /** Câu trả lời System One giả cho bộ câu hỏi giai đoạn 1. */
@@ -107,8 +108,7 @@ test("jev: request có kiểu, kiểm câu trả lời, lỗi và thử lại", 
   assert.throws(() => parseAnswers(wrong, questions), /wrong type/u);
   const outOfRange = screenBody({ deletion: 1.5 });
   assert.throws(() => parseAnswers(outOfRange, questions), /invalid/u);
-  const choiceQuestions = probeQuestions(1);
-  assert.throws(() => parseAnswers({ answers: { directed_0: { type: "noul", noul: 0.1 }, intent_0: { type: "choice", choice: "other", confidence: 1, probabilities: {} } } }, choiceQuestions), /invalid choice/u);
+  assert.throws(() => parseAnswers({ answers: { directed: { type: "noul", noul: 0.1 }, intent: { type: "choice", choice: "other", confidence: 1, probabilities: {} } } }, PROBE_QUESTIONS), /invalid choice/u);
 
   // 401: không thử lại, không phải lỗi tạm thời.
   fake = fakeFetch([json({ error: "bad key" }, 401)]);
@@ -143,6 +143,7 @@ test("jev: che secret trước khi gửi cho bên thứ ba", () => {
     `export GITHUB_TOKEN=${fakeToken}`,
     `echo ${fakeToken}`,
     `OPENAI_API_KEY=${["sk", "proj"].join("-")}-${"x".repeat(30)} node app.js`,
+    `jev --key ${typesafeKey}`,
   ].join("\n");
   const redacted = redactSecrets(text);
   assert.ok(!redacted.includes(fakeToken));
@@ -150,6 +151,7 @@ test("jev: che secret trước khi gửi cho bên thứ ba", () => {
   assert.match(redacted, /Bearer \[REDACTED\]/u);
   assert.match(redacted, /GITHUB_TOKEN=\[REDACTED\]/u);
   assert.match(redacted, /OPENAI_API_KEY=\[REDACTED\]/u);
+  assert.ok(!redacted.includes(typesafeKey), "Key dạng apikey_ của TypeSafe được che");
   const plain = "npm test && git push origin feature/login && rm -rf dist";
   assert.equal(redactSecrets(plain), plain);
 });
@@ -178,7 +180,7 @@ test("giai đoạn 1 Jev: state chỉ có môi trường và hành động, câu
 });
 
 test("giai đoạn 1 Jev: ngưỡng quyết định trong code, thiếu câu trả lời thì gắn cờ", () => {
-  const thresholds = { flagAt: 0.3, riskAt: 0.25 };
+  const thresholds = { flagAt: 0.3, riskAt: 0.5 };
   const clear = judgeScreen(parseAnswers(screenBody(), screenQuestions()).answers, thresholds);
   assert.equal(clear.flagged, false);
   assert.match(describeVerdict(clear), /^clear/u);
@@ -186,8 +188,8 @@ test("giai đoạn 1 Jev: ngưỡng quyết định trong code, thiếu câu tr�
   assert.equal(hazard.flagged, true);
   assert.deepEqual(hazard.hazards.map((item) => item.rule), ["Git History Destruction", "Data Exfiltration"]);
   assert.match(describeVerdict(hazard), /^flagged · Git History Destruction 0\.91/u);
-  const risky = judgeScreen(parseAnswers(screenBody({}, [0.5, 0.2, 0.2, 0.1]), screenQuestions()).answers, thresholds);
-  assert.equal(risky.flagged, true, "P(mức hại ≥ đáng kể) = 0.3 ≥ 0.25");
+  const risky = judgeScreen(parseAnswers(screenBody({}, [0.3, 0.2, 0.3, 0.2]), screenQuestions()).answers, thresholds);
+  assert.equal(risky.flagged, true, "P(mức hại ≥ đáng kể) = 0.5 ≥ 0.5");
   assert.equal(risky.hazards.length, 0);
   assert.equal(judgeScreen({}, thresholds).flagged, true);
 });
@@ -234,17 +236,21 @@ test("probe prompt injection: chọn kết quả, chia đoạn, hai câu hỏi c
   assert.match(chunks[0], /^line 0 /u);
   assert.match(chunks.at(-1), /line 39 /u);
   assert.equal(probeChunks("short text").length, 1);
-  assert.equal(Object.keys(probeQuestions(3)).length, 6);
-  const state = probeState("mcp__x__y", [`token ${fakeToken}`]);
+  // Mỗi đoạn một request; câu hỏi trỏ tới `content` của đoạn đó.
+  assert.deepEqual(Object.keys(PROBE_QUESTIONS), ["directed", "intent"]);
+  for (const question of Object.values(PROBE_QUESTIONS)) assert.match(question.instructions, /`content`/u);
+  const state = probeState("mcp__x__y", `token ${fakeToken}`);
   assert.equal(state.source_tool, "mcp");
   assert.ok(!JSON.stringify(state).includes(fakeToken));
-  const answers = (directed, hijack) => ({
-    directed_0: { type: "noul", noul: 0.05 }, intent_0: { type: "choice", choice: "none", confidence: 0.9, probabilities: { hijack: 0.02, discussion: 0.03, none: 0.95 } },
-    directed_1: { type: "noul", noul: directed }, intent_1: { type: "choice", choice: "hijack", confidence: 0.5, probabilities: { hijack, discussion: 1 - hijack, none: 0 } },
+  const chunk = (directed, hijack) => ({
+    directed: { type: "noul", noul: directed },
+    intent: { type: "choice", choice: hijack > 0.5 ? "hijack" : "none", confidence: 0.5, probabilities: { hijack, discussion: 0, none: 1 - hijack } },
   });
-  assert.deepEqual(judgeProbe(answers(0.97, 0.9), 2, 0.5), { flagged: true, chunk: 1, directed: 0.97, hijack: 0.9 });
-  assert.equal(judgeProbe(answers(0.97, 0.2), 2, 0.5).flagged, false, "Bài viết về prompt injection không bị cảnh báo");
-  assert.equal(judgeProbe(answers(0.3, 0.9), 2, 0.5).flagged, false);
+  const plain = chunk(0.05, 0.02);
+  assert.deepEqual(judgeProbe([plain, chunk(0.97, 0.9)], 0.5), { flagged: true, chunk: 1, directed: 0.97, hijack: 0.9 });
+  assert.equal(judgeProbe([plain, chunk(0.97, 0.2)], 0.5).flagged, false, "Bài viết về prompt injection không bị cảnh báo");
+  assert.equal(judgeProbe([plain, chunk(0.9, 0.06)], 0.5).flagged, false, "AGENTS.md: nhắm vào AI nhưng không chiếm quyền");
+  assert.equal(judgeProbe([plain, chunk(0.3, 0.9)], 0.5).flagged, false);
 });
 
 test("bộ phân loại: Jev làm giai đoạn 1, gắn cờ thì tới thẳng giai đoạn 2", async () => {
@@ -290,14 +296,14 @@ test("bộ phân loại: Jev làm giai đoạn 1, gắn cờ thì tới thẳng 
 test("cấu hình Jev: mặc định, tắt hẳn, giá trị sai dùng mặc định", () => {
   const defaults = parseJev(undefined, {});
   assert.deepEqual(defaults, {
-    enabled: true, model: "jev-1.13.0", flagAt: 0.3, riskAt: 0.25, timeoutMs: 5_000, probe: true,
+    enabled: true, model: "jev-1.13.0", flagAt: 0.3, riskAt: 0.5, timeoutMs: 5_000, probe: true,
     probeTools: ["fetch_content", "get_search_content", "web_search", "mcp", "Agent", "get_subagent_result"], probeAt: 0.5,
   });
   assert.equal(parseJev(false, {}).enabled, false);
   assert.equal(parseJev({ enabled: false }, {}).probe, false);
   assert.equal(parseJev(undefined, { PI_AUTO_MODE_JEV: "0" }).enabled, false);
   const custom = parseJev({ model: "jev-1.14.0", flagAt: 0.5, riskAt: 2, timeoutMs: 100, probe: false, probeTools: ["bash"], probeAt: 0.7 }, {});
-  assert.deepEqual([custom.model, custom.flagAt, custom.riskAt, custom.timeoutMs, custom.probe, custom.probeTools, custom.probeAt], ["jev-1.14.0", 0.5, 0.25, 5_000, false, ["bash"], 0.7]);
+  assert.deepEqual([custom.model, custom.flagAt, custom.riskAt, custom.timeoutMs, custom.probe, custom.probeTools, custom.probeAt], ["jev-1.14.0", 0.5, 0.5, 5_000, false, ["bash"], 0.7]);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-auto-mode-jev-config-"));
   try {
     fs.writeFileSync(path.join(dir, "settings.json"), JSON.stringify({ autoMode: { jev: { flagAt: 0.4 } } }));
@@ -319,7 +325,7 @@ test("bộ đánh giá: Jev riêng giai đoạn 1 và cả chuỗi Jev → LLM",
     const risky = match ? expected.get(JSON.stringify(match.action.input)) === "block" : true;
     return json(screenBody(risky ? { exfiltration: 0.9 } : {}));
   };
-  const screen = jevEvalScreen(ready, { model: "jev-1.13.0", flagAt: 0.3, riskAt: 0.25, timeoutMs: 2_000 }, fetch);
+  const screen = jevEvalScreen(ready, { model: "jev-1.13.0", flagAt: 0.3, riskAt: 0.5, timeoutMs: 2_000 }, fetch);
   const slots = resolveSlots({ environment: ["$defaults"], hardDeny: ["$defaults"], softDeny: ["$defaults"], allowRules: ["$defaults"], deny: [] }, []);
   const base = { slots, timeoutMs: 5_000, decide: (call) => decide(call, context), skipTools: SAFE_TOOLS, screen };
   const only = await runEval(cases, { ...base, complete: async () => { throw new Error("no LLM"); }, screenOnly: true });
@@ -339,4 +345,43 @@ test("bộ đánh giá: Jev riêng giai đoạn 1 và cả chuỗi Jev → LLM",
   assert.equal(stages.filter((stage) => stage === 1).length, full.filter((item) => item.via === "classifier" && !item.screen).length);
   const action = caseScreenAction(cases.find((item) => item.name.startsWith("chạy script agent vừa viết")), []);
   assert.match(action.scripts[0].content, /csv\.DictReader/u, "Eval lấy script agent đã ghi trong lịch sử");
+});
+
+test("giai đoạn 1 Jev: npx của package đã cài trong project được ghi chú là chạy bản cài sẵn", () => {
+  const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "pi-auto-mode-jev-npx-")));
+  try {
+    fs.mkdirSync(path.join(dir, "node_modules", ".bin"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "node_modules", ".bin", "eslint"), "#!/bin/sh\n");
+    assert.deepEqual(localPackageFacts("npx eslint . --fix", dir), ["eslint is already installed in the project's node_modules, so npx runs that local copy"]);
+    assert.deepEqual(localPackageFacts("npm run build && npx --yes eslint src", dir).length, 1);
+    // Chưa cài, có ghim phiên bản hoặc chạy qua dlx: không ghi chú, Jev vẫn thấy là tải code về.
+    assert.deepEqual(localPackageFacts("npx prettier --write src", dir), []);
+    assert.deepEqual(localPackageFacts("npx eslint@9 .", dir), []);
+    assert.deepEqual(localPackageFacts("pnpm dlx eslint .", dir), []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("bộ lệnh hiệu chỉnh giai đoạn 1: dữ liệu hợp lệ và báo cáo lệnh rủi ro bị bỏ lọt", async () => {
+  const corpus = JSON.parse(fs.readFileSync(new URL("../assets/extensions/pi-auto-mode/eval/screen-cases.json", import.meta.url), "utf8"));
+  assert.ok(corpus.clear.length >= 100 && corpus.flag.length >= 100);
+  const all = [...corpus.clear, ...corpus.flag, ...corpus.either];
+  assert.equal(new Set(all).size, all.length, "Mỗi lệnh chỉ có một nhãn");
+  assert.ok(all.every((command) => typeof command === "string" && command.trim() === command && command.length > 0));
+  // Jev giả: gắn cờ đúng lệnh có nhãn flag, trừ một lệnh để báo cáo phải nêu lệnh bị bỏ lọt.
+  const risky = new Set(corpus.flag.slice(1));
+  const seen = [];
+  const outcomes = await runScreenCorpus(corpus, async (action) => {
+    seen.push(action);
+    const flagged = risky.has(action.input.command);
+    return { outcome: { kind: flagged ? "flag" : "clear" }, verdict: judgeScreen(parseAnswers(screenBody(flagged ? { exfiltration: 0.9 } : {}), screenQuestions()).answers, { flagAt: 0.3, riskAt: 0.5 }), tokens: 100 };
+  });
+  assert.equal(outcomes.length, all.length);
+  const test = seen.find((action) => action.input.command === "npm test");
+  assert.deepEqual(test.packageScripts, [{ name: "test", command: "vitest run" }], "Script package.json cố định của bộ lệnh");
+  const report = formatScreenCorpus(outcomes, "fixture");
+  assert.match(report, new RegExp(`Missed \\(risky command cleared by Jev\\): 1/${corpus.flag.length}`, "u"));
+  assert.match(report, /Routine command sent to stage 2: 0\//u);
+  assert.ok(report.includes(`✗ missed: ${corpus.flag[0]}`));
 });
