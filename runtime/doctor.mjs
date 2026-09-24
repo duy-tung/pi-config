@@ -30,6 +30,15 @@ for(const [name,p] of Object.entries(profiles)){
   console.log(`${name}: ${s.defaultProvider}/${s.defaultModel}; thinking ${s.defaultThinkingLevel}`);
   for(const pkg of s.packages)if(!fs.existsSync(typeof pkg==='string'?pkg:pkg.source))errors.push(`Thiếu package: ${name}`);
   for(const entry of s.extensions??[])if(typeof entry==='string'&&!entry.startsWith('-')&&path.isAbsolute(entry)&&!fs.existsSync(entry))errors.push(`Thiếu extension: ${name}: ${entry}`);
+  // settings.json/web-search.json người dùng đã sửa được giữ khi cài lại; search Claude nay là provider anthropic của pi-web-access.
+  if((s.extensions??[]).some(entry=>typeof entry==='string'&&/[\\/]native-web-search[\\/]?$/u.test(entry)))
+    warnings.push(`${name}: settings.json còn extension native-web-search đã bỏ; xoá dòng này`);
+  const webSearch=path.join(p.agentDir,'web-search.json');
+  if(p.packages.includes('pi-web-access')&&fs.existsSync(webSearch)){
+    const providers=read(webSearch).searchRouting?.providers;
+    if(Array.isArray(providers)&&!providers.includes('anthropic'))
+      warnings.push(`${name}: web-search.json thiếu "anthropic" trong searchRouting.providers và webSearch.allowedProviders; phiên Claude sẽ tìm bằng provider kế tiếp`);
+  }
   if(p.packages.includes('@tintinweb/pi-subagents')){
     // Model/thinking thật của từng role; role ngoài enabledModels vẫn chạy nhưng pi-subagents sẽ cảnh báo.
     const enabled=new Set(s.enabledModels??[]);

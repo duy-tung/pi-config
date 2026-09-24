@@ -65,7 +65,11 @@ function copyTree(from,to){
 }
 async function installRuntime(name,relative){
   const source=path.join(repoDir,'manifests',name),dest=path.join(root,relative);
-  const manifestHash=sha256(fs.readFileSync(path.join(source,'package-lock.json')));
+  // Bản vá chỉ áp lên file gốc: đổi kết quả bản vá (patchedSha256) thì cài lại runtime như khi đổi lockfile.
+  const patched=readJson(path.join(repoDir,'assets','patches.json')).patches.filter(spec=>Object.hasOwn(spec.versions,name))
+    .map(spec=>`${spec.package}/${spec.file}@${spec.patchedSha256}`).sort();
+  const lockfile=fs.readFileSync(path.join(source,'package-lock.json'));
+  const manifestHash=sha256(patched.length?Buffer.concat([lockfile,Buffer.from(`\n${patched.join('\n')}`)]):lockfile);
   if(previous?.runtimes[name]===manifestHash && fs.existsSync(path.join(dest,'node_modules'))){console.log(`${name}: giữ runtime đã cài`);return;}
   const stage=path.join(path.dirname(dest),`.${path.basename(dest)}-stage-${process.pid}`);
   fs.mkdirSync(stage,{recursive:true});

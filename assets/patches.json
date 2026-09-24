@@ -270,21 +270,37 @@
       },
       "file": "dist/index.js",
       "originalSha256": "3873517746b118e05431177c1a387eeeda8068110463537123c4a628b667af81",
-      "patchedSha256": "f4f7f916761a080b5e8012715a96863f8bac75d4c3100a37b3ed49f2a1aca111",
+      "patchedSha256": "506a8e52df3c3dd8528ac5c24d991377ed4410f84d6019fef1fbe249c9b672f8",
       "edits": [
         {
-          "before": "function isCurrentModelHostedSearchEligible(ctx) {\n  const model = ctx?.model;\n  if (!model || !/^gpt-/iu.test(model.id)) return false;",
-          "after": "function isCurrentModelHostedSearchEligible(ctx) {\n  const model = ctx?.model;\n  if (globalThis[Symbol.for(\"pi-config.native-web-search\")]?.supports(model)) return true;\n  if (!model || !/^gpt-/iu.test(model.id)) return false;",
+          "before": "var RESOLVED_SEARCH_PROVIDERS = [\"openai\", \"brave\", ",
+          "insertFile": "pi-web-access/anthropic-search.js",
+          "after": "var RESOLVED_SEARCH_PROVIDERS = [\"openai\", \"anthropic\", \"brave\", ",
           "count": 1
         },
         {
-          "before": "async function searchWithCurrentModelOpenAI(query, options = {}, ctx) {\n  if (!ctx) throw new Error(\"OpenAI current-model search requires an extension context\");",
-          "after": "async function searchWithCurrentModelOpenAI(query, options = {}, ctx) {\n  if (!ctx) throw new Error(\"OpenAI current-model search requires an extension context\");\n  const nativeSearch = globalThis[Symbol.for(\"pi-config.native-web-search\")];\n  if (nativeSearch?.supports(ctx.model)) return nativeSearch.search(query, options, ctx);",
+          "before": "    ...allowedProviders ? { allowedProviders } : {}\n  };\n  return cachedSearchConfig;",
+          "after": "    ...allowedProviders ? { allowedProviders } : {},\n    ...piConfigAnthropicSearch.configEntry(raw)\n  };\n  return cachedSearchConfig;",
           "count": 1
         },
         {
-          "before": "    const result2 = useCurrentModel ? await searchWithCurrentModelOpenAI(query, options, options.extensionContext) : await searchWithOpenAI(query, options, options.extensionContext);\n    return { ...result2, provider };",
-          "after": "    const result2 = useCurrentModel ? await searchWithCurrentModelOpenAI(query, options, options.extensionContext) : await searchWithOpenAI(query, options, options.extensionContext);\n    return { provider, ...result2 };",
+          "before": "  } else if (provider === \"openai\" && (status === 400 || status === 422) && mentionsUnsupportedWebSearch) {",
+          "after": "  } else if ((provider === \"openai\" || provider === \"anthropic\") && (status === 400 || status === 422) && mentionsUnsupportedWebSearch) {",
+          "count": 1
+        },
+        {
+          "before": "  if (provider === \"brave\") return { ...await searchWithBrave(query, options), provider };",
+          "after": "  if (provider === \"anthropic\") return { ...await piConfigAnthropicSearch.search(query, options, options.extensionContext, getSearchConfig().anthropicSearch), provider };\n  if (provider === \"brave\") return { ...await searchWithBrave(query, options), provider };",
+          "count": 1
+        },
+        {
+          "before": "  if (provider === \"brave\") return isBraveAvailable();",
+          "after": "  if (provider === \"anthropic\") return piConfigAnthropicSearch.available(options.extensionContext, getSearchConfig().anthropicSearch);\n  if (provider === \"brave\") return isBraveAvailable();",
+          "count": 1
+        },
+        {
+          "before": "    openai: allowedProviders.has(\"openai\") && await isOpenAISearchAvailable(ctx),",
+          "after": "    openai: allowedProviders.has(\"openai\") && await isOpenAISearchAvailable(ctx),\n    anthropic: allowedProviders.has(\"anthropic\") && piConfigAnthropicSearch.available(ctx, getSearchConfig().anthropicSearch),",
           "count": 1
         }
       ]

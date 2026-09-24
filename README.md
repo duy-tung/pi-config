@@ -81,7 +81,7 @@ Agent có context riêng và không giới hạn số lượt; dừng agent bằ
 
 ## Công cụ và mặc định
 
-- Web: `web_search` dùng native search của model hiện tại khi là Codex/OpenAI (Astra, Sol) hoặc Claude; model khác (GLM) dùng Exa (endpoint MCP miễn phí, không cần key) rồi Firecrawl; lỗi mạng, quota, phản hồi hỏng chuyển sang provider kế tiếp. `fetch_content`, `get_search_content` dùng Firecrawl và kho kết quả. Phiên mới hiện `web_enable` để model bật web tools. CLI và skills hỗ trợ workflow bổ sung. Chi tiết: [docs/claude.md](docs/claude.md).
+- Web: `web_search` dùng native search của model hiện tại: provider `openai` cho Codex/OpenAI (Astra, Sol), `anthropic` cho Claude (bản vá pi-web-access); model khác (GLM) dùng Exa (endpoint MCP miễn phí, không cần key) rồi Firecrawl; lỗi mạng, quota, phản hồi hỏng chuyển sang provider kế tiếp. `fetch_content`, `get_search_content` dùng Firecrawl và kho kết quả. Phiên mới hiện `web_enable` để model bật web tools. CLI và skills hỗ trợ workflow bổ sung. Chi tiết: [docs/claude.md](docs/claude.md).
 - MCP filesystem: công cụ đọc trong workspace, kết nối khi cần. `mcp.json` đặt `allowInstall: false`: agent không tự cài thêm server MCP.
 - Code intelligence: pi-lens, TypeScript language server cài sẵn; Go/Rust/Python dùng language server của máy hoặc project.
 - Native compaction bật: reserve 16.384, giữ gần nhất 20.000 token.
@@ -129,7 +129,7 @@ node install.mjs --root /duong-dan/platform --agent-dir /duong-dan/agent --bin-d
 
 Role, subagents, goal settings, advisor settings và cấu hình công cụ cùng nằm trong agent directory. Một runtime Pi duy nhất ở `runtimes/current`; Firecrawl CLI ở `tools/firecrawl`.
 
-Khi chạy lại, installer dùng lockfile và checksum để kiểm tính nhất quán. File đã tùy chỉnh được giữ và báo đường dẫn. Tài nguyên do installer quản lý, không còn được yêu cầu và chưa chỉnh sửa, được lưu vào backup; tài nguyên còn được cấu hình tham chiếu được giữ. Các loại trừ extension và luật `permissions.deny` được bảo toàn; luật deny của pi-permission-system cũ được chuyển sang. Auth và file riêng của người dùng không thuộc danh sách tài nguyên được dọn.
+Khi chạy lại, installer dùng lockfile và checksum để kiểm tính nhất quán; runtime được cài lại khi lockfile hoặc kết quả bản vá đổi, để bản vá luôn áp lên file gốc. File đã tùy chỉnh được giữ và báo đường dẫn. Tài nguyên do installer quản lý, không còn được yêu cầu và chưa chỉnh sửa, được lưu vào backup; tài nguyên còn được cấu hình tham chiếu được giữ. Các loại trừ extension và luật `permissions.deny` được bảo toàn; luật deny của pi-permission-system cũ được chuyển sang. Auth và file riêng của người dùng không thuộc danh sách tài nguyên được dọn.
 
 Dừng các phiên Pi trước khi cập nhật. Dùng revision đã qua CI thay vì chạy `pi update` hoặc `npm update` trên runtime ghim. Nếu còn `.install.lock`, kiểm tra PID và chỉ xóa lock khi tiến trình đó đã dừng.
 

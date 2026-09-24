@@ -8,8 +8,8 @@ import test from "node:test";
 import { pathToFileURL } from "node:url";
 import { anthropicSearchEvents, codexSearchEvents, sse } from "./search-fixtures.mjs";
 
-// web_search của pi-web-access (đã vá) trên runtime đã cài: Claude → Anthropic web_search qua
-// pi-anthropic-auth, Codex → hosted web_search, GLM → Exa rồi Firecrawl. fetch/DNS giả, không gọi mạng.
+// web_search của pi-web-access (đã vá, có provider anthropic) trên runtime đã cài: Claude → Anthropic web_search
+// qua pi-anthropic-auth, Codex → hosted web_search, GLM → Exa rồi Firecrawl. fetch/DNS giả, không gọi mạng.
 const root = process.env.PI_CONFIG_TEST_ROOT;
 test("web_search dùng native search theo model hiện tại, GLM dùng Exa rồi Firecrawl", { skip: !root, timeout: 120000 }, async () => {
   const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pi-native-search-")));
@@ -23,7 +23,6 @@ test("web_search dùng native search theo model hiện tại, GLM dùng Exa rồ
   fs.copyFileSync(path.join(installed, "models.json"), path.join(agentDir, "models.json"));
   fs.writeFileSync(path.join(agentDir, "settings.json"), JSON.stringify({
     packages: ["@gotgenes/pi-anthropic-auth", "pi-web-access"].map((name) => path.join(modules, name)),
-    extensions: [path.join(root, "assets", "extensions", "native-web-search")],
     skills: [], quietStartup: true, cacheWarming: "off", compaction: { enabled: false },
   }));
   const jwt = `fixture.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "fixture-account" } })).toString("base64url")}.fixture`;
@@ -36,14 +35,17 @@ test("web_search dùng native search theo model hiện tại, GLM dùng Exa rồ
 
   const saved = { fetch: globalThis.fetch, lookup: dns.promises.lookup, agentDir: process.env.PI_CODING_AGENT_DIR };
   const requests = [];
-  let exaStatus = 200;
+  let exaStatus = 200, anthropicStatus = 200;
   globalThis.fetch = async (input, init = {}) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     const headers = new Headers(input instanceof Request ? input.headers : init.headers);
     const text = typeof init.body === "string" ? init.body : input instanceof Request ? await input.text() : "";
     requests.push({ url, headers, body: text ? JSON.parse(text) : undefined });
     const stream = (body) => new Response(body, { headers: { "content-type": "text/event-stream" } });
-    if (url.hostname === "api.anthropic.com" && url.pathname === "/v1/messages") return stream(sse(anthropicSearchEvents()));
+    if (url.hostname === "api.anthropic.com" && url.pathname === "/v1/messages") {
+      if (anthropicStatus === 400) return Response.json({ type: "error", error: { type: "invalid_request_error", message: "Web search is not enabled for this organization" } }, { status: 400 });
+      return stream(sse(anthropicSearchEvents()));
+    }
     if (url.href === "https://chatgpt.com/backend-api/codex/responses") return stream(sse(codexSearchEvents("gpt-6-astra")));
     // Exa không có key: JSON-RPC tới endpoint MCP miễn phí của Exa.
     if (url.origin === "https://mcp.exa.ai" && url.pathname === "/mcp") {
@@ -81,6 +83,7 @@ test("web_search dùng native search theo model hiện tại, GLM dùng Exa rồ
     } });
     const tool = session.extensionRunner.getToolDefinition("web_search");
     assert.ok(tool, "pi-web-access phải đăng ký web_search");
+    assert.match(tool.description, /^Search the web with OpenAI, Anthropic, Exa, Firecrawl\./u);
     const search = async (provider, id) => {
       requests.length = 0;
       await session.setModel(runtime.getModel(provider, id));
@@ -104,6 +107,12 @@ test("web_search dùng native search theo model hiện tại, GLM dùng Exa rồ
     await search("anthropic", "claude-opus-5-5");
     assert.equal(requests[0].body.thinking.type, "adaptive");
     assert.equal(requests[0].body.output_config.effort, "low");
+    // Tổ chức tắt web search (400): bộ phân loại coi là unsupported và chuyển sang Exa.
+    anthropicStatus = 400;
+    text = await search("anthropic", "claude-sonnet-5");
+    assert.deepEqual(requests.map((request) => request.url.origin + request.url.pathname), ["https://api.anthropic.com/v1/messages", "https://mcp.exa.ai/mcp"]);
+    assert.match(text, /\*\*Provider:\*\* exa/u);
+    anthropicStatus = 200;
 
     text = await search("openai-codex", "gpt-6-astra");
     assert.equal(requests.length, 1, JSON.stringify(requests.map((request) => request.url.href)));
