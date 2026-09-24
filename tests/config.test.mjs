@@ -32,14 +32,16 @@ for (const platform of ["darwin", "linux", "win32"]) {
   test(`${platform}: một cấu hình Pi, model, thinking và phạm vi extension`, () => {
     const { p, options, json, profiles, read, files } = fixture(platform);
     const expected = {
-      main: ["current", "openai-codex", "gpt-6-astra", "high", "rose-pine-moon"],
+      main: ["current", "anthropic", "claude-opus-5-5", "high", "rose-pine-moon"],
     };
     assert.deepEqual(Object.keys(profiles), ["main"]);
     for (const [name, profile] of Object.entries(profiles)) {
       const settings = json(p.join(profile.agentDir, "settings.json"));
       assert.deepEqual([profile.runtime, settings.defaultProvider, settings.defaultModel, settings.defaultThinkingLevel, settings.theme], expected[name]);
-      assert.equal(settings.modelThinkingLevels["openai-codex/gpt-6-astra"], "high");
-      assert.equal(settings.modelThinkingLevels["openai-codex/gpt-5.6-sol"], "high");
+      assert.deepEqual(settings.modelThinkingLevels, {
+        "anthropic/claude-opus-5-5": "high", "openai-codex/gpt-6-sol": "max",
+        "openai-codex/gpt-6-astra": "high", "opencode-go/glm-5.3-flash": "max",
+      });
       assert.equal(settings.shellPath, options.shellPath);
       assert.equal(settings.skills.length, 3);
       assert.deepEqual(settings.extensions, ["rose-pine-palette.ts", "pi-rewind", "native-web-search", "claude-usage", "pi-auto-mode"]
@@ -50,25 +52,32 @@ for (const platform of ["darwin", "linux", "win32"]) {
       const manifest = JSON.parse(fs.readFileSync(path.join(repoDir, "manifests", "current", "package.json"), "utf8"));
       assert.equal(settings.lastChangelogVersion, manifest.dependencies["@earendil-works/pi-coding-agent"]);
       assert.ok(settings.packages.every((entry) => (typeof entry === "string" ? entry : entry.source).startsWith(p.join(options.root, "runtimes", profile.runtime, "node_modules"))));
-      const overrides = json(p.join(profile.agentDir, "models.json")).providers["openai-codex"].modelOverrides;
-      assert.equal(overrides["gpt-5.6-sol"].contextWindow, 872000);
-      assert.equal(overrides["gpt-6-astra"].contextWindow, 872000);
-      assert.deepEqual(settings.enabledModels, ["openai-codex/gpt-6-astra", "openai-codex/gpt-5.6-sol", "opencode-go/glm-5.3-flash"]);
-      assert.equal(settings.modelThinkingLevels["opencode-go/glm-5.3-flash"], "max");
+      const providers = json(p.join(profile.agentDir, "models.json")).providers;
+      assert.deepEqual(Object.keys(providers), ["openai-codex"], "Opus 5.5 dùng context 1M của catalog");
+      assert.deepEqual(providers["openai-codex"].modelOverrides, { "gpt-6-sol": { contextWindow: 872000 }, "gpt-6-astra": { contextWindow: 872000 } });
+      assert.deepEqual(settings.enabledModels, ["anthropic/claude-opus-5-5", "openai-codex/gpt-6-sol", "openai-codex/gpt-6-astra", "opencode-go/glm-5.3-flash"]);
       if (name === "main") {
-      for (const role of ["researcher", "worker", "debugger", "reviewer"]) {
+      const roles = {
+        researcher: ["opencode-go/glm-5.3-flash", "max"], worker: ["openai-codex/gpt-6-sol", "max"],
+        debugger: ["openai-codex/gpt-6-sol", "max"], reviewer: ["openai-codex/gpt-6-astra", "high"],
+      };
+      for (const [role, [model, thinking]] of Object.entries(roles)) {
         const agent = read(p.join(profile.agentDir, "agents", `${role}.md`)).replaceAll("\r\n", "\n");
-        if (role === "researcher") {
-          assert.match(agent, /^model: opencode-go\/glm-5\.3-flash$/mu);
-          assert.match(agent, /^thinking: max$/mu);
-        } else {
-          assert.match(agent, /^model: openai-codex\/gpt-5\.6-sol$/mu);
-          assert.match(agent, /^thinking: high$/mu);
-        }
-        assert.match(agent, /^inherit_context: false$/mu);
-        assert.match(agent, /^isolated: false$/mu);
-        assert.match(agent, /^max_turns: 12$/mu);
+        const field = (key) => agent.match(new RegExp(`^${key}: (.+)$`, "mu"))?.[1];
+        assert.equal(field("model"), model, role);
+        assert.equal(field("thinking"), thinking, role);
+        assert.ok(settings.enabledModels.includes(model), role);
+        assert.equal(field("inherit_context"), "false");
+        assert.equal(field("isolated"), "false");
+        assert.equal(field("max_turns"), "0", "Không giới hạn số lượt");
+        // Worker/debugger ghi file nên chạy foreground; pi-usage áp Codex fast mode cho request của chúng.
+        const writer = role === "worker" || role === "debugger";
+        assert.equal(field("run_in_background"), writer ? "false" : undefined, role);
+        assert.equal(JSON.parse(field("extensions")).includes("pi-usage"), writer, role);
+        assert.equal(JSON.parse(field("extensions")).includes("pi-web-access"), role === "researcher", role);
       }
+      const subagents = json(p.join(profile.agentDir, "subagents.json"));
+      assert.deepEqual([subagents.maxConcurrent, subagents.maxConcurrentForeground, subagents.defaultMaxTurns, subagents.backgroundByDefault], [4, 2, 0, true]);
       assert.equal(files.filter(file=>file.path.startsWith(p.join(profile.agentDir,"agents")+p.sep)).length,4);
       } else {
         assert.ok(!files.some(file => file.path.startsWith(p.join(profile.agentDir,"agents")+p.sep)));
@@ -111,10 +120,12 @@ for (const platform of ["darwin", "linux", "win32"]) {
       const firecrawl = json(p.join(profile.agentDir, "web-search.json"));
       // provider cố định sẽ bỏ qua searchRouting; native search theo model đi trước, Firecrawl dự phòng.
       assert.equal(firecrawl.provider, undefined);
-      assert.deepEqual(firecrawl.searchRouting.providers, ["openai", "firecrawl"]);
+      assert.deepEqual(firecrawl.searchRouting.providers, ["openai", "exa", "firecrawl"]);
       assert.equal(firecrawl.searchRouting.useCurrentModel, true);
       assert.deepEqual(firecrawl.searchRouting.fallbackOn, ["network", "transient", "quota", "invalid-response", "unsupported"]);
-      assert.deepEqual(firecrawl.webSearch.allowedProviders, ["openai", "firecrawl"]);
+      assert.deepEqual(firecrawl.webSearch.allowedProviders, ["openai", "exa", "firecrawl"]);
+      assert.equal(firecrawl.exaApiKey, undefined, "Exa không cần key: dùng endpoint MCP miễn phí");
+      assert.deepEqual(settings.permissions.ask, ["Edit(**/.pi/pi-goal-x-settings.json)"]);
       assert.deepEqual(firecrawl.fetchRouting.providers, ["firecrawl"]);
       assert.ok(settings.permissions.allow.includes("web_search"));
       assert.equal(firecrawl.allowBrowserCookies, false);
@@ -142,7 +153,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       const advisor = json(p.join(profile.agentDir, "advisor.json"));
       assert.equal(advisor.alwaysOn, false);
       assert.equal(advisor.advisorAutoLoopGate, false);
-      assert.equal(advisor.executor, "openai-codex/gpt-5.6-sol");
+      assert.equal(advisor.executor, "openai-codex/gpt-6-sol");
       assert.equal(advisor.executorEffort, "high");
       assert.equal(advisor.advisor, "openai-codex/gpt-6-astra");
       assert.equal(advisor.advisorEffort, "high");
@@ -150,7 +161,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       if (profile.packages.includes("pi-goal-x")) {
       const auditor = json(p.join(profile.agentDir, "pi-goal-x-settings.json"));
       assert.equal(auditor.provider, "openai-codex");
-      assert.equal(auditor.model, "gpt-5.6-sol");
+      assert.equal(auditor.model, "gpt-6-sol");
       assert.equal(json(p.join(profile.agentDir, "pi-goal-x-settings.json")).disabled, true);
       } else assert.ok(!files.some(file => file.path === p.join(profile.agentDir,"pi-goal-x-settings.json")));
       assert.equal(json(p.join(profile.agentDir, "settings.json")).cacheWarming, "off");

@@ -7,17 +7,13 @@ import test from 'node:test';
 import {buildConfiguration} from '../lib/config.mjs';
 
 const root = process.env.PI_CONFIG_TEST_ROOT;
-test('Pi: Codex Astra/Sol high 872K, default session và advisor payload', {skip: !root}, async () => {
+test('Pi: Opus 5.5/high 1M mặc định, Codex Sol/Astra 872K và advisor payload', {skip: !root}, async () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-models-'));
   const savedOffline = process.env.PI_OFFLINE;
   const savedFetch = globalThis.fetch;
   process.env.PI_OFFLINE = '1';
   globalThis.fetch = () => { throw new Error('Unexpected network in offline model test'); };
   try {
-    const catalog = JSON.parse(fs.readFileSync(path.join(root, 'runtimes/current/node_modules/@earendil-works/pi-ai/dist/providers/data/openai-codex.json')));
-    const catalogModel = Object.values(catalog).find(models => models['gpt-6-astra'])['gpt-6-astra'];
-    const {provider: _provider, baseUrl: _baseUrl, ...expectedDefinition} = catalogModel;
-    expectedDefinition.contextWindow = 872000;
     const generated = buildConfiguration({root: temp, agentDir: path.join(temp, 'main'), binDir: path.join(temp, 'bin'), nodePath: process.execPath, home: temp});
     for (const profile of ['main']) {
       const runtimeName = 'current';
@@ -34,24 +30,33 @@ test('Pi: Codex Astra/Sol high 872K, default session và advisor payload', {skip
       fs.writeFileSync(modelsPath, JSON.stringify(get('models.json')));
       const authPath = path.join(agentDir, 'auth.json');
       const jwt = `fixture.${Buffer.from(JSON.stringify({'https://api.openai.com/auth': {chatgpt_account_id: 'fixture'}})).toString('base64url')}.fixture`;
-      fs.writeFileSync(authPath, JSON.stringify({'openai-codex': {type: 'oauth', access: jwt, refresh: 'fixture-refresh', expires: Date.now() + 3600000}}));
+      const expires = Date.now() + 3600000;
+      fs.writeFileSync(authPath, JSON.stringify({
+        anthropic: {type: 'oauth', access: 'sk-ant-oat01-synthetic-fixture', refresh: 'fixture-refresh', expires},
+        'openai-codex': {type: 'oauth', access: jwt, refresh: 'fixture-refresh', expires},
+      }));
       const runtime = await ModelRuntime.create({authPath, modelsPath, refreshOnCreate: false, allowModelNetwork: false});
       assert.equal(runtime.getError(), undefined);
       const model = runtime.getModel(settings.defaultProvider, settings.defaultModel);
-      assert.equal(model.id, 'gpt-6-astra');
-      assert.equal(model.provider, 'openai-codex');
-      assert.equal(model.contextWindow, 872000);
+      assert.equal(model.id, 'claude-opus-5-5');
+      assert.equal(model.provider, 'anthropic');
+      assert.equal(model.contextWindow, 1000000);
       assert.equal(model.maxTokens, 128000);
-      assert.equal(model.api, 'openai-codex-responses');
+      assert.equal(model.api, 'anthropic-messages');
       assert.ok(getSupportedThinkingLevels(model).includes(settings.defaultThinkingLevel));
-      assert.equal(runtime.getModel('openai-codex', 'gpt-5.6-sol').contextWindow, 872000);
+      for (const [id, level] of [['gpt-6-sol', 'max'], ['gpt-6-astra', 'high']]) {
+        const codex = runtime.getModel('openai-codex', id);
+        assert.equal(codex.contextWindow, 872000);
+        assert.equal(settings.modelThinkingLevels[`openai-codex/${id}`], level);
+        assert.ok(getSupportedThinkingLevels(codex).includes(level));
+      }
       const settingsManager = SettingsManager.inMemory({...settings, packages: [], extensions: [], skills: [], themes: []});
       const resourceLoader = new DefaultResourceLoader({cwd: temp, agentDir, settingsManager, noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true});
       await resourceLoader.reload();
       // Refresh availability from synthetic auth only; never read real auth.
       await runtime.refresh({allowNetwork: false});
       const {session} = await createAgentSession({cwd: temp, agentDir, modelRuntime: runtime, settingsManager, resourceLoader, sessionManager: SessionManager.inMemory(temp)});
-      assert.equal(session.model.id, 'gpt-6-astra');
+      assert.equal(session.model.id, 'claude-opus-5-5');
       assert.equal(session.thinkingLevel, 'high');
       session.dispose();
       const advisorConfig = get('advisor.json');

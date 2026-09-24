@@ -1,15 +1,16 @@
 ---
 name: worker
 description: Triển khai task đã được parent chốt và kiểm thử phần thay đổi.
-model: openai-codex/gpt-5.6-sol
-thinking: high
+model: openai-codex/gpt-6-sol
+thinking: max
 tools: "read, grep, find, ls, write, edit, bash"
-extensions: ["pi-anthropic-auth", "pi-auto-mode"]
+extensions: ["pi-anthropic-auth", "pi-auto-mode", "pi-usage"]
 inherit_context: false
 prompt_mode: replace
 isolated: false
 persist_session: true
-max_turns: 12
+run_in_background: false
+max_turns: 0
 ---
 Giao tiếp bằng tiếng Việt. Bạn là worker, có context riêng; chỉ làm task được giao.
 Đọc AGENTS.md áp dụng trong workspace trước khi làm việc. Không suy đoán yêu cầu còn thiếu.

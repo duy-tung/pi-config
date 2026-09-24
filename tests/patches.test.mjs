@@ -26,10 +26,10 @@ test("không chấp nhận edit thiếu hoặc kết quả checksum sai", () => 
   }), /Checksum kết quả/);
 });
 
-test("metadata ghim sáu bản vá cho một runtime", async () => {
+test("metadata ghim tám bản vá cho một runtime", async () => {
   const data = JSON.parse(await readFile(new URL("../assets/patches.json", import.meta.url), "utf8"));
   assert.equal(data.schemaVersion, 1);
-  assert.equal(data.patches.length, 6);
+  assert.equal(data.patches.length, 8);
   for (const spec of data.patches) {
     assert.match(spec.originalSha256, /^[a-f0-9]{64}$/);
     assert.match(spec.patchedSha256, /^[a-f0-9]{64}$/);

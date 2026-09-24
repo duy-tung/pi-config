@@ -87,7 +87,7 @@ Spawn `Agent` luôn qua bộ phân loại (xét nội dung task). Trong auto mod
 - Các ô `environment`, `soft_deny`, `hard_deny`, `allow` của `autoMode` là câu chữ đưa vào prompt; `"$defaults"` chèn bộ mặc định (xem `/auto-mode defaults`), bỏ nó đi là thay hẳn. Mỗi luật dạng `Tên: mô tả`.
 - `model` không dùng được thì dùng model của phiên và báo một lần: chưa đăng nhập hoặc không có trong catalog (ngay từ đầu), hay hết quota, rate limit, model bị từ chối (lúc chạy; chuyển luôn tới hết phiên như Claude Code). Model của phiên cũng lỗi thì chặn.
 - `log: true` (hoặc `PI_AUTO_MODE_LOG=1`) ghi quyết định vào `<stateDir>/decisions.jsonl` (có tóm tắt lệnh; tắt khi không cần). `PI_AUTO_MODE_DISABLE=1` tắt extension trong một lần chạy.
-- Installer đặt luật deny cho file bí mật (`.env`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube/config`, `~/.netrc`, `~/.git-credentials`, token của `gh`/docker, `id_rsa*`, `*.pem`, auth của Pi/Claude/Codex, credential Firecrawl, backups), `rm -rf`, `sudo`, helper khóa Firecrawl và `mcpScript`; luật deny của pi-permission-system cũ và luật deny người dùng đã thêm được giữ khi cài lại.
+- Installer đặt luật deny cho file bí mật (`.env`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube/config`, `~/.netrc`, `~/.git-credentials`, token của `gh`/docker, `id_rsa*`, `*.pem`, auth của Pi/Claude/Codex, credential Firecrawl, backups), `rm -rf`, `sudo`, helper khóa Firecrawl và `mcpScript`; luật deny của pi-permission-system cũ và luật deny người dùng đã thêm được giữ khi cài lại. Luật ask `Edit(**/.pi/pi-goal-x-settings.json)` hỏi trước khi sửa file này: prompt của pi-goal-x cho agent tự đổi `maxAutonomousRuns` ở đây, và file của project đè giới hạn global.
 
 ## Giới hạn
 

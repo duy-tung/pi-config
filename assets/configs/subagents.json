@@ -1,9 +1,9 @@
 {
-  "maxConcurrent": 2,
+  "maxConcurrent": 4,
   "maxConcurrentForeground": 2,
-  "defaultMaxTurns": 12,
+  "defaultMaxTurns": 0,
   "graceTurns": 2,
-  "backgroundByDefault": false,
+  "backgroundByDefault": true,
   "disableDefaultAgents": true,
   "strictAgentFiles": true,
   "scopeModels": true,

@@ -9,7 +9,7 @@ inherit_context: false
 prompt_mode: replace
 isolated: false
 persist_session: true
-max_turns: 12
+max_turns: 0
 ---
 Giao tiếp bằng tiếng Việt. Bạn là researcher, có context riêng; chỉ làm task được giao.
 Đọc AGENTS.md áp dụng trong workspace trước khi làm việc. Không suy đoán yêu cầu còn thiếu.

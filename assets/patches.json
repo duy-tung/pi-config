@@ -8,7 +8,7 @@
       },
       "file": "extensions/open-tui/footer.ts",
       "originalSha256": "bc25b0a4aa6560ab6a27eb6e364600087595b0d00cf5cef27cc14e8765809ded",
-      "patchedSha256": "c0b53fa8ae4947a507ebef7ac3201b3520f7243c92e637e7c4736488c8833e40",
+      "patchedSha256": "89487dd7bd2aa58d3cba01d9a18706fdf89605a267f6ac96beadf50581de9935",
       "edits": [
         {
           "before": "stats.push(theme.fg(\"warning\", `${glyphs.cost} $${totals.cost.toFixed(3)}`));",
@@ -41,18 +41,8 @@
           "count": 1
         },
         {
-          "before": "\tconst ctxText = `${theme.fg(\"text\", fmtTokens(contextTokens))}${theme.fg(\"dim\", \"/\")}${theme.fg(\"text\", fmtTokens(contextWindow))}`;\n",
-          "after": "",
-          "count": 1
-        },
-        {
           "before": "visibleWidth(pctText) + visibleWidth(ctxText) + 5 + 2",
-          "after": "visibleWidth(pctText) + 3",
-          "count": 1
-        },
-        {
-          "before": " ${pctText} ${theme.fg(\"dim\", \"·\")} ${ctxText}`;",
-          "after": " ${pctText}`;",
+          "after": "visibleWidth(pctText) + visibleWidth(ctxText) + 4 + 2",
           "count": 1
         },
         {
@@ -87,7 +77,7 @@
         },
         {
           "before": "\tconst modelBlock = modelParts.join(theme.fg(\"dim\", \" · \"));",
-          "after": "\tconst usageStatuses = footerData.getExtensionStatuses();\n\tconst usageStatus = segments.extensionStatuses\n\t\t? sanitizeStatus(usageStatuses.get(\"usage\") || usageStatuses.get(\"claude-usage\") || \"\").replace(/^(?:codex(?:\\s+fast)?|claude)\\s+/i, \"\")\n\t\t: \"\";\n\tif (usageStatus) modelParts.push(theme.fg(\"muted\", usageStatus));\n\tconst modelBlock = modelParts.join(theme.fg(\"dim\", \" · \"));",
+          "after": "\tconst usageStatuses = footerData.getExtensionStatuses();\n\tconst usageStatus = segments.extensionStatuses\n\t\t? sanitizeStatus(usageStatuses.get(\"usage\") || usageStatuses.get(\"claude-usage\") || \"\").replace(/^(?:codex|claude)\\s+/i, \"\")\n\t\t: \"\";\n\tif (usageStatus) modelParts.push(theme.fg(\"muted\", usageStatus));\n\tconst modelBlock = modelParts.join(theme.fg(\"dim\", \" · \"));",
           "count": 1
         }
       ]
@@ -99,7 +89,7 @@
       },
       "file": "src/agent-runner.ts",
       "originalSha256": "88e61481fd627254ff3ac0a27e1991136c41e103fac847dd06444c8ac3d3eab1",
-      "patchedSha256": "52e56f9d46dce2555ad3a0d3f603e1009440b77179cdcd9f46d994c3d8421941",
+      "patchedSha256": "62736ee5511f5e4f0a3258c0988006fdd23751c75764cc5b64752f4535f98729",
       "edits": [
         {
           "before": "  const { session } = await runInChildSessionContext(() => createAgentSession(sessionOpts));",
@@ -119,6 +109,11 @@
         {
           "before": "  } finally {\n    unsubTurns();",
           "after": "  } catch (error) {\n    session.dispose();\n    throw error;\n  } finally {\n    unsubTurns();",
+          "count": 1
+        },
+        {
+          "before": "      entries.some((e) => typeof e === \"string\" && resolve(dir, e) === entry)",
+          "after": "      // Local integration: a directory entry (\"./dist\") loads that directory's index file.\n      entries.some((e) => typeof e === \"string\" && (resolve(dir, e) === entry\n        || (resolve(dir, e) === dirname(entry) && /^index\\.(?:ts|js)$/.test(basename(entry)))))",
           "count": 1
         }
       ]
@@ -213,6 +208,38 @@
         {
           "before": "    const result2 = useCurrentModel ? await searchWithCurrentModelOpenAI(query, options, options.extensionContext) : await searchWithOpenAI(query, options, options.extensionContext);\n    return { ...result2, provider };",
           "after": "    const result2 = useCurrentModel ? await searchWithCurrentModelOpenAI(query, options, options.extensionContext) : await searchWithOpenAI(query, options, options.extensionContext);\n    return { provider, ...result2 };",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "package": "@gotgenes/pi-anthropic-auth",
+      "versions": {
+        "current": "3.2.2"
+      },
+      "file": "src/request-shaping.ts",
+      "originalSha256": "efed50553ff7d3cf0f2edc9d77fe9a4404414e1e69fc6408788ccf102046d028",
+      "patchedSha256": "229fc532f541fec5851dd5a6a7973aae03e91dcf84a834d3183be83ab2a81065",
+      "edits": [
+        {
+          "before": "  return {\n    ...payload,\n    messages: normalizedMessages,\n    system: finalSystem,\n  };\n",
+          "after": "  // Local integration: Pi sends the per-turn effort of Opus 5.5 / Fable 5.1 as an effort-only\n  // system message with empty content, which shapeSystemRoleMessages drops. Keep the active\n  // (last) effort by lifting it into the request's output_config.\n  const effort = messages\n    .filter((message) => message.role === \"system\" && Array.isArray(message.content) && message.content.length === 0)\n    .map((message) => (message as { output_config?: { effort?: unknown } }).output_config?.effort)\n    .filter((value): value is string => typeof value === \"string\")\n    .at(-1);\n  return {\n    ...payload,\n    ...(effort === undefined ? {} : {\n      output_config: { ...(isRecord(payload.output_config) ? payload.output_config : {}), effort },\n    }),\n    messages: normalizedMessages,\n    system: finalSystem,\n  };\n",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "package": "@narumitw/pi-usage",
+      "versions": {
+        "current": "0.61.0"
+      },
+      "file": "dist/index.ts",
+      "originalSha256": "b918360268861bbc95d7991c16bf09775597874433e67f3d1a0848134c472482",
+      "patchedSha256": "1a8aebb965c849729a153d1aba9ed4be32671e85ac37e82be691006556a3e244",
+      "edits": [
+        {
+          "before": "  const startStatusRefresh = (ctx, model, force) => {\n",
+          "after": "  const startStatusRefresh = (ctx, model, force) => {\n    // Local integration: sessions without a UI (Agent children, print mode) render no statusline.\n    // Skip usage queries and refresh timers there; Codex fast-mode request rewriting still applies.\n    if (!ctx.hasUI) return;\n",
           "count": 1
         }
       ]
