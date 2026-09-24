@@ -42,10 +42,8 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.equal(settings.modelThinkingLevels["openai-codex/gpt-5.6-sol"], "high");
       assert.equal(settings.shellPath, options.shellPath);
       assert.equal(settings.skills.length, 3);
-      assert.equal(settings.extensions.length, 3);
-      assert.ok(settings.extensions[0].endsWith("rose-pine-palette.ts"));
-      assert.equal(settings.extensions[1], p.join(options.root, "assets", "extensions", "pi-rewind"));
-      assert.equal(settings.extensions[2], p.join(options.root, "assets", "extensions", "pi-auto-mode"));
+      assert.deepEqual(settings.extensions, ["rose-pine-palette.ts", "pi-rewind", "native-web-search", "claude-usage", "pi-auto-mode"]
+        .map((entry) => p.join(options.root, "assets", "extensions", entry)));
       assert.equal(settings.doubleEscapeAction, "none");
       assert.deepEqual(settings.rewind, { storageDir: p.join(options.root, "state", "rewind"), retentionDays: 30 });
       assert.equal(settings.workspaceHistory, undefined);
@@ -111,8 +109,14 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.ok(!files.some((file) => file.path.includes("pi-permission-system")));
       assert.deepEqual(json(p.join(profile.agentDir, "keybindings.json"))["app.thinking.cycle"], ["alt+t"]);
       const firecrawl = json(p.join(profile.agentDir, "web-search.json"));
-      assert.equal(firecrawl.provider, "firecrawl");
-      assert.equal(firecrawl.searchRouting.useCurrentModel, false);
+      // provider cố định sẽ bỏ qua searchRouting; native search theo model đi trước, Firecrawl dự phòng.
+      assert.equal(firecrawl.provider, undefined);
+      assert.deepEqual(firecrawl.searchRouting.providers, ["openai", "firecrawl"]);
+      assert.equal(firecrawl.searchRouting.useCurrentModel, true);
+      assert.deepEqual(firecrawl.searchRouting.fallbackOn, ["network", "transient", "quota", "invalid-response", "unsupported"]);
+      assert.deepEqual(firecrawl.webSearch.allowedProviders, ["openai", "firecrawl"]);
+      assert.deepEqual(firecrawl.fetchRouting.providers, ["firecrawl"]);
+      assert.ok(settings.permissions.allow.includes("web_search"));
       assert.equal(firecrawl.allowBrowserCookies, false);
       assert.match(firecrawl.firecrawlApiKey, /^!/u);
       assert.ok(firecrawl.firecrawlApiKey.includes(options.nodePath));

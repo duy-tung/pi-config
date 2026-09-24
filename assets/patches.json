@@ -8,7 +8,7 @@
       },
       "file": "extensions/open-tui/footer.ts",
       "originalSha256": "bc25b0a4aa6560ab6a27eb6e364600087595b0d00cf5cef27cc14e8765809ded",
-      "patchedSha256": "0bace7b020709545b40dc7292e29317329818af46c7977af735a7cdb202cbb45",
+      "patchedSha256": "c0b53fa8ae4947a507ebef7ac3201b3520f7243c92e637e7c4736488c8833e40",
       "edits": [
         {
           "before": "stats.push(theme.fg(\"warning\", `${glyphs.cost} $${totals.cost.toFixed(3)}`));",
@@ -82,12 +82,12 @@
         },
         {
           "before": ".map(([, text]) => sanitizeStatus(text))",
-          "after": ".filter(([key]) => key !== \"usage\")\n\t\t.map(([, text]) => sanitizeStatus(text))",
+          "after": ".filter(([key]) => key !== \"usage\" && key !== \"claude-usage\")\n\t\t.map(([, text]) => sanitizeStatus(text))",
           "count": 1
         },
         {
           "before": "\tconst modelBlock = modelParts.join(theme.fg(\"dim\", \" · \"));",
-          "after": "\tconst usageStatus = segments.extensionStatuses\n\t\t? sanitizeStatus(footerData.getExtensionStatuses().get(\"usage\") ?? \"\").replace(/^codex(?:\\s+fast)?\\s+/i, \"\")\n\t\t: \"\";\n\tif (usageStatus) modelParts.push(theme.fg(\"muted\", usageStatus));\n\tconst modelBlock = modelParts.join(theme.fg(\"dim\", \" · \"));",
+          "after": "\tconst usageStatuses = footerData.getExtensionStatuses();\n\tconst usageStatus = segments.extensionStatuses\n\t\t? sanitizeStatus(usageStatuses.get(\"usage\") || usageStatuses.get(\"claude-usage\") || \"\").replace(/^(?:codex(?:\\s+fast)?|claude)\\s+/i, \"\")\n\t\t: \"\";\n\tif (usageStatus) modelParts.push(theme.fg(\"muted\", usageStatus));\n\tconst modelBlock = modelParts.join(theme.fg(\"dim\", \" · \"));",
           "count": 1
         }
       ]
@@ -187,6 +187,32 @@
         {
           "before": "export function registerImagePreview(pi: ExtensionAPI): void {\n",
           "after": "export function registerImagePreview(pi: ExtensionAPI): void {\n  // Keep the visual preview in the transcript without billing the image twice.\n  pi.on(\"context\", (event) => ({\n    messages: event.messages.filter((message) => !(message.role === \"custom\" && message.customType === CUSTOM_TYPE)),\n  }));\n",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "package": "pi-web-access",
+      "versions": {
+        "current": "0.31.0"
+      },
+      "file": "dist/index.js",
+      "originalSha256": "3873517746b118e05431177c1a387eeeda8068110463537123c4a628b667af81",
+      "patchedSha256": "f4f7f916761a080b5e8012715a96863f8bac75d4c3100a37b3ed49f2a1aca111",
+      "edits": [
+        {
+          "before": "function isCurrentModelHostedSearchEligible(ctx) {\n  const model = ctx?.model;\n  if (!model || !/^gpt-/iu.test(model.id)) return false;",
+          "after": "function isCurrentModelHostedSearchEligible(ctx) {\n  const model = ctx?.model;\n  if (globalThis[Symbol.for(\"pi-config.native-web-search\")]?.supports(model)) return true;\n  if (!model || !/^gpt-/iu.test(model.id)) return false;",
+          "count": 1
+        },
+        {
+          "before": "async function searchWithCurrentModelOpenAI(query, options = {}, ctx) {\n  if (!ctx) throw new Error(\"OpenAI current-model search requires an extension context\");",
+          "after": "async function searchWithCurrentModelOpenAI(query, options = {}, ctx) {\n  if (!ctx) throw new Error(\"OpenAI current-model search requires an extension context\");\n  const nativeSearch = globalThis[Symbol.for(\"pi-config.native-web-search\")];\n  if (nativeSearch?.supports(ctx.model)) return nativeSearch.search(query, options, ctx);",
+          "count": 1
+        },
+        {
+          "before": "    const result2 = useCurrentModel ? await searchWithCurrentModelOpenAI(query, options, options.extensionContext) : await searchWithOpenAI(query, options, options.extensionContext);\n    return { ...result2, provider };",
+          "after": "    const result2 = useCurrentModel ? await searchWithCurrentModelOpenAI(query, options, options.extensionContext) : await searchWithOpenAI(query, options, options.extensionContext);\n    return { provider, ...result2 };",
           "count": 1
         }
       ]

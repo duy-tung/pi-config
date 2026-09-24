@@ -37,10 +37,10 @@ export interface ToolCall {
 }
 
 // Tool không đổi trạng thái bên ngoài phiên: đọc, tìm kiếm, todo, hỏi người dùng, xem subagent,
-// công cụ đọc của pi-lens, trạng thái goal và advisor. Tương tự danh sách safe-tool của Claude Code.
+// công cụ đọc của pi-lens, bật web tools, trạng thái goal và advisor. Tương tự danh sách safe-tool của Claude Code.
 export const SAFE_TOOLS = new Set([
   "read", "grep", "find", "ls", "todo", "ask_user_question", "get_subagent_result", "steer_subagent",
-  "bg_status", "bg_logs", "bg_kill", "get_search_content",
+  "bg_status", "bg_logs", "bg_kill", "get_search_content", "web_enable",
   "lens_diagnostics", "project_report", "module_report", "lsp_navigation", "symbol_search", "read_symbol",
   "read_enclosing", "ast_grep_search", "ast_grep_outline", "effective_config", "lens_diagnostic_mark",
   "pi_lens_activate_tools",
