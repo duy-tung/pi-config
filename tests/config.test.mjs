@@ -139,10 +139,16 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.match(firecrawl.firecrawlApiKey, /^!/u);
       assert.ok(firecrawl.firecrawlApiKey.includes(options.nodePath));
       assert.ok(firecrawl.firecrawlApiKey.includes(p.join(options.root, "bin", "firecrawl-key.cjs")));
-      const credentialRoot = platform === "darwin" ? p.join(options.home, "Library", "Application Support", "firecrawl-cli", "*")
-        : platform === "win32" ? p.join(options.home, "AppData", "Roaming", "firecrawl-cli", "*")
-          : p.join(options.home, ".config", "firecrawl-cli", "*");
-      assert.ok(deny.includes(`Path(${forward(credentialRoot)})`));
+      const credentialRoot = platform === "darwin" ? p.join(options.home, "Library", "Application Support", "firecrawl-cli")
+        : platform === "win32" ? p.join(options.home, "AppData", "Roaming", "firecrawl-cli")
+          : p.join(options.home, ".config", "firecrawl-cli");
+      // Thư mục bí mật: chặn cả chính thư mục (tar/cp -r/grep -r) và mọi cấp bên trong (vd ~/.aws/sso/cache).
+      for (const dir of [credentialRoot, p.join(options.home, ".ssh"), p.join(options.home, ".aws"), p.join(options.home, ".config", "gcloud"), p.join(options.root, "backups")]) {
+        assert.ok(deny.includes(`Path(${forward(dir)})`), dir);
+        assert.ok(deny.includes(`Path(${forward(p.join(dir, "**"))})`), dir);
+        assert.ok(!deny.includes(`Path(${forward(p.join(dir, "*"))})`), `${dir}: * chỉ khớp một cấp`);
+      }
+      assert.ok(deny.includes("Path(~/.gnupg)") && deny.includes("Path(~/.gnupg/**)"));
     }
   });
 

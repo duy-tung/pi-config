@@ -15,6 +15,7 @@ import { isChild, linkChild, registerRoot, rootFor, unregisterRoot } from "../as
 import { buildTranscript, ENTRY_TYPE, humanMessages } from "../assets/extensions/pi-auto-mode/lib/transcript.ts";
 import { caseEntries, formatReport, runEval } from "../assets/extensions/pi-auto-mode/lib/eval.ts";
 import { SAFE_TOOLS } from "../assets/extensions/pi-auto-mode/lib/policy.ts";
+import { buildConfiguration } from "../lib/config.mjs";
 
 function workspace() {
   const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "pi-auto-mode-test-")));
@@ -192,6 +193,29 @@ test("chính sách: lối đi nhanh, luật, bypass và tự bảo vệ", () => 
     const allowed = context(ws, { rules: buildRuleSet(["web_search", "WebFetch(domain:github.com)"], [], []) });
     assert.equal(decide({ toolName: "web_search", input: { query: "x" } }, allowed).kind, "allow");
     assert.equal(decide({ toolName: "fetch_content", input: { url: "https://github.com/a/b" } }, allowed).kind, "allow");
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("luật deny của installer chặn cả thư mục bí mật và mọi cấp bên trong, ở cả hai mode", () => {
+  const ws = workspace();
+  try {
+    const agentDir = path.join(ws.home, ".pi", "agent");
+    const files = buildConfiguration({ root: path.join(ws.dir, "root"), agentDir, binDir: path.join(ws.dir, "bin"), nodePath: process.execPath, home: ws.home });
+    const { permissions } = JSON.parse(files.find((file) => file.path === path.join(agentDir, "settings.json")).content);
+    const rules = buildRuleSet(permissions.allow, permissions.ask, permissions.deny);
+    for (const mode of ["auto", "bypass"]) {
+      const pc = context(ws, { mode, rules });
+      // Lệnh đọc cả thư mục không lọt qua luật theo từng file; file lồng nhiều cấp (token SSO của AWS, gcloud) cũng bị chặn.
+      for (const command of ["tar czf /tmp/k.tgz ~/.ssh", "cp -r ~/.aws /tmp/a", "grep -r PRIVATE ~/.ssh", "zip -r /tmp/g.zip ~/.gnupg",
+        "cat ~/.aws/sso/cache/token.json", "cat ~/.config/gcloud/legacy_credentials/me/adc.json", "cat ~/.ssh/keys/deploy"]) {
+        assert.equal(decide(bash(command), pc).kind, "deny", `${mode}: ${command}`);
+      }
+      assert.equal(decide({ toolName: "read", input: { path: path.join(ws.home, ".aws", "sso", "cache", "token.json") } }, pc).kind, "deny");
+      // Tên chỉ bắt đầu giống thư mục bí mật thì không bị chặn.
+      assert.notEqual(decide(bash("cat ~/.ssh-notes.txt"), pc).kind, "deny", mode);
+    }
   } finally {
     ws.cleanup();
   }
