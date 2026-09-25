@@ -1,12 +1,17 @@
 /**
  * Quota gói Claude (Pro/Max qua OAuth).
  * - Header anthropic-ratelimit-unified-* có trên mọi phản hồi OAuth: utilization là tỷ lệ 0..1,
- *   reset là epoch giây. Footer chỉ dùng nguồn này nên không gửi thêm request.
+ *   reset là epoch giây. Footer cập nhật từ nguồn này sau mỗi phản hồi Claude, không tốn request.
  * - GET /api/oauth/usage (endpoint Claude Code dùng cho /usage, chưa công bố) trả utilization
- *   theo phần trăm và resets_at ISO; chỉ gọi khi người dùng chạy /claude-usage.
+ *   theo phần trăm và resets_at ISO. Gọi khi người dùng chạy /claude-usage, và định kỳ khi phiên
+ *   có UI đang dùng Claude mà dữ liệu cũ hơn POLL_MS (xem pollDueIn).
  */
 
 export const USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
+/** Chu kỳ đọc /api/oauth/usage; header mới hơn chu kỳ này thì không đọc. */
+export const POLL_MS = 15 * 60_000;
+/** Khoảng chờ tối đa sau khi Anthropic trả 429. */
+export const MAX_POLL_MS = 60 * 60_000;
 
 export interface QuotaWindow {
   /** Phần trăm đã dùng, 0..100. */
@@ -89,6 +94,27 @@ export function parseUnifiedHeaders(headers: Record<string, unknown> | undefined
   const disabled = text(get("overage-disabled-reason"), 48);
   if (disabled) snapshot.overageDisabledReason = disabled;
   return fiveHour || sevenDay || status ? snapshot : undefined;
+}
+
+/** Thời gian chờ tới lần đọc /api/oauth/usage kế tiếp: 0 khi chưa có dữ liệu hoặc dữ liệu đã cũ hơn POLL_MS. */
+export function pollDueIn(snapshot: QuotaSnapshot | undefined, now = Date.now()): number {
+  if (!snapshot || !Number.isFinite(snapshot.capturedAt)) return 0;
+  return Math.min(POLL_MS, Math.max(0, snapshot.capturedAt + POLL_MS - now));
+}
+
+/** Retry-After (số giây hoặc HTTP-date) đổi ra ms; giá trị không hợp lệ trả undefined. */
+export function retryAfterMs(value: string | null | undefined, now = Date.now()): number | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  if (/^\d+(?:\.\d+)?$/u.test(trimmed)) return Number(trimmed) * 1000;
+  const at = Date.parse(trimmed);
+  return Number.isFinite(at) ? Math.max(0, at - now) : undefined;
+}
+
+/** Sau HTTP 429: gấp đôi khoảng chờ trước đó (trong [POLL_MS, MAX_POLL_MS]) và không sớm hơn Retry-After. */
+export function backoffAfterRateLimit(previousMs: number, retryAfter?: number): number {
+  const doubled = Math.min(MAX_POLL_MS, Math.max(POLL_MS, previousMs * 2));
+  return Math.min(MAX_POLL_MS, Math.max(doubled, retryAfter ?? 0));
 }
 
 /** Phản hồi sau có thể thiếu một số header; giữ giá trị cũ cho phần không có. */

@@ -36,7 +36,7 @@ Role không giới hạn số lượt (`max_turns: 0` trong file role, `defaultM
 
 `backgroundByDefault:true`: researcher và reviewer chạy nền, lời gọi `Agent` trả ID ngay, thông báo completion mở lượt mới cho parent kèm trích đoạn kết quả; `get_subagent_result` lấy toàn văn. Worker và debugger ghim `run_in_background: false` nên luôn chạy foreground và trả kết quả ngay trong tool call; parent không đổi được. Background tối đa 4 agent, foreground tối đa 2; vượt giới hạn thì xếp hàng. Nhiều lời gọi `Agent` foreground trong cùng một lượt chạy song song; các phiên Pi quản lý pool riêng.
 
-Worker và debugger nạp `pi-usage` để Codex fast mode (`service_tier: "priority"`) áp dụng cho request của GPT-6 Sol; bản vá của pi-config bỏ truy vấn quota và timer của pi-usage trong phiên không có UI. Reviewer dùng Astra, model chưa hỗ trợ fast.
+Codex fast mode (`service_tier: "priority"`) áp dụng cho request của GPT-6 Sol (worker, debugger) và GPT-6 Astra (reviewer). Bản vá pi-usage bọc `ModelRuntime` dùng chung của phiên chính, nên request không đi qua hook của phiên (advisor, goal auditor, Oracle, agent con) cũng theo cài đặt fast và chọn hàng theo model của chính request. Worker, debugger và reviewer nạp `pi-usage` để chi phí của request fast được tính đúng; bản vá bỏ truy vấn quota và timer của pi-usage trong phiên không có UI.
 
 Researcher nạp `pi-web-access`. Package này khai extension là thư mục `./dist`; bản vá pi-subagents cho entry thư mục khớp tên package, nếu không `extensions`/`ext:pi-web-access` của role không nạp được web tools.
 
@@ -52,4 +52,4 @@ Project có thể override role. Với `scopeModels:true`, lựa chọn ngoài s
 
 ## Kiểm thử
 
-`pi-test` hoặc `tests/agent-integration.mjs <root> main` dùng provider giả và chặn mạng để kiểm model/effort thực, context, quyền, web tools của researcher, fast mode trong request của worker/debugger, agent chạy quá 14 lượt, role không tồn tại và completion. Các test request payload kiểm provider OpenCode Go trên SDK đã ghim. Nghiệm thu chất lượng model trên công việc thật là bước riêng với ngân sách cụ thể.
+`pi-test` hoặc `tests/agent-integration.mjs <root> main` dùng provider giả và chặn mạng để kiểm model/effort thực, context, quyền, web tools của researcher, fast mode trong request của worker/debugger/reviewer, advisor và goal auditor, agent chạy quá 14 lượt, role không tồn tại và completion. Các test request payload kiểm provider OpenCode Go trên SDK đã ghim. Nghiệm thu chất lượng model trên công việc thật là bước riêng với ngân sách cụ thể.

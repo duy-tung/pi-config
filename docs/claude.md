@@ -17,8 +17,12 @@ Opus 5.5 không tắt được thinking; `/thinking` (Alt+T) đổi effort `low`
 pi-usage chưa hỗ trợ Anthropic nên pi-config có extension `claude-usage`:
 
 - Footer hiển thị phần trăm **còn lại** của phiên 5 giờ và của tuần, kèm đếm ngược tới reset, cùng kiểu với quota Codex, ví dụ `77% ↻ 2h10m 59% ↻ 4d3h`. `extra` nghĩa là request đang dùng extra usage; `limit` nghĩa là đã chạm giới hạn gói.
-- Dữ liệu lấy từ header `anthropic-ratelimit-unified-*` của chính các phản hồi Claude qua OAuth, không gửi thêm request. Footer có số liệu sau phản hồi Claude đầu tiên trong phiên và ẩn khi chuyển sang model khác.
-- `/claude-usage` đọc `GET https://api.anthropic.com/api/oauth/usage` (endpoint Claude Code dùng, chưa công bố) để thêm giới hạn tuần theo model và extra usage. Endpoint có thể trả 429; khi đó lệnh dùng dữ liệu header gần nhất. Lệnh chỉ chạy khi người dùng gọi, không tự polling. API key không có quota gói.
+- Footer cập nhật từ header `anthropic-ratelimit-unified-*` của chính các phản hồi Claude qua OAuth, không tốn request. Footer ẩn khi chuyển sang model khác.
+- Ngoài ra extension tự đọc `GET https://api.anthropic.com/api/oauth/usage` (endpoint Claude Code dùng, chưa công bố) bằng token OAuth khi mở phiên hoặc chuyển sang Claude, nên footer có số liệu ngay, không chờ phản hồi Claude đầu tiên.
+  - Sau đó đọc lại 15 phút một lần, nhưng chỉ khi header gần nhất đã cũ hơn 15 phút: lúc đang làm việc, header đủ dùng nên hầu như không có request thêm.
+  - Endpoint trả 429 thì khoảng chờ tăng lên 30 rồi 60 phút (theo `Retry-After` nếu có, tối đa 60 phút) và footer giữ số liệu cũ; đọc được thì về lại 15 phút.
+  - Chỉ phiên có UI (TUI, RPC) mới đọc. Agent con, chế độ print, model khác Claude và đăng nhập bằng API key (không có quota gói) thì không.
+- `/claude-usage` đọc endpoint đó ngay khi gọi và in thêm giới hạn tuần theo model và extra usage. Nếu endpoint trả 429, lệnh dùng dữ liệu gần nhất.
 
 ## Native web search
 

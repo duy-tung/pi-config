@@ -70,10 +70,10 @@ for (const platform of ["darwin", "linux", "win32"]) {
         assert.equal(field("inherit_context"), "false");
         assert.equal(field("isolated"), "false");
         assert.equal(field("max_turns"), "0", "Không giới hạn số lượt");
-        // Worker/debugger ghi file nên chạy foreground; pi-usage áp Codex fast mode cho request của chúng.
+        // Worker/debugger ghi file nên chạy foreground. Role Codex (Sol, Astra) nạp pi-usage để request fast có chi phí đúng.
         const writer = role === "worker" || role === "debugger";
         assert.equal(field("run_in_background"), writer ? "false" : undefined, role);
-        assert.equal(JSON.parse(field("extensions")).includes("pi-usage"), writer, role);
+        assert.equal(JSON.parse(field("extensions")).includes("pi-usage"), model.startsWith("openai-codex/"), role);
         assert.equal(JSON.parse(field("extensions")).includes("pi-web-access"), role === "researcher", role);
       }
       const subagents = json(p.join(profile.agentDir, "subagents.json"));

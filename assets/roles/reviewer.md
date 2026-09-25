@@ -4,7 +4,7 @@ description: Review độc lập; chỉ đọc, nêu lỗi có bằng chứng v�
 model: openai-codex/gpt-6-astra
 thinking: high
 tools: "read, grep, find, ls"
-extensions: ["pi-anthropic-auth", "pi-auto-mode"]
+extensions: ["pi-anthropic-auth", "pi-auto-mode", "pi-usage"]
 inherit_context: false
 prompt_mode: replace
 isolated: false

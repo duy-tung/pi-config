@@ -258,7 +258,7 @@
       },
       "file": "dist/src/extension.js",
       "originalSha256": "255f3684c00a7f9d36df2741a279ca9840ed138cb1581e32dfa64885d7b211e9",
-      "patchedSha256": "c4aa686710e3de93d7fb66976c506797d0bfdfa53a829eb6fce8ae36679e3c92",
+      "patchedSha256": "2122c5dbe6bd50c540e085401d81688cd4b3ae33041700db68277d2411d9a858",
       "edits": [
         {
           "before": "    const config = parseBackgroundTasksConfig();\n",
@@ -267,33 +267,7 @@
         },
         {
           "before": "        description: `Start a named long-running shell command in the background and return immediately with a task ID and output path. By default, completed, failed, or killed terminal state is delivered automatically as <background-task-notification> and starts a follow-up agent turn; do not sleep or poll merely to wait. Output is written to .pi/tasks and model-visible logs are bounded to ${formatSize(MAX_LOG_BYTES)}.`,\n        promptSnippet: 'Start a named long-running shell command; default terminal notification wakes a follow-up turn, so yield instead of polling',\n        promptGuidelines: [\n            'Use bg_run instead of bash for commands expected to run for a long time, such as test suites, dev servers, watchers, or builds.',\n            'Always set isAgent: true only when the background task launches an LLM/agent process; set isAgent: false for scripts, tests, dev servers, sleeps, and ordinary shell commands.',\n            'When using bg_run, always set name to a concise 2-6 word human-readable label for the footer task dock; do not use the raw command as the name unless it is already short and meaningful.',\n            'bg_run returns immediately. With notifyOnCompletion:true and triggerOnCompletion:true (both defaults), completed, failed, or killed terminal state is delivered as <background-task-notification> and automatically starts a follow-up agent turn.',\n            'After a default bg_run launch, continue only independent useful work that does not merely wait for the task; otherwise briefly acknowledge it if useful, then end the current turn. Do not call sleep, bg_status, or bg_logs merely to wait; the terminal notification will wake you.',\n            'Treat <background-task-notification> as durable terminal truth. Do not call bg_status to reconfirm it; call bg_logs only when the task output is needed.',\n            'Use bg_status/bg_logs only when the user explicitly requests an update, automatic notification or wake-up was deliberately disabled, there is concrete evidence the task is hung, or a terminal notification arrived and output details are needed.',\n            'Do not set notifyOnCompletion:false or triggerOnCompletion:false unless intentionally opting out of automatic completion handling.',\n        ],\n",
-          "after": "        description: `Start a named shell job in the background and return its task ID and output path. When it ends, a <background-task-notification> is delivered; it starts a new agent turn only with triggerOnCompletion:true. Logs are bounded to ${formatSize(MAX_LOG_BYTES)}.`,\n        promptSnippet: 'Run a shell job without blocking; set triggerOnCompletion:true when your next step needs its result',\n        promptGuidelines: [\n            'Use for scripts, tests, builds, servers and watchers; set isAgent:false. Model delegation uses the Agent tool.',\n            'Set a concise name. Continue independent work after starting a job.',\n            'Set triggerOnCompletion:true when your next step depends on the job result, such as tests or a build you must check before continuing. You are woken when it ends, so do not sleep or poll; if no independent work is left, end your turn.',\n            'Leave triggerOnCompletion false (the default) for servers, watchers and jobs whose result is not needed right away; read bg_status/bg_logs when you need the result, without tight polling.',\n        ],\n",
-          "count": 1
-        },
-        {
-          "before": "triggerOnCompletion: params.triggerOnCompletion ?? true,",
-          "after": "triggerOnCompletion: params.triggerOnCompletion ?? false,",
-          "count": 1
-        },
-        {
-          "before": "Default: true for bg_run; requires notifyOnCompletion.",
-          "after": "Default: false. Set true when your next step depends on the result of this job; requires notifyOnCompletion.",
-          "count": 1
-        }
-      ]
-    },
-    {
-      "package": "pi-background-tasks",
-      "versions": {
-        "current": "2.6.5"
-      },
-      "file": "dist/src/core/common.js",
-      "originalSha256": "9554f7fe0d79aa4dc36a468b41165001be3d392cec252fcc66452cbebd0b1e20",
-      "patchedSha256": "1aefb46e91b2ea3071c06349a2251cf18b75ada2c6808cdb7bf104a5ef1a7ef4",
-      "edits": [
-        {
-          "before": "                'Next action: automatic wake-up was explicitly disabled; use bg_status/bg_logs only when deliberate monitoring is required, without tight polling.',",
-          "after": "                // Local integration: pi-config defaults triggerOnCompletion to false, so this is not an explicit opt-out.\n                'Next action: this job will not wake you. If you need its result, check bg_status/bg_logs later without tight polling, or start such jobs with triggerOnCompletion:true.',",
+          "after": "        description: `Start a named shell job in the background and return its task ID and output path. When it ends (completed, failed or killed), a <background-task-notification> is delivered and starts a new agent turn, so do not sleep or poll to wait. Logs are bounded to ${formatSize(MAX_LOG_BYTES)}.`,\n        promptSnippet: 'Run a shell job without blocking; its completion notification wakes you, so yield instead of polling',\n        promptGuidelines: [\n            'Use for long-running scripts, tests, builds, servers and watchers; set isAgent:false. Model delegation uses the Agent tool.',\n            'Set a concise 2-6 word name. Continue independent work after starting a job; if none is left, end your turn. The completion notification wakes you, so do not call sleep, bg_status or bg_logs merely to wait.',\n            'Treat <background-task-notification> as the final state; call bg_logs only when you need the output.',\n            'Set triggerOnCompletion:false only for jobs whose end you do not need to act on, such as a dev server or watcher you will stop yourself; the notification is still delivered but does not wake you.',\n        ],\n",
           "count": 1
         }
       ]
@@ -379,11 +353,26 @@
       },
       "file": "dist/index.ts",
       "originalSha256": "b918360268861bbc95d7991c16bf09775597874433e67f3d1a0848134c472482",
-      "patchedSha256": "1a8aebb965c849729a153d1aba9ed4be32671e85ac37e82be691006556a3e244",
+      "patchedSha256": "2add653dc6990e26168dcec6ef2f8f0995c14830af86742b9767f846c96a9026",
       "edits": [
         {
           "before": "  const startStatusRefresh = (ctx, model, force) => {\n",
           "after": "  const startStatusRefresh = (ctx, model, force) => {\n    // Local integration: sessions without a UI (Agent children, print mode) render no statusline.\n    // Skip usage queries and refresh timers there; Codex fast-mode request rewriting still applies.\n    if (!ctx.hasUI) return;\n",
+          "count": 1
+        },
+        {
+          "before": "  \"gpt-6-sol\"\n]);",
+          "after": "  \"gpt-6-sol\",\n  // Local integration (pi-config): the Codex model catalog lists the Fast (priority) tier for GPT-6 Astra.\n  \"gpt-6-astra\"\n]);",
+          "count": 1
+        },
+        {
+          "before": "var FAST_USAGE_WARNING = \"Fast is about 1.5\\xD7 faster and uses more of your plan allowance.\";",
+          "after": "var FAST_USAGE_WARNING = \"Fast is about 1.5\\xD7 faster (2\\xD7 on GPT-6 Astra) and uses more of your plan allowance.\";",
+          "count": 1
+        },
+        {
+          "before": "  pi.on(\"before_provider_request\", (event, ctx) => {\n",
+          "after": "  // Local integration (pi-config): requests that share this session's ModelRuntime but skip its\n  // before_provider_request hook (advisor calls, goal auditor/Oracle sessions, Agent children without\n  // pi-usage) follow the same Fast setting, decided by each request's own model. The UI session installs\n  // the wrapper once per runtime and keeps the setting reader current.\n  pi.on(\"session_start\", (_event, ctx) => {\n    const runtime = ctx.hasUI ? ctx.modelRegistry?.runtime : void 0;\n    if (!runtime || typeof runtime.streamSimple !== \"function\") return;\n    const key = Symbol.for(\"pi-config:codex-fast\");\n    runtime[key] = () => settingsRuntime.get().settings.codexFastMode;\n    if (runtime.streamSimple[key]) return;\n    const streamSimple = runtime.streamSimple;\n    const wrapped = function(model, context, streamOptions) {\n      const onPayload = async (payload, requestModel) => {\n        const previous = await streamOptions?.onPayload?.(payload, requestModel);\n        let enabled = false;\n        try {\n          enabled = runtime[key]?.() === true;\n        } catch {\n          // A settings problem must not fail the request; pi-usage reports it in the UI session.\n        }\n        const rewritten = rewriteCodexFastPayload(previous === void 0 ? payload : previous, requestModel ?? model, enabled);\n        return rewritten === void 0 ? previous : rewritten;\n      };\n      return streamSimple.call(this ?? runtime, model, context, { ...streamOptions, onPayload });\n    };\n    wrapped[key] = true;\n    runtime.streamSimple = wrapped;\n  });\n  pi.on(\"before_provider_request\", (event, ctx) => {\n",
           "count": 1
         }
       ]

@@ -190,8 +190,8 @@ await check('researcher gets pi-web-access tools from its role',async()=>{
   const child=control.seen.filter(x=>x.key==='child_web');assert.ok(child.length>0);
   for(const name of ['web_search','fetch_content'])assert.ok(child[0].tools.includes(name),JSON.stringify(child[0].tools));
 });
-await check('Codex fast mode reaches worker/debugger requests, not the Astra reviewer',async()=>{
-  for(const [role,tier] of [['worker','priority'],['debugger','priority'],['reviewer',undefined]]){
+await check('Codex fast mode reaches Sol and Astra role requests; other providers are untouched',async()=>{
+  for(const [role,tier] of [['worker','priority'],['debugger','priority'],['reviewer','priority'],['researcher',undefined]]){
     const id='fast-'+role;
     const out=await run(id,invocation(id,{subagent_type:role}));
     assert.equal(out[0]?.isError,false,JSON.stringify(out));
@@ -263,6 +263,8 @@ await check('advisor Astra/high is always on for the parent and a consultation k
   await turn('advisor-two',[final('DONE')]);
   const advice=control.seen.filter(x=>x.key==='advisor');
   assert.equal(advice.length,1);assert.equal(advice[0].model,'gpt-6-astra');assert.equal(advice[0].options.reasoning,'high');
+  // Advisor gọi thẳng ModelRuntime (không qua hook của phiên) vẫn theo Codex fast mode.
+  assert.equal(advice[0].payload?.service_tier,'priority',JSON.stringify(advice[0].payload));
   const [one,two]=['advisor-one','advisor-two'].map(key=>head(control.seen.find(x=>x.key===key)));
   assert.equal(one,two,'System prompt không được đổi sau mỗi lần hỏi advisor');
   assert.match(one,/after two consecutive materially equivalent failed attempts/);
@@ -282,6 +284,7 @@ await check('goal auditor uses Astra/high and its bash passes the permission gat
   const audits=control.seen.filter(x=>x.key==='auditor');
   assert.equal(audits.length,3);
   assert.ok(audits.every(x=>x.model==='gpt-6-astra'&&x.options.reasoning==='high'));
+  assert.ok(audits.every(x=>x.payload?.service_tier==='priority'),'Phiên auditor riêng vẫn theo Codex fast mode');
   assert.ok(audits[0].tools.includes('bash'));
   assert.equal(fs.existsSync(path.join(cwd,'audit-denied.txt')),false);
   assert.equal(fs.readFileSync(path.join(cwd,'audit-allowed.txt'),'utf8'),'allowed');
