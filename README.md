@@ -28,7 +28,7 @@ Chi tiết kiến trúc CPU, công cụ hệ thống và tùy chọn đường d
 2. Trong `/login`, chọn **OpenAI Codex** cho worker/debugger (GPT-6 Sol), reviewer (GPT-6 Astra) và bộ phân loại của auto mode.
 3. Trong `/login`, chọn **OpenCode Go** và nhập API key cho GLM. Pi cũng nhận biến môi trường `OPENCODE_API_KEY`.
 4. Chạy `firecrawl login --browser` để đăng nhập dịch vụ web.
-5. Tuỳ chọn: tạo API key TypeSafe tại [console.typesafe.ai](https://console.typesafe.ai) rồi chạy `pi-mcp-adapter key set systemone` (nhập ẩn, lưu vào keyring của hệ điều hành) để auto mode sàng lọc bằng Jev. Chưa có key thì bộ phân loại LLM làm cả hai giai đoạn như trước.
+5. Tuỳ chọn: tạo API key TypeSafe tại [console.typesafe.ai](https://console.typesafe.ai), thêm `export TYPESAFE_API_KEY="<key>"` vào `~/.zshrc` hoặc `~/.bashrc` (Windows: `setx TYPESAFE_API_KEY "<key>"`) rồi mở terminal mới, để auto mode sàng lọc bằng Jev. Đây là cách tài liệu TypeSafe và đa số package Jev hướng dẫn; muốn giữ key trong keyring của hệ điều hành thay vì biến môi trường thì chạy `pi-mcp-adapter key set systemone`. Chưa có key thì bộ phân loại LLM làm cả hai giai đoạn như trước.
 
 Một cấu hình Pi dùng auth của agent directory. Firecrawl dùng credential store của CLI theo hệ điều hành. Repo không chứa credential, token hay dữ liệu phiên của người dùng; không nhập key vào chat hoặc commit vào Git.
 
@@ -106,7 +106,7 @@ Agent có context riêng và không giới hạn số lượt; dừng agent bằ
 - Dán ảnh: `@pi-archimedes/image-paste`, dùng **Ctrl+V** trên macOS/Linux hoặc **Alt+V** trên Windows. Copy ảnh vào clipboard, dán để có marker `[Image #1]`, rồi gửi cùng prompt. Xóa marker để bỏ ảnh; giới hạn 20 MiB/ảnh. Preview chỉ hiện trong UI, ảnh được gửi tới model đúng một lần. Phím dán ảnh tích hợp của Pi được tắt trong `keybindings.json` để tránh xử lý trùng.
 - Clipboard native `@mariozechner/clipboard` được ghim và cài bên cạnh extension. Linux cần desktop X11/Wayland; `wl-clipboard`/`xclip` là các reader thay thế. Terminal không hỗ trợ ảnh inline vẫn gửi được ảnh, chỉ thiếu preview. Chỉ nạp image-paste; phần giao diện của bộ Archimedes không được nạp.
 
-`pi-models` xem cấu hình model. `pi-doctor` kiểm dependency và checksum bản vá, in model của role, advisor, goal auditor và hai giai đoạn của auto mode (kèm nguồn key Jev, không in key). `pi-mcp-adapter key set|status|remove systemone` quản lý key Jev. `pi-test` kiểm workflow và Agent bằng provider giả trong thư mục tạm, không gọi model trả phí.
+`pi-models` xem cấu hình model. `pi-doctor` kiểm dependency và checksum bản vá, in model của role, advisor, goal auditor và hai giai đoạn của auto mode (kèm nguồn key Jev, không in key). `pi-mcp-adapter key set|status|remove systemone` quản lý key Jev trong keyring (cách thay cho `TYPESAFE_API_KEY`). `pi-test` kiểm workflow và Agent bằng provider giả trong thư mục tạm, không gọi model trả phí.
 
 Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều hành: bộ phân loại có thể sai. Luật `permissions.deny` (file bí mật, `sudo`...) áp dụng ở cả hai mode; bypass vẫn hỏi trước lệnh xoá đệ quy ra ngoài thư mục tạm (`rm -fr`, `find -delete`, `git clean`...). Project cần được trust trước khi dùng cấu hình của project; settings của project không bật được bypass hay thêm luật allow. Nguồn web là dữ liệu để tham khảo, không phải instruction.
 

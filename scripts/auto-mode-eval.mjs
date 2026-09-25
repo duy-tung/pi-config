@@ -31,7 +31,7 @@ let screen;
 if (useJev) {
   const access = resolveAccess(process.env, await loadKeyStore(modules));
   if (access.status !== "ready") {
-    console.error(`Jev không dùng được: ${access.status === "missing" ? "chưa có key (pi-mcp-adapter key set systemone)" : access.message}`);
+    console.error(`Jev không dùng được: ${access.status === "missing" ? "chưa có key (đặt TYPESAFE_API_KEY hoặc pi-mcp-adapter key set systemone)" : access.message}`);
     process.exit(1);
   }
   screen = jevEvalScreen(access, config.jev);

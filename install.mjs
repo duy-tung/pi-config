@@ -141,7 +141,8 @@ try{
   reconcileResources({root,agentDir,binDir,state,wanted});
   state.installedAt=new Date().toISOString();writeJson(statePath,state);
   console.log(`\nĐã cài Pi vào ${root}. Mở terminal mới rồi chạy pi.`);
-  console.log('Đăng nhập: pi-login → /login. Firecrawl: firecrawl login --browser. Jev cho auto mode: pi-mcp-adapter key set systemone.');
+  const jevKey=process.platform==='win32'?'setx TYPESAFE_API_KEY "<key>"':'export TYPESAFE_API_KEY="<key>" trong ~/.zshrc hoặc ~/.bashrc';
+  console.log(`Đăng nhập: pi-login → /login. Firecrawl: firecrawl login --browser. Jev cho auto mode: ${jevKey} (hoặc keyring: pi-mcp-adapter key set systemone).`);
   if(preserved.length)console.log('Giữ nguyên các file đã được bạn tùy chỉnh:\n'+preserved.join('\n'));
   await run(nodePath,[path.join(root,'bin/launch.mjs'),'doctor']);
 }finally{fs.unlinkSync(lock);}

@@ -33,8 +33,9 @@ try{
   if(endpoint.status==='unavailable')jevKey=`SYSTEMONE_ENDPOINT không hợp lệ: ${endpoint.message}`;
   else{
     const credential=store.resolveJevCredential(process.env,endpoint.endpoint);
-    jevKey=credential.status==='present'?`key từ ${credential.source==='keyring'?'keyring':'biến môi trường'}`
-      :credential.status==='missing'?'chưa có key: pi-mcp-adapter key set systemone':`không đọc được key: ${credential.message}`;
+    const variable=Object.hasOwn(process.env,'SYSTEMONE_API_KEY')?'SYSTEMONE_API_KEY':'TYPESAFE_API_KEY';
+    jevKey=credential.status==='present'?`key từ ${credential.source==='keyring'?'keyring':variable}`
+      :credential.status==='missing'?'chưa có key: đặt TYPESAFE_API_KEY hoặc pi-mcp-adapter key set systemone':`không đọc được key: ${credential.message}`;
   }
 }catch{}
 for(const [name,p] of Object.entries(profiles)){

@@ -15,7 +15,7 @@
 - `/auto-mode`: trạng thái, gồm Jev (nguồn key, số lần gọi, token và chi phí trong phiên). `/auto-mode defaults` xem bộ luật mặc định. `/auto-mode test <lệnh bash>` chạy thử quyết định cho một lệnh (có gọi model khi cần) và in xác suất của Jev.
 - `/auto-mode eval [provider/model]` chạy bộ đánh giá có nhãn (`eval/cases.json`, gần 50 tình huống, có tin nhắn tiếng Việt) qua cả chuỗi Jev → LLM và báo số lệnh nguy hiểm lọt, lệnh lành bị chặn và độ trễ. Dùng khi đổi model phân loại. `/auto-mode eval jev` chỉ chạy giai đoạn 1 bằng Jev trên bộ đánh giá và bộ lệnh hiệu chỉnh `eval/screen-cases.json`, không gọi LLM (khoảng 3 xu Mỹ); dùng khi chỉnh ngưỡng hoặc đổi phiên bản Jev.
 - Ngoài Pi: `node scripts/auto-mode-eval.mjs [--model provider/id] [--jev | --jev-only]`. Các lệnh eval tốn quota của provider và tiền Jev.
-- Key Jev: `pi-mcp-adapter key set systemone` (nhập ẩn), `pi-mcp-adapter key status systemone`, `pi-mcp-adapter key remove systemone`.
+- Key Jev: biến môi trường `TYPESAFE_API_KEY`, hoặc keyring qua `pi-mcp-adapter key set systemone` (nhập ẩn), `pi-mcp-adapter key status systemone`, `pi-mcp-adapter key remove systemone`.
 - Khởi động: `pi --permission-mode bypassPermissions` hoặc `pi --dangerously-skip-permissions`; mặc định lấy từ `permissions.defaultMode`. Mode bypass không bao giờ được khôi phục từ phiên cũ hay settings của project.
 
 ## Auto mode quyết định thế nào
@@ -90,10 +90,14 @@ Hai giai đoạn như Claude Code: giai đoạn 1 sàng lọc nhanh và nghiêng
 
 ### Jev: key, dữ liệu gửi đi, chi phí
 
-- **Key**: tạo ở [console.typesafe.ai](https://console.typesafe.ai), rồi chạy `pi-mcp-adapter key set systemone` trong terminal. Key được nhập ẩn và lưu vào keyring của hệ điều hành qua kho key của pi-mcp-adapter; cùng key đó dùng cho semantic search của MCP. Mở phiên Pi mới để dùng.
-  - `SYSTEMONE_API_KEY` ghi đè keyring; `TYPESAFE_API_KEY` chỉ dùng cho endpoint của TypeSafe. Máy không có kho credential (Linux headless, container) thì `key set` báo lỗi; khi đó đặt một trong hai biến này trước khi chạy `pi`. Lệnh agent chạy cũng thấy biến môi trường, nên luật Secret Exposure của bộ phân loại là lớp bảo vệ duy nhất cho key ở dạng này.
-  - `SYSTEMONE_ENDPOINT` đổi provider (OpenCode Zen, OpenRouter…); khi đó đặt `autoMode.jev.model` theo tên model của provider.
-  - Kiểm tra: `pi-mcp-adapter key status systemone`, `pi-doctor`, `/auto-mode`. Agent không đọc được key: luật deny `Bash(*pi-mcp-adapter.service-key*)` và bộ phân loại.
+- **Key**: tạo ở [console.typesafe.ai](https://console.typesafe.ai), đặt biến môi trường `TYPESAFE_API_KEY` trong profile của shell, rồi mở terminal mới trước khi chạy `pi`:
+  - macOS/Linux: thêm `export TYPESAFE_API_KEY="<key>"` vào `~/.zshrc` hoặc `~/.bashrc`. Windows: `setx TYPESAFE_API_KEY "<key>"`.
+  - Đây là cách duy nhất tài liệu TypeSafe và SDK chính thức mô tả, và là cách phổ biến nhất trong các package Jev (khảo sát 9/2026: 10/13 package trên npm đọc `TYPESAFE_API_KEY`, 8 package lấy `export` làm bước đầu; chỉ pi-mcp-adapter dùng keyring). Cùng biến này được pi-mcp-adapter (semantic search của MCP) và pi-advisor-flow (bộ lọc Jev, mặc định tắt) đọc.
+  - Đánh đổi: mọi lệnh agent chạy đều thấy biến môi trường, và key nằm dạng chữ trong file profile. Ở auto mode, lệnh in biến (`env`, `printenv`, `export -p`) phải qua bộ phân loại, và luật Secret Exposure chặn làm lộ key; ở bypass không có lớp nào chặn.
+  - Cách thay, an toàn hơn: `pi-mcp-adapter key set systemone` lưu key vào keyring của hệ điều hành (nhập ẩn), không đưa vào biến môi trường; luật deny `Bash(*pi-mcp-adapter.service-key*)` và bộ phân loại chặn agent đọc keyring. `key status systemone` kiểm tra, `key remove systemone` xoá. Máy không có kho credential (Linux headless, container) thì chỉ dùng được biến môi trường.
+  - Thứ tự đọc: `SYSTEMONE_API_KEY` → `TYPESAFE_API_KEY` (chỉ gửi tới endpoint của TypeSafe) → keyring.
+  - `SYSTEMONE_ENDPOINT` đổi provider (OpenCode Zen, OpenRouter…); khi đó dùng `SYSTEMONE_API_KEY` và đặt `autoMode.jev.model` theo tên model của provider.
+  - Kiểm tra: `pi-doctor` (in nguồn key, không in key), `/auto-mode`.
 - **Dữ liệu gửi cho TypeSafe**: giai đoạn 1 gửi môi trường và hành động; probe gửi nội dung kết quả tool. Secret dạng phổ biến được che trước khi gửi: token, API key, private key, mật khẩu trong URL, header `Authorization`, biến `*_TOKEN=`/`*_KEY=`.
   - Theo tài liệu của TypeSafe, họ không train trên dữ liệu khách hàng; việc lưu trữ theo Data Processing Agreement, và zero data retention chỉ có ở gói enterprise.
   - Không muốn gửi thì đặt `"jev": false`.

@@ -431,7 +431,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
     if (jevOff) return `off for this session (${jevOff})`;
     const access = jevResolved;
     if (!access) return "starting";
-    if (access.status === "missing") return "no API key — run `pi-mcp-adapter key set systemone`";
+    if (access.status === "missing") return "no API key — set TYPESAFE_API_KEY or run `pi-mcp-adapter key set systemone`";
     if (access.status === "unavailable") return `unavailable (${access.message})`;
     return `${config.jev.model} (key from ${access.source}${access.endpoint.href === JEV_DEFAULT_ENDPOINT ? "" : `, ${access.endpoint.origin}`})`;
   }
