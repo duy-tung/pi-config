@@ -23,8 +23,14 @@ export type RewindEntry =
     fromLeafId: string | null;
     /** Phiên bản ngay trước khi khôi phục; /redo dùng để hoàn tác. */
     previous: Record<string, FileVersion>;
+    /** Lần khôi phục này hoàn tác một lần Redo (mục "Undo redo"). */
+    undoes?: string;
   }
-  | { v: 1; kind: "redo"; rewindId: string; at: number };
+  | {
+    v: 1; kind: "redo"; rewindId: string; at: number;
+    /** Có id và previous (bản cài mới): "Undo redo" đưa code và hội thoại về ngay trước lần Redo. */
+    id?: string; previous?: Record<string, FileVersion>; fromLeafId?: string | null;
+  };
 
 export type RestoreMode = "both" | "conversation" | "code";
 
@@ -48,6 +54,21 @@ export interface RewindRecord {
   fromLeafId: string | null;
   previous: Map<string, FileVersion>;
   redone: boolean;
+  /** Thứ tự giữa các lần khôi phục (rewind, Redo) trong phiên. */
+  seq: number;
+}
+
+export interface RedoRecord {
+  id: string;
+  rewindId: string;
+  at: number;
+  mode: RestoreMode;
+  checkpointId: string;
+  /** Leaf và phiên bản file ngay trước lần Redo. */
+  fromLeafId: string | null;
+  previous: Map<string, FileVersion>;
+  undone: boolean;
+  seq: number;
 }
 
 export interface SessionEntryLike {
@@ -72,6 +93,8 @@ export class History {
   /** Phiên bản mới nhất đã biết của từng file được theo dõi (theo thời gian). */
   readonly known = new Map<string, FileVersion>();
   readonly rewinds: RewindRecord[] = [];
+  readonly redos: RedoRecord[] = [];
+  private seq = 0;
 
   static fromEntries(entries: SessionEntryLike[]): History {
     const history = new History();
@@ -105,15 +128,24 @@ export class History {
         if (entry.pre && !this.known.has(entry.file)) this.known.set(entry.file, entry.pre);
         break;
       }
-      case "rewind":
+      case "rewind": {
         this.rewinds.push({
           id: entry.id, at: entry.at, checkpointId: entry.checkpointId, mode: entry.mode, fromLeafId: entry.fromLeafId,
-          previous: new Map(Object.entries(entry.previous)), redone: false,
+          previous: new Map(Object.entries(entry.previous)), redone: false, seq: ++this.seq,
         });
+        const redo = entry.undoes ? this.redos.find((item) => item.id === entry.undoes) : undefined;
+        if (redo) redo.undone = true;
         break;
+      }
       case "redo": {
         const record = this.rewinds.find((item) => item.id === entry.rewindId);
         if (record) record.redone = true;
+        if (record && entry.id && entry.previous) {
+          this.redos.push({
+            id: entry.id, rewindId: record.id, at: entry.at, mode: record.mode, checkpointId: record.checkpointId,
+            fromLeafId: entry.fromLeafId ?? null, previous: new Map(Object.entries(entry.previous)), undone: false, seq: ++this.seq,
+          });
+        }
         break;
       }
     }
@@ -162,5 +194,13 @@ export class History {
       if (!this.rewinds[index].redone) return this.rewinds[index];
     }
     return undefined;
+  }
+
+  /** Lần Redo còn hoàn tác được: là lần khôi phục mới nhất trong phiên và chưa bị hoàn tác. */
+  lastRedo(): RedoRecord | undefined {
+    const redo = this.redos.at(-1);
+    if (!redo || redo.undone) return undefined;
+    const rewind = this.rewinds.at(-1);
+    return rewind && rewind.seq > redo.seq ? undefined : redo;
   }
 }

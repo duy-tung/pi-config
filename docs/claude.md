@@ -54,7 +54,7 @@ Installer giữ file người dùng đã sửa và in đường dẫn. Với fil
 - `agents/*.md` và `subagents.json`: model/thinking của role, `max_turns: 0`, `pi-usage` trong `extensions` của worker/debugger.
 - `web-search.json`: `searchRouting.providers` và `webSearch.allowedProviders` là `openai`, `anthropic`, `exa`, `firecrawl`; bỏ `provider: "firecrawl"`. Thiếu `anthropic` thì phiên Claude tìm bằng Exa.
 
-Cách nhanh nhất: đổi tên file được giữ rồi chạy lại installer để nhận bản mới, sau đó chép lại phần tùy chỉnh cần giữ. `pi-doctor` in model thật của từng role, và cảnh báo khi `settings.json` còn `native-web-search` hoặc `web-search.json` thiếu `anthropic`. `web_enable` là safe tool của pi-auto-mode nên không cần luật `allow`.
+Cách nhanh nhất: đổi tên file được giữ rồi chạy lại installer để nhận bản mới, sau đó chép lại phần tùy chỉnh cần giữ. `pi-doctor` in model thật của từng role, cảnh báo khi `settings.json` còn `native-web-search` hoặc `web-search.json` thiếu `anthropic`, và báo lỗi khi `searchRouting.providers` có provider không nằm trong `webSearch.allowedProviders` (pi-web-access khi đó không nạp web tools). `web_enable` là safe tool của pi-auto-mode nên không cần luật `allow`.
 
 ## Chi phí và giới hạn
 
