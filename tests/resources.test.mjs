@@ -100,12 +100,15 @@ test('managed JSON keeps a private default copy, merges edits and is idempotent'
   assert.match(path.basename(base),/^[a-f0-9]{24}\.json$/u);
   assert.equal(fs.readFileSync(base,'utf8'),version(['openai','exa']));
   if(process.platform!=='win32')for(const target of [file,base])assert.equal(fs.statSync(target).mode&0o777,0o600);
-  assert.deepEqual([first.written,first.hash],[true,sha256(fs.readFileSync(file))]);
+  assert.deepEqual([first.written,first.recorded],[true,sha256(fs.readFileSync(file))]);
   // Pi/người dùng đổi một giá trị; bản mới đổi giá trị khác: gộp, backup bản cũ, cập nhật base.
   writeJson(file,{searchRouting:{providers:['openai','exa']},fetch:false});
   const merged=reconcileConfigFile({root:f.root,file,content:version(['openai','anthropic','exa']),backup});
   assert.deepEqual(readJson(file),{searchRouting:{providers:['openai','anthropic','exa']},fetch:false});
   assert.equal(backups.length,1);assert.deepEqual(merged.conflicts,[]);
+  // Checksum ghi nhận là của mặc định mới: file còn phần người dùng sửa không khớp, vẫn là "đã sửa".
+  assert.equal(merged.recorded,sha256(version(['openai','anthropic','exa'])));
+  assert.notEqual(merged.recorded,sha256(fs.readFileSync(file)));
   assert.equal(fs.readFileSync(base,'utf8'),version(['openai','anthropic','exa']));
   // Người dùng đổi giá trị bản mới cũng đổi: giữ của người dùng, báo xung đột.
   writeJson(file,{searchRouting:{providers:['exa']},fetch:false});
@@ -118,6 +121,23 @@ test('managed JSON keeps a private default copy, merges edits and is idempotent'
   const again=reconcileConfigFile({root:f.root,file,content:version(['anthropic']),backup});
   assert.deepEqual([again.written,again.changes,again.conflicts,backups.length],[false,[],[],1]);
   assert.deepEqual([stamp(file),stamp(base)],snapshot);
+});
+test('a merged file that still has user edits stays "edited" when its default copy is lost or the installer stops managing it',t=>{
+  const f=fixture(t),file=path.join(f.agentDir,'web-search.json');
+  const version=providers=>JSON.stringify({searchRouting:{providers},fetch:true},null,2)+'\n';
+  f.state.files[file]=reconcileConfigFile({root:f.root,file,content:version(['openai'])}).recorded;
+  writeJson(file,{searchRouting:{providers:['openai']},fetch:false});
+  f.state.files[file]=reconcileConfigFile({root:f.root,file,content:version(['openai','exa']),recorded:f.state.files[file]}).recorded;
+  assert.deepEqual(readJson(file),{searchRouting:{providers:['openai','exa']},fetch:false});
+  // Mất base (xóa <root>/state/defaults): checksum ghi nhận không khớp file, nên gộp cộng dồn thay vì ghi đè bằng mặc định.
+  fs.rmSync(defaultsFile(f.root,file));
+  const again=reconcileConfigFile({root:f.root,file,content:version(['openai','exa']),recorded:f.state.files[file]});
+  assert.equal(again.additive,true);
+  assert.equal(readJson(file).fetch,false);
+  // Bản sau không còn quản lý file này: file có phần người dùng sửa được giữ, không bị lưu trữ.
+  const result=reconcileResources(f);
+  assert.deepEqual([result.archived,result.preserved],[[],[file]]);
+  assert.equal(readJson(file).fetch,false);
 });
 test('managed JSON that is invalid or was never written by the installer is kept untouched; symlinks are refused',t=>{
   const f=fixture(t),file=path.join(f.agentDir,'mcp.json');

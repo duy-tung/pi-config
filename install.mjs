@@ -66,7 +66,7 @@ function managedJson(file,content,mode=0o600){
   const result=reconcileConfigFile({root,file,content,mode,recorded:previous?.files[file],backup});
   if(result.preserved){preserved.push(result.preserved==='invalid'?`${file} (không đọc được JSON nên chưa gộp mặc định mới)`:file);return;}
   if(result.changes.length||result.conflicts.length)merged.push({file,...result});
-  if(state.files[file]!==result.hash){state.files[file]=result.hash;writeJson(statePath,state);}
+  if(state.files[file]!==result.recorded){state.files[file]=result.recorded;writeJson(statePath,state);}
 }
 function copyTree(from,to){
   for(const entry of fs.readdirSync(from,{withFileTypes:true})){

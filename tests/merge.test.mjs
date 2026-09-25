@@ -74,14 +74,18 @@ test('mảng tập hợp: thêm mục mặc định mới vào cuối, bỏ mụ
     && deepEqual(change.added, ['Path(~/.ssh)', 'Path(~/.ssh/**)']) && deepEqual(change.removed, ['Path(~/.ssh/*)'])));
 });
 
-test('luật deny đã thay thế bị bỏ, kể cả khi còn trong base, file người dùng hoặc bản cài chưa có base', () => {
+test('luật deny đã thay thế: bỏ khi do installer ghi (base có, hoặc chưa có base); người dùng tự thêm lại thì giữ', () => {
   const next = {permissions: {deny: ['Bash(sudo *)']}};
   const current = {permissions: {deny: ['Bash(rm -rf *)', 'Bash(sudo *)', 'Path(~/mine)']}};
-  for (const base of [{permissions: {deny: ['Bash(rm -rf *)', 'Bash(sudo *)']}}, {permissions: {deny: ['Bash(sudo *)']}}, undefined]) {
+  for (const base of [{permissions: {deny: ['Bash(rm -rf *)', 'Bash(sudo *)']}}, undefined]) {
     const result = merge(base, next, current);
     assert.deepEqual(result.value.permissions.deny, ['Bash(sudo *)', 'Path(~/mine)']);
     assert.ok(result.changes.some(change => change.type === 'items' && change.removed.includes('Bash(rm -rf *)')));
   }
+  // Base (mặc định lần trước) không có luật này: người dùng thêm lại sau lần cài đó, là tùy chỉnh của họ.
+  const kept = merge({permissions: {deny: ['Bash(sudo *)']}}, next, current);
+  assert.deepEqual(kept.value.permissions.deny, current.permissions.deny);
+  assert.deepEqual([kept.changes, kept.conflicts], [[], []]);
 });
 
 test('extensions: giữ loại trừ "-" và extension riêng; pi-auto-mode luôn nạp sau cùng', () => {
