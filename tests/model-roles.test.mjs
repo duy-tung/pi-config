@@ -5,8 +5,9 @@ import path from 'node:path';
 import test from 'node:test';
 import {fileURLToPath} from 'node:url';
 import {
-  ROLES, checkCatalog, driftedRoles, effectiveModelRoles, fillRoleNames, legacyOverrides, loadPresets, nativeValues, parseModelRef, presetErrors,
-  readModelRoles, resolveModelRoles, roleModel, setRoleModel, splitRole,
+  ROLES, adoptRoles, changedRoles, checkCatalog, driftedRoles, effectiveModelRoles, fillRoleNames, legacyOverrides, listCatalog, loadPresets,
+  nativeValues, parseModelRef, presetErrors, readModelRoles, resolveModelRoles, roleModel, setRoleModel, splitRole, withPreset, withRole,
+  withoutRoles, writeModelRoles,
 } from '../runtime/model-roles.mjs';
 
 const presets = loadPresets(fileURLToPath(new URL('../assets/configs/model-presets.json', import.meta.url)));
@@ -100,6 +101,10 @@ test('frontmatter của file role: đặt model/thinking, giữ phần còn lạ
   const bare = '---\nname: worker\ndescription: Viết code.\ntools: "read, bash"\n---\n\nPrompt của role.\n';
   assert.equal(setRoleModel(bare, {model: 'openai-codex/gpt-6-sol', thinking: 'max'}), text);
   assert.equal(setRoleModel(text.replaceAll('\n', '\r\n'), {model: 'openai-codex/gpt-6-sol', thinking: 'max'}), text);
+  // Dòng đã có (kể cả do người dùng dời chỗ) được sửa tại chỗ; dòng còn thiếu thêm ngay sau dòng kia.
+  const moved = '---\nname: worker\ntools: read\nmodel: openai-codex/gpt-6-sol\n---\nPrompt.\n';
+  assert.equal(setRoleModel(moved, {model: 'anthropic/claude-opus-5-5', thinking: 'high'}),
+    '---\nname: worker\ntools: read\nmodel: anthropic/claude-opus-5-5\nthinking: high\n---\nPrompt.\n');
   assert.deepEqual(roleModel(text), {model: 'openai-codex/gpt-6-sol', thinking: 'max'});
   assert.deepEqual(splitRole(text).fields, {name: 'worker', description: 'Viết code.', model: 'openai-codex/gpt-6-sol', thinking: 'max', tools: '"read, bash"'});
   for (const bad of ['Không có frontmatter', '---\nname: a\n  tiếp dòng\n---\n', '---\nname: a\nname: b\n---\n']) {
@@ -160,12 +165,13 @@ test('catalog của runtime: mọi preset hợp lệ, model sai tên là lỗi, 
   const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-model-catalog-'));
   t.after(() => fs.rmSync(agentDir, {recursive: true, force: true}));
   for (const name of Object.keys(presets)) {
-    assert.deepEqual(await checkCatalog({modules, agentDir, roles: resolveModelRoles(presets, {preset: name}).roles}), {errors: [], notes: []}, name);
+    assert.deepEqual(await checkCatalog({modules, agentDir, roles: resolveModelRoles(presets, {preset: name}).roles}), {errors: [], notes: [], loggedOut: []}, name);
   }
   const roles = resolveModelRoles(presets, {roles: {reviewer: {model: 'openai-codex/gpt-6-astr'}, researcher: {thinking: 'medium'}, auditor: {thinking: 'max'}}}).roles;
   assert.deepEqual(await checkCatalog({modules, agentDir, roles}), {
     errors: ['reviewer: không có model openai-codex/gpt-6-astr trong catalog của Pi; kiểm tên provider/id, hoặc khai báo model trong models.json'],
     notes: ['researcher: opencode-go/glm-5.3-flash không hỗ trợ thinking medium; Pi dùng high'],
+    loggedOut: [],
   });
   // Model tự khai báo trong models.json của agent dir là hợp lệ.
   fs.writeFileSync(path.join(agentDir, 'models.json'), JSON.stringify({providers: {local: {
@@ -174,4 +180,63 @@ test('catalog của runtime: mọi preset hợp lệ, model sai tên là lỗi, 
   const local = resolveModelRoles(presets, {roles: {worker: {model: 'local/coder', thinking: 'off'}}}).roles;
   assert.deepEqual((await checkCatalog({modules, agentDir, roles: local})).errors, []);
   assert.deepEqual(fs.readdirSync(agentDir), ['models.json']);
+});
+
+test('lệnh ghi của pi-models: chọn preset, ghi đè, bỏ ghi đè, không sửa object gốc; vai đổi giữa hai kết quả', t => {
+  const config = {roles: {worker: {thinking: 'max'}}, presets: {}};
+  assert.deepEqual(withPreset(config, 'claude'), {preset: 'claude', roles: {worker: {thinking: 'max'}}, presets: {}});
+  assert.deepEqual(withPreset({presets: {}, preset: 'default'}, 'claude'), {presets: {}, preset: 'claude'});
+  assert.deepEqual(withRole(config, 'worker', {model: 'anthropic/claude-opus-5-5'}).roles, {worker: {thinking: 'max', model: 'anthropic/claude-opus-5-5'}});
+  assert.deepEqual(withRole({preset: 'claude'}, 'main', {thinking: 'xhigh'}), {preset: 'claude', roles: {main: {thinking: 'xhigh'}}});
+  assert.deepEqual(withoutRoles(config, ['worker', 'main']).roles, {});
+  assert.deepEqual(withRole('hỏng', 'main', {thinking: 'low'}), {preset: 'default', roles: {main: {thinking: 'low'}}});
+  assert.deepEqual(config, {roles: {worker: {thinking: 'max'}}, presets: {}});
+  const before = resolveModelRoles(presets).roles;
+  assert.deepEqual(changedRoles(before, before), []);
+  assert.deepEqual(changedRoles(before, resolveModelRoles(presets, {roles: {worker: {thinking: 'high'}, main: {model: 'anthropic/claude-opus-5-5'}}}).roles), ['worker']);
+  const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-model-write-'));
+  t.after(() => fs.rmSync(agentDir, {recursive: true, force: true}));
+  const file = path.join(agentDir, 'model-roles.json');
+  writeModelRoles(file, {preset: 'claude', roles: {}});
+  assert.equal(fs.readFileSync(file, 'utf8'), '{\n  "preset": "claude",\n  "roles": {}\n}\n');
+  if (process.platform !== 'win32') assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  assert.deepEqual(fs.readdirSync(agentDir), ['model-roles.json']);
+});
+
+test('adopt: chỉ chép trường khác cấu hình, goal max/xhigh không tính là lệch, bỏ giá trị không hợp lệ', () => {
+  const roles = resolveModelRoles(presets, {roles: {auditor: {thinking: 'max'}}}).roles;
+  const effective = Object.fromEntries(ROLES.map(name => [name, {model: roles[name].model, thinking: roles[name].thinking, file: 'x'}]));
+  Object.assign(effective.main, {model: 'anthropic/claude-sonnet-5'});
+  Object.assign(effective.worker, {model: 'anthropic/claude-opus-5-5', thinking: 'high'});
+  Object.assign(effective.auditor, {thinking: 'xhigh'});
+  Object.assign(effective.reviewer, {model: 'opus', thinking: 'ultra'});
+  const result = adoptRoles({preset: 'default', roles: {worker: {thinking: 'low'}}}, roles, effective, ['main', 'worker', 'auditor', 'reviewer']);
+  assert.deepEqual(result.adopted, {main: {model: 'anthropic/claude-sonnet-5'}, worker: {model: 'anthropic/claude-opus-5-5', thinking: 'high'}});
+  assert.deepEqual(result.config, {preset: 'default', roles: {worker: {thinking: 'high', model: 'anthropic/claude-opus-5-5'}, main: {model: 'anthropic/claude-sonnet-5'}}});
+});
+
+test('catalog: provider chưa đăng nhập và danh sách model, không đọc giá trị credential, không ghi file', {skip: !root}, async t => {
+  const modules = path.join(root, 'runtimes', 'current', 'node_modules');
+  const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-model-login-'));
+  const saved = process.env.OPENCODE_API_KEY;
+  t.after(() => {
+    fs.rmSync(agentDir, {recursive: true, force: true});
+    if (saved === undefined) delete process.env.OPENCODE_API_KEY; else process.env.OPENCODE_API_KEY = saved;
+  });
+  // Credential giả: chỉ tên provider và loại được đọc; token hết hạn không được làm mới.
+  const auth = JSON.stringify({anthropic: {type: 'oauth', access: 'fixture-access', refresh: 'fixture-refresh', expires: 1}});
+  fs.writeFileSync(path.join(agentDir, 'auth.json'), auth);
+  process.env.OPENCODE_API_KEY = 'fixture-key';
+  const {roles} = resolveModelRoles(presets);
+  const result = await checkCatalog({modules, agentDir, roles, logins: true});
+  assert.deepEqual(result.loggedOut, [{provider: 'openai-codex', roles: ['worker', 'debugger', 'reviewer', 'advisor', 'auditor', 'oracle']}]);
+  delete process.env.OPENCODE_API_KEY;
+  assert.deepEqual((await checkCatalog({modules, agentDir, roles, logins: true})).loggedOut.map(entry => entry.provider), ['opencode-go', 'openai-codex']);
+  const providers = await listCatalog({modules, agentDir});
+  const anthropic = providers.find(entry => entry.id === 'anthropic');
+  assert.equal(anthropic.login, 'OAuth');
+  assert.deepEqual(anthropic.models.find(model => model.id === 'claude-opus-5-5').levels, ['low', 'medium', 'high', 'xhigh', 'max']);
+  assert.equal(providers.find(entry => entry.id === 'openai-codex').login, undefined);
+  assert.equal(fs.readFileSync(path.join(agentDir, 'auth.json'), 'utf8'), auth);
+  assert.deepEqual(fs.readdirSync(agentDir), ['auth.json']);
 });

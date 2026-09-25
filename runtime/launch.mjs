@@ -15,14 +15,8 @@ if(action==='doctor'){
     if(result.status!==0){process.exitCode=result.status??1;break;}
   }
 }else if(action==='models'){
-  if(args.length)throw new Error('pi-models chỉ xem cấu hình. Đổi model/thinking trong model-roles.json của agent dir rồi chạy lại installer.');
-  const {modelRolesReport}=await import('./model-roles.mjs');
-  for(const [name,p] of Object.entries(profiles)){
-    const report=await modelRolesReport({root,agentDir:p.agentDir,modules:path.join(root,'runtimes',p.runtime,'node_modules')});
-    console.log(`${name}: ${report.lines.join('\n') || 'không đọc được cấu hình model'}`);
-    for(const warning of report.warnings)console.warn(`cảnh báo: ${warning}`);
-    for(const error of report.errors){console.error(`lỗi: ${error}`);process.exitCode=1;}
-  }
+  const {runModels}=await import('./models.mjs');
+  process.exitCode=await runModels({root,profiles,args});
 }else{
   const name=action==='login'?'main':action;
   const profile=profiles[name];

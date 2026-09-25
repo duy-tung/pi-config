@@ -1,6 +1,6 @@
 # Model và thinking của từng vai
 
-Model và mức thinking của mọi vai đặt ở một chỗ: `<agent-dir>/model-roles.json`. Installer sinh các file cấu hình gốc từ file này. Không cần sửa file role `.md`.
+Model và mức thinking của mọi vai đặt ở một chỗ: `<agent-dir>/model-roles.json`. Đổi bằng lệnh `pi-models` hoặc sửa file này; `pi-models` và installer sinh các file cấu hình gốc từ đó. Không cần sửa file role `.md`.
 
 ## Vai
 
@@ -34,9 +34,29 @@ Preset có sẵn nằm ở `assets/configs/model-presets.json` và cập nhật 
 - **`default`:** cần đăng nhập Claude, Codex và OpenCode Go.
 - **`claude`:** chỉ cần Claude. Reviewer, advisor và Oracle dùng một model khác với model viết code.
 
+Chọn preset: `pi-models preset claude`, hoặc thêm `--models claude` vào lệnh cài (`curl … | bash -s -- --models claude`; Windows: thêm `--models claude` sau `& ([scriptblock]::Create(…))`).
+
+## pi-models
+
+| Lệnh | Việc |
+|---|---|
+| `pi-models` | Bảng model/thinking của mọi vai, vai lệch với `model-roles.json`, kiểm catalog, provider chưa đăng nhập |
+| `pi-models list [provider]` | Provider trong catalog của Pi: đã đăng nhập chưa, số model, vai đang dùng. Kèm tên provider thì in từng model và mức thinking model hỗ trợ |
+| `pi-models preset <tên>` | Chọn preset có sẵn hoặc preset riêng |
+| `pi-models set <vai> [provider/id] [thinking]` | Ghi đè model và/hoặc thinking của một vai, vd `pi-models set worker anthropic/claude-opus-5-5 high` |
+| `pi-models reset <vai>...` hoặc `--all` | Bỏ ghi đè; vai dùng lại giá trị của preset |
+| `pi-models adopt [vai...]` | Chép giá trị đang chạy của các vai lệch (đổi qua `/model`, `/agents`...) vào `model-roles.json` |
+| `pi-models apply [--reset]` | Áp `model-roles.json` vào file gốc sau khi bạn sửa tay file này; `--reset` ép cả vai đang lệch |
+
+- **Áp ngay.** Các lệnh ghi sửa `model-roles.json` rồi áp phần model vào `settings.json`, `advisor.json`, `pi-goal-x-settings.json`, `agents/*.md` và `AGENTS.md`, không cần chạy lại installer. Cách gộp giống installer: phần khác bạn đã sửa trong các file đó được giữ, file bị ghi lại có backup trong `<root>/backups`, và lần cài sau không phải ghi lại gì.
+- **Vai bị ép.** Vai mà lệnh đổi giá trị, và vai được nêu trong `set`/`reset`, nhận giá trị mới trong file gốc kể cả khi bạn đã đổi vai đó qua `/model` hay `/agents`; lệnh in giá trị bị thay. Vai khác giữ giá trị bạn đã đổi.
+- **Kiểm tra.** Kiểm như installer (xem [Kiểm tra](#kiểm-tra)); có lỗi thì không ghi gì.
+- **Xem trước.** Thêm `--dry-run` để in thay đổi mà không ghi file.
+- **Khóa.** `pi-models` và installer dùng chung khóa `<root>/.install.lock`, nên không ghi cùng lúc.
+
 ## model-roles.json
 
-Installer tạo file này ở lần cài đầu với `{"preset": "default", "roles": {}}`. Từ đó file thuộc về bạn: installer không ghi đè và không lưu trữ nó. Chỉ ghi những gì khác preset:
+Installer tạo file này ở lần cài đầu với `{"preset": "default", "roles": {}}` (hoặc preset của `--models`). Từ đó file thuộc về bạn: installer không lưu trữ nó và chỉ ghi `preset` khi bạn cài với `--models`. Chỉ ghi những gì khác preset:
 
 ```json
 {
@@ -55,17 +75,19 @@ Installer tạo file này ở lần cài đầu với `{"preset": "default", "ro
 - **`roles.<vai>`:** `model` dạng `provider/id` (xem `/model` hoặc `pi --list-models`), `thinking` là một trong `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Có thể đặt riêng từng trường.
 - **`presets.<tên>`:** chỉ đặt những vai khác với preset nó kế thừa (`extends`, mặc định `default`). `extends` phải là preset có sẵn, và tên preset riêng không được trùng tên preset có sẵn.
 
-Đổi file rồi chạy lại installer (lệnh cài đặt một dòng, hoặc `node install.mjs` với cùng tham số). Vai của pi-subagents đọc lại file role ở mỗi lần gọi `Agent`. Phiên chính, advisor, goal và auto mode nhận model mới ở phiên sau. `pi-models` chỉ xem, không ghi.
+Sửa tay file này xong thì chạy `pi-models apply` (hoặc chạy lại installer). Vai của pi-subagents đọc lại file role ở mỗi lần gọi `Agent`. Phiên chính, advisor, goal và auto mode nhận model mới ở phiên Pi mở sau.
 
 ## Kiểm tra
 
-Installer dừng trước khi ghi cấu hình khi:
-- `model-roles.json` không phải JSON, có khóa, vai hay mức thinking không hỗ trợ, hoặc chọn preset không tồn tại. Installer báo từng lỗi.
+Installer và các lệnh ghi của `pi-models` dừng trước khi ghi cấu hình khi:
+- `model-roles.json` không phải JSON, có khóa, vai hay mức thinking không hỗ trợ, hoặc chọn preset không tồn tại. Từng lỗi được báo riêng.
 - Model không có trong catalog của Pi. Catalog gồm model có sẵn, model khai báo trong `models.json` và catalog Pi đã tải về. Sai tên model rất tốn kém, vì pi-subagents sẽ lặng lẽ chạy vai đó bằng model của parent.
 
-Mức thinking mà model không hỗ trợ không làm dừng installer. Installer chỉ báo mức Pi sẽ dùng; ví dụ GLM không có `medium`, nên dùng `high`. pi-goal-x chỉ nhận tới `xhigh`, nên `max` của `auditor` và `oracle` được ghi thành `xhigh`.
+Mức thinking mà model không hỗ trợ không làm dừng việc ghi; chỉ có báo mức Pi sẽ dùng; ví dụ GLM không có `medium`, nên dùng `high`. pi-goal-x chỉ nhận tới `xhigh`, nên `max` của `auditor` và `oracle` được ghi thành `xhigh`.
 
 `pi-models` và `pi-doctor` in bảng model của mọi vai và kiểm catalog, bằng cách đọc file và không gọi mạng. Model sai tên là lỗi, kể cả model nằm trong file gốc.
+
+`pi-models` còn cảnh báo provider của vai chưa đăng nhập (chạy `pi-login` rồi `/login`). Nó chỉ đọc tên provider và loại credential trong `auth.json`, không đọc giá trị; key từ biến môi trường được kiểm theo cách của Pi, không chạy lệnh `!…` của key đã lưu và không làm mới token.
 
 ## Giá trị đổi ngoài model-roles.json
 
@@ -75,9 +97,9 @@ Các giao diện sẵn có vẫn đổi được model:
 - **`/agents`:** sửa file role.
 - Sửa tay các file gốc.
 
-Khi cài lại, giá trị đổi theo cách này được giữ, vì file gốc được gộp ba chiều. Nếu bạn cũng đổi chính vai đó trong `model-roles.json`, installer giữ giá trị trong file gốc và báo xung đột.
+Khi cài lại, giá trị đổi theo cách này được giữ, vì file gốc được gộp ba chiều. Nếu bạn sửa tay chính vai đó trong `model-roles.json` rồi cài lại hoặc chạy `pi-models apply`, giá trị trong file gốc vẫn được giữ và có báo xung đột. `pi-models preset/set/reset` và `--models` thì ép các vai chúng đổi.
 
-`pi-models` và `pi-doctor` hiện những vai lệch, ví dụ `worker: … theo agents/worker.md; model-roles.json: …`. Muốn giữ giá trị đó thì ghi vào `roles.<vai>`; không thì đổi lại trong file gốc.
+`pi-models` và `pi-doctor` hiện những vai lệch, ví dụ `worker: … theo agents/worker.md; model-roles.json: …`. Muốn giữ giá trị đó: `pi-models adopt <vai>`. Muốn dùng lại `model-roles.json`: `pi-models apply --reset`.
 
 ## File role
 
@@ -94,3 +116,5 @@ Installer gộp file `agents/*.md` theo từng khóa của frontmatter. Phần p
 - Role của project (`.pi/agents/*.md`) và `.pi/settings.json` của project không theo `model-roles.json`.
 - Model Jev của bước 1 auto mode (`autoMode.jev.model`) và model tìm kiếm của pi-web-access không thuộc `model-roles.json`.
 - `pi-test` kiểm cơ chế của bản cài với các model của preset `default`, vì provider giả chỉ có các model này. Model bạn chọn được `pi-doctor` kiểm trong catalog.
+- `pi-models` dựng cấu hình mới từ mặc định installer lưu ở lần cài trước (`<root>/state/defaults`). Thiếu bản lưu này thì lệnh ghi báo lỗi; chạy lại installer một lần.
+- `AGENTS.md` bạn đã sửa được giữ nguyên, nên tên model trong đó có thể cũ.
