@@ -44,10 +44,21 @@ export function sameVersion(a: FileVersion | undefined, b: FileVersion | undefin
 
 export const sha256 = (data: Buffer | string): string => createHash("sha256").update(data).digest("hex");
 
+/** Blob được tham chiếu trong khoảng này không bị xóa để giữ tổng dung lượng. */
+const RECENT_MS = 24 * 3600 * 1000;
+
+export interface StorageLimit {
+  /** Tổng dung lượng blob tối đa; vượt thì xóa blob tham chiếu lâu nhất tới khi còn ≤ 90%. */
+  maxBytes: number;
+  /** SHA không được xóa (nhật ký phục hồi còn cần). */
+  keep: ReadonlySet<string>;
+}
+
 /**
  * Kho nội dung theo địa chỉ SHA-256, dùng chung giữa các phiên.
  * Ghi bằng file tạm + rename nên hai phiên Pi cùng ghi một blob vẫn an toàn.
- * mtime của blob là lần tham chiếu gần nhất; gc xóa blob quá hạn lưu giữ.
+ * mtime của blob là lần tham chiếu gần nhất; gc xóa blob quá hạn lưu giữ, rồi blob lâu
+ * không dùng nhất nếu kho vượt giới hạn dung lượng.
  */
 export class BlobStore {
   readonly dir: string;
@@ -68,10 +79,8 @@ export class BlobStore {
   put(data: Buffer): string {
     const sha = sha256(data);
     const target = this.blobPath(sha);
-    if (fs.existsSync(target)) {
-      this.touch(sha);
-      return sha;
-    }
+    // Blob có sẵn: chỉ đánh dấu vừa tham chiếu. gc của process khác vừa xóa nó thì ghi lại.
+    if (this.touch(sha)) return sha;
     fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
     const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;
     fs.writeFileSync(temporary, data, { mode: 0o600 });
@@ -85,19 +94,30 @@ export class BlobStore {
     return data;
   }
 
-  touch(sha: string): void {
+  /** Đánh dấu blob vừa được tham chiếu. false: blob không còn (gc vừa xóa). */
+  touch(sha: string): boolean {
     const now = new Date();
     try {
       fs.utimesSync(this.blobPath(sha), now, now);
-    } catch {
-      /* blob đã bị gc; lần ghi sau sẽ tạo lại */
+      return true;
+    } catch (error) {
+      // Không đổi được thời gian (vd. blob của người dùng khác) nhưng blob vẫn còn.
+      const code = (error as NodeJS.ErrnoException).code;
+      return code !== "ENOENT" && code !== "ENOTDIR";
     }
   }
 
-  /** Xóa blob không được tham chiếu trong maxAgeMs. Trả về số blob đã xóa. */
-  gc(maxAgeMs: number, now = Date.now()): number {
+  /**
+   * Xóa blob không được tham chiếu trong maxAgeMs. Có limit: sau đó, nếu tổng dung lượng vượt
+   * limit.maxBytes, xóa blob tham chiếu lâu nhất tới khi còn ≤ 90%. Không xóa blob trong limit.keep;
+   * lượt theo dung lượng không xóa blob được tham chiếu trong 24 giờ qua, nên giới hạn là best-effort.
+   * Trả về số blob đã xóa.
+   */
+  gc(maxAgeMs: number, now = Date.now(), limit?: StorageLimit): number {
     const root = path.join(this.dir, "blobs");
     let removed = 0;
+    let total = 0;
+    const candidates: { file: string; size: number; mtimeMs: number }[] = [];
     let shards: string[];
     try {
       shards = fs.readdirSync(root);
@@ -116,14 +136,33 @@ export class BlobStore {
         const file = path.join(dir, name);
         try {
           const stat = fs.statSync(file);
+          const kept = !!limit?.keep.has(`${shard}${name}`);
           // File tạm bị bỏ dở cũng dọn theo cùng hạn.
-          if (now - stat.mtimeMs > maxAgeMs) {
+          if (!kept && now - stat.mtimeMs > maxAgeMs) {
             fs.unlinkSync(file);
             removed++;
+            continue;
           }
+          total += stat.size;
+          if (!kept) candidates.push({ file, size: stat.size, mtimeMs: stat.mtimeMs });
         } catch {
           /* phiên khác vừa xóa */
         }
+      }
+    }
+    if (!limit || total <= limit.maxBytes) return removed;
+    const goal = limit.maxBytes * 0.9;
+    candidates.sort((a, b) => a.mtimeMs - b.mtimeMs);
+    for (const blob of candidates) {
+      if (total <= goal || now - blob.mtimeMs <= RECENT_MS) break;
+      try {
+        // Được tham chiếu lại sau lần stat ở trên (capture của phiên khác): giữ.
+        if (fs.statSync(blob.file).mtimeMs !== blob.mtimeMs) continue;
+        fs.unlinkSync(blob.file);
+        total -= blob.size;
+        removed++;
+      } catch {
+        /* phiên khác vừa xóa */
       }
     }
     return removed;
@@ -180,10 +219,9 @@ export class Capturer {
     };
     const cached = this.cache.get(file);
     // File vừa sửa trong cùng khoảng phân giải mtime có thể có stat giống hệt
-    // bản trước ("racy git"); chỉ tin cache khi file đã yên hơn 2 giây.
+    // bản trước ("racy git"); chỉ tin cache khi file đã yên hơn 2 giây và blob còn trong kho.
     const settled = Date.now() - stat.mtimeMs > 2000;
-    if (settled && cached && sameStat(cached.key, key) && cached.version.kind === "file" && this.store.has(cached.version.sha)) {
-      this.store.touch(cached.version.sha);
+    if (settled && cached && sameStat(cached.key, key) && cached.version.kind === "file" && this.store.touch(cached.version.sha)) {
       return cached.version;
     }
     let data: Buffer;
@@ -209,6 +247,17 @@ export class Capturer {
 
   forget(file: string): void {
     this.cache.delete(file);
+  }
+
+  /** Số byte capture sẽ đọc và lưu vào kho cho đường dẫn; 0 khi không lưu (bí mật, không phải file thường, quá lớn). */
+  storedSize(file: string): number {
+    if (isSensitive(file)) return 0;
+    try {
+      const stat = fs.statSync(file);
+      return stat.isFile() && stat.size <= this.options.maxBytes ? stat.size : 0;
+    } catch {
+      return 0;
+    }
   }
 }
 

@@ -150,6 +150,8 @@ const errors = [], prompts = [], notices = [], results = [];
 const statuses = new Map();
 // Câu trả lời định sẵn cho dialog Rewind (RPC dùng select); dialog khác dùng mặc định.
 const rewindAnswers = [];
+// Chạy một lần khi màn hình xác nhận của Rewind mở (vd. người dùng sửa file trong lúc hộp thoại mở).
+let onRewindConfirm;
 let imageDraft = "";
 const loader = new sdk.DefaultResourceLoader({ cwd, agentDir });
 await loader.reload();
@@ -167,6 +169,11 @@ const ui = {
   select: async (title, options) => {
     prompts.push({ kind: "select", title });
     if (/^Rewind|^Confirm you want/u.test(title)) {
+      if (onRewindConfirm && /^Confirm you want to restore/u.test(title)) {
+        const hook = onRewindConfirm;
+        onRewindConfirm = undefined;
+        hook();
+      }
       const wanted = rewindAnswers.shift();
       return options.find((option) => option === wanted || new RegExp(`CASE:${wanted}(?:\\s|$)`, "u").test(option));
     }
@@ -504,6 +511,24 @@ await check("rewind: Redo keeps the work done after the rewind; Undo redo in the
   await session.prompt("/redo");
   assert.equal(fs.readFileSync(file, "utf8"), "C2\n");
   assert.equal(fs.readdirSync(path.join(fixture, "rewind", "journal")).length, 0);
+});
+await check("rewind: a file changed while the confirmation is open stops the restore; nothing is written", async () => {
+  const file = path.join(cwd, "preview-d.txt");
+  const rewinds = () => sessionManager.getEntries().filter((entry) => entry.customType === "pi-rewind" && entry.data?.kind === "rewind").length;
+  await run("preview-one", [[tool("write", { path: "preview-d.txt", content: "D1\n" })]]);
+  await run("preview-two", [[tool("edit", { path: "preview-d.txt", edits: [{ oldText: "D1", newText: "D2" }] })]]);
+  const recorded = rewinds(), from = notices.length;
+  onRewindConfirm = () => fs.writeFileSync(file, "D2 edited by the user\n");
+  rewindAnswers.push("preview-two", "Restore code");
+  await session.prompt("/rewind");
+  assert.deepEqual(rewindAnswers, []);
+  assert.equal(onRewindConfirm, undefined, "Rewind phải hỏi xác nhận trước khi khôi phục");
+  assert.equal(fs.readFileSync(file, "utf8"), "D2 edited by the user\n");
+  assert.ok(notices.slice(from).some((notice) => notice.type === "error"
+    && notice.message === "The code changed since the preview (preview-d.txt). Nothing was restored; open /rewind again."), JSON.stringify(notices.slice(from)));
+  assert.equal(rewinds(), recorded, "Không ghi lần rewind nào khi không khôi phục");
+  assert.equal(fs.readdirSync(path.join(fixture, "rewind", "journal")).length, 0);
+  assert.equal(fs.existsSync(path.join(fixture, "rewind", "lock")), false, "Khóa kho phải được trả");
 });
 await check("rewind: edits wait while the rewind store cannot save a restore point", async () => {
   const file = path.join(cwd, "redo-c.txt");
