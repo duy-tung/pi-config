@@ -54,6 +54,12 @@ if (!jevOnly) {
   };
   const stage1 = resolve(modelSpec);
   const stage2 = resolve(stage2Spec);
+  // Ngoài Pi không có pi-anthropic-auth: request OAuth tới Claude thiếu billing header của Claude Code và có thể bị
+  // tính là app bên thứ ba (extra usage). Model Claude thì chạy `/auto-mode eval <model>` trong Pi.
+  if ([stage1, stage2].some((model) => model.provider === "anthropic") && !args.includes("--unshaped-anthropic")) {
+    console.error("Model Claude: chạy `/auto-mode eval <provider/model>` trong Pi (request đi qua pi-anthropic-auth). Thêm --unshaped-anthropic để vẫn chạy ở đây.");
+    process.exit(1);
+  }
   const cacheKey = `pi-auto-mode-eval:${Date.now()}`;
   complete = async (request, options) => {
     const model = options.stage === 2 ? stage2 : stage1;

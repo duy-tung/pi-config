@@ -24,8 +24,8 @@ Chi tiết kiến trúc CPU, công cụ hệ thống và tùy chọn đường d
 
 ## Đăng nhập dịch vụ
 
-1. Chạy `pi-login`, dùng `/login` và chọn **Anthropic** cho parent Claude Opus 5.5 (gói Pro/Max), hoặc đặt `ANTHROPIC_API_KEY`. Xem [docs/claude.md](docs/claude.md).
-2. Trong `/login`, chọn **OpenAI Codex** cho worker/debugger (GPT-6 Sol), reviewer (GPT-6 Astra) và bộ phân loại của auto mode.
+1. Chạy `pi-login`, dùng `/login` và chọn **Anthropic** cho parent Claude Opus 5.5 (gói Pro/Max) và bộ phân loại của auto mode (Claude Sonnet 5), hoặc đặt `ANTHROPIC_API_KEY`. Xem [docs/claude.md](docs/claude.md).
+2. Trong `/login`, chọn **OpenAI Codex** cho worker/debugger (GPT-6 Sol) và reviewer (GPT-6 Astra).
 3. Trong `/login`, chọn **OpenCode Go** và nhập API key cho GLM. Pi cũng nhận biến môi trường `OPENCODE_API_KEY`.
 4. Chạy `firecrawl login --browser` để đăng nhập dịch vụ web.
 5. Tuỳ chọn: tạo API key TypeSafe tại [console.typesafe.ai](https://console.typesafe.ai), thêm `export TYPESAFE_API_KEY="<key>"` vào `~/.zshrc` hoặc `~/.bashrc` (Windows: `setx TYPESAFE_API_KEY "<key>"`) rồi mở terminal mới, để auto mode sàng lọc bằng Jev. Đây là cách tài liệu TypeSafe và đa số package Jev hướng dẫn; muốn giữ key trong keyring của hệ điều hành thay vì biến môi trường thì chạy `pi-mcp-adapter key set systemone`. Chưa có key thì bộ phân loại LLM làm cả hai giai đoạn như trước.
@@ -64,7 +64,7 @@ Rewind (`pi-rewind`, extension của repo) theo giao diện `/rewind` của Clau
 
 Permission (`pi-auto-mode`, extension của repo) có hai mode như Claude Code. **Auto** là mặc định: thao tác đọc, lệnh chỉ đọc và sửa file trong project chạy ngay; lệnh khác qua bộ phân loại hai giai đoạn.
 - Giai đoạn 1 là **Jev**, model System One của TypeSafe, khi có key. Jev không sinh chữ: mỗi lệnh là một request (khoảng 120 ms) trả xác suất cho 17 loại rủi ro và một thang mức hại, code so với ngưỡng. Lệnh thường chạy luôn, không gọi LLM. Khi hiệu chỉnh với Jev thật, cả 168 lệnh rủi ro đều bị gắn cờ; khoảng 1/10 lệnh thường phải gọi LLM.
-- Giai đoạn 2 là `gpt-6-sol` có suy luận, chỉ xét lệnh bị gắn cờ và chỉ thấy tin nhắn của người dùng cùng lệnh của agent.
+- Giai đoạn 2 là Claude Sonnet 5 có suy luận (model Claude Code dùng cho bộ phân loại của nó), chỉ xét lệnh bị gắn cờ và chỉ thấy tin nhắn của người dùng cùng lệnh của agent. Không có key Jev thì Sonnet 5 làm cả hai giai đoạn.
 - Jev cũng quét kết quả web, MCP và subagent để tìm prompt injection và cảnh báo agent.
 - Lệnh bị chặn trả lý do cho agent để đi đường an toàn hơn; 3 lần chặn liên tiếp hoặc 20 lần trong phiên thì hỏi người dùng.
 
