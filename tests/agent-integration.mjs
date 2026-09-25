@@ -309,12 +309,16 @@ await check('/advisor-off lasts into the next session; alwaysOn brings the advis
 });
 
 await check('@worker mention in model mode: a conversation copy writes the task, the worker runs in the background and reports back',async()=>{
-  // Chế độ model cho project này: /agents → Settings lưu vào .pi/subagents.json, đè bản global ("direct").
-  const projectSettings=path.join(cwd,'.pi','subagents.json');
-  fs.mkdirSync(path.dirname(projectSettings),{recursive:true});
-  writeJson(projectSettings,{agentMentions:'model'});
-  const loader=new sdk.DefaultResourceLoader({cwd,agentDir});await loader.reload();
-  const {session:mentionSession}=await sdk.createAgentSession({cwd,agentDir,resourceLoader:loader,modelRuntime:runtime,sessionManager:sdk.SessionManager.inMemory(cwd)});
+  // pi-subagents đọc subagents.json khi nạp extension (global, rồi .pi/ của thư mục chạy Pi). Phiên này nạp với
+  // agentMentions "model"; file của bản cài ("direct") được trả lại ngay sau đó.
+  const subagentsFile=path.join(agentDir,'subagents.json');
+  const installedSubagents=fs.readFileSync(subagentsFile,'utf8');
+  let mentionSession;
+  try{
+    writeJson(subagentsFile,{...JSON.parse(installedSubagents),agentMentions:'model'});
+    const loader=new sdk.DefaultResourceLoader({cwd,agentDir});await loader.reload();
+    ({session:mentionSession}=await sdk.createAgentSession({cwd,agentDir,resourceLoader:loader,modelRuntime:runtime,sessionManager:sdk.SessionManager.inMemory(cwd)}));
+  }finally{fs.writeFileSync(subagentsFile,installedSubagents);}
   try{
     await mentionSession.bindExtensions({uiContext:ui,mode:'rpc',onError:error=>errors.push(error)});
     await mentionSession.setModel(runtime.getModel('config-test','parent'));
@@ -345,7 +349,6 @@ await check('@worker mention in model mode: a conversation copy writes the task,
     while(mentionSession.isStreaming||mentionSession.pendingMessageCount>0){assert.ok(Date.now()<deadline);await delay(50);}
   }finally{
     await mentionSession.extensionRunner.emit({type:'session_shutdown',reason:'quit'});mentionSession.dispose();
-    fs.rmSync(projectSettings,{force:true});
   }
 });
 
