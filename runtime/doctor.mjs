@@ -48,9 +48,12 @@ for(const [name,p] of Object.entries(profiles)){
     warnings.push(`${name}: settings.json còn extension native-web-search đã bỏ; xoá dòng này`);
   const webSearch=path.join(p.agentDir,'web-search.json');
   if(p.packages.includes('pi-web-access')&&fs.existsSync(webSearch)){
-    const providers=read(webSearch).searchRouting?.providers;
+    const config=read(webSearch),providers=config.searchRouting?.providers,allowed=config.webSearch?.allowedProviders;
     if(Array.isArray(providers)&&!providers.includes('anthropic'))
       warnings.push(`${name}: web-search.json thiếu "anthropic" trong searchRouting.providers và webSearch.allowedProviders; phiên Claude sẽ tìm bằng provider kế tiếp`);
+    // pi-web-access không nạp (mất mọi web tool) khi searchRouting.providers có provider ngoài webSearch.allowedProviders.
+    const outside=Array.isArray(providers)&&Array.isArray(allowed)?providers.filter(item=>!allowed.includes(item)):[];
+    if(outside.length)errors.push(`${name}: web-search.json: ${outside.join(', ')} có trong searchRouting.providers nhưng không có trong webSearch.allowedProviders; pi-web-access sẽ không nạp web tools. Thêm vào cả hai danh sách hoặc bỏ khỏi cả hai`);
   }
   if(p.packages.includes('@tintinweb/pi-subagents')){
     // Model/thinking thật của từng role; role ngoài enabledModels vẫn chạy nhưng pi-subagents sẽ cảnh báo.

@@ -12,5 +12,14 @@
     "autoFix": {
       "enabled": false
     }
+  },
+  "lsp": {
+    "serverOverrides": {
+      "typescript": {
+        "initializationOptions": {
+          "disableAutomaticTypingAcquisition": true
+        }
+      }
+    }
   }
 }

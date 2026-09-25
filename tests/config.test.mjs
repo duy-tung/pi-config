@@ -195,7 +195,10 @@ for (const platform of ["darwin", "linux", "win32"]) {
       if (profile.packages.includes("@tintinweb/pi-subagents")) assert.equal(json(p.join(profile.agentDir, "subagents.json")).fallbackSubagent, "none");
       else assert.ok(!files.some(file => file.path === p.join(profile.agentDir,"subagents.json")));
     }
-    assert.equal(json(p.join(options.root, "config", "pi-lens.json")).format.enabled, false);
+    const lens = json(p.join(options.root, "config", "pi-lens.json"));
+    assert.equal(lens.format.enabled, false);
+    // tsserver không tự npm install @types vào cache của máy khi mở file JS/TS.
+    assert.equal(lens.lsp.serverOverrides.typescript.initializationOptions.disableAutomaticTypingAcquisition, true);
     assert.ok(files.every(({ path: file }) => file !== p.join(options.home, ".pi-lens", "config.json")));
   });
 }
