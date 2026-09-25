@@ -1,8 +1,6 @@
 ---
 name: reviewer
 description: Review độc lập; chỉ đọc, nêu lỗi có bằng chứng và mức nghiêm trọng.
-model: openai-codex/gpt-6-astra
-thinking: high
 tools: "read, grep, find, ls"
 extensions: ["pi-anthropic-auth", "pi-auto-mode", "pi-usage"]
 inherit_context: false

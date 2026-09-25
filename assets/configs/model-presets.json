@@ -1,0 +1,30 @@
+{
+  "default": {
+    "description": "Parent Claude Opus; researcher GLM qua OpenCode Go; worker/debugger GPT-6 Sol; reviewer, advisor, goal auditor và Oracle GPT-6 Astra; auto mode Sonnet 5. Cần đăng nhập Claude, Codex và OpenCode Go.",
+    "roles": {
+      "main": { "model": "anthropic/claude-opus-5-5", "thinking": "high" },
+      "researcher": { "model": "opencode-go/glm-5.3-flash", "thinking": "max" },
+      "worker": { "model": "openai-codex/gpt-6-sol", "thinking": "max" },
+      "debugger": { "model": "openai-codex/gpt-6-sol", "thinking": "max" },
+      "reviewer": { "model": "openai-codex/gpt-6-astra", "thinking": "high" },
+      "advisor": { "model": "openai-codex/gpt-6-astra", "thinking": "high" },
+      "auditor": { "model": "openai-codex/gpt-6-astra", "thinking": "high" },
+      "oracle": { "model": "openai-codex/gpt-6-astra", "thinking": "high" },
+      "autoMode": { "model": "anthropic/claude-sonnet-5", "thinking": "low" }
+    }
+  },
+  "claude": {
+    "description": "Chỉ cần đăng nhập Claude: parent, worker, debugger Opus 5.5; reviewer, advisor, Oracle Fable 5.1 (khác model với người viết code); researcher, goal auditor, auto mode Sonnet 5.",
+    "roles": {
+      "main": { "model": "anthropic/claude-opus-5-5", "thinking": "high" },
+      "researcher": { "model": "anthropic/claude-sonnet-5", "thinking": "high" },
+      "worker": { "model": "anthropic/claude-opus-5-5", "thinking": "high" },
+      "debugger": { "model": "anthropic/claude-opus-5-5", "thinking": "high" },
+      "reviewer": { "model": "anthropic/claude-fable-5-1", "thinking": "high" },
+      "advisor": { "model": "anthropic/claude-fable-5-1", "thinking": "high" },
+      "auditor": { "model": "anthropic/claude-sonnet-5", "thinking": "high" },
+      "oracle": { "model": "anthropic/claude-fable-5-1", "thinking": "high" },
+      "autoMode": { "model": "anthropic/claude-sonnet-5", "thinking": "low" }
+    }
+  }
+}

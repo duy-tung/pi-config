@@ -32,10 +32,21 @@ for (const dir of [agentDir, cwd]) fs.mkdirSync(dir, { recursive: true });
 for (const name of ["settings.json", "keybindings.json", "models.json", "advisor.json", "subagents.json", "mcp.json", "open-tui.json", "pi-goal-x-settings.json", "pi-usage.json"]) {
   if (fs.existsSync(path.join(configuration.agentDir, name))) fs.copyFileSync(path.join(configuration.agentDir, name), path.join(agentDir, name));
 }
+// Kiểm cơ chế của bản cài với model của preset default (provider giả chỉ có các model này), dù model-roles.json
+// chọn preset khác; model/thinking bạn chọn được pi-doctor kiểm trong catalog của Pi.
+const modelRoles = await import(pathToFileURL(path.join(installRoot, "bin", "model-roles.mjs")).href);
+const defaults = modelRoles.nativeValues(modelRoles.resolveModelRoles(
+  modelRoles.loadPresets(path.join(installRoot, "assets", "configs", "model-presets.json"))).roles);
+const modelId = (ref) => modelRoles.parseModelRef(ref).id;
 fs.mkdirSync(path.join(agentDir, "agents"));
-for (const name of ["researcher", "worker", "debugger", "reviewer"]) {
+for (const name of modelRoles.SUBAGENT_ROLES) {
   const role = fs.readFileSync(path.join(configuration.agentDir, "agents", `${name}.md`), "utf8");
-  fs.writeFileSync(path.join(agentDir, "agents", `${name}.md`), role);
+  fs.writeFileSync(path.join(agentDir, "agents", `${name}.md`), modelRoles.setRoleModel(role, defaults.subagents[name]));
+}
+const goalFile = path.join(agentDir, "pi-goal-x-settings.json");
+if (fs.existsSync(goalFile)) {
+  const { thinking_level: _alias, ...goal } = readJson(goalFile);
+  writeJson(goalFile, { ...goal, ...defaults.goal, oracle: { ...goal.oracle, ...defaults.goal.oracle } });
 }
 const settings = readJson(path.join(agentDir, "settings.json"));
 // Jev của bản cài (settings.json người dùng đã sửa có thể không có mục này: dùng mặc định của extension). Phiên chính
@@ -45,7 +56,8 @@ const jevModel = installedJev.model ?? "jev-1.13.0";
 settings.autoMode = { ...settings.autoMode, model: "config-test/parent", stateDir: path.join(fixture, "auto-mode"), jev: false };
 Object.assign(settings, {
   defaultProvider: "config-test", defaultModel: "parent", defaultThinkingLevel: "off",
-  enabledModels: ["config-test/parent", "openai-codex/gpt-6-sol", "openai-codex/gpt-6-astra", "opencode-go/glm-5.3-flash"],
+  // Model của phiên chính (đứng đầu danh sách) thay bằng model giả của parent.
+  enabledModels: ["config-test/parent", ...defaults.settings.enabledModels.slice(1)], modelThinkingLevels: defaults.settings.modelThinkingLevels,
   // Cổng permission của bản cài nạp sau provider giả.
   extensions: [fileURLToPath(new URL("./agent-provider.ts", import.meta.url)),
     ...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && entry.replaceAll("\\", "/").endsWith("/pi-auto-mode"))],
@@ -55,7 +67,7 @@ if (settings.rewind) settings.rewind.storageDir = path.join(fixture, "rewind");
 writeJson(path.join(agentDir, "settings.json"), settings);
 // Advisor luôn bật của bản cài, executor là model giả của parent thay cho Opus (fixture không có auth Claude).
 const advisorFile = path.join(agentDir, "advisor.json");
-writeJson(advisorFile, { ...readJson(advisorFile), executor: "config-test/parent" });
+writeJson(advisorFile, { ...readJson(advisorFile), executor: "config-test/parent", advisor: defaults.advisor.advisor, advisorEffort: defaults.advisor.advisorEffort });
 writeJson(path.join(agentDir, "auth.json"), {});
 // Explicitly replace web config rather than copying a live credential command.
 writeJson(path.join(agentDir, "web-search.json"), {
@@ -172,7 +184,7 @@ await check('researcher uses GLM/max and separate context',async()=>{
   assert.ok(!JSON.stringify(child).includes('CASE:parent_sol'));
   assert.match(JSON.stringify(child.at(-1).messages),/SAFE_CONTENT/);
 });
-const configured={researcher:['glm-5.3-flash','max'],worker:['gpt-6-sol','max'],debugger:['gpt-6-sol','max'],reviewer:['gpt-6-astra','high']};
+const configured=Object.fromEntries(modelRoles.SUBAGENT_ROLES.map(role=>[role,[modelId(defaults.subagents[role].model),defaults.subagents[role].thinking]]));
 for(const role of ['researcher','worker','debugger','reviewer']) {
   await check(`native ${role} keeps its configured model/effort despite conflicting tool parameters`,async()=>{
     const id='configured-'+role;
@@ -262,7 +274,7 @@ await check('advisor Astra/high is always on for the parent and a consultation k
   assert.equal(out[0]?.isError,false,JSON.stringify(out));assert.match(JSON.stringify(out),/ADVISOR_FIXTURE_OK/);
   await turn('advisor-two',[final('DONE')]);
   const advice=control.seen.filter(x=>x.key==='advisor');
-  assert.equal(advice.length,1);assert.equal(advice[0].model,'gpt-6-astra');assert.equal(advice[0].options.reasoning,'high');
+  assert.equal(advice.length,1);assert.equal(advice[0].model,modelId(defaults.advisor.advisor));assert.equal(advice[0].options.reasoning,defaults.advisor.advisorEffort);
   // Advisor gọi thẳng ModelRuntime (không qua hook của phiên) vẫn theo Codex fast mode.
   assert.equal(advice[0].payload?.service_tier,'priority',JSON.stringify(advice[0].payload));
   const [one,two]=['advisor-one','advisor-two'].map(key=>head(control.seen.find(x=>x.key===key)));
@@ -283,7 +295,7 @@ await check('goal auditor uses Astra/high and its bash passes the permission gat
   assert.match(JSON.stringify(out),/Goal audit approved/);
   const audits=control.seen.filter(x=>x.key==='auditor');
   assert.equal(audits.length,3);
-  assert.ok(audits.every(x=>x.model==='gpt-6-astra'&&x.options.reasoning==='high'));
+  assert.ok(audits.every(x=>x.model===defaults.goal.model&&x.options.reasoning===defaults.goal.thinkingLevel));
   assert.ok(audits.every(x=>x.payload?.service_tier==='priority'),'Phiên auditor riêng vẫn theo Codex fast mode');
   assert.ok(audits[0].tools.includes('bash'));
   assert.equal(fs.existsSync(path.join(cwd,'audit-denied.txt')),false);

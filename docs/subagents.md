@@ -2,14 +2,14 @@
 
 Pi dùng tool `Agent` của `@tintinweb/pi-subagents` 0.19.0. Parent Claude Opus 5.5/high phân tích yêu cầu, chốt thiết kế, chia việc và nghiệm thu.
 
-| Role | Model/effort | Quyền và trách nhiệm |
+| Role | Model/effort (preset `default`) | Quyền và trách nhiệm |
 |---|---|---|
 | `researcher` | GLM-5.3-Flash/max | Khảo sát code/docs/log và web (`web_search`, `fetch_content`); chỉ đọc và trả bằng chứng |
 | `worker` | GPT-6 Sol/max | Triển khai phần việc đã chốt, sửa file và kiểm thử |
 | `debugger` | GPT-6 Sol/max | Tái hiện, xác định nguyên nhân, sửa và kiểm hồi quy |
 | `reviewer` | GPT-6 Astra/high | Review độc lập, chỉ đọc |
 
-GLM dùng provider `opencode-go` trực tiếp trong Pi. Opus 5.5 và GLM dùng context 1M của catalog; Astra/Sol nâng lên 872K. File role nằm trong `agents/` của Pi. `pi-doctor` in model/thinking thật của từng role và đánh dấu role đã sửa so với bản cài.
+GLM dùng provider `opencode-go` trực tiếp trong Pi. Opus 5.5 và GLM dùng context 1M của catalog; Astra/Sol nâng lên 872K. File role nằm trong `agents/` của Pi; model/thinking của chúng sinh từ `model-roles.json` ([models.md](models.md)). `pi-doctor` in model/thinking thật của từng role, cảnh báo role lệch so với `model-roles.json` và đánh dấu role đã sửa so với bản cài.
 
 ## Giao việc
 
@@ -22,7 +22,7 @@ GLM dùng provider `opencode-go` trực tiếp trong Pi. Opus 5.5 và GLM dùng 
 
 Parent có thể gọi `Agent` với `subagent_type` tương ứng. Mỗi prompt giao việc cần mục tiêu, phạm vi file, ràng buộc và tiêu chí nghiệm thu. Researcher chuyển quyết định kiến trúc hoặc yêu cầu chưa rõ về parent.
 
-Model/thinking ghim trong file role được ưu tiên hơn tham số tool. Chọn role theo công việc và kiểm model thực trong kết quả khi tùy chỉnh cấu hình.
+Model/thinking ghim trong file role được ưu tiên hơn tham số tool. Model trong file role không dùng được thì pi-subagents lặng lẽ chạy role đó bằng model của parent; installer, `pi-models` và `pi-doctor` kiểm model trong catalog của Pi để bắt lỗi này. Chọn role theo công việc và kiểm model thực trong kết quả khi tùy chỉnh cấu hình.
 
 `/agents` quản lý agent; `get_subagent_result` lấy kết quả; `steer_subagent` gửi bổ sung theo ID. Khi mở rộng (`Ctrl+O`), kết quả của `Agent`, thông báo completion và `get_subagent_result` hiện dạng Markdown (tiêu đề, danh sách, code, bảng); dạng thu gọn, lỗi và agent đang chạy giữ văn bản thô như trước. Đây là bản vá `src/index.ts` của pi-subagents, chỉ đổi phần hiển thị, không đổi nội dung trả cho model.
 

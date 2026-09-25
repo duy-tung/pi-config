@@ -15,16 +15,13 @@ if(action==='doctor'){
     if(result.status!==0){process.exitCode=result.status??1;break;}
   }
 }else if(action==='models'){
-  if(args.length)throw new Error('pi-models chỉ xem cấu hình. Đổi model bằng /model hoặc chỉnh settings và file role.');
+  if(args.length)throw new Error('pi-models chỉ xem cấu hình. Đổi model/thinking trong model-roles.json của agent dir rồi chạy lại installer.');
+  const {modelRolesReport}=await import('./model-roles.mjs');
   for(const [name,p] of Object.entries(profiles)){
-    const s=JSON.parse(fs.readFileSync(path.join(p.agentDir,'settings.json'),'utf8'));
-    console.log(`${name}: ${s.defaultProvider}/${s.defaultModel} (${s.defaultThinkingLevel})`);
-    if(p.packages.includes('@tintinweb/pi-subagents')){
-      for(const file of fs.readdirSync(path.join(p.agentDir,'agents')).filter(file=>file.endsWith('.md')).sort()){
-        const role=fs.readFileSync(path.join(p.agentDir,'agents',file),'utf8');
-        console.log(`  ${file.slice(0,-3)}: ${role.match(/^model: (.+)$/m)?.[1]} (${role.match(/^thinking: (.+)$/m)?.[1]})`);
-      }
-    }
+    const report=await modelRolesReport({root,agentDir:p.agentDir,modules:path.join(root,'runtimes',p.runtime,'node_modules')});
+    console.log(`${name}: ${report.lines.join('\n') || 'không đọc được cấu hình model'}`);
+    for(const warning of report.warnings)console.warn(`cảnh báo: ${warning}`);
+    for(const error of report.errors){console.error(`lỗi: ${error}`);process.exitCode=1;}
   }
 }else{
   const name=action==='login'?'main':action;
