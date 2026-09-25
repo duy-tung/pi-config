@@ -9,6 +9,7 @@
 - Sau khi chọn prompt: `Restore code and conversation`, `Restore conversation`, `Restore code`, `Summarize from here`, `Summarize up to here`, `Never mind`. Hai lựa chọn tóm tắt nhận thêm chỉ dẫn (`add context (optional)`). Màn hình xác nhận ghi rõ số dòng và file sẽ được khôi phục.
 - Khôi phục hội thoại đưa prompt đã chọn trở lại editor để sửa và gửi lại. Nhánh cũ vẫn còn trong `/tree`.
 - **Redo** nằm dưới `(current)` khi có lần rewind để hoàn tác: đưa code về trạng thái ngay trước khi rewind và quay lại nhánh hội thoại cũ. Lệnh `/redo` làm cùng việc đó.
+- **Undo redo** xuất hiện ngay sau một lần Redo (tới lần rewind hoặc Redo kế tiếp): đưa code và hội thoại về ngay trước lần Redo, nên việc đã làm sau lần rewind không bị Redo xoá mất. Undo redo được ghi lại như một lần rewind, nên Redo đưa về lại được.
 - `/clear` mở phiên mới như `/new`. Trong phiên mới, `Esc Esc` hoặc `/rewind` có mục **Resume previous session** ở đầu danh sách để quay lại phiên vừa rời. Mục này cũng có sau `/new`. Phiên cũ phải đã có câu trả lời, vì Pi chỉ ghi phiên ra đĩa từ lúc đó.
 - Nếu Pi thoát giữa lúc khôi phục code, lần mở Pi sau sẽ báo, và `/rewind` có mục **⚠ Interrupted code restore** với ba lựa chọn: `Finish the restore`, `Undo it` (về như trước khi khôi phục) hoặc `Dismiss` (để nguyên file). Chỉ file còn ở nội dung trước hoặc sau lần khôi phục mới được ghi; file đã bị sửa theo cách khác được để nguyên và báo tên.
 
@@ -28,7 +29,9 @@ Khôi phục code chỉ đụng tới file đã theo dõi trong phiên, giống 
 
 - Metadata checkpoint là custom entry `pi-rewind` trong file phiên (không vào context model), nên còn sau `/resume` và đi theo nhánh hội thoại.
 - Nội dung file nằm trong kho theo SHA-256 tại `rewind.storageDir` (installer đặt `<root>/state/rewind`), quyền 0600. Blob không được dùng trong 30 ngày (`retentionDays`) bị dọn tối đa mỗi ngày một lần.
-- Trước mỗi lần ghi file để khôi phục (rewind, Redo), pi-rewind ghi nhật ký phục hồi vào `journal/` trong thư mục đó: danh sách file cùng nội dung trước và sau. Nhật ký bị xóa khi xong, kể cả khi lỗi. Nhật ký còn lại mà process ghi nó đã chết là lần khôi phục bị gián đoạn. Nhật ký quá `retentionDays` bị dọn cùng blob.
+- Trước mỗi lần ghi file để khôi phục (rewind, Redo, Undo redo), pi-rewind ghi nhật ký phục hồi vào `journal/` trong thư mục đó: danh sách file cùng nội dung trước và sau. Nhật ký bị xóa khi xong, kể cả khi lỗi. Nhật ký còn lại mà process ghi nó đã chết là lần khôi phục bị gián đoạn. Nhật ký quá `retentionDays` bị dọn cùng blob.
+- Khôi phục ghi mỗi file ra file tạm cùng thư mục, `fsync` rồi đổi tên đè, nên lỗi giữa chừng (đĩa đầy) để nguyên file cũ. Quyền của file (rwx) được khôi phục đủ. Hai trường hợp ghi tại chỗ như tool `write` của Pi: file có hard link (để các link vẫn chung nội dung), và khi không tạo được file tạm hoặc không đổi tên đè được (thư mục không ghi được, Windows đang khóa file). Nếu lỗi xảy ra lúc đang ghi tại chỗ, file được báo `partly written`; lần khôi phục vẫn được ghi lại để Redo (hoặc Undo redo) đưa file về bản trước đó.
+- Nếu không lưu được checkpoint (đĩa đầy, `storageDir` không ghi được), `edit` và `write` bị chặn kèm lý do cho model và thông báo cho người dùng, để file vẫn khôi phục được. pi-rewind thử lưu lại ở mỗi tool call và chạy bình thường khi kho ghi được. Lệnh `bash` vẫn chạy nhưng thay đổi của nó không khôi phục được trong lúc đó. Muốn tiếp tục mà không có rewind thì đặt `rewind.enabled: false`.
 
 ## Cấu hình
 
@@ -49,4 +52,9 @@ Bố cục, nhãn và thông báo lấy theo Claude Code 2.1.x (component Rewind
 
 Redo trong menu, `/clear` kèm Resume previous session và khôi phục sau khi Pi thoát giữa chừng lấy ý tưởng từ `pi-simple-rewind` 0.7.0 (bản riêng, chưa phát hành), viết lại cho pi-rewind.
 
-Chưa làm (có thể bổ sung): snapshot toàn bộ worktree bằng shadow git như `pi-tree-rewind` cho file bị ignore hoặc ngoài git, mang checkpoint sang phiên tạo bằng `/fork`, hỏi khôi phục code khi điều hướng bằng `/tree`.
+Chưa làm (có thể bổ sung):
+- snapshot toàn bộ worktree bằng shadow git như `pi-tree-rewind` cho file bị ignore hoặc ngoài git;
+- mang checkpoint sang phiên tạo bằng `/fork`, hỏi khôi phục code khi điều hướng bằng `/tree`;
+- giới hạn tổng dung lượng kho: hiện chỉ có hạn `retentionDays` và `maxFileBytes` mỗi file;
+- khóa giữa hai process Pi dùng chung `storageDir` cho khôi phục, phục hồi và dọn blob;
+- đối chiếu kế hoạch lúc xác nhận với lúc ghi. File đổi trong lúc hộp thoại đang mở vẫn được khôi phục; bản đổi đó nằm trong Redo.

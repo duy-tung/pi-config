@@ -126,6 +126,106 @@ test("khôi phục ghi lại nội dung, xóa file mới, bỏ qua symlink và t
   }
 });
 
+test("khôi phục ghi qua file tạm: đĩa đầy giữa chừng thì file cũ còn nguyên, không còn file tạm", async () => {
+  const { work, store, capturer, cleanup } = sandbox();
+  const fsync = fs.fsyncSync;
+  try {
+    const file = path.join(work, "app.ts");
+    fs.writeFileSync(file, "checkpoint\n");
+    const target = capturer.capture(file);
+    fs.writeFileSync(file, "latest turn output\n");
+    capturer.forget(file);
+    fs.fsyncSync = () => { throw Object.assign(new Error("ENOSPC: no space left on device, fsync"), { code: "ENOSPC" }); };
+    const result = await applyRestore(planRestore(new Map([[file, target]]), capturer), store, capturer);
+    fs.fsyncSync = fsync;
+    assert.equal(fs.readFileSync(file, "utf8"), "latest turn output\n");
+    assert.deepEqual(result.failed.map((item) => [path.basename(item.file), item.partial]), [["app.ts", undefined]]);
+    // Không file nào đổi: rewind báo lỗi, không ghi bản ghi Redo cho thay đổi không xảy ra.
+    assert.match(describeRestore(result).error, /No files were restored/u);
+    assert.deepEqual(fs.readdirSync(work).filter((name) => name.includes("pi-rewind")), []);
+    const again = await applyRestore(planRestore(new Map([[file, target]]), capturer), store, capturer);
+    assert.deepEqual(again.restored, [file]);
+    assert.equal(fs.readFileSync(file, "utf8"), "checkpoint\n");
+  } finally {
+    fs.fsyncSync = fsync;
+    cleanup();
+  }
+});
+
+test("file có hard link: ghi tại chỗ để các link chung nội dung; lỗi khi đang ghi được báo là ghi dở", async () => {
+  const { work, store, capturer, cleanup } = sandbox();
+  const truncate = fs.ftruncateSync;
+  try {
+    const file = path.join(work, "shared.txt");
+    const alias = path.join(work, "alias.txt");
+    fs.writeFileSync(file, "checkpoint content\n");
+    const target = capturer.capture(file);
+    fs.writeFileSync(file, "later\n");
+    fs.linkSync(file, alias);
+    capturer.forget(file);
+    const done = await applyRestore(planRestore(new Map([[file, target]]), capturer), store, capturer);
+    assert.deepEqual(done.restored, [file]);
+    assert.equal(fs.readFileSync(alias, "utf8"), "checkpoint content\n");
+    fs.writeFileSync(file, "later again\n");
+    capturer.forget(file);
+    fs.ftruncateSync = () => { throw Object.assign(new Error("ENOSPC: no space left on device, ftruncate"), { code: "ENOSPC" }); };
+    const result = await applyRestore(planRestore(new Map([[file, target]]), capturer), store, capturer);
+    fs.ftruncateSync = truncate;
+    assert.equal(result.failed[0].partial, true);
+    // File ghi dở tính là đã đổi: lần khôi phục vẫn được ghi lại để Redo đưa file về.
+    const message = describeRestore(result);
+    assert.equal(message.error, undefined);
+    assert.match(message.warning, /shared\.txt \(partly written: ENOSPC/u);
+  } finally {
+    fs.ftruncateSync = truncate;
+    cleanup();
+  }
+});
+
+test("khôi phục đủ quyền của file: file 0600 đã xoá quay lại với 0600", { skip: process.platform === "win32" }, async () => {
+  const { work, store, capturer, cleanup } = sandbox();
+  try {
+    const file = path.join(work, "config.local.json");
+    fs.writeFileSync(file, "{}\n", { mode: 0o600 });
+    fs.chmodSync(file, 0o600);
+    const target = capturer.capture(file);
+    fs.unlinkSync(file);
+    const result = await applyRestore(planRestore(new Map([[file, target]]), capturer), store, capturer);
+    assert.deepEqual(result.restored, [file]);
+    assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  } finally {
+    cleanup();
+  }
+});
+
+test("Redo lưu trạng thái ngay trước nó; Undo redo chỉ mở khi Redo là lần khôi phục mới nhất", () => {
+  const v = (sha) => ({ kind: "file", sha: sha.repeat(64).slice(0, 64), size: 1, mode: 0o644 });
+  const history = new History();
+  history.apply({ v: 1, kind: "checkpoint", id: "c1", userEntryId: "u1", at: 1, delta: {} });
+  history.apply({ v: 1, kind: "rewind", id: "r1", at: 2, checkpointId: "c1", mode: "both", fromLeafId: "leaf-a", previous: { "/w/a.txt": v("2") } });
+  assert.equal(history.lastUndoneRewind()?.id, "r1");
+  assert.equal(history.lastRedo(), undefined);
+  // Redo ghi lại bản a.txt làm sau lần rewind (v3).
+  history.apply({ v: 1, kind: "redo", id: "d1", rewindId: "r1", at: 3, previous: { "/w/a.txt": v("3") }, fromLeafId: "leaf-b" });
+  assert.equal(history.lastUndoneRewind(), undefined);
+  const redo = history.lastRedo();
+  assert.deepEqual([redo?.id, redo?.mode, redo?.checkpointId, redo?.fromLeafId], ["d1", "both", "c1", "leaf-b"]);
+  assert.deepEqual(redo?.previous.get("/w/a.txt"), v("3"));
+  // Undo redo là một lần rewind mới: Redo đưa về lại được.
+  history.apply({ v: 1, kind: "rewind", id: "u1", at: 4, checkpointId: "c1", mode: "both", fromLeafId: "leaf-a", previous: { "/w/a.txt": v("2") }, undoes: "d1" });
+  assert.equal(history.lastRedo(), undefined);
+  assert.equal(history.lastUndoneRewind()?.id, "u1");
+  history.apply({ v: 1, kind: "redo", id: "d2", rewindId: "u1", at: 5, previous: { "/w/a.txt": v("3") }, fromLeafId: "leaf-b" });
+  assert.equal(history.lastRedo()?.id, "d2");
+  // Rewind mới sau Redo: Undo redo đóng lại.
+  history.apply({ v: 1, kind: "rewind", id: "r2", at: 6, checkpointId: "c1", mode: "code", fromLeafId: "leaf-b", previous: {} });
+  assert.equal(history.lastRedo(), undefined);
+  // Bản ghi Redo cũ (không có id/previous) chỉ đánh dấu rewind đã redo.
+  history.apply({ v: 1, kind: "redo", rewindId: "r2", at: 7 });
+  assert.equal(history.lastRedo(), undefined);
+  assert.equal(history.rewinds.find((item) => item.id === "r2")?.redone, true);
+});
+
 test("git watcher nhận file bash sửa, tạo và xóa; bỏ qua file bị ignore", async () => {
   const { work, capturer, cleanup } = sandbox();
   const git = (...args) => execFileSync("git", args, { cwd: work, stdio: "pipe" });

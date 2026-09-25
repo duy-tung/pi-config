@@ -10,7 +10,9 @@ import {
 } from "./lib/dialog.ts";
 import { bufferDiffCounts } from "./lib/diff.ts";
 import { GitWatcher, type WatchWindow } from "./lib/gitwatch.ts";
-import { type Checkpoint, ENTRY_TYPE, History, type RestoreMode, type RewindEntry, type RewindRecord, type SessionEntryLike } from "./lib/history.ts";
+import {
+  type Checkpoint, ENTRY_TYPE, History, type RedoRecord, type RestoreMode, type RewindEntry, type RewindRecord, type SessionEntryLike,
+} from "./lib/history.ts";
 import { type Journal, JournalStore, planRecovery } from "./lib/journal.ts";
 import { resolveToolPath } from "./lib/paths.ts";
 import { applyRestore, type DiffStats, describeRestore, type PlanItem, planRestore, planStats } from "./lib/restore.ts";
@@ -38,9 +40,13 @@ export default function piRewind(pi: ExtensionAPI) {
     onDisable: (top, reason) => notifyContext?.ui.notify(`Rewind: ngừng theo dõi thay đổi bằng bash trong ${top} (${reason}).`, "warning"),
   });
 
+  type Draft = { id: string; at: number; timestamp?: number; source?: string };
   let history = new History();
   let current: Checkpoint | undefined;
-  let pending: { id: string; at: number; delta: Record<string, FileVersion>; timestamp?: number; source?: string } | undefined;
+  let pending: (Draft & { delta: Record<string, FileVersion> }) | undefined;
+  /** Checkpoint của prompt không lưu được (đĩa đầy, kho không ghi được): thử lại ở mỗi tool call, chặn edit/write tới khi lưu được. */
+  let snapshotFailure: { draft: Draft; reason: string } | undefined;
+  let storageWarned = false;
   let awaitingPrompt = false;
   let lastInputSource: string | undefined;
   let promptDepth = 0;
@@ -77,6 +83,33 @@ export default function piRewind(pi: ExtensionAPI) {
     if (!current.files.has(file)) data.pre = pre();
     append(data);
   }
+
+  const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+  /** Báo người dùng một lần mỗi prompt khi kho rewind không ghi được. */
+  function warnStorage(ctx: ExtensionContext, reason: string): void {
+    if (storageWarned) return;
+    storageWarned = true;
+    ctx.ui.notify(`Rewind: không lưu được điểm khôi phục (${reason}). Edit/write bị chặn để file vẫn khôi phục được; giải phóng dung lượng hoặc kiểm quyền ghi ${config.storageDir}, hoặc tắt rewind (rewind.enabled: false).`, "warning");
+  }
+
+  /** Chụp phiên bản mọi file đã theo dõi cho checkpoint của prompt; kho lỗi thì ghi nhận để chặn sửa file. */
+  function snapshot(draft: Draft, ctx: ExtensionContext): void {
+    try {
+      pending = { ...draft, delta: history.delta((file) => capturer.capture(file)) };
+      snapshotFailure = undefined;
+    } catch (error) {
+      pending = undefined;
+      snapshotFailure = { draft, reason: errorText(error) };
+      warnStorage(ctx, snapshotFailure.reason);
+    }
+  }
+
+  /** Tool sửa file không chạy khi chưa lưu được bản trước đó: sửa rồi thì không rewind về được. */
+  const blocked = (reason: string) => ({
+    block: true as const,
+    reason: `Rewind could not save a restore point before this change (${reason}), so the change was blocked to keep the files restorable. Do not change the files another way (bash, scripts or other tools); tell the user. They can free disk space or fix write access to the rewind storage, or turn rewind off (rewind.enabled: false in settings.json).`,
+  });
 
   pi.on("session_start", (event, ctx) => {
     history = History.fromEntries(ctx.sessionManager.getEntries() as SessionEntryLike[]);
@@ -119,15 +152,17 @@ export default function piRewind(pi: ExtensionAPI) {
 
     // User message chưa được ghi vào phiên ở message_end; chỉ chụp trạng thái ở đây,
     // entry checkpoint được ghi khi user message đã có id (message_start của assistant).
-    pi.on("message_end", (event) => {
+    pi.on("message_end", (event, ctx) => {
       if (!awaitingPrompt || event.message.role !== "user") return;
       awaitingPrompt = false;
-      pending = {
-        id: randomUUID(), at: Date.now(), delta: history.delta((file) => capturer.capture(file)),
+      storageWarned = false;
+      const draft: Draft = {
+        id: randomUUID(), at: Date.now(),
         timestamp: typeof event.message.timestamp === "number" ? event.message.timestamp : undefined,
         source: lastInputSource,
       };
       lastInputSource = undefined;
+      snapshot(draft, ctx);
     });
 
     pi.on("message_start", (event, ctx) => {
@@ -135,11 +170,21 @@ export default function piRewind(pi: ExtensionAPI) {
     });
 
     pi.on("tool_call", async (event, ctx) => {
+      // Kho vừa ghi lại được (người dùng giải phóng dung lượng): tạo checkpoint còn thiếu của prompt.
+      if (snapshotFailure) snapshot(snapshotFailure.draft, ctx);
       if (pending) persistPending(ctx);
+      const edits = event.toolName === "edit" || event.toolName === "write";
+      if (edits && snapshotFailure) return blocked(snapshotFailure.reason);
       if (!current) return;
-      if (event.toolName === "edit" || event.toolName === "write") {
+      if (edits) {
         const file = resolveToolPath((event.input as { path?: unknown }).path, ctx.cwd);
-        if (file) touch(file, event.toolName, () => capturer.capture(file));
+        if (!file) return;
+        try {
+          touch(file, event.toolName, () => capturer.capture(file));
+        } catch (error) {
+          warnStorage(ctx, errorText(error));
+          return blocked(errorText(error));
+        }
         return;
       }
       if (!config.watchTools.includes(event.toolName)) return;
@@ -309,8 +354,26 @@ export default function piRewind(pi: ExtensionAPI) {
     const result = await applyRestore(plan, store, capturer, { queue: withFileMutationQueue });
     const message = describeRestore(result);
     if (message.error) throw new Error(`Failed to restore the code:\n${message.error}`);
-    if (message.warning) ctx.ui.notify(message.warning, "warning");
+    if (message.warning) {
+      const partial = result.failed.some((item) => item.partial);
+      ctx.ui.notify(partial ? `${message.warning}\n/rewind → Redo (or Undo redo) puts back what these files had before.` : message.warning, "warning");
+    }
     return previous;
+  }
+
+  /** Điều hướng hội thoại sau khi đã ghi code. Lỗi mà hội thoại chưa đổi thì trả code về như trước; đã đổi thì vẫn ghi lại. */
+  async function navigateAfterRestore(
+    ctx: ExtensionCommandContext, entryId: string, previous: Record<string, FileVersion>, record: () => void, failure: string,
+  ): Promise<void> {
+    const leafBefore = ctx.sessionManager.getLeafId();
+    try {
+      const result = await ctx.navigateTree(entryId, { summarize: false });
+      if (result.cancelled) throw new Error(`${failure}\nNavigation was cancelled.`);
+    } catch (error) {
+      if (ctx.sessionManager.getLeafId() === leafBefore) await restoreCode(ctx, new Map(Object.entries(previous)));
+      else record();
+      throw error;
+    }
   }
 
   /** Chạy một lần khôi phục trong nhật ký phục hồi; nhật ký chỉ còn lại khi Pi thoát giữa chừng. */
@@ -443,13 +506,47 @@ export default function piRewind(pi: ExtensionAPI) {
   async function redo(ctx: ExtensionCommandContext, info: RedoPlan): Promise<void> {
     await settle(ctx);
     const plan = planRestore(info.record.previous, capturer);
+    const fromLeafId = ctx.sessionManager.getLeafId();
     await journaled(ctx, plan, undefined, async () => {
-      if (info.stats.filesChanged.length) await applyPlan(ctx, plan);
-      if (info.conversation && info.record.fromLeafId) {
-        const result = await ctx.navigateTree(info.record.fromLeafId, { summarize: false });
-        if (result.cancelled) throw new Error("Failed to redo:\nNavigation was cancelled.");
-      }
-      append({ v: 1, kind: "redo", rewindId: info.record.id, at: Date.now() });
+      const previous = info.stats.filesChanged.length ? await applyPlan(ctx, plan) : {};
+      // Lưu trạng thái ngay trước Redo (việc làm sau lần rewind) để "Undo redo" lấy lại được.
+      const record = () => append({ v: 1, kind: "redo", id: randomUUID(), rewindId: info.record.id, at: Date.now(), previous, fromLeafId });
+      if (info.conversation && info.record.fromLeafId) await navigateAfterRestore(ctx, info.record.fromLeafId, previous, record, "Failed to redo:");
+      record();
+    });
+  }
+
+  interface UndoRedoPlan {
+    redo: RedoRecord;
+    stats: DiffStats;
+    conversation: boolean;
+    parts: string[];
+  }
+
+  function undoRedoPlan(ctx: ExtensionContext): UndoRedoPlan | undefined {
+    const redo = history.lastRedo();
+    if (!redo) return undefined;
+    const stats = planStats(planRestore(redo.previous, capturer), store);
+    const conversation = redo.mode !== "code" && !!redo.fromLeafId && redo.fromLeafId !== ctx.sessionManager.getLeafId();
+    const parts: string[] = [];
+    if (conversation) parts.push("return to the conversation from before the redo");
+    if (stats.filesChanged.length) parts.push(`restore the code +${stats.insertions} -${stats.deletions} in ${describeFiles(stats.filesChanged)}`);
+    return { redo, stats, conversation, parts };
+  }
+
+  /** Hoàn tác lần Redo gần nhất. Ghi lại như một lần rewind nên Redo đưa về lại được, không mất việc làm sau Redo. */
+  async function undoRedo(ctx: ExtensionCommandContext, info: UndoRedoPlan): Promise<void> {
+    await settle(ctx);
+    const plan = planRestore(info.redo.previous, capturer);
+    const fromLeafId = ctx.sessionManager.getLeafId();
+    await journaled(ctx, plan, undefined, async () => {
+      const previous = info.stats.filesChanged.length ? await applyPlan(ctx, plan) : {};
+      const record = () => append({
+        v: 1, kind: "rewind", id: randomUUID(), at: Date.now(), checkpointId: info.redo.checkpointId, mode: info.redo.mode,
+        fromLeafId, previous, undoes: info.redo.id,
+      });
+      if (info.conversation && info.redo.fromLeafId) await navigateAfterRestore(ctx, info.redo.fromLeafId, previous, record, "Failed to undo the redo:");
+      record();
     });
   }
 
@@ -525,6 +622,14 @@ export default function piRewind(pi: ExtensionAPI) {
         title: "Confirm you want to redo", lines: [`This will ${what}.`], options: [{ value: "redo", label: "Redo" }],
       });
     }
+    const undoInfo = undoRedoPlan(ctx);
+    if (undoInfo?.parts.length) {
+      const what = undoInfo.parts.join(" and ");
+      items.push({
+        key: "undo-redo", position: "bottom", label: "Undo redo", detail: `Go back to before the last redo: ${what}`,
+        title: "Confirm you want to undo the redo", lines: [`This will ${what}.`], options: [{ value: "undo-redo", label: "Undo redo" }],
+      });
+    }
     return items;
   }
 
@@ -559,6 +664,11 @@ export default function piRewind(pi: ExtensionAPI) {
     if (key === "redo") {
       const info = redoPlan(ctx);
       if (info?.parts.length) await redo(ctx, info);
+      return undefined;
+    }
+    if (key === "undo-redo") {
+      const info = undoRedoPlan(ctx);
+      if (info?.parts.length) await undoRedo(ctx, info);
       return undefined;
     }
     const journal = journals.interrupted().find((item) => `recover:${item.id}` === key);

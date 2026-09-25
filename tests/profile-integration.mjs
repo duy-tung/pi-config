@@ -478,6 +478,51 @@ await check("rewind: a restore interrupted by a crash can be finished from the m
   assert.equal(fs.readFileSync(file, "utf8"), "X-target\n");
   assert.equal(fs.existsSync(journal), false);
 });
+await check("rewind: Redo keeps the work done after the rewind; Undo redo in the menu brings it back", async () => {
+  const file = path.join(cwd, "redo-c.txt");
+  const edit = (from, to) => tool("edit", { path: "redo-c.txt", edits: [{ oldText: from, newText: to }] });
+  await run("undo-redo-one", [[tool("write", { path: "redo-c.txt", content: "C1\n" })]]);
+  await run("undo-redo-two", [[edit("C1", "C2")]]);
+  rewindAnswers.push("undo-redo-two", "Restore code");
+  await session.prompt("/rewind");
+  assert.equal(fs.readFileSync(file, "utf8"), "C1\n");
+  // Việc làm sau lần rewind: Redo đưa code về trước rewind (C2) nhưng phải lưu lại C3.
+  await run("undo-redo-three", [[edit("C1", "C3")]]);
+  await session.prompt("/redo");
+  assert.equal(fs.readFileSync(file, "utf8"), "C2\n");
+  rewindAnswers.push("Undo redo", "Undo redo");
+  await session.prompt("/rewind");
+  assert.deepEqual(rewindAnswers, [], "Menu phải có mục Undo redo ngay sau Redo");
+  assert.equal(fs.readFileSync(file, "utf8"), "C3\n");
+  // Undo redo cũng được ghi lại như một lần rewind: Redo đưa về C2.
+  await session.prompt("/redo");
+  assert.equal(fs.readFileSync(file, "utf8"), "C2\n");
+  assert.equal(fs.readdirSync(path.join(fixture, "rewind", "journal")).length, 0);
+});
+await check("rewind: edits wait while the rewind store cannot save a restore point", async () => {
+  const file = path.join(cwd, "redo-c.txt");
+  const blobs = path.join(fixture, "rewind", "blobs"), away = `${blobs}-away`;
+  const before = fs.readFileSync(file, "utf8");
+  // Kho không ghi được (như đĩa đầy): blobs là file thay vì thư mục.
+  fs.renameSync(blobs, away);
+  fs.writeFileSync(blobs, "not a directory\n");
+  try {
+    notices.length = 0;
+    const [blockedResult] = await run("rewind-store-broken", [[tool("edit", { path: "redo-c.txt", edits: [{ oldText: "C2", newText: "C9" }] })]]);
+    assert.equal(blockedResult?.isError, true);
+    assert.match(JSON.stringify(blockedResult.content), /Rewind could not save a restore point/u);
+    assert.equal(fs.readFileSync(file, "utf8"), before);
+    assert.ok(notices.some((notice) => /không lưu được điểm khôi phục/u.test(notice.message)), JSON.stringify(notices));
+  } finally {
+    fs.rmSync(blobs, { force: true });
+    fs.renameSync(away, blobs);
+  }
+  const [editResult] = await run("rewind-store-fixed", [[tool("edit", { path: "redo-c.txt", edits: [{ oldText: "C2", newText: "C4" }] })]]);
+  assert.notEqual(editResult?.isError, true, JSON.stringify(editResult?.content));
+  assert.equal(fs.readFileSync(file, "utf8"), "C4\n");
+  const fixed = sessionManager.getEntries().find((entry) => entry.type === "message" && JSON.stringify(entry.message.content).includes("CASE:rewind-store-fixed"));
+  assert.ok(sessionManager.getEntries().some((entry) => entry.customType === "pi-rewind" && entry.data?.kind === "checkpoint" && entry.data.userEntryId === fixed.id));
+});
 await check("clipboard image shortcut, attachment, deleted marker and size guard", async () => {
   const {KeybindingsManager}=await import(pathToFileURL(path.join(modules,"@earendil-works/pi-coding-agent/dist/core/keybindings.js")).href);
   const keybindings = KeybindingsManager.create(agentDir);
