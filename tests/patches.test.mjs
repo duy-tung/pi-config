@@ -50,10 +50,10 @@ test("insertFile chỉ đọc file trong assets/patches", async () => {
   }
 });
 
-test("metadata ghim mười bản vá cho một runtime", async () => {
+test("metadata ghim mười một bản vá cho một runtime", async () => {
   const data = await loadPatchData();
   assert.equal(data.schemaVersion, 1);
-  assert.equal(data.patches.length, 10);
+  assert.equal(data.patches.length, 11);
   for (const spec of data.patches) {
     assert.match(spec.originalSha256, /^[a-f0-9]{64}$/);
     assert.match(spec.patchedSha256, /^[a-f0-9]{64}$/);
@@ -74,6 +74,15 @@ test("metadata ghim mười bản vá cho một runtime", async () => {
   const auditor = data.patches.find((spec) => spec.package === "pi-goal-x");
   assert.equal(auditor.file, "extensions/goal-auditor.ts");
   assert.ok(auditor.edits.some((edit) => edit.after.includes("subagents:child:session-created")));
+  // pi-subagents mention-clone trên Pi 0.87: bản sao lấy hội thoại qua SessionManager (không gán state của agent),
+  // system prompt qua before_agent_start, và agent do bản sao khởi động luôn chạy nền (kể cả role ghim foreground).
+  const clone = data.patches.find((spec) => spec.package === "@tintinweb/pi-subagents" && spec.file === "src/mention-clone.ts");
+  assert.ok(clone.edits.some((edit) => edit.after.includes("SessionManager.inMemory(ctx.cwd, undefined, ctx.sessionManager.getBranch())")));
+  assert.ok(clone.edits.some((edit) => edit.before.includes("session.agent.state.systemPrompt = systemPrompt") && edit.after === ""));
+  assert.ok(clone.edits.some((edit) => edit.after.includes('pi.on("before_agent_start"')));
+  const subagentsIndex = data.patches.find((spec) => spec.package === "@tintinweb/pi-subagents" && spec.file === "src/index.ts");
+  const marker = 'Symbol.for("pi-config:mention-clone-spawn")';
+  assert.ok(clone.edits.some((edit) => edit.after.includes(marker)) && subagentsIndex.edits.some((edit) => edit.after.includes(marker)));
   // pi-usage: Astra có Codex fast; request qua ModelRuntime dùng chung (advisor, auditor, Oracle) cũng theo fast.
   const usage = data.patches.find((spec) => spec.package === "@narumitw/pi-usage");
   assert.ok(usage.edits.some((edit) => edit.before.includes('"gpt-6-sol"') && edit.after.includes('"gpt-6-astra"')));

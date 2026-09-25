@@ -26,7 +26,13 @@ Model/thinking ghim trong file role được ưu tiên hơn tham số tool. Ch�
 
 `/agents` quản lý agent; `get_subagent_result` lấy kết quả; `steer_subagent` gửi bổ sung theo ID. Khi mở rộng (`Ctrl+O`), kết quả của `Agent`, thông báo completion và `get_subagent_result` hiện dạng Markdown (tiêu đề, danh sách, code, bảng); dạng thu gọn, lỗi và agent đang chạy giữ văn bản thô như trước. Đây là bản vá `src/index.ts` của pi-subagents, chỉ đổi phần hiển thị, không đổi nội dung trả cho model.
 
-Gõ `@role nội dung` ở prompt (`agentMentions: "direct"`) khởi động agent ngay, lấy nội dung bạn gõ làm task, không gọi model parent; agent đang chạy thì nhận tin nhắn đó. Chế độ `"model"` của upstream nhờ một bản sao hội thoại viết prompt giao việc, nhưng phần sao chép này lỗi trên Pi 0.87 (tự quay về chạy thẳng) nên không dùng.
+Gõ `@role nội dung` ở prompt để giao việc thẳng cho role; agent đang chạy thì nhận tin nhắn đó. Có hai chế độ:
+- `"direct"` (mặc định): agent khởi động ngay, task là đúng nội dung bạn gõ, không gọi model parent. Agent không thấy hội thoại, nên nội dung cần tự đủ ý.
+- `"model"`: một bản sao hội thoại (cùng model, system prompt và lịch sử của parent, chỉ có tool `Agent`, không nạp extension) viết prompt giao việc có đủ context, rồi khởi động agent. Cách này tốn thêm một lượt model parent, không hiện trong chat.
+
+Ở cả hai chế độ, agent khởi động từ mention luôn chạy nền, kể cả worker/debugger, và kết quả về parent qua thông báo completion. Lời gọi `Agent` của mention không qua bộ phân loại vì chính người dùng đã gõ `@role`; agent con vẫn có cổng permission của role.
+
+Bản vá `src/mention-clone.ts` của pi-subagents cho bản sao chạy được trên Pi 0.87; trước đó bản sao lỗi và tự quay về chạy thẳng. Đổi chế độ cho project bằng `/agents` → Settings → Agent mentions (lưu vào `.pi/subagents.json`), hoặc cho mọi project bằng `agentMentions` trong `subagents.json` của Pi.
 
 ## Context và thực thi
 

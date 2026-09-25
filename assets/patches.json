@@ -125,7 +125,7 @@
       },
       "file": "src/index.ts",
       "originalSha256": "622d44b11e615ec0509f13e858dcad4a40789e4613c03583930327f15d9ec6a9",
-      "patchedSha256": "3b5dce1d407c553fc690609171b612dc995d219eca64b3fca5c493623f6b00dd",
+      "patchedSha256": "d9e60e3422bda7507ce5b555163b8b2e113495b9adf064e7bd3310dec1131b24",
       "edits": [
         {
           "before": "import { defineTool, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext, getAgentDir, getSettingsListTheme } from \"@earendil-works/pi-coding-agent\";",
@@ -175,6 +175,47 @@
         {
           "before": "    execute: async (_toolCallId, params, signal, _onUpdate, _ctx) => {\n",
           "after": "    // Local integration: expanded, a finished agent's output renders as Markdown; every other view keeps Pi's plain 10-line fallback.\n    renderResult(result, { expanded }, theme, renderContext) {\n      const text = stripTerminalSequences(result.content[0]?.type === \"text\" ? result.content[0].text : \"\").replace(/[\\u0000-\\u0008\\u000b-\\u001f\\ufff9-\\ufffb]/g, \"\");\n      const plain = (s: string) => new Text(s.split(\"\\n\").map((l) => theme.fg(\"toolOutput\", l)).join(\"\\n\"), 0, 0);\n      const bodyAt = text.indexOf(\"\\n\\n\") + 2;\n      if (expanded && !renderContext.isError && bodyAt > 1 && !/^Type: .*\\| Status: (?:running|error)\\b/m.test(text.slice(0, bodyAt))) {\n        const convAt = text.indexOf(\"\\n\\n--- Agent Conversation ---\\n\", bodyAt);\n        const box = new Container();\n        box.addChild(plain(text.slice(0, bodyAt - 1)));\n        box.addChild(new Markdown(text.slice(bodyAt, convAt < 0 ? undefined : convAt), 0, 0, getMarkdownTheme(), { color: (t: string) => theme.fg(\"toolOutput\", t) }));\n        if (convAt >= 0) box.addChild(plain(text.slice(convAt + 1)));\n        return box;\n      }\n      const lines = text.split(\"\\n\");\n      const more = expanded ? 0 : Math.max(0, lines.length - 10);\n      const hint = more ? `${theme.fg(\"muted\", `\\n... (${more} more lines,`)} ${keyHint(\"app.tools.expand\", \"to expand\")}${theme.fg(\"muted\", \")\")}` : \"\";\n      return new Text(lines.slice(0, lines.length - more).map((l) => theme.fg(\"toolOutput\", l)).join(\"\\n\") + hint, 0, 0);\n    },\n    execute: async (_toolCallId, params, signal, _onUpdate, _ctx) => {\n",
+          "count": 1
+        },
+        {
+          "before": "      const runInBackground = resolvedConfig.runInBackground;\n",
+          "after": "      // Local integration: a spawn made by the @mention conversation clone (mention-clone.ts) runs in the\n      // background like a direct mention. Its result reaches the main model only through the completion\n      // notification; in the foreground it would return into the clone, which is discarded. Roles that pin\n      // run_in_background:false (worker, debugger) would otherwise override the clone's request.\n      const runInBackground = resolvedConfig.runInBackground\n        || (params as Record<PropertyKey, unknown>)[Symbol.for(\"pi-config:mention-clone-spawn\")] === true;\n",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "package": "@tintinweb/pi-subagents",
+      "versions": {
+        "current": "0.19.0"
+      },
+      "file": "src/mention-clone.ts",
+      "originalSha256": "2f85e2bd428d80bb959576ac6431d50e9fdbbe04c92e5eec1a750135d2a8f91c",
+      "patchedSha256": "f5f11f9c42297841c82fc9f125102faf546bfae9429fec37cb59109b67edb439",
+      "edits": [
+        {
+          "before": "import {\n  buildSessionContext,\n  createAgentSession,\n  type ExtensionContext,\n  SessionManager,\n  type ToolDefinition,\n} from \"@earendil-works/pi-coding-agent\";\n",
+          "after": "import {\n  createAgentSession,\n  DefaultResourceLoader,\n  type ExtensionContext,\n  getAgentDir,\n  SessionManager,\n  type ToolDefinition,\n} from \"@earendil-works/pi-coding-agent\";\n",
+          "count": 1
+        },
+        {
+          "before": "    // The conversation as the main session resolves it: compaction applied,\n    // branch summaries substituted.\n    const conversation = buildSessionContext(\n      ctx.sessionManager.getEntries(),\n      ctx.sessionManager.getLeafId(),\n    );\n",
+          "after": "    // Local integration: Pi 0.87 made the SessionManager canonical for request\n    // context — `agent.state.systemPrompt` is getter-only and pushing onto\n    // `agent.state.messages` no longer reaches the provider. So the copy is\n    // seeded with the main session's active path itself (raw entries, root to\n    // leaf, no header), which it projects exactly as the main session does:\n    // compaction checkpoint and summary, branch summaries, context edits,\n    // custom messages. Read before anything awaits; getBranch() returns a fresh\n    // array and the copy only ever appends to its own.\n    const sessionManager = SessionManager.inMemory(ctx.cwd, undefined, ctx.sessionManager.getBranch());\n    const systemPrompt = ctx.getSystemPrompt?.();\n    // No user extensions, skills, templates or context files in the copy — an\n    // off-screen turn must run nobody's hooks — and one inline extension: a\n    // `before_agent_start` result's `systemPrompt` is sent as the request's\n    // only system message. Pi collapses the copied prompt/tool entries into that\n    // head, which declares only the executable tools: `Agent`, below.\n    const resourceLoader = new DefaultResourceLoader({\n      cwd: ctx.cwd,\n      agentDir: getAgentDir(),\n      noExtensions: true,\n      noSkills: true,\n      noPromptTemplates: true,\n      noThemes: true,\n      noContextFiles: true,\n      extensionFactories: [\n        (pi) => {\n          pi.on(\"before_agent_start\", () => (systemPrompt ? { systemPrompt } : undefined));\n        },\n      ],\n    });\n    await runInChildSessionContext(() => resourceLoader.reload());\n",
+          "count": 1
+        },
+        {
+          "before": "        sessionManager: SessionManager.inMemory(ctx.cwd),\n",
+          "after": "        sessionManager,\n        resourceLoader,\n",
+          "count": 1
+        },
+        {
+          "before": "\n    // The clone rebuilds a system prompt from cwd and agentDir, which is close\n    // but not the live one — extensions contribute to it per turn. Copy the\n    // real thing, so the copy reasons under the instructions the user's model\n    // is actually working under.\n    const systemPrompt = ctx.getSystemPrompt?.();\n    if (systemPrompt) session.agent.state.systemPrompt = systemPrompt;\n\n    // The conversation itself. Pushed rather than assigned so the array the\n    // session was built around stays the one it goes on using.\n    session.agent.state.messages.push(...conversation.messages);\n",
+          "after": "",
+          "count": 1
+        },
+        {
+          "before": "      return agentTool.execute(\n        undefined as never,\n        { ...(params as Record<string, unknown>), run_in_background: true } as typeof params,\n        signal,\n        onUpdate,\n        ctx,\n      );\n",
+          "after": "      return agentTool\n        .execute(\n          undefined as never,\n          // Local integration: the marker keeps this spawn in the background even for roles that pin\n          // run_in_background:false (worker, debugger); see the index.ts patch.\n          { ...(params as Record<string, unknown>), run_in_background: true, [Symbol.for(\"pi-config:mention-clone-spawn\")]: true } as typeof params,\n          signal,\n          onUpdate,\n          ctx,\n        )\n        // The clone's turn is over once the agent is started; its follow-up\n        // answer would be discarded with the copy.\n        .then((result) => ({ ...result, terminate: true }));\n",
           "count": 1
         }
       ]

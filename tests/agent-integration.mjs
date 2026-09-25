@@ -308,6 +308,47 @@ await check('/advisor-off lasts into the next session; alwaysOn brings the advis
   assert.ok((await toolsOfNewSession()).includes('ask_advisor'));
 });
 
+await check('@worker mention in model mode: a conversation copy writes the task, the worker runs in the background and reports back',async()=>{
+  // Chế độ model cho project này: /agents → Settings lưu vào .pi/subagents.json, đè bản global ("direct").
+  const projectSettings=path.join(cwd,'.pi','subagents.json');
+  fs.mkdirSync(path.dirname(projectSettings),{recursive:true});
+  writeJson(projectSettings,{agentMentions:'model'});
+  const loader=new sdk.DefaultResourceLoader({cwd,agentDir});await loader.reload();
+  const {session:mentionSession}=await sdk.createAgentSession({cwd,agentDir,resourceLoader:loader,modelRuntime:runtime,sessionManager:sdk.SessionManager.inMemory(cwd)});
+  try{
+    await mentionSession.bindExtensions({uiContext:ui,mode:'rpc',onError:error=>errors.push(error)});
+    await mentionSession.setModel(runtime.getModel('config-test','parent'));
+    await turnIn(mentionSession,'mention_history',[final('HISTORY_MARKER_ACK')]);
+    const before=control.seen.length,noticeCount=notices.length;
+    control.plans.mention_clone=[[tool('Agent',{subagent_type:'worker',description:'Fixture mention task',prompt:'CASE:child_mention Đọc safe.txt rồi báo lại.'})]];
+    control.plans.child_mention=[final('MENTION_CHILD_DONE')];
+    control.fallbackKey='mention_wake';
+    await mentionSession.prompt('@worker CASE:mention_clone kiểm tra safe.txt giúp tôi');
+    const deadline=Date.now()+30000;
+    const woken=()=>control.seen.slice(before).find(x=>x.model==='parent'&&x.key!=='mention_clone'&&JSON.stringify(x.messages.at(-1)).includes('MENTION_CHILD_DONE'));
+    while(!woken()){
+      assert.ok(Date.now()<deadline,`Worker không báo kết quả về phiên chính: ${JSON.stringify(control.seen.slice(before).map(x=>x.key))} ${JSON.stringify(notices.slice(noticeCount))}`);
+      await delay(100);
+    }
+    // Bản sao: một request, cùng model, mang lịch sử của phiên chính, chỉ có tool Agent; không quay về chạy thẳng.
+    const clones=control.seen.slice(before).filter(x=>x.key==='mention_clone');
+    assert.equal(clones.length,1,'Bản sao dừng ngay sau khi khởi động agent');
+    assert.equal(clones[0].model,'parent');
+    assert.deepEqual(clones[0].tools,['Agent']);
+    assert.match(JSON.stringify(clones[0].messages),/HISTORY_MARKER_ACK/);
+    assert.ok(!notices.slice(noticeCount).some(n=>/directly/.test(n.message)),JSON.stringify(notices.slice(noticeCount)));
+    // Worker ghim foreground trong role nhưng agent của mention chạy nền; kết quả về qua thông báo completion.
+    const child=control.seen.slice(before).filter(x=>x.key==='child_mention');
+    assert.ok(child.length>0&&child.every(x=>x.model==='gpt-6-sol'));
+    // Phiên chính không nhận lượt nào của bản sao.
+    assert.ok(!JSON.stringify(mentionSession.messages).includes('kiểm tra safe.txt giúp tôi'));
+    while(mentionSession.isStreaming||mentionSession.pendingMessageCount>0){assert.ok(Date.now()<deadline);await delay(50);}
+  }finally{
+    await mentionSession.extensionRunner.emit({type:'session_shutdown',reason:'quit'});mentionSession.dispose();
+    fs.rmSync(projectSettings,{force:true});
+  }
+});
+
 // Jev (System One của TypeSafe) qua endpoint và key giả: fetch chỉ trả lời đúng endpoint fixture, không có mạng thật
 // và không đọc keyring. Fixture gắn cờ exfiltration khi lệnh có JEV_RISKY và prompt injection khi đoạn có câu lệnh cho AI.
 const jevEndpoint='https://jev.fixture.invalid/v1/systemone';
