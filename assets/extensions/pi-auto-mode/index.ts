@@ -8,8 +8,8 @@ import { classifyWithFallback, type ClassifierResult, type Complete, type Screen
 import { loadConfig, parseMode, type PermissionMode, readState, writeState } from "./lib/config.ts";
 import { evaluate, JEV_DEFAULT_ENDPOINT, JEV_PRICE_PER_MTOK, type JevAccess, JevError, loadKeyStore, resolveAccess } from "./lib/jev.ts";
 import * as text from "./lib/messages.ts";
-import { type CallFacts, decide, describeCall, type PolicyContext, SAFE_TOOLS, type ToolCall } from "./lib/policy.ts";
-import { protectedReason, resolveToolPath, temporaryRoots } from "./lib/paths.ts";
+import { type CallFacts, decide, describeCall, escalates, type PolicyContext, SAFE_TOOLS, type ToolCall } from "./lib/policy.ts";
+import { resolveToolPath, temporaryRoots } from "./lib/paths.ts";
 import { judgeProbe, PROBE_QUESTIONS, PROBE_WARNING, probeChunks, probeState, resultText, shouldProbe } from "./lib/probe.ts";
 import { buildSystemPrompt, DEFAULT_ALLOW, DEFAULT_ENVIRONMENT, DEFAULT_HARD_DENY, DEFAULT_SOFT_DENY, resolveSlots } from "./lib/prompt.ts";
 import { buildRuleSet, firstMatch } from "./lib/rules.ts";
@@ -421,11 +421,6 @@ export default function piAutoMode(pi: ExtensionAPI) {
     return () => (memo ??= runScreen(ctx, call, notes));
   }
 
-  /** Bằng chứng rủi ro tất định: không để giai đoạn 1 tự cho qua. */
-  function escalation(call: ToolCall, facts: CallFacts, pc: PolicyContext): boolean {
-    return !!facts.critical || (["write", "edit"].includes(call.toolName) && facts.paths.some((file) => !!protectedReason(file, pc.roots)));
-  }
-
   function jevLabel(): string {
     if (!config.jev.enabled) return "off (autoMode.jev is false)";
     if (jevOff) return `off for this session (${jevOff})`;
@@ -544,7 +539,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
     }
     // Duyệt một lần từ /permissions: bỏ qua bộ phân loại, luật deny vẫn đã áp dụng ở trên.
     if (state.consumeApproval(key)) return allowed(call, "user approval");
-    const result = await runClassifier(ctx, call, toolCallId, decision.notes, escalation(call, facts, pc));
+    const result = await runClassifier(ctx, call, toolCallId, decision.notes, escalates(call, facts, pc));
     if (result.kind === "allow") return allowed(call, result.screen === "jev" ? "jev" : `classifier stage ${result.stage}`);
     if (result.kind === "unavailable") {
       log({ event: "unavailable", tool: call.toolName, reason: result.reason });
@@ -888,7 +883,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
           return;
         }
         notify(ctx, "Asking the classifier…", "info");
-        const result = await runClassifier(ctx, call, undefined, decision.notes, escalation(call, facts, pc));
+        const result = await runClassifier(ctx, call, undefined, decision.notes, escalates(call, facts, pc));
         const summary = result.kind === "allow" ? `allow (${result.screen === "jev" ? "Jev" : `stage ${result.stage}`})`
           : result.kind === "block" ? `block (stage ${result.stage}) — ${result.rule ? `[${result.rule}] ` : ""}${result.reason}`
             : `unavailable — ${result.reason}`;

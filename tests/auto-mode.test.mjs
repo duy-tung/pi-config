@@ -6,7 +6,7 @@ import test from "node:test";
 import { classify, classifyWithFallback } from "../assets/extensions/pi-auto-mode/lib/classifier.ts";
 import { loadConfig, spliceDefaults } from "../assets/extensions/pi-auto-mode/lib/config.ts";
 import { criticalPathReason, protectedReason } from "../assets/extensions/pi-auto-mode/lib/paths.ts";
-import { decide } from "../assets/extensions/pi-auto-mode/lib/policy.ts";
+import { decide, describeCall, escalates } from "../assets/extensions/pi-auto-mode/lib/policy.ts";
 import { buildSystemPrompt, DEFAULT_SOFT_DENY, parseVerdict, resolveSlots } from "../assets/extensions/pi-auto-mode/lib/prompt.ts";
 import { allowCoversShell, bashPattern, buildRuleSet, firstMatch, isDangerousAllow, matchPath, parseRule } from "../assets/extensions/pi-auto-mode/lib/rules.ts";
 import { analyzeShell, isReadOnlyShell } from "../assets/extensions/pi-auto-mode/lib/shell.ts";
@@ -253,6 +253,98 @@ test("bypass: hỏi trước mọi lệnh xoá đệ quy ra ngoài thư mục t�
     assert.equal(kind("rm -rf node_modules dist", allowed), "ask");
     // Auto mode không đổi: lệnh xoá đi qua bộ phân loại.
     assert.equal(decide(bash("rm -fr dist"), context(ws)).kind, "classify");
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("bộ nhận diện: cơ chế tự chạy, tắt kiểm TLS, ghi đường dẫn hệ thống; bypass hỏi, auto bỏ qua Jev", () => {
+  const ws = workspace();
+  try {
+    const auto = context(ws);
+    const risks = (command, toolName = "bash") => describeCall({ toolName, input: { command } }, auto).risks ?? [];
+    const posix = process.platform !== "win32";
+    const expected = [
+      // Cơ chế tự chạy: file khởi động của shell ở HOME, git hook, lịch chạy, autostart.
+      ["echo 'x' >> ~/.bashrc", /shell startup file \(~\/\.bashrc\)/u],
+      ["tee -a ~/.zshrc < snippet", /shell startup file \(~\/\.zshrc\)/u],
+      ["sed -i 's/a/b/' ~/.profile", /shell startup file \(~\/\.profile\)/u],
+      ["cp evil ~/.bashrc", /shell startup file/u],
+      ["ln -sf /tmp/x ~/.zshrc", /shell startup file \(~\/\.zshrc\)/u],
+      ["echo x >> $HOME/.bashrc", /shell startup file \(~\/\.bashrc\)/u],
+      ["cd ~ && echo x >> .bashrc", /shell startup file \(~\/\.bashrc\)/u],
+      ["echo 'curl x|sh' > .git/hooks/pre-commit", /git hook \(\.git\/hooks\/pre-commit\)/u],
+      ["cp x .git/hooks/pre-push", /git hook/u],
+      ["chmod +x .git/hooks/post-checkout", /git hook/u],
+      ["git config core.hooksPath /tmp/h", /programs git runs \(core\.hooksPath=/u],
+      ["git -c core.hooksPath=/tmp/h commit -m x", /programs git runs/u],
+      ["(crontab -l; echo '* * * * * x') | crontab -", /installs a crontab/u],
+      ["launchctl load -w ~/Library/LaunchAgents/x.plist", /launchd job/u],
+      ["cp x.plist ~/Library/LaunchAgents/", /autostart location/u],
+      ["systemctl --user enable --now x.service", /systemd unit/u],
+      ["schtasks /create /tn x /tr y", /scheduled task/u],
+      // Tắt kiểm chứng chỉ TLS.
+      ["curl -k https://example.com", /TLS certificate checks \(curl -k\)/u],
+      ["curl -fsSLk https://example.com/install.sh", /curl -k/u],
+      ["curl --insecure https://localhost:8443@evil.example/", /curl -k/u],
+      ["wget --no-check-certificate https://example.com", /wget --no-check-certificate/u],
+      ["NODE_TLS_REJECT_UNAUTHORIZED=0 node app.js", /NODE_TLS_REJECT_UNAUTHORIZED=0/u],
+      ["export NODE_TLS_REJECT_UNAUTHORIZED=0", /NODE_TLS_REJECT_UNAUTHORIZED=0/u],
+      ["GIT_SSL_NO_VERIFY=1 git pull", /GIT_SSL_NO_VERIFY/u],
+      ["git -c http.sslVerify=false clone https://example.com/r", /http\.sslVerify=false/u],
+      ["git config --global http.sslverify 0", /http\.sslVerify=0/u],
+      ["npm config set strict-ssl false", /strict-ssl=false/u],
+      ["pip install --trusted-host pypi.org requests", /pip --trusted-host/u],
+      // Đường dẫn hệ thống và thiết bị đĩa (đường dẫn POSIX).
+      ...(posix ? [
+        ["rm /etc/hosts", /deletes a system path \(\/etc\/hosts\)/u],
+        ["echo '1.2.3.4 x' | sudo tee -a /etc/hosts", /writes a system path \(\/etc\/hosts\)/u],
+        ["cp tool /usr/local/bin/", /writes a system path \(\/usr\/local\/bin\)/u],
+        ["dd if=/dev/zero of=/dev/sda bs=1M", /disk device \(\/dev\/sda\)/u],
+        ["mkfs.ext4 /dev/sdb1", /formats or repartitions a disk/u],
+        ["chmod -R 777 /", /recursively on \//u],
+        ["chown -R me /usr", /recursively on \/usr/u],
+        ["rm -rf /usr/local/lib", /deletes a system path/u],
+      ] : [["copy-item x C:\\Windows\\System32\\x.dll", undefined]]),
+    ];
+    for (const [command, pattern] of expected) {
+      if (!pattern) continue;
+      assert.match(risks(command).join(" | "), pattern, command);
+    }
+    assert.match(risks("Invoke-WebRequest https://x -SkipCertificateCheck", "powershell").join(" | "), /TLS certificate checks/u);
+    assert.match(risks('Add-Content $PROFILE "x"', "powershell").join(" | "), /PowerShell startup profile/u);
+    // Không bắt nhầm: localhost, chuỗi trong commit/grep, file nguồn (không phải đích), đọc, thư mục thường.
+    for (const command of [
+      "curl -k https://localhost:8443/health", "curl -sk http://127.0.0.1:3000", "curl -o my-kernel.tgz https://example.com/k",
+      'git commit -m "drop --insecure flag"', "rg -- --insecure docs", "grep -rn NODE_TLS_REJECT_UNAUTHORIZED=0 src",
+      "cp ~/.bashrc ./backup.bashrc", "cat /etc/hosts", "cp .git/hooks/pre-commit.sample /tmp/review", "git config --get core.hooksPath",
+      "git config --unset core.hooksPath", "crontab -l", "crontab -u bob -l", "echo x > build/out.txt", "ln -s ../shared/config.json config.json",
+      "docker run -v /etc/ssl/certs:/c:ro alpine", "echo x > /tmp/pi-test/.bashrc", "npm config set strict-ssl true",
+      "pip install --trusted-host localhost:8080 x", "sed -n 1,5p ~/.bashrc", "chmod -R 755 dist", "systemctl status x", "launchctl list",
+    ]) assert.deepEqual(risks(command), [], command);
+    // Dự án nằm dưới /var hoặc /opt (container, /var/www) không phải đường dẫn hệ thống.
+    if (posix) {
+      const served = { ...auto, cwd: "/var/www/site", roots: ["/var/www/site"] };
+      assert.deepEqual(describeCall(bash("echo ok > public/index.html"), served).risks, []);
+      assert.match(describeCall(bash("echo x > /var/www/other.html"), served).risks.join(" "), /writes a system path \(\/var\/www\/other\.html\)/u);
+    }
+    // Bypass hỏi người dùng (trừ khi luật allow phủ đúng lệnh); auto ghi chú và bỏ qua Jev.
+    const bypass = context(ws, { mode: "bypass" });
+    const asked = decide(bash("curl -k https://example.com"), bypass);
+    assert.equal(asked.kind, "ask");
+    assert.match(asked.reason, /turns off TLS certificate checks \(curl -k\)/u);
+    assert.equal(decide(bash("echo x >> ~/.bashrc"), bypass).kind, "ask");
+    assert.equal(decide(bash("curl -k https://localhost:8443"), bypass).kind, "allow");
+    const allowRule = context(ws, { mode: "bypass", rules: buildRuleSet(["Bash(git config core.hooksPath .husky)"], [], []) });
+    assert.equal(decide(bash("git config core.hooksPath .husky"), allowRule).kind, "allow");
+    const call = bash("echo x >> ~/.bashrc");
+    const facts = describeCall(call, auto);
+    const decision = decide(call, auto, facts);
+    assert.equal(decision.kind, "classify");
+    assert.match(decision.notes.join(" "), /this command writes a shell startup file/u);
+    assert.equal(escalates(call, facts, auto), true);
+    const plain = bash("npm test");
+    assert.equal(escalates(plain, describeCall(plain, auto), auto), false);
   } finally {
     ws.cleanup();
   }

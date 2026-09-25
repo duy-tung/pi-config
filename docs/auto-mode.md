@@ -5,7 +5,7 @@
 | Mode | Dòng dưới ô nhập | Hành vi |
 |---|---|---|
 | **Auto** (mặc định) | `⏵⏵ auto mode on` (vàng) | Thao tác an toàn chạy ngay. Thao tác còn lại do bộ phân loại hai giai đoạn duyệt, không hỏi người dùng: Jev (model System One của TypeSafe) sàng lọc, LLM xét kỹ phần bị gắn cờ |
-| **Bypass** | `⏵⏵ bypass permissions on` (đỏ) | Không kiểm tra, trừ luật `deny`, luật `ask`, `rm` vào đường dẫn quan trọng và lệnh xoá đệ quy ra ngoài thư mục tạm |
+| **Bypass** | `⏵⏵ bypass permissions on` (đỏ) | Không kiểm tra, trừ luật `deny`, luật `ask`, `rm` vào đường dẫn quan trọng, lệnh xoá đệ quy ra ngoài thư mục tạm và lệnh rủi ro ở bước 5 |
 
 ## Dùng
 
@@ -30,15 +30,32 @@ Mỗi tool call đi qua các bước sau, dừng ở bước đầu tiên có k�
    - luật `allow` phủ đúng lệnh, vd `Bash(rm -rf node_modules)`.
 
    Ở auto, các lệnh này đi tiếp như mọi lệnh ghi, tới bộ phân loại.
-5. **Bypass** → cho chạy.
-6. **Tự bảo vệ**: ghi vào `settings.json`, `keybindings.json`, `extensions/` của agent, thư mục trạng thái hoặc mã của chính extension → hỏi người dùng.
-7. **Lối đi nhanh** (không gọi model):
+5. **Lệnh rủi ro** (riêng pi-config, `lib/risks.ts`) → bypass: hỏi người dùng, trừ khi luật `allow` phủ đúng lệnh; auto: bộ phân loại kèm ghi chú, bỏ qua Jev và đi thẳng giai đoạn 2. Nhận ra tất định, kể cả trong `sudo`, `bash -c`, `$()` và sau `cd`:
+   - **cài cơ chế tự chạy**:
+     - ghi file khởi động của shell trong HOME (`~/.bashrc`, `~/.zshrc`, `~/.profile`, profile PowerShell…) hoặc thư mục autostart (`~/Library/LaunchAgents`, `~/.config/autostart`, `~/.config/systemd/user`);
+     - ghi git hook (`.git/hooks/`, `.husky/`), `.git/config`, hoặc đặt `core.hooksPath`/`core.fsmonitor`;
+     - `crontab FILE|-|-e`, `launchctl load|bootstrap`, `systemctl enable`, `schtasks /create`, khóa `Run` của registry, `sc create`;
+     - file khởi động hoặc lịch chạy của hệ thống (`/etc/profile.d`, `/etc/cron.d`, `/etc/systemd`, `/Library/LaunchDaemons`…);
+   - **tắt kiểm chứng chỉ TLS**:
+     - `curl -k` (cả cụm cờ như `-fsSLk`), `--insecure`, `wget --no-check-certificate`;
+     - `NODE_TLS_REJECT_UNAUTHORIZED=0`, `GIT_SSL_NO_VERIFY`, `PYTHONHTTPSVERIFY=0`, `git -c http.sslVerify=false`, `git config http.sslVerify false`, `strict-ssl=false` của npm/pnpm/yarn, `pip --trusted-host`.
+
+     Không tính khi mọi URL là localhost/127.x/::1; host được lấy bằng bộ phân tích URL, nên `localhost@evil.example` không lọt;
+   - **ghi đường dẫn hệ thống hoặc đĩa**:
+     - ghi hoặc xoá dưới `/etc`, `/usr`, `/opt`, `/var`, `/System`, `/Library`, `C:\Windows`, `Program Files` (trừ thư mục tạm, HOME, thư mục làm việc và `additionalDirectories`);
+     - ghi `/dev/sdX`, `/dev/nvme…`; `mkfs`, `fdisk`, `diskutil erase…`;
+     - `chmod`/`chown -R` trên `/`, thư mục cấp đầu hoặc HOME.
+
+   Đích ghi lấy từ chuyển hướng, `tee`, đích cuối của `cp`/`mv`/`install`/`ln`/`rsync`, `sed -i`, `perl -i`, `dd of=`, `curl -o`, `wget -O`, `chmod`/`chown`, `truncate`, `rm`. File nguồn (`cp ~/.bashrc backup`) và lệnh chỉ đọc không tính.
+6. **Bypass** → cho chạy.
+7. **Tự bảo vệ**: ghi vào `settings.json`, `keybindings.json`, `extensions/` của agent, thư mục trạng thái hoặc mã của chính extension → hỏi người dùng.
+8. **Lối đi nhanh** (không gọi model):
    - `read`, `grep`, `find`, `ls` trong thư mục làm việc, `additionalDirectories`, thư mục tạm, thư mục skill đã cấu hình, tài liệu của Pi và agent dir; todo, `ask_user_question`, công cụ đọc của pi-lens, `web_enable`, `get_search_content`, goal, advisor, trạng thái `bg_*`;
    - `edit`/`write` trong thư mục làm việc, `additionalDirectories` hoặc thư mục tạm, trừ đường dẫn được bảo vệ (`.git/`, `.pi/`, `.claude/`, `.github/`, `.vscode/`, file rc của shell, `.npmrc`, `AGENTS.md`, `CLAUDE.md`…);
    - lệnh shell chứng minh được là chỉ đọc: toàn chữ thuần (không biến, `$()`, subshell, heredoc, gán biến môi trường), mọi lệnh con nằm trong danh sách đọc (`ls`, `cat`, `rg`, `git status/log/diff/show`, `gh pr view`…, `sed -n 1,20p`, `find` không `-exec/-delete`), chuyển hướng chỉ tới `/dev/null`, và mọi đường dẫn nằm trong các thư mục đọc tự do ở trên;
    - `mkdir`/`touch`/`cp`/`mv` với mọi đích trong workspace (không có `cd` trong chuỗi lệnh);
    - luật `allow` hẹp. Khi ở auto mode, luật allow cho phép chạy code tùy ý bị bỏ qua (`Bash(*)`, `python *`, `node *`, `npm run *`, `bash`, `sudo`, `Agent`, `SubagentWorkflow`…), như Claude Code.
-8. **Bộ phân loại** cho mọi thứ khác: đọc ngoài workspace (vd `grep` token trong `~/` — tool `grep` của Pi tìm cả file ẩn), lệnh shell còn lại, `bg_run`, `fetch_content` (trừ domain trong allow), spawn `Agent`, `SubagentWorkflow`, cài server MCP (bản cài đặt `allowInstall: false` nên pi-mcp-adapter vẫn từ chối sau đó), từng lời gọi MCP (qua sự kiện duyệt của pi-mcp-adapter, gồm cả lời gọi trong `mcpScript`), sửa file ngoài workspace hoặc vào đường dẫn được bảo vệ, tool lạ.
+9. **Bộ phân loại** cho mọi thứ khác: đọc ngoài workspace (vd `grep` token trong `~/` — tool `grep` của Pi tìm cả file ẩn), lệnh shell còn lại, `bg_run`, `fetch_content` (trừ domain trong allow), spawn `Agent`, `SubagentWorkflow`, cài server MCP (bản cài đặt `allowInstall: false` nên pi-mcp-adapter vẫn từ chối sau đó), từng lời gọi MCP (qua sự kiện duyệt của pi-mcp-adapter, gồm cả lời gọi trong `mcpScript`), sửa file ngoài workspace hoặc vào đường dẫn được bảo vệ, tool lạ.
 
 ### Bộ phân loại
 
@@ -66,7 +83,7 @@ LLM mặc định là **Claude Sonnet 5** (`anthropic/claude-sonnet-5`), như Cl
 
   Jev không bao giờ tự chặn, vì nó không đọc tin nhắn của người dùng nên không biết lệnh có được yêu cầu hay không.
 - Đi thẳng giai đoạn 2, không hỏi Jev:
-  - lớp chính sách đã thấy rủi ro (`rm` vào đường dẫn quan trọng, ghi file được bảo vệ);
+  - lớp chính sách đã thấy rủi ro (`rm` vào đường dẫn quan trọng, ghi file được bảo vệ, lệnh rủi ro ở bước 5);
   - kể từ tin nhắn gần nhất của người dùng đã có kết quả tool nghi prompt injection (xem dưới).
 - Phạm vi: `bash`, `bg_run`, `powershell`, đọc ngoài workspace, `write`/`edit`, `fetch_content`, lời gọi MCP. `Agent`, `SubagentWorkflow`, `mcpScript` và tool lạ vẫn qua giai đoạn 1 bằng LLM.
 - Lỗi:
@@ -185,6 +202,10 @@ Completion auditor của goal (pi-goal-x) cũng là phiên con: bản vá nạp 
 - Probe chỉ chạy khi có key Jev và chỉ với kết quả mang nội dung bên ngoài. File đọc trong workspace (kể cả repo vừa clone) không được quét. Nội dung dài hơn 24.000 ký tự chỉ được quét phần đầu và phần cuối.
 - Kết quả subagent trả về được probe quét, nhưng không xét lại cả lịch sử hành động của subagent như Claude Code. Lệnh `gate:` trong `SubagentWorkflow` chạy không qua `tool_call`; vì vậy cả script workflow được phân loại lúc gọi.
 - Bước 4 chỉ nhận ra các lệnh shell ở trên. Script tự xoá thư mục (`python -c "shutil.rmtree(...)"`, `node -e`...) hoặc lệnh xoá trên máy khác (`ssh`, `docker exec`) không bị hỏi.
+- Bước 5 cũng vậy:
+  - chỉ thấy đích là chữ thuần, `$HOME/…` và đường dẫn tương đối sau `cd`;
+  - script (`python -c`, `node -e`), công cụ tự ghi cấu hình (`husky init`, `pre-commit install`) và lệnh trên máy khác thì để bộ phân loại xét;
+  - PowerShell chỉ được so theo mẫu trên chuỗi lệnh.
 - Lệnh chưa chứng minh được là chỉ đọc đều tốn một lần gọi Jev (khoảng 100–250 ms) hoặc, khi không có Jev hay bị gắn cờ, một lần gọi LLM (vài trăm ms tới vài giây). Thêm luật `allow` hẹp cho lệnh hay dùng (`Bash(npm test)`, `Bash(cargo build *)`).
 - Ranh giới người dùng đặt ra chỉ nằm trong transcript: compaction làm mất tin nhắn cũ thì bộ phân loại không còn thấy.
 
