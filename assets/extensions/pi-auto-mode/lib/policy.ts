@@ -4,12 +4,13 @@ import type { PermissionMode } from "./config.ts";
 import {
   criticalPathReason, insideAny, insideTemporary, isSelfProtected, protectedReason, resolveShellPath, resolveToolPath, temporaryRoots,
 } from "./paths.ts";
+import { detectPowerShellRisks, detectRisks } from "./risks.ts";
 import { allowCoversShell, firstMatch, type RuleMatchTarget, type RuleSet } from "./rules.ts";
 import { analyzeShell, commandName, commandText, isReadOnlyCommand, isReadOnlyShell, type ShellAnalysis, type SimpleCommand } from "./shell.ts";
 
 /**
  * Quyết định tất định cho một lời gọi tool, trước khi cần tới bộ phân loại.
- * Thứ tự theo Claude Code: deny → ask → rm vào đường dẫn quan trọng → (bypass: xoá đệ quy)
+ * Thứ tự theo Claude Code: deny → ask → rm vào đường dẫn quan trọng → (bypass: xoá đệ quy, lệnh rủi ro)
  * → bypass → tự bảo vệ → lối đi nhanh (chỉ bao giờ nói "an toàn") → bộ phân loại.
  */
 export type Decision =
@@ -67,6 +68,8 @@ export interface CallFacts {
   critical?: string;
   /** Lệnh xoá đệ quy có đích ngoài thư mục tạm (hoặc không kiểm được), vd "rm -r". */
   removal?: string;
+  /** Rủi ro nhận ra tất định (lib/risks.ts): cơ chế tự chạy, tắt kiểm TLS, ghi đường dẫn hệ thống. */
+  risks?: string[];
   writesSelf?: boolean;
   /** Tóm tắt ngắn để hiển thị. */
   summary: string;
@@ -295,10 +298,12 @@ export function describeCall(call: ToolCall, pc: PolicyContext): CallFacts {
     const removals = toolName === "powershell"
       ? (POWERSHELL_RECURSIVE.test(command) || CMD_RECURSIVE.test(command) ? [{ label: "Remove-Item -Recurse", targets: [], opaque: true }] : [])
       : recursiveRemovals(analysis);
+    const tempRoots = pc.tempRoots ?? temporaryRoots();
     return {
       kind: "shell", analysis, readOnly, paths, summary,
       critical: criticalRemoval(analysis, pc.cwd, home),
-      removal: removalOutsideTemp(removals, pc.cwd, home, pc.tempRoots ?? temporaryRoots()),
+      removal: removalOutsideTemp(removals, pc.cwd, home, tempRoots),
+      risks: toolName === "powershell" ? detectPowerShellRisks(command) : detectRisks(analysis, { cwd: pc.cwd, home, roots: pc.roots, tempRoots }),
       writesSelf: !readOnly && paths.some((file) => isSelfProtected(file, pc.selfPaths)),
       target: { toolName, commands: analysis.commands.map(commandText), raw: command, paths, writes: !readOnly },
     };
@@ -393,6 +398,22 @@ function workspaceFileOps(commands: SimpleCommand[], pc: PolicyContext, home: st
   return sawWrite;
 }
 
+/** Luật allow phủ mọi lệnh con ghi của một chuỗi lệnh plain (vd Bash(rm -rf node_modules)). */
+function allowCovers(facts: CallFacts, pc: PolicyContext): boolean {
+  const analysis = facts.analysis;
+  return !!analysis?.plain &&
+    allowCoversShell(pc.rules.allow, analysis.commands.filter((command) => !isReadOnlyCommand(command)).map(commandText));
+}
+
+/**
+ * Hành động có bằng chứng rủi ro từ lớp chính sách thì bỏ qua sàng lọc nhanh (Jev) và đi thẳng LLM
+ * giai đoạn 2: rm vào đường dẫn quan trọng, edit/write vào đường dẫn được bảo vệ, lệnh có rủi ro nhận ra được.
+ */
+export function escalates(call: ToolCall, facts: CallFacts, pc: PolicyContext): boolean {
+  return !!facts.critical || !!facts.risks?.length ||
+    (WRITE_TOOLS.has(call.toolName) && facts.paths.some((file) => !!protectedReason(file, pc.roots)));
+}
+
 export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(call, pc)): Decision {
   const home = pc.home ?? os.homedir();
   const notes: string[] = [];
@@ -411,11 +432,15 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
 
   // Riêng pi-config: bypass hỏi trước mọi lệnh xoá đệ quy ra ngoài thư mục tạm, trừ khi luật allow phủ
   // đúng lệnh (vd Bash(rm -rf node_modules)). Auto mode đã gửi các lệnh này cho bộ phân loại.
-  if (pc.mode === "bypass" && facts.removal) {
-    const analysis = facts.analysis;
-    const covered = !!analysis?.plain &&
-      allowCoversShell(pc.rules.allow, analysis.commands.filter((command) => !isReadOnlyCommand(command)).map(commandText));
-    if (!covered) return { kind: "ask", reason: `This command deletes recursively (${facts.removal}).` };
+  if (pc.mode === "bypass" && facts.removal && !allowCovers(facts, pc)) {
+    return { kind: "ask", reason: `This command deletes recursively (${facts.removal}).` };
+  }
+
+  // Riêng pi-config: cơ chế tự chạy, tắt kiểm TLS, ghi đường dẫn hệ thống. Bypass hỏi người dùng (trừ khi
+  // luật allow phủ đúng lệnh); auto ghi chú cho bộ phân loại và bỏ qua Jev (xem escalates).
+  if (facts.risks?.length) {
+    if (pc.mode === "bypass" && !allowCovers(facts, pc)) return { kind: "ask", reason: `This command ${facts.risks.join("; ")}.` };
+    notes.push(...facts.risks.map((risk) => `this command ${risk}`));
   }
 
   if (pc.mode === "bypass") return { kind: "allow", via: "bypass" };

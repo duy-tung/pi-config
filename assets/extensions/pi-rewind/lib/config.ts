@@ -7,12 +7,16 @@ export interface RewindConfig {
   storageDir: string;
   retentionDays: number;
   maxFileBytes: number;
+  /** Tổng dung lượng blob tối đa; lần dọn hằng ngày xóa blob tham chiếu lâu nhất (best-effort). */
+  maxStorageBytes: number;
   /** Tool có thể sửa file ngoài edit/write; được theo dõi bằng git status trước/sau. */
   watchTools: string[];
   /** git status + chụp file bẩn chậm hơn ngưỡng này thì ngừng theo dõi repo trong phiên. */
   watchSlowMs: number;
   /** Số file chưa commit tối đa để theo dõi bash/Agent. */
   watchMaxDirty: number;
+  /** Tổng dung lượng file chưa commit cần chụp trước mỗi bash/Agent; vượt thì ngừng theo dõi repo trong phiên. */
+  watchMaxBytes: number;
   /** Esc Esc mở Rewind; cần doubleEscapeAction "none" để không trùng /tree của Pi. */
   doubleEscape: boolean;
 }
@@ -21,9 +25,11 @@ export const DEFAULTS: Omit<RewindConfig, "storageDir"> = {
   enabled: true,
   retentionDays: 30,
   maxFileBytes: 20 * 1024 * 1024,
+  maxStorageBytes: 2 * 1024 * 1024 * 1024,
   watchTools: ["bash", "powershell", "Agent"],
   watchSlowMs: 2000,
   watchMaxDirty: 500,
+  watchMaxBytes: 256 * 1024 * 1024,
   doubleEscape: true,
 };
 
@@ -54,9 +60,11 @@ export function loadConfig(agentDir: string): RewindConfig & { doubleEscapeActio
     storageDir: path.isAbsolute(storage) ? storage : path.resolve(agentDir, storage),
     retentionDays: number(raw.retentionDays, DEFAULTS.retentionDays),
     maxFileBytes: number(raw.maxFileBytes, DEFAULTS.maxFileBytes),
+    maxStorageBytes: number(raw.maxStorageBytes, DEFAULTS.maxStorageBytes),
     watchTools: Array.isArray(raw.watchTools) ? raw.watchTools.filter((item): item is string => typeof item === "string") : DEFAULTS.watchTools,
     watchSlowMs: number(raw.watchSlowMs, DEFAULTS.watchSlowMs),
     watchMaxDirty: number(raw.watchMaxDirty, DEFAULTS.watchMaxDirty),
+    watchMaxBytes: number(raw.watchMaxBytes, DEFAULTS.watchMaxBytes),
     doubleEscape: raw.doubleEscape !== false,
     doubleEscapeAction: typeof settings.doubleEscapeAction === "string" ? settings.doubleEscapeAction : "tree",
   };

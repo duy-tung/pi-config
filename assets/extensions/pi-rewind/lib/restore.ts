@@ -39,6 +39,33 @@ export function planRestore(targets: Map<string, FileVersion>, capturer: Capture
   return items;
 }
 
+/** Cùng phiên bản theo nghĩa của kế hoạch: hai bản không sao lưu được coi như nhau (đều bị bỏ qua khi ghi). */
+function samePlanned(a: FileVersion, b: FileVersion): boolean {
+  return (a.kind === "unprotected" && b.kind === "unprotected") || sameVersion(a, b);
+}
+
+/** File mà kế hoạch lập lại khác kế hoạch đã cho người dùng xem: khác tập file, nội dung hiện tại hoặc đích. */
+export function planDrift(shown: PlanItem[], fresh: PlanItem[]): string[] {
+  const previous = new Map(shown.map((item) => [item.file, item]));
+  const drift = new Set<string>();
+  for (const item of fresh) {
+    const old = previous.get(item.file);
+    if (!old || !samePlanned(old.current, item.current) || !samePlanned(old.target, item.target)) drift.add(item.file);
+    previous.delete(item.file);
+  }
+  for (const file of previous.keys()) drift.add(file);
+  return [...drift].sort();
+}
+
+/** Code đã đổi kể từ lúc xác nhận (file sửa trong lúc hộp thoại mở): báo lỗi, không ghi gì. */
+export function assertSamePlan(shown: PlanItem[], fresh: PlanItem[]): void {
+  const drift = planDrift(shown, fresh);
+  if (!drift.length) return;
+  const names = drift.map((file) => path.basename(file));
+  const list = names.length > 3 ? `${names.slice(0, 3).join(", ")} and ${names.length - 3} other files` : names.join(", ");
+  throw new Error(`The code changed since the preview (${list}). Nothing was restored; open /rewind again.`);
+}
+
 function readVersion(store: BlobStore, version: FileVersion): Buffer | undefined {
   return version.kind === "file" ? store.read(version.sha) : undefined;
 }
@@ -142,8 +169,8 @@ async function writeTarget(file: string, data: Buffer, mode: number, stat: fs.St
 
 /**
  * Ghi nội dung đích cho từng file. Kiểm lại trạng thái trên đĩa ngay trước khi ghi:
- * symlink, đổi kiểu file/thư mục, hoặc thư mục cha là symlink đều bị bỏ qua
- * và báo lại, không đoán. File được ghi qua file tạm rồi đổi tên (lỗi giữa chừng để nguyên
+ * symlink, đổi kiểu file/thư mục, thư mục cha là symlink, hoặc nội dung khác lúc lập kế hoạch
+ * đều bị bỏ qua và báo lại, không đoán. File được ghi qua file tạm rồi đổi tên (lỗi giữa chừng để nguyên
  * file cũ); file có hard link được ghi tại chỗ để các link vẫn chung nội dung.
  */
 export async function applyRestore(
@@ -188,6 +215,11 @@ export async function applyRestore(
         return;
       }
       try {
+        // File đổi sau khi lập kế hoạch (người dùng vừa lưu, process khác vừa ghi): giữ bản mới đó.
+        if (!sameVersion(capturer.capture(file), item.current)) {
+          result.skipped.push({ file, reason: "file đổi trong lúc khôi phục" });
+          return;
+        }
         if (target.kind === "absent") {
           if (stat) {
             fs.unlinkSync(file);

@@ -68,8 +68,12 @@ export interface GitWatcherOptions {
   slowMs: number;
   /** Nhiều file chưa commit hơn ngưỡng này (vd. node_modules chưa ignore) thì ngừng theo dõi. */
   maxDirty: number;
+  /** Tổng dung lượng file bẩn cần chụp trước mỗi tool; vượt thì ngừng theo dõi thay vì lưu chúng vào kho. */
+  maxBytes: number;
   onDisable?: (top: string, reason: string) => void;
 }
+
+const size = (bytes: number) => (bytes >= 1048576 ? `${Math.round(bytes / 1048576)} MiB` : `${Math.ceil(bytes / 1024)} KiB`);
 
 /**
  * Ghi nhận file bị thay đổi trong lúc một tool như bash hoặc Agent chạy.
@@ -133,6 +137,13 @@ export class GitWatcher {
     // Mỗi lần bash/Agent đều phải chụp toàn bộ file bẩn: quá nhiều thì ngừng thay vì làm chậm mọi tool.
     if (status.size > this.options.maxDirty) {
       this.disable(top, `${status.size} file chưa commit, vượt ngưỡng ${this.options.maxDirty}`);
+      return null;
+    }
+    // Đo trước khi chụp: file lớn chưa ignore (dữ liệu, bản build) làm mỗi lần chạy lưu hàng trăm MB vào kho.
+    let bytes = 0;
+    for (const file of status.keys()) bytes += this.capturer.storedSize(path.join(top, file));
+    if (bytes > this.options.maxBytes) {
+      this.disable(top, `file chưa commit cần chụp ${size(bytes)}, vượt ngưỡng ${size(this.options.maxBytes)}`);
       return null;
     }
     const before = new Map<string, FileVersion>();

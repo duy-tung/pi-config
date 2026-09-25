@@ -43,7 +43,7 @@ for(const [name,p] of Object.entries(profiles)){
   console.log(`${name}: ${s.defaultProvider}/${s.defaultModel}; thinking ${s.defaultThinkingLevel}`);
   for(const pkg of s.packages)if(!fs.existsSync(typeof pkg==='string'?pkg:pkg.source))errors.push(`Thiếu package: ${name}`);
   for(const entry of s.extensions??[])if(typeof entry==='string'&&!entry.startsWith('-')&&path.isAbsolute(entry)&&!fs.existsSync(entry))errors.push(`Thiếu extension: ${name}: ${entry}`);
-  // settings.json/web-search.json người dùng đã sửa được giữ khi cài lại; search Claude nay là provider anthropic của pi-web-access.
+  // Lần gộp đầu của bản cài chưa lưu mặc định giữ mục cũ trong file đã sửa; search Claude nay là provider anthropic của pi-web-access.
   if((s.extensions??[]).some(entry=>typeof entry==='string'&&/[\\/]native-web-search[\\/]?$/u.test(entry)))
     warnings.push(`${name}: settings.json còn extension native-web-search đã bỏ; xoá dòng này`);
   const webSearch=path.join(p.agentDir,'web-search.json');

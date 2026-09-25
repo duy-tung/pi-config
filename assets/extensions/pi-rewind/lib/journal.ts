@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { alive } from "./lock.ts";
 import type { PlanItem } from "./restore.ts";
 import { type Capturer, type FileVersion, sameVersion } from "./store.ts";
 
@@ -19,17 +20,6 @@ export interface Journal {
   checkpointId?: string;
   /** Mỗi file sẽ ghi: nội dung trước và sau khi khôi phục. */
   files: Record<string, { before: FileVersion; after: FileVersion }>;
-}
-
-function alive(pid: number): boolean {
-  if (pid === process.pid) return true;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    // EPERM: process vẫn tồn tại nhưng thuộc người dùng khác.
-    return (error as NodeJS.ErrnoException).code === "EPERM";
-  }
 }
 
 export class JournalStore {
@@ -60,8 +50,8 @@ export class JournalStore {
     }
   }
 
-  /** Nhật ký của process đã chết, mới nhất trước. */
-  interrupted(isAlive: (pid: number) => boolean = alive): Journal[] {
+  /** Mọi nhật ký đọc được, mới nhất trước. */
+  all(): Journal[] {
     let names: string[];
     try {
       names = fs.readdirSync(this.dir).filter((name) => name.endsWith(".json"));
@@ -70,20 +60,47 @@ export class JournalStore {
     }
     const result: Journal[] = [];
     for (const name of names) {
-      try {
-        const value = JSON.parse(fs.readFileSync(path.join(this.dir, name), "utf8")) as Journal;
-        if (value?.v !== 1 || typeof value.id !== "string" || typeof value.pid !== "number" || !value.files || typeof value.files !== "object") continue;
-        if (!isAlive(value.pid)) result.push(value);
-      } catch {
-        /* file hỏng hoặc đang ghi */
-      }
+      const journal = this.load(path.join(this.dir, name));
+      if (journal) result.push(journal);
     }
     return result.sort((a, b) => b.at - a.at);
   }
 
+  /** Nhật ký theo id; undefined khi lần khôi phục đã xong (process khác vừa hoàn tất hoặc bỏ qua). */
+  read(id: string): Journal | undefined {
+    return this.load(path.join(this.dir, `${id}.json`));
+  }
+
+  /** Nhật ký của process đã chết, mới nhất trước. */
+  interrupted(isAlive: (pid: number) => boolean = alive): Journal[] {
+    return this.all().filter((journal) => !isAlive(journal.pid));
+  }
+
+  /** SHA của blob mà nhật ký còn cần (nội dung trước và sau): dọn kho không được xóa. */
+  referenced(): Set<string> {
+    const result = new Set<string>();
+    for (const journal of this.all()) {
+      for (const { before, after } of Object.values(journal.files)) {
+        for (const version of [before, after]) if (version?.kind === "file") result.add(version.sha);
+      }
+    }
+    return result;
+  }
+
   /** Xóa nhật ký quá hạn lưu giữ (blob của nó có thể đã bị dọn); không lần khôi phục nào kéo dài tới vậy. */
   gc(maxAgeMs: number, now = Date.now()): void {
-    for (const journal of this.interrupted(() => false)) if (now - journal.at > maxAgeMs) this.end(journal.id);
+    for (const journal of this.all()) if (now - journal.at > maxAgeMs) this.end(journal.id);
+  }
+
+  private load(file: string): Journal | undefined {
+    try {
+      const value = JSON.parse(fs.readFileSync(file, "utf8")) as Journal;
+      if (value?.v !== 1 || typeof value.id !== "string" || typeof value.pid !== "number" || !value.files || typeof value.files !== "object") return undefined;
+      return value;
+    } catch {
+      // Chưa có, đã xóa, hỏng hoặc đang ghi.
+      return undefined;
+    }
   }
 }
 

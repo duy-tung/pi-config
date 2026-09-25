@@ -48,13 +48,13 @@ Lỗi mạng, lỗi tạm thời, quota, phản hồi không hợp lệ hoặc t
 
 ## Nâng cấp bản cài cũ
 
-Installer giữ file người dùng đã sửa và in đường dẫn. Với file được giữ, đối chiếu với cấu hình mới:
+Installer gộp mặc định mới vào các file JSON cấu hình (`settings.json`, `web-search.json`, `subagents.json`...) và in phần đã gộp; giá trị bạn đã đổi được giữ (xem [README](../README.md#quản-lý-cấu-hình)). Khi mặc định mới đổi đúng giá trị bạn đã đổi, installer báo `xung đột` kèm mặc định mới. Lần cài đầu từ bản chưa lưu mặc định (`<root>/state/defaults`), file đã sửa chỉ được thêm khóa và mục còn thiếu: giá trị cũ khác mặc định mới được giữ và báo xung đột; khóa và mục cũ không còn trong mặc định mới được giữ mà không báo. Đối chiếu với cấu hình mới:
 
-- `settings.json`: `defaultProvider: "anthropic"`, `defaultModel: "claude-opus-5-5"`, `enabledModels`, `modelThinkingLevels`; `extensions` có `<root>/assets/extensions/claude-usage` đứng trước `pi-auto-mode` (extension này phải nạp sau cùng). Xoá `<root>/assets/extensions/native-web-search` nếu còn: search Claude nay nằm trong bản vá pi-web-access.
+- `settings.json`: `defaultProvider: "anthropic"`, `defaultModel: "claude-opus-5-5"`, `modelThinkingLevels`. `enabledModels` và `extensions` gộp theo mục (`claude-usage` được thêm, `pi-auto-mode` luôn nạp sau cùng). Xoá `<root>/assets/extensions/native-web-search` nếu còn: search Claude nay nằm trong bản vá pi-web-access.
 - `agents/*.md` và `subagents.json`: model/thinking của role, `max_turns: 0`, `pi-usage` trong `extensions` của worker/debugger.
 - `web-search.json`: `searchRouting.providers` và `webSearch.allowedProviders` là `openai`, `anthropic`, `exa`, `firecrawl`; bỏ `provider: "firecrawl"`. Thiếu `anthropic` thì phiên Claude tìm bằng Exa.
 
-Cách nhanh nhất: đổi tên file được giữ rồi chạy lại installer để nhận bản mới, sau đó chép lại phần tùy chỉnh cần giữ. `pi-doctor` in model thật của từng role, cảnh báo khi `settings.json` còn `native-web-search` hoặc `web-search.json` thiếu `anthropic`, và báo lỗi khi `searchRouting.providers` có provider không nằm trong `webSearch.allowedProviders` (pi-web-access khi đó không nạp web tools). `web_enable` là safe tool của pi-auto-mode nên không cần luật `allow`.
+File không phải JSON đã sửa (`agents/*.md`, `AGENTS.md`) vẫn được giữ nguyên và in đường dẫn: đổi tên file rồi chạy lại installer để nhận bản mới, sau đó chép lại phần tùy chỉnh cần giữ. `pi-doctor` in model thật của từng role, cảnh báo khi `settings.json` còn `native-web-search` hoặc `web-search.json` thiếu `anthropic`, và báo lỗi khi `searchRouting.providers` có provider không nằm trong `webSearch.allowedProviders` (pi-web-access khi đó không nạp web tools). `web_enable` là safe tool của pi-auto-mode nên không cần luật `allow`.
 
 ## Chi phí và giới hạn
 

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -9,9 +9,10 @@ import { lineDiffCounts } from "../assets/extensions/pi-rewind/lib/diff.ts";
 import { GitWatcher } from "../assets/extensions/pi-rewind/lib/gitwatch.ts";
 import { History } from "../assets/extensions/pi-rewind/lib/history.ts";
 import { JournalStore, planRecovery } from "../assets/extensions/pi-rewind/lib/journal.ts";
+import { StorageLock } from "../assets/extensions/pi-rewind/lib/lock.ts";
 import { resolveToolPath } from "../assets/extensions/pi-rewind/lib/paths.ts";
-import { applyRestore, describeRestore, planRestore, planStats } from "../assets/extensions/pi-rewind/lib/restore.ts";
-import { ABSENT, BlobStore, Capturer } from "../assets/extensions/pi-rewind/lib/store.ts";
+import { applyRestore, assertSamePlan, describeRestore, planDrift, planRestore, planStats } from "../assets/extensions/pi-rewind/lib/restore.ts";
+import { ABSENT, BlobStore, Capturer, sha256 } from "../assets/extensions/pi-rewind/lib/store.ts";
 
 function sandbox() {
   // realpath native: Windows trả tên dài thay cho dạng 8.3 (RUNNER~1), giống realParent.
@@ -49,6 +50,55 @@ test("kho blob: ghi, đọc, chụp file và bỏ qua file quá lớn", () => {
     const old = Date.now() + 90 * 24 * 3600 * 1000;
     assert.equal(store.gc(1000, old), 1);
     assert.equal(store.has(version.sha), false);
+  } finally {
+    cleanup();
+  }
+});
+
+test("kho blob: blob bị process khác dọn đúng lúc put đánh dấu tham chiếu thì được ghi lại", () => {
+  const { store, cleanup } = sandbox();
+  const utimes = fs.utimesSync;
+  try {
+    const data = Buffer.from("same content\n");
+    const sha = store.put(data);
+    const blob = path.join(store.dir, "blobs", sha.slice(0, 2), sha.slice(2));
+    // gc của process khác xóa blob giữa lúc put thấy blob đã có và lúc cập nhật thời điểm tham chiếu.
+    fs.utimesSync = (file, ...rest) => {
+      if (file === blob) fs.unlinkSync(blob);
+      return utimes.call(fs, file, ...rest);
+    };
+    assert.equal(store.put(data), sha);
+    fs.utimesSync = utimes;
+    assert.equal(store.read(sha).toString(), "same content\n");
+  } finally {
+    fs.utimesSync = utimes;
+    cleanup();
+  }
+});
+
+test("giới hạn dung lượng kho: xóa blob lâu không dùng nhất, giữ blob nhật ký còn cần và blob dùng trong 24 giờ", () => {
+  const { work, store, cleanup } = sandbox();
+  try {
+    const day = 24 * 3600 * 1000;
+    const now = Date.now();
+    // Blob 100 byte; mtime là lần tham chiếu gần nhất.
+    const blob = (fill, ageDays) => {
+      const sha = store.put(Buffer.alloc(100, fill));
+      const at = new Date(now - ageDays * day);
+      fs.utimesSync(path.join(store.dir, "blobs", sha.slice(0, 2), sha.slice(2)), at, at);
+      return sha;
+    };
+    const expired = blob("x", 40), journaled = blob("j", 50), a = blob("a", 5), b = blob("b", 4), c = blob("c", 3), d = blob("d", 2), recent = blob("r", 0.5);
+    // Nhật ký phục hồi (lần khôi phục bị gián đoạn) còn cần blob cũ 50 ngày.
+    const journals = new JournalStore(store.dir);
+    journals.begin({}, [{ file: path.join(work, "x.txt"), current: { kind: "file", sha: journaled, size: 100, mode: 0o644 }, target: ABSENT }]);
+    assert.deepEqual([...journals.referenced()], [journaled]);
+    // Quá hạn 30 ngày: expired. Còn 600 byte > 400: xóa a, b, c (cũ nhất) tới khi ≤ 360.
+    assert.equal(store.gc(30 * day, now, { maxBytes: 400, keep: journals.referenced() }), 4);
+    assert.deepEqual([expired, journaled, a, b, c, d, recent].map((sha) => store.has(sha)), [false, true, false, false, false, true, true]);
+    // Giới hạn thấp hơn phần phải giữ: chỉ xóa được d, kho vẫn vượt (best-effort).
+    assert.equal(store.gc(30 * day, now, { maxBytes: 100, keep: journals.referenced() }), 1);
+    assert.deepEqual([journaled, d, recent].map((sha) => store.has(sha)), [true, false, true]);
   } finally {
     cleanup();
   }
@@ -121,6 +171,53 @@ test("khôi phục ghi lại nội dung, xóa file mới, bỏ qua symlink và t
     assert.equal(fs.readFileSync(linkTarget, "utf8"), "L1\n");
     assert.equal(fs.readFileSync(path.join(work, "dir-real", "m.txt"), "utf8"), "M2\n");
     assert.match(describeRestore(result).warning, /skipped 2 files/u);
+  } finally {
+    cleanup();
+  }
+});
+
+test("kế hoạch lập lại khác kế hoạch đã xem trước (file đổi lúc hộp thoại mở) thì báo lỗi, không ghi gì", () => {
+  const { work, capturer, cleanup } = sandbox();
+  try {
+    const files = ["a.txt", "b.txt", "c.txt"].map((name) => path.join(work, name));
+    for (const file of files) fs.writeFileSync(file, `${path.basename(file)} checkpoint\n`);
+    const targets = new Map(files.map((file) => [file, capturer.capture(file)]));
+    for (const file of files) fs.writeFileSync(file, `${path.basename(file)} turn\n`);
+    const shown = planRestore(targets, capturer);
+    assert.deepEqual(planDrift(shown, planRestore(targets, capturer)), []);
+    assert.doesNotThrow(() => assertSamePlan(shown, planRestore(targets, capturer)));
+    // Trong lúc hộp thoại mở: a.txt được sửa tiếp, b.txt được sửa tay về đúng bản checkpoint (rời khỏi kế hoạch).
+    fs.writeFileSync(files[0], "a.txt edited while the dialog was open\n");
+    fs.writeFileSync(files[1], "b.txt checkpoint\n");
+    const fresh = planRestore(targets, capturer);
+    assert.deepEqual(planDrift(shown, fresh).map((file) => path.basename(file)), ["a.txt", "b.txt"]);
+    assert.throws(() => assertSamePlan(shown, fresh), { message: "The code changed since the preview (a.txt, b.txt). Nothing was restored; open /rewind again." });
+  } finally {
+    cleanup();
+  }
+});
+
+test("khôi phục bỏ qua file đổi ngay trước khi ghi (trong hàng đợi ghi file), không ghi đè bản mới", async () => {
+  const { work, store, capturer, cleanup } = sandbox();
+  try {
+    const [changed, other] = ["changed.txt", "other.txt"].map((name) => path.join(work, name));
+    fs.writeFileSync(changed, "C checkpoint\n");
+    fs.writeFileSync(other, "O checkpoint\n");
+    const targets = new Map([changed, other].map((file) => [file, capturer.capture(file)]));
+    fs.writeFileSync(changed, "C turn\n");
+    fs.writeFileSync(other, "O turn\n");
+    const plan = planRestore(targets, capturer);
+    // Người dùng lưu changed.txt đúng lúc lần khôi phục tới lượt file đó.
+    const queue = async (file, fn) => {
+      if (file === changed) fs.writeFileSync(changed, "C saved by the user\n");
+      return fn();
+    };
+    const result = await applyRestore(plan, store, capturer, { queue });
+    assert.equal(fs.readFileSync(changed, "utf8"), "C saved by the user\n");
+    assert.equal(fs.readFileSync(other, "utf8"), "O checkpoint\n");
+    assert.deepEqual(result.restored, [other]);
+    assert.deepEqual(result.skipped, [{ file: changed, reason: "file đổi trong lúc khôi phục" }]);
+    assert.match(describeRestore(result).warning, /changed\.txt \(file đổi trong lúc khôi phục\)/u);
   } finally {
     cleanup();
   }
@@ -276,6 +373,31 @@ test("git watcher tự tắt khi repo có quá nhiều file chưa commit", async
   }
 });
 
+test("git watcher ngừng theo dõi trước khi chụp khi file chưa commit vượt ngân sách dung lượng", async () => {
+  const { work, store, capturer, cleanup } = sandbox();
+  try {
+    execFileSync("git", ["init", "-q"], { cwd: work, stdio: "pipe" });
+    const reasons = [];
+    const watcher = () => new GitWatcher(capturer, { slowMs: 5000, maxDirty: 500, maxBytes: 3000, onDisable: (_top, reason) => reasons.push(reason) });
+    // File lớn hơn maxFileBytes (1 MiB ở đây) không được chụp nên không tính vào ngân sách.
+    fs.writeFileSync(path.join(work, "video.bin"), Buffer.alloc(1024 * 1024 + 1));
+    fs.writeFileSync(path.join(work, "a.dat"), Buffer.alloc(1000, "a"));
+    fs.writeFileSync(path.join(work, "b.dat"), Buffer.alloc(1000, "b"));
+    assert.ok(await watcher().begin(work));
+    const large = Buffer.alloc(1500, "c");
+    fs.writeFileSync(path.join(work, "c.dat"), large);
+    const limited = watcher();
+    assert.equal(await limited.begin(work), null);
+    assert.deepEqual(reasons, ["file chưa commit cần chụp 4 KiB, vượt ngưỡng 3 KiB"]);
+    // Dừng trước khi chụp: nội dung c.dat chưa vào kho.
+    assert.equal(store.has(sha256(large)), false);
+    assert.equal(await limited.begin(work), null);
+    assert.equal(reasons.length, 1);
+  } finally {
+    cleanup();
+  }
+});
+
 test("hộp thoại Rewind: danh sách, xác nhận, lựa chọn như Claude Code", async () => {
   const theme = { fg: (_color, text) => text, bold: (text) => text, italic: (text) => text };
   const deps = { truncate: (text, width) => text.slice(0, width), width: (text) => text.length, wrap: (text) => [text], is: (data, key) => data === key };
@@ -409,6 +531,57 @@ test("nhật ký phục hồi: chỉ nhận lần khôi phục của process đ�
     journals.begin({}, plan);
     journals.gc(1000, Date.now() + 5000);
     assert.equal(fs.readdirSync(journals.dir).length, 0);
+  } finally {
+    cleanup();
+  }
+});
+
+test("khóa kho giữa các process Pi: đang bận thì báo lỗi, khóa bỏ lại thì được lấy lại", async () => {
+  const { dir, cleanup } = sandbox();
+  try {
+    const storage = path.join(dir, "store");
+    const first = new StorageLock(storage, { waitMs: 300 });
+    const second = new StorageLock(storage, { waitMs: 300 });
+    const release = await first.acquire();
+    const holder = JSON.parse(fs.readFileSync(first.file, "utf8"));
+    assert.deepEqual([holder.pid, holder.host, typeof holder.token, typeof holder.at], [process.pid, os.hostname(), "string", "number"]);
+    // Đang có lần khôi phục khác: chờ rồi báo lỗi, không lấy khóa; dọn kho thì bỏ qua lần chạy.
+    const started = Date.now();
+    await assert.rejects(second.acquire(), { message: `Another Pi process is restoring code (pid ${process.pid}); try again in a moment.` });
+    assert.ok(Date.now() - started >= 250);
+    assert.equal(second.tryAcquire(), undefined);
+    release();
+    assert.equal(fs.existsSync(first.file), false);
+    // Chỉ gỡ khóa đúng token: khóa đã về tay process khác thì để nguyên.
+    const releaseSecond = await second.acquire();
+    const remote = { pid: 4242, host: "another-host", token: "remote", at: Date.now() };
+    fs.writeFileSync(second.file, JSON.stringify(remote));
+    releaseSecond();
+    assert.deepEqual(JSON.parse(fs.readFileSync(second.file, "utf8")), remote);
+    // Máy khác, khóa còn mới: không kiểm được process nên vẫn bận.
+    await assert.rejects(first.acquire(), /Another Pi process is restoring code \(pid 4242\)/u);
+    // Cũ hơn 10 phút: khóa bị bỏ lại, được gỡ.
+    fs.writeFileSync(first.file, JSON.stringify({ ...remote, at: Date.now() - 11 * 60 * 1000 }));
+    const fromOld = first.tryAcquire();
+    assert.ok(fromOld);
+    fromOld();
+    // Process đã chết trên cùng máy: gỡ ngay.
+    const dead = spawnSync(process.execPath, ["-e", ""]).pid;
+    fs.writeFileSync(first.file, JSON.stringify({ pid: dead, host: os.hostname(), token: "crashed", at: Date.now() }));
+    const fromDead = await first.acquire();
+    assert.notEqual(JSON.parse(fs.readFileSync(first.file, "utf8")).token, "crashed");
+    fromDead();
+    // Khóa của chính process mà không còn giữ (lần gỡ trước không xóa được file): gỡ ngay.
+    fs.writeFileSync(first.file, JSON.stringify({ pid: process.pid, host: os.hostname(), token: "leftover", at: Date.now() }));
+    const fromLeftover = first.tryAcquire();
+    assert.ok(fromLeftover);
+    fromLeftover();
+    // Bản nạp khác của module trong cùng process (Pi nạp extension không cache module) thấy khóa đang giữ.
+    const copy = await import(new URL("../assets/extensions/pi-rewind/lib/lock.ts?copy", import.meta.url).href);
+    const releaseFirst = await first.acquire();
+    assert.equal(new copy.StorageLock(storage).tryAcquire(), undefined);
+    releaseFirst();
+    assert.equal(fs.existsSync(first.file), false);
   } finally {
     cleanup();
   }
