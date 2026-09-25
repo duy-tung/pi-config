@@ -26,7 +26,13 @@ Model/thinking ghim trong file role được ưu tiên hơn tham số tool. Ch�
 
 `/agents` quản lý agent; `get_subagent_result` lấy kết quả; `steer_subagent` gửi bổ sung theo ID. Khi mở rộng (`Ctrl+O`), kết quả của `Agent`, thông báo completion và `get_subagent_result` hiện dạng Markdown (tiêu đề, danh sách, code, bảng); dạng thu gọn, lỗi và agent đang chạy giữ văn bản thô như trước. Đây là bản vá `src/index.ts` của pi-subagents, chỉ đổi phần hiển thị, không đổi nội dung trả cho model.
 
-Gõ `@role nội dung` ở prompt (`agentMentions: "direct"`) khởi động agent ngay, lấy nội dung bạn gõ làm task, không gọi model parent; agent đang chạy thì nhận tin nhắn đó. Chế độ `"model"` của upstream nhờ một bản sao hội thoại viết prompt giao việc, nhưng phần sao chép này lỗi trên Pi 0.87 (tự quay về chạy thẳng) nên không dùng.
+Gõ `@role nội dung` ở prompt để giao việc thẳng cho role; agent đang chạy thì nhận tin nhắn đó. Có hai chế độ:
+- `"direct"` (mặc định): agent khởi động ngay, task là đúng nội dung bạn gõ, không gọi model parent. Agent không thấy hội thoại, nên nội dung cần tự đủ ý.
+- `"model"`: một bản sao hội thoại (cùng model, system prompt và lịch sử của parent, chỉ có tool `Agent`, không nạp extension) viết prompt giao việc có đủ context, rồi khởi động agent. Cách này tốn thêm một lượt model parent, không hiện trong chat.
+
+Ở cả hai chế độ, agent khởi động từ mention luôn chạy nền, kể cả worker/debugger, và kết quả về parent qua thông báo completion. Lời gọi `Agent` của mention không qua bộ phân loại vì chính người dùng đã gõ `@role`; agent con vẫn có cổng permission của role.
+
+Bản vá `src/mention-clone.ts` của pi-subagents cho bản sao chạy được trên Pi 0.87; trước đó bản sao lỗi và tự quay về chạy thẳng. Đổi chế độ cho project bằng `/agents` → Settings → Agent mentions (lưu vào `.pi/subagents.json`), hoặc cho mọi project bằng `agentMentions` trong `subagents.json` của Pi.
 
 ## Context và thực thi
 
@@ -36,7 +42,7 @@ Role không giới hạn số lượt (`max_turns: 0` trong file role, `defaultM
 
 `backgroundByDefault:true`: researcher và reviewer chạy nền, lời gọi `Agent` trả ID ngay, thông báo completion mở lượt mới cho parent kèm trích đoạn kết quả; `get_subagent_result` lấy toàn văn. Worker và debugger ghim `run_in_background: false` nên luôn chạy foreground và trả kết quả ngay trong tool call; parent không đổi được. Background tối đa 4 agent, foreground tối đa 2; vượt giới hạn thì xếp hàng. Nhiều lời gọi `Agent` foreground trong cùng một lượt chạy song song; các phiên Pi quản lý pool riêng.
 
-Worker và debugger nạp `pi-usage` để Codex fast mode (`service_tier: "priority"`) áp dụng cho request của GPT-6 Sol; bản vá của pi-config bỏ truy vấn quota và timer của pi-usage trong phiên không có UI. Reviewer dùng Astra, model chưa hỗ trợ fast.
+Codex fast mode (`service_tier: "priority"`) áp dụng cho request của GPT-6 Sol (worker, debugger) và GPT-6 Astra (reviewer). Bản vá pi-usage bọc `ModelRuntime` dùng chung của phiên chính, nên request không đi qua hook của phiên (advisor, goal auditor, Oracle, agent con) cũng theo cài đặt fast và chọn hàng theo model của chính request. Worker, debugger và reviewer nạp `pi-usage` để chi phí của request fast được tính đúng; bản vá bỏ truy vấn quota và timer của pi-usage trong phiên không có UI.
 
 Researcher nạp `pi-web-access`. Package này khai extension là thư mục `./dist`; bản vá pi-subagents cho entry thư mục khớp tên package, nếu không `extensions`/`ext:pi-web-access` của role không nạp được web tools.
 
@@ -52,4 +58,4 @@ Project có thể override role. Với `scopeModels:true`, lựa chọn ngoài s
 
 ## Kiểm thử
 
-`pi-test` hoặc `tests/agent-integration.mjs <root> main` dùng provider giả và chặn mạng để kiểm model/effort thực, context, quyền, web tools của researcher, fast mode trong request của worker/debugger, agent chạy quá 14 lượt, role không tồn tại và completion. Các test request payload kiểm provider OpenCode Go trên SDK đã ghim. Nghiệm thu chất lượng model trên công việc thật là bước riêng với ngân sách cụ thể.
+`pi-test` hoặc `tests/agent-integration.mjs <root> main` dùng provider giả và chặn mạng để kiểm model/effort thực, context, quyền, web tools của researcher, fast mode trong request của worker/debugger/reviewer, advisor và goal auditor, agent chạy quá 14 lượt, role không tồn tại và completion. Các test request payload kiểm provider OpenCode Go trên SDK đã ghim. Nghiệm thu chất lượng model trên công việc thật là bước riêng với ngân sách cụ thể.

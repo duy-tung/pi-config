@@ -229,6 +229,15 @@ await check("Claude: web_search provider anthropic, quota footer from headers an
   };
   const parent = runtime.getModel("config-test", "parent");
   try {
+    // Phiên có UI chuyển sang Claude: extension đọc quota qua OAuth ngay, không chờ phản hồi Claude đầu tiên.
+    await session.setModel(claude);
+    for (const deadline = Date.now() + 15000; !/^claude 88% ↻ /u.test(statuses.get("claude-usage") ?? "");) {
+      assert.ok(Date.now() < deadline, `Quota Claude không được đọc khi chuyển sang Claude: ${usageRequests.length} request`);
+      await delay(20);
+    }
+    assert.equal(usageRequests.length, 1);
+    assert.equal(usageRequests[0].get("authorization"), "Bearer sk-ant-oat01-synthetic-fixture");
+    assert.equal(usageRequests[0].get("anthropic-beta"), "oauth-2025-04-20");
     // Model hiện tại là Claude: tìm bằng chính model đó; model khác Claude: tìm bằng anthropicSearch.modelForNonClaude.
     for (const model of [claude, parent]) {
       await session.setModel(model);
@@ -241,12 +250,13 @@ await check("Claude: web_search provider anthropic, quota footer from headers an
       assert.match(text, /https:\/\/code\.example\/pi/u);
     }
     await session.setModel(claude);
+    await delay(100);
+    assert.equal(usageRequests.length, 1, "Quota đọc chưa tới 15 phút thì không đọc lại");
     await session.extensionRunner.emit({ type: "after_provider_response", status: 200, headers: unifiedHeaders() });
     assert.match(statuses.get("claude-usage") ?? "", /^claude 77% ↻ 2h1\dm 59% ↻ 4d\dh$/u);
     await session.prompt("/claude-usage");
-    assert.equal(usageRequests.length, 1);
-    assert.equal(usageRequests[0].get("authorization"), "Bearer sk-ant-oat01-synthetic-fixture");
-    assert.equal(usageRequests[0].get("anthropic-beta"), "oauth-2025-04-20");
+    assert.equal(usageRequests.length, 2);
+    assert.equal(usageRequests[1].get("authorization"), "Bearer sk-ant-oat01-synthetic-fixture");
     const report = notices.findLast((notice) => notice.message.startsWith("Claude usage"))?.message ?? "";
     assert.match(report, /Phiên 5 giờ: dùng 12% · còn 88%/u);
     assert.ok(!report.includes("sk-ant-oat01"), "Báo cáo không được chứa credential");
@@ -371,30 +381,44 @@ if (configuration.packages.includes("pi-goal-x")) {
   });
 }
 if (configuration.packages.includes("pi-background-tasks")) {
-  await check("background shell task produces output and completes", async () => {
+  await check("background shell job wakes the main session when it ends; triggerOnCompletion:false only notifies", async () => {
+    // Windows shell startup is not bounded by an arbitrary sleep: wait on the observable state instead.
+    const waitFor = async (probe, what) => {
+      const deadline = Date.now() + 15000;
+      for (;;) {
+        const value = probe();
+        if (value) return value;
+        assert.ok(Date.now() < deadline, `${what} within 15 seconds`);
+        await delay(100);
+      }
+    };
+    const settled = () => !session.isStreaming && session.pendingMessageCount === 0;
+    const notifies = (message, taskId) => JSON.stringify(message ?? {}).includes(`<task-id>${taskId}</task-id>`);
+    assert.match(session.getToolDefinition("bg_run").promptGuidelines.join("\n"), /completion notification wakes you/u);
+    let seen = control.seen.length;
     let result = await run("bg-start", [[tool("bg_run", { name: "Local fixture output", command: "printf BACKGROUND_OK",
       isAgent: false, timeoutSeconds: 10 })]]);
     assert.ok(!result[0]?.isError, JSON.stringify(result));
     const taskId = result[0].details?.task?.id; assert.ok(taskId, JSON.stringify(result));
-    assert.equal(result[0].details.task.triggerOnCompletion, false);
-    // Mô tả và kết quả bg_run (bản vá) nói khi nào nên bật triggerOnCompletion.
-    assert.match(JSON.stringify(result[0].content), /this job will not wake you/u);
-    assert.match(session.getToolDefinition("bg_run").promptGuidelines.join("\n"), /triggerOnCompletion:true when your next step depends on the job result/u);
-    // Windows shell startup is not bounded by an arbitrary 500ms sleep.
-    // Poll only inside this offline fixture; the production agent uses notifications.
-    const deadline = Date.now() + 15000;
-    let poll = 0;
-    do {
-      result = await run(`bg-status-${poll++}`, [[tool("bg_status", { taskId })]]);
-      assert.ok(!result[0]?.isError, JSON.stringify(result));
-      if (!["running", "queued"].includes(result[0].details.tasks[0].status)) break;
-      assert.ok(Date.now() < deadline, "Fixture background task did not finish within 15 seconds");
-      await delay(200);
-    } while (true);
-    assert.equal(result[0].details.tasks[0].status, "completed");
+    assert.equal(result[0].details.task.triggerOnCompletion, true, "bg_run wakes the model by default");
+    assert.match(JSON.stringify(result[0].content), /Automatic follow-up turn: enabled/u);
+    // The terminal notification starts a model turn by itself: nobody sends a message.
+    const wake = await waitFor(() => control.seen.slice(seen).find((request) => notifies(request.messages.at(-1), taskId)),
+      "Completion notification starts a turn");
+    assert.match(JSON.stringify(wake.messages.at(-1)), /<status>completed<\/status>/u);
+    await waitFor(settled, "Woken turn finishes");
     result = await run("bg-output", [[tool("bg_logs", { taskId })]]);
     assert.ok(!result[0]?.isError, JSON.stringify(result));
     assert.match(JSON.stringify(result), /BACKGROUND_OK/u);
+    // Opt-out: the notification still lands in the conversation but starts no turn.
+    result = await run("bg-quiet", [[tool("bg_run", { name: "Quiet fixture job", command: "printf QUIET_OK",
+      isAgent: false, timeoutSeconds: 10, triggerOnCompletion: false })]]);
+    const quietId = result[0].details?.task?.id; assert.ok(quietId, JSON.stringify(result));
+    seen = control.seen.length;
+    await waitFor(() => session.messages.some((message) => message.role === "custom" && notifies(message, quietId)),
+      "Quiet job notification is recorded");
+    await delay(300);
+    assert.equal(control.seen.length, seen, "triggerOnCompletion:false must not start a turn");
   });
 }
 if (configuration.packages.includes("pi-advisor-flow")) {

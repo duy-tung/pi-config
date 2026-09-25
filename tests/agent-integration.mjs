@@ -190,8 +190,8 @@ await check('researcher gets pi-web-access tools from its role',async()=>{
   const child=control.seen.filter(x=>x.key==='child_web');assert.ok(child.length>0);
   for(const name of ['web_search','fetch_content'])assert.ok(child[0].tools.includes(name),JSON.stringify(child[0].tools));
 });
-await check('Codex fast mode reaches worker/debugger requests, not the Astra reviewer',async()=>{
-  for(const [role,tier] of [['worker','priority'],['debugger','priority'],['reviewer',undefined]]){
+await check('Codex fast mode reaches Sol and Astra role requests; other providers are untouched',async()=>{
+  for(const [role,tier] of [['worker','priority'],['debugger','priority'],['reviewer','priority'],['researcher',undefined]]){
     const id='fast-'+role;
     const out=await run(id,invocation(id,{subagent_type:role}));
     assert.equal(out[0]?.isError,false,JSON.stringify(out));
@@ -263,6 +263,8 @@ await check('advisor Astra/high is always on for the parent and a consultation k
   await turn('advisor-two',[final('DONE')]);
   const advice=control.seen.filter(x=>x.key==='advisor');
   assert.equal(advice.length,1);assert.equal(advice[0].model,'gpt-6-astra');assert.equal(advice[0].options.reasoning,'high');
+  // Advisor gọi thẳng ModelRuntime (không qua hook của phiên) vẫn theo Codex fast mode.
+  assert.equal(advice[0].payload?.service_tier,'priority',JSON.stringify(advice[0].payload));
   const [one,two]=['advisor-one','advisor-two'].map(key=>head(control.seen.find(x=>x.key===key)));
   assert.equal(one,two,'System prompt không được đổi sau mỗi lần hỏi advisor');
   assert.match(one,/after two consecutive materially equivalent failed attempts/);
@@ -282,6 +284,7 @@ await check('goal auditor uses Astra/high and its bash passes the permission gat
   const audits=control.seen.filter(x=>x.key==='auditor');
   assert.equal(audits.length,3);
   assert.ok(audits.every(x=>x.model==='gpt-6-astra'&&x.options.reasoning==='high'));
+  assert.ok(audits.every(x=>x.payload?.service_tier==='priority'),'Phiên auditor riêng vẫn theo Codex fast mode');
   assert.ok(audits[0].tools.includes('bash'));
   assert.equal(fs.existsSync(path.join(cwd,'audit-denied.txt')),false);
   assert.equal(fs.readFileSync(path.join(cwd,'audit-allowed.txt'),'utf8'),'allowed');
@@ -303,6 +306,50 @@ await check('/advisor-off lasts into the next session; alwaysOn brings the advis
   assert.ok(!(await toolsOfNewSession()).includes('ask_advisor'),'Phiên mới sau /advisor-off không được bật advisor');
   writeJson(advisorFile,{...readJson(advisorFile),alwaysOn:true});
   assert.ok((await toolsOfNewSession()).includes('ask_advisor'));
+});
+
+await check('@worker mention in model mode: a conversation copy writes the task, the worker runs in the background and reports back',async()=>{
+  // pi-subagents đọc subagents.json khi nạp extension (global, rồi .pi/ của thư mục chạy Pi). Phiên này nạp với
+  // agentMentions "model"; file của bản cài ("direct") được trả lại ngay sau đó.
+  const subagentsFile=path.join(agentDir,'subagents.json');
+  const installedSubagents=fs.readFileSync(subagentsFile,'utf8');
+  let mentionSession;
+  try{
+    writeJson(subagentsFile,{...JSON.parse(installedSubagents),agentMentions:'model'});
+    const loader=new sdk.DefaultResourceLoader({cwd,agentDir});await loader.reload();
+    ({session:mentionSession}=await sdk.createAgentSession({cwd,agentDir,resourceLoader:loader,modelRuntime:runtime,sessionManager:sdk.SessionManager.inMemory(cwd)}));
+  }finally{fs.writeFileSync(subagentsFile,installedSubagents);}
+  try{
+    await mentionSession.bindExtensions({uiContext:ui,mode:'rpc',onError:error=>errors.push(error)});
+    await mentionSession.setModel(runtime.getModel('config-test','parent'));
+    await turnIn(mentionSession,'mention_history',[final('HISTORY_MARKER_ACK')]);
+    const before=control.seen.length,noticeCount=notices.length;
+    control.plans.mention_clone=[[tool('Agent',{subagent_type:'worker',description:'Fixture mention task',prompt:'CASE:child_mention Đọc safe.txt rồi báo lại.'})]];
+    control.plans.child_mention=[final('MENTION_CHILD_DONE')];
+    control.fallbackKey='mention_wake';
+    await mentionSession.prompt('@worker CASE:mention_clone kiểm tra safe.txt giúp tôi');
+    const deadline=Date.now()+30000;
+    const woken=()=>control.seen.slice(before).find(x=>x.model==='parent'&&x.key!=='mention_clone'&&JSON.stringify(x.messages.at(-1)).includes('MENTION_CHILD_DONE'));
+    while(!woken()){
+      assert.ok(Date.now()<deadline,`Worker không báo kết quả về phiên chính: ${JSON.stringify(control.seen.slice(before).map(x=>x.key))} ${JSON.stringify(notices.slice(noticeCount))}`);
+      await delay(100);
+    }
+    // Bản sao: một request, cùng model, mang lịch sử của phiên chính, chỉ có tool Agent; không quay về chạy thẳng.
+    const clones=control.seen.slice(before).filter(x=>x.key==='mention_clone');
+    assert.equal(clones.length,1,'Bản sao dừng ngay sau khi khởi động agent');
+    assert.equal(clones[0].model,'parent');
+    assert.deepEqual(clones[0].tools,['Agent']);
+    assert.match(JSON.stringify(clones[0].messages),/HISTORY_MARKER_ACK/);
+    assert.ok(!notices.slice(noticeCount).some(n=>/directly/.test(n.message)),JSON.stringify(notices.slice(noticeCount)));
+    // Worker ghim foreground trong role nhưng agent của mention chạy nền; kết quả về qua thông báo completion.
+    const child=control.seen.slice(before).filter(x=>x.key==='child_mention');
+    assert.ok(child.length>0&&child.every(x=>x.model==='gpt-6-sol'));
+    // Phiên chính không nhận lượt nào của bản sao.
+    assert.ok(!JSON.stringify(mentionSession.messages).includes('kiểm tra safe.txt giúp tôi'));
+    while(mentionSession.isStreaming||mentionSession.pendingMessageCount>0){assert.ok(Date.now()<deadline);await delay(50);}
+  }finally{
+    await mentionSession.extensionRunner.emit({type:'session_shutdown',reason:'quit'});mentionSession.dispose();
+  }
 });
 
 // Jev (System One của TypeSafe) qua endpoint và key giả: fetch chỉ trả lời đúng endpoint fixture, không có mạng thật

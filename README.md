@@ -58,7 +58,7 @@ Goal chỉ bắt đầu khi được yêu cầu. Mỗi lần tạo hoặc resume
 - Lệnh của auditor qua cổng permission như subagent (bản vá pi-goal-x): theo mode của phiên chính, câu hỏi hiện ở UI phiên chính.
 - Khi agent sắp chuyển goal sang blocked, Oracle Astra/high (chỉ đọc) được hỏi một lần cho mỗi vướng mắc.
 
-Background cung cấp shell jobs; completion chỉ thông báo, không tự mở lượt model theo mặc định. Mô tả `bg_run` dặn model đặt `triggerOnCompletion:true` khi bước sau cần kết quả của job (test, build phải xem trước khi làm tiếp): job xong sẽ mở lượt mới, nên model kết thúc lượt thay vì chờ hay hỏi trạng thái liên tục. Dev server và watcher giữ mặc định. Model delegation dùng `Agent`.
+Background cung cấp shell jobs. Khi job kết thúc (xong, lỗi hoặc bị dừng), thông báo `<background-task-notification>` tự mở lượt mới cho phiên chính, nên model kết thúc lượt thay vì chờ hay hỏi trạng thái liên tục; không cần gửi tin để nó làm tiếp. Với dev server, watcher hoặc job không cần xử lý khi xong, model đặt `triggerOnCompletion:false`: thông báo vẫn vào hội thoại nhưng không đánh thức model. Model delegation dùng `Agent`.
 
 Rewind (`pi-rewind`, extension của repo) theo giao diện `/rewind` của Claude Code: mỗi prompt có checkpoint; `Esc Esc` hoặc `/rewind` mở danh sách prompt kèm số dòng đã đổi, rồi chọn khôi phục code, hội thoại, cả hai, hoặc tóm tắt từ/đến prompt đó. File do `edit`/`write` sửa luôn được theo dõi; file do `bash`/`Agent` sửa được theo dõi trong git worktree. Mục Redo trong menu (hoặc `/redo`) hoàn tác lần rewind gần nhất. `/clear` mở phiên mới như `/new`, và menu của phiên mới có mục quay lại phiên cũ. Nếu Pi thoát giữa lúc khôi phục code, menu cho hoàn tất hoặc hoàn tác lần khôi phục đó. Chi tiết và giới hạn: [docs/rewind.md](docs/rewind.md).
 
@@ -92,7 +92,7 @@ Parent Claude Opus 5.5/high giữ thiết kế, quyết định quan trọng và
 @reviewer Review diff, nêu lỗi có bằng chứng.
 ```
 
-Agent có context riêng và không giới hạn số lượt; dừng agent bằng `/agents` → chọn agent → `x` hai lần. Researcher/reviewer chạy nền theo mặc định (tối đa 4 cùng lúc); worker/debugger luôn chạy foreground (tối đa 2); vượt giới hạn thì xếp hàng. Parent điều phối để tránh ghi chồng file. Chi tiết cấu hình, quyền và vòng đời: [docs/subagents.md](docs/subagents.md).
+Agent có context riêng và không giới hạn số lượt; dừng agent bằng `/agents` → chọn agent → `x` hai lần. Khi parent gọi, researcher/reviewer chạy nền theo mặc định (tối đa 4 cùng lúc), worker/debugger chạy foreground (tối đa 2); vượt giới hạn thì xếp hàng. Parent điều phối để tránh ghi chồng file. Gõ `@role nội dung` thì agent chạy nền và báo kết quả cho parent khi xong. Mặc định task là đúng nội dung bạn gõ; chế độ `model` (`/agents` → Settings → Agent mentions) cho một bản sao hội thoại viết task có context. Chi tiết cấu hình, quyền và vòng đời: [docs/subagents.md](docs/subagents.md).
 
 ## Công cụ và mặc định
 
@@ -101,8 +101,8 @@ Agent có context riêng và không giới hạn số lượt; dừng agent bằ
 - Code intelligence: pi-lens, TypeScript language server cài sẵn; Go/Rust/Python dùng language server của máy hoặc project.
 - Native compaction bật: reserve 16.384, giữ gần nhất 20.000 token.
 - Cache warming tắt. Advisor, goal auditor và Oracle bật như mô tả ở trên. Jev của auto mode chỉ chạy khi bạn đã lưu key TypeSafe (tính theo token đầu vào, khoảng $0,0001 mỗi lần sàng lọc). Goal và background follow-up chỉ chạy theo thao tác/cấu hình đã chọn.
-- Codex fast mode bật mặc định (`codexFastMode:true`): request của worker/debugger GPT-6 Sol đi hàng `priority`, nhanh hơn và tốn quota Codex nhiều hơn (Pi tính chi phí gấp đôi). GPT-6 Astra chưa hỗ trợ fast. Tắt bằng `/fast`; footer hiện `fast` khi phiên đang dùng model Codex có fast.
-- Header/footer/editor do pi-open-tui quản lý. Footer hiển thị model, thinking, quota (Codex qua pi-usage; Claude đọc từ header phản hồi, chi tiết bằng `/claude-usage`), context % kèm token/cửa sổ, token/cost và trạng thái công cụ liên quan. Palette terminal theo theme của phiên và được phục hồi khi thoát.
+- Codex fast mode bật mặc định (`codexFastMode:true`): mọi request tới GPT-6 Sol (worker, debugger) và GPT-6 Astra (reviewer, advisor, goal auditor, Oracle) đi hàng `priority`. Theo catalog của Codex, Sol nhanh khoảng 1,5 lần, Astra khoảng 2 lần; đổi lại tốn quota Codex nhiều hơn (Pi tính chi phí gấp đôi). Tắt bằng `/fast` khi phiên đang dùng model Codex, hoặc `/usage` → Settings → Codex Fast mode khi đang dùng Opus. Footer hiện `fast` khi phiên đang dùng model Codex có fast.
+- Header/footer/editor do pi-open-tui quản lý. Footer hiển thị model, thinking, quota (Codex qua pi-usage; Claude từ header phản hồi và `/api/oauth/usage` khi mở phiên, 15 phút một lần nếu header đã cũ; chi tiết bằng `/claude-usage`), context % kèm token/cửa sổ, token/cost và trạng thái công cụ liên quan. Palette terminal theo theme của phiên và được phục hồi khi thoát.
 - Dán ảnh: `@pi-archimedes/image-paste`, dùng **Ctrl+V** trên macOS/Linux hoặc **Alt+V** trên Windows. Copy ảnh vào clipboard, dán để có marker `[Image #1]`, rồi gửi cùng prompt. Xóa marker để bỏ ảnh; giới hạn 20 MiB/ảnh. Preview chỉ hiện trong UI, ảnh được gửi tới model đúng một lần. Phím dán ảnh tích hợp của Pi được tắt trong `keybindings.json` để tránh xử lý trùng.
 - Clipboard native `@mariozechner/clipboard` được ghim và cài bên cạnh extension. Linux cần desktop X11/Wayland; `wl-clipboard`/`xclip` là các reader thay thế. Terminal không hỗ trợ ảnh inline vẫn gửi được ảnh, chỉ thiếu preview. Chỉ nạp image-paste; phần giao diện của bộ Archimedes không được nạp.
 
