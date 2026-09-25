@@ -19,7 +19,7 @@ const doctor=spawnSync(process.execPath,[path.join(root,'bin/launch.mjs'),'docto
 fs.writeFileSync(webSearchPath,webSearchBytes);
 assert.equal(doctor.status,1,doctor.stdout+doctor.stderr);
 assert.match(doctor.stderr,/parallel-mcp có trong searchRouting\.providers nhưng không có trong webSearch\.allowedProviders/u);
-await run(process.execPath,['--test',...['patches','models','glm-wire','native-search-wire','claude-effort-wire','rewind-session','subagent-markdown'].map(name=>path.join(repo,`tests/${name}.test.mjs`))],{env:{...process.env,PI_CONFIG_TEST_ROOT:root}});
+await run(process.execPath,['--test',...['patches','models','glm-wire','native-search-wire','claude-effort-wire','rewind-session','subagent-markdown','patched-typecheck'].map(name=>path.join(repo,`tests/${name}.test.mjs`))],{env:{...process.env,PI_CONFIG_TEST_ROOT:root}});
 for(const profile of ['main'])await run(process.execPath,[path.join(repo,'tests/profile-integration.mjs'),root,profile]);
 for(const profile of ['main'])await run(process.execPath,[path.join(repo,'tests/agent-integration.mjs'),root,profile]);
 // Cài lại gộp ba chiều file JSON cấu hình: base là mặc định lần cài trước, lưu riêng trong <root>/state/defaults.
@@ -96,7 +96,7 @@ assert.deepEqual(snapshot(),beforeThird);
 assert.doesNotMatch(third,/Đã gộp|Chưa có mặc định|xung đột|Giữ phần bạn đã sửa|Giữ nguyên các file/u);
 const state=readJson(path.join(root,'install-state.json'));assert.equal(Object.keys(state.sources).length,3);
 assert.equal(fs.existsSync(path.join(root,'.install.lock')),false);
-console.log('PASS: cài sạch, một runtime Pi, slash workflows, auth/permission; cài lại gộp mặc định mới, giữ tùy chỉnh và secret giả; lần thứ ba không đổi gì.');
+console.log('PASS: cài sạch, một runtime Pi, slash workflows, auth/permission, type của bản vá; cài lại gộp mặc định mới, giữ tùy chỉnh và secret giả; lần thứ ba không đổi gì.');
 console.log(`Fixture: ${root}`);
 if(process.env.GITHUB_ENV){
   fs.appendFileSync(process.env.GITHUB_ENV,`PI_CONFIG_SMOKE_ROOT=${root}\nPI_CONFIG_SMOKE_AGENT_DIR=${agentDir}\nPI_CONFIG_SMOKE_BIN_DIR=${binDir}\n`);
