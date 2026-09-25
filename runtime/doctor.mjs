@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=file=>{
   const text=fs.readFileSync(file,'utf8');
@@ -25,6 +25,18 @@ for(const patch of read(path.join(root,'patches/manifest.json'))){
   const hash=crypto.createHash('sha256').update(fs.readFileSync(file,'utf8').replaceAll('\r\n','\n')).digest('hex');
   if(hash!==patch.patchedSha256)errors.push(`Bản vá đã đổi: ${patch.package}/${patch.file}`);
 }
+// Key Jev cho auto mode: kho của pi-mcp-adapter (biến môi trường rồi keyring); chỉ báo nguồn, không in key.
+let jevKey='không kiểm được kho key';
+try{
+  const store=await import(pathToFileURL(path.join(root,'runtimes/current/node_modules/pi-mcp-adapter/dist/jev-key-store.js')).href);
+  const endpoint=store.resolveJevEndpoint();
+  if(endpoint.status==='unavailable')jevKey=`SYSTEMONE_ENDPOINT không hợp lệ: ${endpoint.message}`;
+  else{
+    const credential=store.resolveJevCredential(process.env,endpoint.endpoint);
+    jevKey=credential.status==='present'?`key từ ${credential.source==='keyring'?'keyring':'biến môi trường'}`
+      :credential.status==='missing'?'chưa có key: pi-mcp-adapter key set systemone':`không đọc được key: ${credential.message}`;
+  }
+}catch{}
 for(const [name,p] of Object.entries(profiles)){
   const s=read(path.join(p.agentDir,'settings.json'));
   console.log(`${name}: ${s.defaultProvider}/${s.defaultModel}; thinking ${s.defaultThinkingLevel}`);
@@ -66,6 +78,8 @@ for(const [name,p] of Object.entries(profiles)){
     const goal=read(goalFile),label=item=>`${item.provider??'?'}/${item.model??'?'} (${item.thinkingLevel??'?'})`;
     console.log(`  goal auditor: ${goal.disabled===true?'tắt':label(goal)}; Oracle: ${goal.oracle?.enabled===true?label(goal.oracle):'tắt'}`);
   }
+  const auto=s.autoMode??{},jev=auto.jev===false||auto.jev?.enabled===false?undefined:auto.jev??{};
+  console.log(`  auto mode: bước 1 ${jev?`Jev ${jev.model??'jev-1.13.0'} (${jevKey})`:'LLM (Jev tắt)'}; bước 2 ${auto.stage2Model??auto.model??'model của phiên'}`);
   if(s.modelThinkingLevels?.['opencode-go/glm-5.3-flash']!=='max')errors.push(`${name}: GLM effort phải max`);
 }
 for(const source of Object.keys(state.sources))if(!fs.existsSync(path.join(root,'sources',source)))errors.push(`Thiếu skills source: ${source}`);

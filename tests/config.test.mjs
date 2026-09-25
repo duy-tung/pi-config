@@ -111,11 +111,14 @@ for (const platform of ["darwin", "linux", "win32"]) {
       }
       assert.ok(deny.includes("mcpScript"));
       assert.ok(deny.includes("Bash(*firecrawl-key.cjs*)"));
+      assert.ok(deny.includes("Bash(*pi-mcp-adapter.service-key*)"), "Agent không đọc key Jev trong keyring");
       assert.ok(deny.includes("!Path(*.env.example)"));
       // Xoá đệ quy do pi-auto-mode hỏi (bypass) hoặc phân loại (auto), không chặn cứng theo một cách viết cờ.
       assert.ok(!deny.some((rule) => rule.startsWith("Bash(rm ")));
       assert.equal(settings.permissions.defaultMode, "auto");
       assert.equal(settings.autoMode.model, "openai-codex/gpt-6-sol");
+      // Giai đoạn 1 là Jev khi có key, model ghim phiên bản (ngưỡng chỉnh theo phiên bản).
+      assert.deepEqual(settings.autoMode.jev, { model: "jev-1.13.0", flagAt: 0.3, riskAt: 0.5, probe: true });
       assert.ok(settings.extensions.at(-1).endsWith("pi-auto-mode"), "pi-auto-mode phải nạp sau cùng");
       assert.ok(!settings.packages.some((entry) => String(entry?.source ?? entry).includes("pi-permission-system")));
       assert.ok(!files.some((file) => file.path.includes("pi-permission-system")));

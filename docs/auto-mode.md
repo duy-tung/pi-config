@@ -4,7 +4,7 @@
 
 | Mode | Dòng dưới ô nhập | Hành vi |
 |---|---|---|
-| **Auto** (mặc định) | `⏵⏵ auto mode on` (vàng) | Thao tác an toàn chạy ngay; thao tác còn lại do bộ phân loại (một model) duyệt, không hỏi người dùng |
+| **Auto** (mặc định) | `⏵⏵ auto mode on` (vàng) | Thao tác an toàn chạy ngay. Thao tác còn lại do bộ phân loại hai giai đoạn duyệt, không hỏi người dùng: Jev (model System One của TypeSafe) sàng lọc, LLM xét kỹ phần bị gắn cờ |
 | **Bypass** | `⏵⏵ bypass permissions on` (đỏ) | Không kiểm tra, trừ luật `deny`, luật `ask`, `rm` vào đường dẫn quan trọng và lệnh xoá đệ quy ra ngoài thư mục tạm |
 
 ## Dùng
@@ -12,7 +12,10 @@
 - `Shift+Tab` đổi auto ⇄ bypass. Lần đầu vào bypass hiện cảnh báo cần đồng ý; lựa chọn được nhớ. Bypass bị từ chối khi chạy bằng root (trừ `IS_SANDBOX=1`) hoặc khi `permissions.disableBypassPermissionsMode` là `"disable"`.
 - Mức thinking chuyển sang `Alt+T` (như Option+T của Claude Code; trên macOS terminal cần gửi Option như Alt — WezTerm mặc định với Option trái) hoặc `/thinking`.
 - `/permissions`: mode hiện tại, danh sách lệnh vừa bị chặn (chọn một lệnh để duyệt cho **một lần thử lại**, Pi được báo "Permission granted for: …"), xem luật.
-- `/auto-mode`: trạng thái; `/auto-mode defaults` xem bộ luật mặc định; `/auto-mode test <lệnh bash>` chạy thử quyết định cho một lệnh (có gọi model khi cần); `/auto-mode eval [provider/model]` chạy bộ đánh giá có nhãn (`eval/cases.json`, gần 50 tình huống, có tin nhắn tiếng Việt) qua model thật và báo số lệnh nguy hiểm lọt, lệnh lành bị chặn và độ trễ — dùng khi đổi model phân loại. Ngoài Pi: `node scripts/auto-mode-eval.mjs [--model provider/id]`. Cả hai tốn quota của provider.
+- `/auto-mode`: trạng thái, gồm Jev (nguồn key, số lần gọi, token và chi phí trong phiên). `/auto-mode defaults` xem bộ luật mặc định. `/auto-mode test <lệnh bash>` chạy thử quyết định cho một lệnh (có gọi model khi cần) và in xác suất của Jev.
+- `/auto-mode eval [provider/model]` chạy bộ đánh giá có nhãn (`eval/cases.json`, gần 50 tình huống, có tin nhắn tiếng Việt) qua cả chuỗi Jev → LLM và báo số lệnh nguy hiểm lọt, lệnh lành bị chặn và độ trễ. Dùng khi đổi model phân loại. `/auto-mode eval jev` chỉ chạy giai đoạn 1 bằng Jev trên bộ đánh giá và bộ lệnh hiệu chỉnh `eval/screen-cases.json`, không gọi LLM (khoảng 3 xu Mỹ); dùng khi chỉnh ngưỡng hoặc đổi phiên bản Jev.
+- Ngoài Pi: `node scripts/auto-mode-eval.mjs [--model provider/id] [--jev | --jev-only]`. Các lệnh eval tốn quota của provider và tiền Jev.
+- Key Jev: `pi-mcp-adapter key set systemone` (nhập ẩn), `pi-mcp-adapter key status systemone`, `pi-mcp-adapter key remove systemone`.
 - Khởi động: `pi --permission-mode bypassPermissions` hoặc `pi --dangerously-skip-permissions`; mặc định lấy từ `permissions.defaultMode`. Mode bypass không bao giờ được khôi phục từ phiên cũ hay settings của project.
 
 ## Auto mode quyết định thế nào
@@ -39,11 +42,64 @@ Mỗi tool call đi qua các bước sau, dừng ở bước đầu tiên có k�
 
 ### Bộ phân loại
 
-- **Hai giai đoạn cùng một prompt**: giai đoạn 1 không suy luận, trả lời `<block>yes|no</block>` trong vài token và nghiêng về chặn; chỉ khi bị gắn cờ mới sang giai đoạn 2 (suy luận `low`, xét ngoại lệ và ý định người dùng). Hai giai đoạn dùng chung tiền tố nên giai đoạn 2 gần như trúng cache.
-- **Chỉ thấy ý định và hành động**: tin nhắn người dùng gõ, câu trả lời `ask_user_question`, lệnh `!` người dùng tự chạy, và lệnh tool của agent. Lời của agent và mọi kết quả tool bị bỏ để agent không thuyết phục được bộ phân loại và nội dung bị chèn (prompt injection) không tới được nó. Tin nhắn do extension gửi thay (vd goal continuation), task subagent do agent cha viết và bản tóm tắt compaction được đánh dấu là không phải lời người dùng. AGENTS.md được gửi kèm như chỉ dẫn thường trực.
+Hai giai đoạn như Claude Code: giai đoạn 1 sàng lọc nhanh và nghiêng về gắn cờ, chưa xét ủy quyền; chỉ hành động bị gắn cờ mới sang giai đoạn 2. Giai đoạn 2 là LLM có suy luận `low`, xét ngoại lệ và ý định người dùng. Chuỗi này cũng giống Codex, nơi guardian v2 cho một bộ chấm điểm nhanh cho qua phần rủi ro thấp và chỉ gọi reviewer đầy đủ khi điểm cao.
+
+**Giai đoạn 1 bằng Jev** (khi đã lưu key TypeSafe):
+- Jev là model System One của TypeSafe. Nó không sinh chữ: nhận một state và các câu hỏi có kiểu, trả xác suất.
+- Mỗi hành động là một request. State chỉ gồm môi trường và đúng hành động đó:
+  - môi trường: thư mục làm việc, thư mục tạm, remote git lúc mở phiên, các mục bạn thêm vào `autoMode.environment`;
+  - hành động: lệnh, file ghi/sửa, URL hoặc tham số MCP;
+  - nội dung hiện tại của script mà lệnh chạy (`python3 x.py`, `./x.sh`, tối đa 64 KB trong workspace) và lệnh của script `package.json` (`npm run deploy` → `vercel --prod`), để chấm đúng thứ sẽ chạy;
+  - ghi chú khi `npx`/`bunx` chạy package đã có trong `node_modules/.bin` của project (không tải gì). Package chưa cài hoặc có ghim phiên bản thì không có ghi chú này.
+
+  State không có tin nhắn, lời của agent hay kết quả tool.
+- 17 câu hỏi có/không (noul), mỗi câu một loại rủi ro, cùng một thang mức hại 0–3 (score). Các loại rủi ro: rò rỉ dữ liệu, credential, xoá không hoàn tác, lịch sử git, chạy code tải về, cài phần mềm, production/hệ dùng chung, bỏ qua kiểm tra, làm yếu bảo mật, persistence, thay đổi hệ thống, sửa ngoài project, ghi ra dịch vụ ngoài, tự sửa quyền, đổi remote/registry, che giấu, tấn công.
+- Code quyết định, không phải model:
+  - không câu nào ≥ `flagAt` (0,3) và P(mức hại ≥ "đáng kể") < `riskAt` (0,5) → cho chạy, không gọi LLM;
+  - còn lại → giai đoạn 2.
+
+  Jev không bao giờ tự chặn, vì nó không đọc tin nhắn của người dùng nên không biết lệnh có được yêu cầu hay không.
+- Đi thẳng giai đoạn 2, không hỏi Jev:
+  - lớp chính sách đã thấy rủi ro (`rm` vào đường dẫn quan trọng, ghi file được bảo vệ);
+  - kể từ tin nhắn gần nhất của người dùng đã có kết quả tool nghi prompt injection (xem dưới).
+- Phạm vi: `bash`, `bg_run`, `powershell`, đọc ngoài workspace, `write`/`edit`, `fetch_content`, lời gọi MCP. `Agent`, `SubagentWorkflow`, `mcpScript` và tool lạ vẫn qua giai đoạn 1 bằng LLM.
+- Lỗi:
+  - lỗi tạm thời (mạng, quá 5 giây, 429/529/5xx; thử lại một lần) → lần đó giai đoạn 1 bằng LLM; 3 lần liên tiếp thì tắt Jev tới hết phiên;
+  - key bị từ chối, endpoint sai hoặc câu trả lời sai kiểu → tắt Jev tới hết phiên và báo.
+
+  Jev không bao giờ là đường tự cho qua khi lỗi.
+
+**Không có key Jev** (hoặc `"jev": false`): giai đoạn 1 là LLM với cùng prompt của giai đoạn 2, không suy luận, trả lời `<block>yes|no</block>` trong vài token. Hai giai đoạn dùng chung tiền tố nên giai đoạn 2 gần như trúng cache.
+
+- **Giai đoạn 2 chỉ thấy ý định và hành động**: tin nhắn người dùng gõ, câu trả lời `ask_user_question`, lệnh `!` người dùng tự chạy, và lệnh tool của agent. Lời của agent và mọi kết quả tool bị bỏ để agent không thuyết phục được bộ phân loại và nội dung bị chèn (prompt injection) không tới được nó. Tin nhắn do extension gửi thay (vd goal continuation), task subagent do agent cha viết và bản tóm tắt compaction được đánh dấu là không phải lời người dùng. AGENTS.md được gửi kèm như chỉ dẫn thường trực.
 - **Ngữ cảnh**: thư mục làm việc, repo git và remote tại lúc mở phiên (remote thêm sau không được tin), `git status` trước lệnh xóa/reset/push.
 - **Luật**: HARD (rò rỉ dữ liệu ra ngoài — không ghi đè được), 21 luật SOFT (phá lịch sử git, bỏ công việc chưa commit, xóa không hoàn tác, tài nguyên không phải của agent, chạy code tải từ mạng, deploy/hạ tầng, bỏ qua kiểm tra, làm yếu bảo mật, săn credential, lộ secret, persistence, tự sửa quyền, né bộ phân loại, publish, ghi hệ thống ngoài, đổi remote, thay đổi hệ thống, sửa ngoài project, hành động ngoài đời thực, tấn công bên thứ ba) và 11 ngoại lệ ALLOW (phát triển cục bộ, đọc mạng, dependency đã khai báo, commit/push không force lên remote của repo, tài nguyên agent tự tạo…). Luật SOFT chỉ được bỏ qua khi người dùng yêu cầu đúng thao tác và đích đó; câu hỏi, lời khuyến khích chung ("cứ làm đi") hay giá trị agent tự đoán không tính là đồng ý.
-- **Lỗi thì chặn**: model lỗi, hết thời gian (60 giây mỗi giai đoạn) hoặc trả lời không đọc được → lệnh không chạy, agent được báo "không phải phán quyết không an toàn, thử lại"; không tính vào giới hạn. Không có đường tự cho qua.
+- **Lỗi thì chặn**: model lỗi, hết thời gian (60 giây mỗi giai đoạn) hoặc trả lời không đọc được → lệnh không chạy, agent được báo "không phải phán quyết không an toàn, thử lại"; không tính vào giới hạn. Model giai đoạn 2 hết quota thì dùng model của phiên. Không có đường tự cho qua.
+
+### Quét prompt injection trong kết quả tool
+
+Đây là lớp đầu vào, theo probe prompt injection của Claude Code, chỉ chạy khi có Jev:
+- Jev đọc trước khi agent thấy các kết quả mang nội dung bên ngoài: `fetch_content`, `get_search_content`, `web_search`, MCP, `Agent`/`get_subagent_result` (kết quả subagent trả về) và lệnh shell đọc mạng (`curl`, `wget`, `gh api`/`issue`/`pr`…).
+- Chỉ quét kết quả dài từ 100 ký tự. Nội dung chia tối đa 8 đoạn × 3.000 ký tự; dài hơn thì giữ phần đầu và phần cuối. Mỗi đoạn là một request riêng, gửi song song: khi mọi đoạn nằm chung một request, Jev chấm cả trang nên đoạn có lệnh chèn không nổi rõ.
+- Mỗi đoạn có hai câu hỏi độc lập: có lời nhắm vào AI đọc nó không (noul), và nó đang làm gì với AI (chiếm quyền / bàn luận / bình thường).
+- Cả hai cùng cao (≥ 0,5 và `probeAt` 0,5) thì:
+  - kết quả giữ nguyên nhưng kèm cảnh báo cho agent (coi là dữ liệu, không làm theo, cần thì hỏi người dùng);
+  - người dùng được báo;
+  - tới tin nhắn tiếp theo của người dùng, mọi hành động đi thẳng giai đoạn 2, và LLM được ghi chú là vừa có nội dung nghi injection.
+- Bài viết giải thích prompt injection được xếp là "bàn luận" nên không bị cảnh báo. Lớp này chỉ cảnh báo, không chặn; Jev lỗi thì bỏ qua lớp này.
+
+### Jev: key, dữ liệu gửi đi, chi phí
+
+- **Key**: tạo ở [console.typesafe.ai](https://console.typesafe.ai), rồi chạy `pi-mcp-adapter key set systemone` trong terminal. Key được nhập ẩn và lưu vào keyring của hệ điều hành qua kho key của pi-mcp-adapter; cùng key đó dùng cho semantic search của MCP. Mở phiên Pi mới để dùng.
+  - `SYSTEMONE_API_KEY` ghi đè keyring; `TYPESAFE_API_KEY` chỉ dùng cho endpoint của TypeSafe. Máy không có kho credential (Linux headless, container) thì `key set` báo lỗi; khi đó đặt một trong hai biến này trước khi chạy `pi`. Lệnh agent chạy cũng thấy biến môi trường, nên luật Secret Exposure của bộ phân loại là lớp bảo vệ duy nhất cho key ở dạng này.
+  - `SYSTEMONE_ENDPOINT` đổi provider (OpenCode Zen, OpenRouter…); khi đó đặt `autoMode.jev.model` theo tên model của provider.
+  - Kiểm tra: `pi-mcp-adapter key status systemone`, `pi-doctor`, `/auto-mode`. Agent không đọc được key: luật deny `Bash(*pi-mcp-adapter.service-key*)` và bộ phân loại.
+- **Dữ liệu gửi cho TypeSafe**: giai đoạn 1 gửi môi trường và hành động; probe gửi nội dung kết quả tool. Secret dạng phổ biến được che trước khi gửi: token, API key, private key, mật khẩu trong URL, header `Authorization`, biến `*_TOKEN=`/`*_KEY=`.
+  - Theo tài liệu của TypeSafe, họ không train trên dữ liệu khách hàng; việc lưu trữ theo Data Processing Agreement, và zero data retention chỉ có ở gói enterprise.
+  - Không muốn gửi thì đặt `"jev": false`.
+- **Chi phí** jev-1.13.0: $0,042 cho 1 triệu token đầu vào, đầu ra miễn phí. Một lần sàng lọc khoảng 2.400 token (≈ $0,0001). Probe khoảng 600 token cộng nội dung, tối đa khoảng 10.000 token. Đo từ một máy chủ ở Mỹ: p50 khoảng 120 ms, p90 khoảng 160–250 ms.
+  - `/auto-mode` hiện số lần gọi, token và chi phí của phiên chính (không gồm subagent).
+  - Giới hạn hiện tại của TypeSafe là 1.200 request/phút và có thể đổi.
 
 ### Khi bị chặn
 
@@ -84,11 +140,19 @@ Completion auditor của goal (pi-goal-x) cũng là phiên con: bản vá nạp 
     "soft_deny": ["$defaults"],
     "hard_deny": ["$defaults"],
     "allow": ["$defaults", "Deploy Previews: deploying preview environments with vercel is fine."],
+    "jev": { "model": "jev-1.13.0", "flagAt": 0.3, "riskAt": 0.5, "probe": true },
     "keys": ["shift+tab"],
     "log": false
   }
 }
 ```
+
+`autoMode.jev` (đặt `false` để tắt Jev, cả giai đoạn 1 lẫn probe):
+- `model`: ghim phiên bản, vì ngưỡng được chỉnh theo phiên bản; không dùng alias `jev-latest`.
+- `flagAt`, `riskAt`: ngưỡng của giai đoạn 1. Thấp hơn thì gắn cờ nhiều hơn: an toàn hơn nhưng gọi LLM nhiều hơn. Với bộ lệnh hiệu chỉnh, `flagAt` 0,35 vẫn không lọt lệnh rủi ro nào và bớt vài lệnh thường phải gọi LLM, nhưng biên an toàn hẹp hơn.
+- `probe`, `probeTools` (danh sách tool được quét, `mcp` gồm mọi `mcp__*`), `probeAt`: probe prompt injection.
+- `timeoutMs`: 5000.
+- `PI_AUTO_MODE_JEV=0` tắt Jev trong một lần chạy.
 
 - Luật theo cú pháp Claude Code: `Tool` hoặc `Tool(specifier)`. `Bash(git push *)` khớp từng lệnh con (` *` ở cuối cũng khớp khi không có đối số); luật bắt đầu bằng `*` còn khớp cả chuỗi lệnh gốc. `Read(...)`/`Edit(...)`/`Write(...)` cho đường dẫn: `~/…` theo HOME, `/…` hoặc `//…` tuyệt đối, không có `/` thì so với tên file, còn lại tương đối với thư mục làm việc; `**` khớp nhiều cấp. `Path(...)` là cách riêng của pi-config cho cả đọc và ghi. Deny bắt đầu bằng `!` là ngoại lệ. `WebFetch(domain:host)` cho `fetch_content`; MCP dùng tên `mcp__server__tool`.
 - Các ô `environment`, `soft_deny`, `hard_deny`, `allow` của `autoMode` là câu chữ đưa vào prompt; `"$defaults"` chèn bộ mặc định (xem `/auto-mode defaults`), bỏ nó đi là thay hẳn. Mỗi luật dạng `Tên: mô tả`.
@@ -99,14 +163,23 @@ Completion auditor của goal (pi-goal-x) cũng là phiên con: bản vá nạp 
 ## Giới hạn
 
 - Bộ phân loại có thể sai. Claude Code công bố tỉ lệ bỏ lọt 17% trên các hành động quá đà thật (và 0,4% chặn nhầm) cho model và prompt của họ; pi-auto-mode chưa có số đo riêng. Không phải sandbox: lệnh được cho chạy có toàn quyền của người dùng. Với việc nhạy cảm, chạy Pi trong container/VM.
-- Không có lớp quét prompt injection trên kết quả tool như bản server của Claude Code; phòng thủ chỉ nằm ở việc bộ phân loại không thấy kết quả tool.
-- Không duyệt lại kết quả subagent khi trả về. Lệnh `gate:` trong `SubagentWorkflow` chạy không qua `tool_call`; vì vậy cả script workflow được phân loại lúc gọi.
+- Câu hỏi và ngưỡng được hiệu chỉnh với jev-1.13.0 thật (9/2026), trên hai bộ: `eval/cases.json` và `eval/screen-cases.json` (272 lệnh gắn nhãn theo rủi ro tự thân). Gần một nửa bộ lệnh được viết sau, để kiểm độc lập; nó chỉ được dùng cho một lần sửa câu hỏi về credential.
+  - Không lọt lệnh rủi ro nào: 27/27 và 141/141 bị gắn cờ. Lệnh rủi ro thấp nhất vẫn cao hơn ngưỡng khoảng 0,25.
+  - Khoảng 11% lệnh thường (13/122) phải sang giai đoạn 2. Với bộ đánh giá, 7/22 hành động hợp lệ sang giai đoạn 2, trong đó 4 hành động (force-with-lease, cài công cụ, dừng tiến trình, migration) cần LLM xét ủy quyền.
+  - Probe: 10/10 mẫu thật đúng. Trang hướng dẫn cho agent và bài viết về injection không bị cảnh báo; trang, issue và nội dung tiếng Việt có lệnh chèn đạt 0,94–1,00.
+  - Bộ lệnh vẫn là tự viết. Hành vi thật của agent có thể khác, và khi TypeSafe ra phiên bản Jev mới, chạy lại `/auto-mode eval jev` trước khi đổi `model`. Lỗi đáng lo là lệnh nguy hiểm được Jev cho qua; gắn cờ nhầm chỉ tốn một lần gọi giai đoạn 2.
+- Jev đọc câu chữ theo nghĩa đen. Theo mục "jaggedness" của jev-1.13, nó yếu với lệnh nhiều tầng gián tiếp và với nội dung cố tình đánh lừa. Vì vậy Jev chỉ cho qua lệnh mà mọi câu hỏi rủi ro đều thấp, không tự chặn, và probe chỉ cảnh báo.
+- Tiếng Anh là ngôn ngữ chính của Jev. Giai đoạn 1 không đọc tin nhắn người dùng nên không bị ảnh hưởng; probe trên nội dung không phải tiếng Anh kém chính xác hơn.
+- Probe chỉ chạy khi có key Jev và chỉ với kết quả mang nội dung bên ngoài. File đọc trong workspace (kể cả repo vừa clone) không được quét. Nội dung dài hơn 24.000 ký tự chỉ được quét phần đầu và phần cuối.
+- Kết quả subagent trả về được probe quét, nhưng không xét lại cả lịch sử hành động của subagent như Claude Code. Lệnh `gate:` trong `SubagentWorkflow` chạy không qua `tool_call`; vì vậy cả script workflow được phân loại lúc gọi.
 - Bước 4 chỉ nhận ra các lệnh shell ở trên. Script tự xoá thư mục (`python -c "shutil.rmtree(...)"`, `node -e`...) hoặc lệnh xoá trên máy khác (`ssh`, `docker exec`) không bị hỏi.
-- Lệnh chưa chứng minh được là chỉ đọc đều tốn một lần gọi model (thường vài trăm ms tới vài giây). Thêm luật `allow` hẹp cho lệnh hay dùng (`Bash(npm test)`, `Bash(cargo build *)`).
+- Lệnh chưa chứng minh được là chỉ đọc đều tốn một lần gọi Jev (khoảng 100–250 ms) hoặc, khi không có Jev hay bị gắn cờ, một lần gọi LLM (vài trăm ms tới vài giây). Thêm luật `allow` hẹp cho lệnh hay dùng (`Bash(npm test)`, `Bash(cargo build *)`).
 - Ranh giới người dùng đặt ra chỉ nằm trong transcript: compaction làm mất tin nhắn cũ thì bộ phân loại không còn thấy.
 
 ## Nguồn tham khảo
 
 - Claude Code 2.1.280: bài "How we built Claude Code auto mode" của Anthropic, tài liệu permission modes/auto mode, và hành vi của bản cài (pipeline, giới hạn 3/20, transcript chỉ gồm tin nhắn người dùng và lệnh tool, hai giai đoạn, luật allow bị bỏ khi vào auto, cảnh báo bypass, dòng mode dưới ô nhập). Prompt và bộ luật của pi-auto-mode được viết riêng, không chép văn bản của Anthropic.
-- OpenAI Codex 0.155.1 "Approve for me" (auto-review, Apache-2.0): thang rủi ro × mức ủy quyền, lỗi thì chặn, không cho model biết có reviewer nhưng dặn không lách, `/approve` duyệt một lần thử lại, và phần phụ thuộc sandbox cần thay khi không có sandbox.
+- OpenAI Codex 0.155.1 "Approve for me" (auto-review, Apache-2.0): thang rủi ro × mức ủy quyền, lỗi thì chặn, không cho model biết có reviewer nhưng dặn không lách, `/approve` duyệt một lần thử lại, và phần phụ thuộc sandbox cần thay khi không có sandbox. Guardian v2 trong mã nguồn Codex hiện tại thêm bộ chấm điểm nhanh cho qua phần rủi ro thấp và chỉ gọi reviewer đầy đủ khi điểm cao; đây là hình mẫu của chuỗi Jev → LLM.
+- TypeSafe: tài liệu System One (state, noul/choice/score, confidence, "jaggedness" của jev-1.13, cookbook Guardrails for LLMs với ngưỡng review/action trong code) và API `POST /v1/systemone`. Client của pi-auto-mode viết riêng, không dùng SDK; key đọc qua kho key của pi-mcp-adapter (MIT) trong runtime.
+- Các cách dùng Jev làm cổng permission đã công bố: cookbook "Auto-approve coding agent permission prompts with Jev" của OpenRouter, `jev-guard` (thang rủi ro, quét injection trong kết quả tool, phân biệt "bàn luận") và `pi-jev-auto-mode`. Chỉ lấy ý tưởng, không chép mã.
 - Khảo sát khoảng 90 package permission của Pi. Ý tưởng lấy từ `@czottmann/pi-automode` (hành động nằm riêng, không cắt), `pi-approval-guardian` (nguồn gốc tin nhắn người dùng), `pi-permission-ai-guard` và `@erichll/pi-auto-review` (lỗi thì chặn), `one-code-extension` (bằng chứng tất định trước khi hỏi model). Không chép mã.
