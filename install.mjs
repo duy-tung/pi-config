@@ -5,7 +5,8 @@ import os from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {buildConfiguration} from './lib/config.mjs';
 import {applyPatches} from './lib/patches.mjs';
-import {preserveLocalControls,reconcileResources} from './lib/resources.mjs';
+import {describeMerge} from './lib/merge.mjs';
+import {localDefaults,mergesConfig,reconcileConfigFile,reconcileResources} from './lib/resources.mjs';
 import {run,download,npmCli,readJson,writeJson,sha256,shellQuote,assertSafePath} from './lib/system.mjs';
 
 const repoDir=path.dirname(fileURLToPath(import.meta.url));
@@ -37,7 +38,11 @@ const lock=path.join(root,'.install.lock');
 const lockFd=fs.openSync(lock,'wx',0o600);fs.writeFileSync(lockFd,String(process.pid));fs.closeSync(lockFd);
 const state={version:1,root,agentDir,binDir,nodePath,platform:process.platform,arch:process.arch,
   shellPath:shellPath ?? previous?.shellPath,files:previous?.files ?? {},runtimes:previous?.runtimes ?? {},sources:previous?.sources ?? {}};
-const preserved=[],wanted=new Set();
+const preserved=[],merged=[],wanted=new Set();
+function backup(file){
+  const target=path.join(root,'backups',new Date().toISOString().replaceAll(':','-'),path.relative(root,file).replaceAll('..','parent'));
+  fs.mkdirSync(path.dirname(target),{recursive:true});fs.copyFileSync(file,target);
+}
 function managed(file,content,mode=0o600){
   wanted.add(file);
   const bytes=Buffer.isBuffer(content)?content:Buffer.from(content);
@@ -47,14 +52,21 @@ function managed(file,content,mode=0o600){
     const actual=sha256(fs.readFileSync(file));
     if(actual===hash){state.files[file]=hash;return;}
     if(!previous?.files[file] || actual!==previous.files[file]){preserved.push(file);return;}
-    const backup=path.join(root,'backups',new Date().toISOString().replaceAll(':','-'),path.relative(root,file).replaceAll('..','parent'));
-    fs.mkdirSync(path.dirname(backup),{recursive:true});fs.copyFileSync(file,backup);
+    backup(file);
   }
   fs.mkdirSync(path.dirname(file),{recursive:true,mode:0o700});
   const temporary=file+`.${process.pid}.install-tmp`;fs.writeFileSync(temporary,bytes,{mode});fs.renameSync(temporary,file);
   if(process.platform!=='win32')fs.chmodSync(file,mode);
   state.files[file]=hash;
   writeJson(statePath,state);
+}
+// Cấu hình JSON (agent dir, <root>/config): gộp mặc định mới với phần người dùng và Pi đã sửa, báo mục đã gộp và xung đột.
+function managedJson(file,content,mode=0o600){
+  wanted.add(file);
+  const result=reconcileConfigFile({root,file,content,mode,recorded:previous?.files[file],backup});
+  if(result.preserved){preserved.push(result.preserved==='invalid'?`${file} (không đọc được JSON nên chưa gộp mặc định mới)`:file);return;}
+  if(result.changes.length||result.conflicts.length)merged.push({file,...result});
+  if(state.files[file]!==result.hash){state.files[file]=result.hash;writeJson(statePath,state);}
 }
 function copyTree(from,to){
   for(const entry of fs.readdirSync(from,{withFileTypes:true})){
@@ -133,7 +145,10 @@ try{
   for(const filename of ['profile-integration.mjs','agent-integration.mjs','scripted-provider.ts','agent-provider.ts','search-fixtures.mjs'])
     managed(path.join(root,'tests',filename),fs.readFileSync(path.join(repoDir,'tests',filename)));
   const files=buildConfiguration({root,agentDir,binDir,nodePath,platform:process.platform,home,repoDir,shellPath:state.shellPath});
-  for(const specification of files){const file=preserveLocalControls(specification);managed(file.path,file.content,file.mode);}
+  for(const specification of files){
+    const file=localDefaults(specification);
+    (mergesConfig(file.path,{root,agentDir})?managedJson:managed)(file.path,file.content,file.mode);
+  }
   for(const [name,action] of Object.entries({'pi':'main','pi-login':'login','pi-doctor':'doctor','pi-test':'test','pi-config':'doctor','firecrawl':'firecrawl','pi-models':'models','pi-mcp-adapter':'mcp-adapter'}))launcher(name,action);
   const auth=path.join(agentDir,'auth.json');
   if(!fs.existsSync(auth)){fs.mkdirSync(agentDir,{recursive:true,mode:0o700});fs.writeFileSync(auth,'{}\n',{mode:0o600});}
@@ -144,5 +159,6 @@ try{
   const jevKey=process.platform==='win32'?'setx TYPESAFE_API_KEY "<key>"':'export TYPESAFE_API_KEY="<key>" trong ~/.zshrc hoặc ~/.bashrc';
   console.log(`Đăng nhập: pi-login → /login. Firecrawl: firecrawl login --browser. Jev cho auto mode: ${jevKey} (hoặc keyring: pi-mcp-adapter key set systemone).`);
   if(preserved.length)console.log('Giữ nguyên các file đã được bạn tùy chỉnh:\n'+preserved.join('\n'));
+  for(const entry of merged)console.log(describeMerge(entry).join('\n'));
   await run(nodePath,[path.join(root,'bin/launch.mjs'),'doctor']);
 }finally{fs.unlinkSync(lock);}

@@ -50,7 +50,7 @@ Advisor (pi-advisor-flow) luôn bật khi mở phiên: executor là Opus/high c�
 - System prompt dặn Opus gọi `ask_advisor` sau hai lần thử tương đương cùng thất bại và trước khi báo xong việc không nhỏ. Tối đa 5 lần mỗi phiên; không có gate cứng chặn phiên.
 - Advisor không có tool. Nó thấy tối đa 60.000 ký tự gồm hội thoại gần nhất và diff chưa commit (diff tối đa 20.000 ký tự, đã che secret). Thay đổi lớn vẫn nên giao reviewer.
 - Bản vá giữ system prompt không đổi sau mỗi lần hỏi, để Opus không mất prompt cache.
-- `/advisor-off` tắt hẳn, kể cả các phiên sau (bản vá: Pi tự bật mọi tool của extension khi mở phiên, nên advisor chỉ bật khi Always on kích hoạt được); bật lại ở `/advisor-settings` → Always on. Khi advisor đang bật, `/model` lưu model mới làm executor vào `advisor.json`, nên lần cài lại installer sẽ báo file này đã sửa.
+- `/advisor-off` tắt hẳn, kể cả các phiên sau (bản vá: Pi tự bật mọi tool của extension khi mở phiên, nên advisor chỉ bật khi Always on kích hoạt được); bật lại ở `/advisor-settings` → Always on. Khi advisor đang bật, `/model` lưu model mới làm executor vào `advisor.json`; cài lại giữ giá trị này.
 - Mở phiên khi chưa đăng nhập Claude hoặc Codex thì Pi báo `Advisor models are not configured or available` và phiên chạy không có advisor; đăng nhập rồi chạy `/advisor`.
 
 Goal chỉ bắt đầu khi được yêu cầu. Mỗi lần tạo hoặc resume có tối đa 10 lượt tự tiếp tục do goal extension khởi động; giới hạn này không tính các tool call trong một lượt hay request do extension khác khởi động.
@@ -144,7 +144,15 @@ node install.mjs --root /duong-dan/platform --agent-dir /duong-dan/agent --bin-d
 
 Role, subagents, goal settings, advisor settings và cấu hình công cụ cùng nằm trong agent directory. Một runtime Pi duy nhất ở `runtimes/current`; Firecrawl CLI ở `tools/firecrawl`.
 
-Khi chạy lại, installer dùng lockfile và checksum để kiểm tính nhất quán; runtime được cài lại khi lockfile hoặc kết quả bản vá đổi, để bản vá luôn áp lên file gốc. File đã tùy chỉnh được giữ và báo đường dẫn. Tài nguyên do installer quản lý, không còn được yêu cầu và chưa chỉnh sửa, được lưu vào backup; tài nguyên còn được cấu hình tham chiếu được giữ. Các loại trừ extension và luật `permissions.deny` được bảo toàn; luật deny của pi-permission-system cũ được chuyển sang. Auth và file riêng của người dùng không thuộc danh sách tài nguyên được dọn.
+Khi chạy lại, installer dùng lockfile và checksum để kiểm tính nhất quán; runtime được cài lại khi lockfile hoặc kết quả bản vá đổi, để bản vá luôn áp lên file gốc.
+
+File JSON cấu hình trong agent directory và `<root>/config`, kể cả `settings.json` mà Pi ghi lại khi đổi model hay thinking, được gộp ba chiều với mặc định của lần cài trước (lưu ở `<root>/state/defaults`):
+- Giá trị bạn chưa đổi nhận mặc định mới; giá trị bạn đã đổi được giữ. Nếu mặc định mới cũng đổi chính giá trị đó, installer giữ của bạn và báo xung đột kèm mặc định mới.
+- Danh sách của `settings.json` (`permissions.allow/ask/deny`, `enabledModels`, `skills`, `themes`, `prompts`, `extensions`, `packages`) gộp theo từng mục: mục bạn thêm hoặc bỏ và loại trừ extension `-` được giữ, mục mặc định mới được thêm, `pi-auto-mode` luôn nạp sau cùng; luật deny của pi-permission-system cũ được chuyển sang.
+- Bản cài chưa lưu mặc định (trước khi có cơ chế này): file chưa sửa nhận mặc định mới như trước; file đã sửa lần đầu chỉ được thêm khóa và mục còn thiếu, mọi giá trị hiện có được giữ và giá trị khác mặc định mới được báo.
+- Installer in phần đã gộp và từng xung đột, backup file trước khi ghi lại; lần chạy không có gì mới thì không ghi gì.
+
+File khác đã tùy chỉnh (`AGENTS.md`, file role) được giữ và báo đường dẫn. Tài nguyên do installer quản lý, không còn được yêu cầu và chưa chỉnh sửa, được lưu vào backup; tài nguyên còn được cấu hình tham chiếu được giữ. Auth và file riêng của người dùng không thuộc danh sách tài nguyên được dọn.
 
 Dừng các phiên Pi trước khi cập nhật. Dùng revision đã qua CI thay vì chạy `pi update` hoặc `npm update` trên runtime ghim. Nếu còn `.install.lock`, kiểm tra PID và chỉ xóa lock khi tiến trình đó đã dừng.
 
@@ -156,6 +164,6 @@ npm test
 npm run smoke
 ```
 
-CI chạy trên Ubuntu, Windows và macOS: kiểm repo, cấu hình, request payload, cài sạch, các slash workflow và Agent trong cùng phiên bằng provider giả, cài lại giữ tùy chỉnh và bootstrap với đường dẫn có khoảng trắng. Test không dùng credential thật hoặc gọi model trả phí. Đây là kiểm chứng runtime và bộ cài; chất lượng model và quyền truy cập tài khoản được đánh giá riêng.
+CI chạy trên Ubuntu, Windows và macOS: kiểm repo, cấu hình, request payload, cài sạch, các slash workflow và Agent trong cùng phiên bằng provider giả, cài lại gộp mặc định mới mà vẫn giữ tùy chỉnh, và bootstrap với đường dẫn có khoảng trắng. Test không dùng credential thật hoặc gọi model trả phí. Đây là kiểm chứng runtime và bộ cài; chất lượng model và quyền truy cập tài khoản được đánh giá riêng.
 
 Nguồn và giấy phép: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Mã riêng của dự án dùng [MIT](LICENSE).
