@@ -632,6 +632,9 @@ const PACKAGE_READ: Record<string, Set<string>> = {
   brew: new Set(["list", "info", "--version", "search", "outdated", "deps", "leaves"]),
 };
 
+// bun pm: chỉ lệnh con in thông tin (cache không kèm rm). pack chạy lifecycle script của package; trust, migrate, version, pkg ghi file.
+const BUN_PM_READ = new Set(["ls", "bin", "cache", "untrusted", "default-trusted"]);
+
 const VERSION_ONLY = new Set(["node", "python", "python3", "ruby", "perl", "java", "rustc", "deno", "tsc", "php", "lua", "uv", "docker", "kubectl", "terraform"]);
 
 const READ_ONLY: Record<string, Validator> = {
@@ -690,6 +693,7 @@ export function isReadOnlyCommand(command: SimpleCommand): boolean {
   const args = command.words.slice(1);
   if (VERSION_ONLY.has(name)) return args.length === 1 && ["--version", "-v", "-V", "version"].includes(args[0]);
   const table = PACKAGE_READ[name];
+  if (name === "bun" && args[0] === "pm" && (!BUN_PM_READ.has(args[1] ?? "") || (args[1] === "cache" && args.length > 2))) return false;
   if (table) return args.length > 0 && table.has(args[0]) && !args.includes("-g") && !args.includes("--global");
   const validator = READ_ONLY[name];
   return validator ? validator(args) : false;

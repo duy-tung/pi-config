@@ -62,6 +62,10 @@ test("shell: chỉ lệnh chữ thuần, chỉ đọc mới là read-only", () =
   assert.equal(readOnly("npm install"), false);
   assert.equal(readOnly("node --version"), true);
   assert.equal(readOnly("node -e 'x'"), false);
+  // bun pm: chỉ lệnh con in thông tin; pack chạy lifecycle script (prepack...) của package, trust/migrate/cache rm ghi file.
+  for (const command of ["bun --version", "bun pm ls", "bun pm ls --all", "bun pm bin", "bun pm cache", "bun pm untrusted"]) assert.equal(readOnly(command), true, command);
+  for (const command of ["bun pm pack", "bun pm pack --dry-run", "bun pm trust --all", "bun pm migrate", "bun pm version patch", "bun pm pkg set x=1",
+    "bun pm cache rm", "bun pm", "bun pm bin -g"]) assert.equal(readOnly(command), false, command);
 });
 
 test("shell: bóc lệnh lồng trong $(), bash -c, sudo, xargs", () => {
@@ -146,6 +150,7 @@ test("chính sách: lối đi nhanh, luật, bypass và tự bảo vệ", () => 
     assert.equal(decide(bash("mkdir -p build && touch build/a"), auto).kind, "allow");
     assert.equal(decide(bash("cd /tmp && mkdir x"), auto).kind, "classify");
     assert.equal(decide(bash("npm install"), auto).kind, "classify");
+    assert.equal(decide(bash("bun pm pack"), auto).kind, "classify");
     // rm vào đường dẫn quan trọng: auto hỏi bộ phân loại (kèm ghi chú), bypass hỏi người dùng.
     const critical = decide(bash("rm -rf ~"), auto);
     assert.equal(critical.kind, "classify");
