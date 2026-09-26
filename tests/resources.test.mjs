@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import {defaultsFile,localDefaults,mergesConfig,reconcileConfigFile,reconcileResources} from '../lib/resources.mjs';
+import {localDefaults,mergesConfig,reconcileResources} from '../lib/resources.mjs';
+import {defaultsFile,reconcileConfigFile} from '../runtime/merge.mjs';
 import {writeJson,readJson,sha256} from '../lib/system.mjs';
 
 function fixture(t) {

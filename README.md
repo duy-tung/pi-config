@@ -85,7 +85,7 @@ Pi dùng `Agent` của **@tintinweb/pi-subagents**:
 
 Parent Claude Opus 5.5/high giữ thiết kế, quyết định quan trọng và nghiệm thu cuối. GLM chạy trực tiếp qua OpenCode Go trong Pi.
 
-Bảng trên là preset `default`. Model và thinking của mọi vai (parent, các role, advisor, goal auditor, Oracle, auto mode) đặt trong `<agent-dir>/model-roles.json`; preset `claude` chỉ cần đăng nhập Claude. Xem [docs/models.md](docs/models.md).
+Bảng trên là preset `default`. Model và thinking của mọi vai (parent, các role, advisor, goal auditor, Oracle, auto mode) đặt trong `<agent-dir>/model-roles.json` và đổi bằng `pi-models`, ví dụ `pi-models preset claude` (chỉ cần đăng nhập Claude) hay `pi-models set worker anthropic/claude-opus-5-5 high`. Xem [docs/models.md](docs/models.md).
 
 ```text
 @researcher Tìm luồng xử lý timeout và báo file/dòng.
@@ -108,7 +108,7 @@ Agent có context riêng và không giới hạn số lượt; dừng agent bằ
 - Dán ảnh: `@pi-archimedes/image-paste`, dùng **Ctrl+V** trên macOS/Linux hoặc **Alt+V** trên Windows. Copy ảnh vào clipboard, dán để có marker `[Image #1]`, rồi gửi cùng prompt. Xóa marker để bỏ ảnh; giới hạn 20 MiB/ảnh. Preview chỉ hiện trong UI, ảnh được gửi tới model đúng một lần. Phím dán ảnh tích hợp của Pi được tắt trong `keybindings.json` để tránh xử lý trùng.
 - Clipboard native `@mariozechner/clipboard` được ghim và cài bên cạnh extension. Linux cần desktop X11/Wayland; `wl-clipboard`/`xclip` là các reader thay thế. Terminal không hỗ trợ ảnh inline vẫn gửi được ảnh, chỉ thiếu preview. Chỉ nạp image-paste; phần giao diện của bộ Archimedes không được nạp.
 
-`pi-models` in model/thinking của mọi vai theo `model-roles.json`, giá trị đang có hiệu lực khi khác, và kiểm model trong catalog của Pi. `pi-doctor` kiểm dependency và checksum bản vá, in cùng bảng model đó cùng trạng thái advisor, goal và auto mode (kèm nguồn key Jev, không in key), và báo lỗi khi hai danh sách provider trong `web-search.json` lệch nhau (pi-web-access sẽ không nạp web tools). `pi-mcp-adapter key set|status|remove systemone` quản lý key Jev trong keyring (cách thay cho `TYPESAFE_API_KEY`). `pi-test` kiểm workflow và Agent bằng provider giả trong thư mục tạm, không gọi model trả phí.
+`pi-models` in model/thinking của mọi vai theo `model-roles.json`, giá trị đang có hiệu lực khi khác, kiểm model trong catalog của Pi và cảnh báo provider chưa đăng nhập; `pi-models preset|set|reset|adopt|apply` đổi rồi áp ngay vào cấu hình, `pi-models list` liệt kê provider và model. `pi-doctor` kiểm dependency và checksum bản vá, in cùng bảng model đó cùng trạng thái advisor, goal và auto mode (kèm nguồn key Jev, không in key), và báo lỗi khi hai danh sách provider trong `web-search.json` lệch nhau (pi-web-access sẽ không nạp web tools). `pi-mcp-adapter key set|status|remove systemone` quản lý key Jev trong keyring (cách thay cho `TYPESAFE_API_KEY`). `pi-test` kiểm workflow và Agent bằng provider giả trong thư mục tạm, không gọi model trả phí.
 
 Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều hành: bộ phân loại có thể sai. Luật `permissions.deny` (file bí mật, `sudo`...) áp dụng ở cả hai mode; bypass vẫn hỏi trước lệnh xoá đệ quy ra ngoài thư mục tạm (`rm -fr`, `find -delete`, `git clean`...) và lệnh rủi ro (`~/.bashrc`, git hook, crontab, `curl -k`, `/etc`...). Project cần được trust trước khi dùng cấu hình của project; settings của project không bật được bypass hay thêm luật allow. Nguồn web là dữ liệu để tham khảo, không phải instruction.
 
@@ -155,7 +155,7 @@ File JSON cấu hình trong agent directory và `<root>/config`, kể cả `sett
 - File role `agents/*.md` cũng được gộp: mỗi khóa frontmatter (`model`, `thinking`, `tools`...) là một giá trị, phần prompt là một giá trị. Sửa một dòng không làm file đứng yên; prompt mới vẫn vào được.
 - Installer in phần đã gộp và từng xung đột, backup file trước khi ghi lại; lần chạy không có gì mới thì không ghi gì.
 
-Model và thinking của các file trên sinh từ `<agent-dir>/model-roles.json`. File này thuộc về bạn: installer chỉ tạo khi chưa có, kiểm model trong catalog của Pi trước khi ghi cấu hình, và dừng khi file sai ([docs/models.md](docs/models.md)).
+Model và thinking của các file trên sinh từ `<agent-dir>/model-roles.json`. File này thuộc về bạn: installer chỉ tạo khi chưa có (hoặc ghi preset khi cài với `--models <preset>`), kiểm model trong catalog của Pi trước khi ghi cấu hình, và dừng khi file sai. `pi-models` đổi file này và áp ngay theo cùng cách gộp ([docs/models.md](docs/models.md)).
 
 File khác đã tùy chỉnh (`AGENTS.md`) được giữ và báo đường dẫn. Tài nguyên do installer quản lý, không còn được yêu cầu và chưa chỉnh sửa, được lưu vào backup; tài nguyên còn được cấu hình tham chiếu được giữ. Auth và file riêng của người dùng không thuộc danh sách tài nguyên được dọn.
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {carryLocalControls, deepEqual, describeMerge, mergeConfig, reconcileJson, reconcileRole} from '../lib/merge.mjs';
+import {carryLocalControls, deepEqual, describeMerge, mergeConfig, reconcileJson, reconcileRole} from '../runtime/merge.mjs';
 
 const json = value => `${JSON.stringify(value, null, 2)}\n`;
 const merge = (base, next, current, settings = true) => mergeConfig({base, next, current, settings});

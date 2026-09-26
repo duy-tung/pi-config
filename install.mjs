@@ -5,20 +5,21 @@ import os from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {buildConfiguration} from './lib/config.mjs';
 import {applyPatches} from './lib/patches.mjs';
-import {describeMerge} from './lib/merge.mjs';
-import {localDefaults,mergesConfig,reconcileConfigFile,reconcileResources} from './lib/resources.mjs';
-import {SUBAGENT_ROLES,checkCatalog,legacyOverrides,loadPresets,readModelRoles,resolveModelRoles} from './runtime/model-roles.mjs';
+import {backupFile,describeMerge,reconcileConfigFile} from './runtime/merge.mjs';
+import {localDefaults,mergesConfig,reconcileResources} from './lib/resources.mjs';
+import {SUBAGENT_ROLES,changedRoles,checkCatalog,forceNativeModels,legacyOverrides,loadPresets,nativeKind,nativeValues,readModelRoles,resolveModelRoles,withPreset,writeModelRoles} from './runtime/model-roles.mjs';
 import {run,download,npmCli,readJson,writeJson,sha256,shellQuote,assertSafePath} from './lib/system.mjs';
 
 const repoDir=path.dirname(fileURLToPath(import.meta.url));
 const argv=process.argv.slice(2);
-const known=new Set(['--root','--agent-dir','--bin-dir','--no-path','--help']);
+const known=new Set(['--root','--agent-dir','--bin-dir','--models','--no-path','--help']);
 for(let i=0;i<argv.length;i++){
   if(!known.has(argv[i]))throw new Error(`Tham số không hợp lệ: ${argv[i]}`);
   if(['--root','--agent-dir','--bin-dir'].includes(argv[i])){if(!argv[++i] || argv[i].startsWith('--'))throw new Error('Thiếu đường dẫn cho tham số');}
+  if(argv[i]==='--models'){if(!argv[++i] || argv[i].startsWith('--'))throw new Error('Thiếu tên preset cho --models');}
 }
 if(argv.includes('--help')){
-  console.log('Cài Pi: node install.mjs [--root PATH] [--agent-dir PATH] [--bin-dir PATH] [--no-path]');process.exit(0);
+  console.log('Cài Pi: node install.mjs [--root PATH] [--agent-dir PATH] [--bin-dir PATH] [--models PRESET] [--no-path]');process.exit(0);
 }
 const option=(name,fallback)=>{const i=argv.indexOf(name);return i<0?fallback:argv[i+1];};
 const home=os.homedir();
@@ -40,10 +41,7 @@ const lockFd=fs.openSync(lock,'wx',0o600);fs.writeFileSync(lockFd,String(process
 const state={version:1,root,agentDir,binDir,nodePath,platform:process.platform,arch:process.arch,
   shellPath:shellPath ?? previous?.shellPath,files:previous?.files ?? {},runtimes:previous?.runtimes ?? {},sources:previous?.sources ?? {}};
 const preserved=[],merged=[],wanted=new Set();
-function backup(file){
-  const target=path.join(root,'backups',new Date().toISOString().replaceAll(':','-'),path.relative(root,file).replaceAll('..','parent'));
-  fs.mkdirSync(path.dirname(target),{recursive:true});fs.copyFileSync(file,target);
-}
+const backup=file=>backupFile(root,file);
 function managed(file,content,mode=0o600){
   wanted.add(file);
   const bytes=Buffer.isBuffer(content)?content:Buffer.from(content);
@@ -62,16 +60,18 @@ function managed(file,content,mode=0o600){
   writeJson(statePath,state);
 }
 // Cấu hình JSON (agent dir, <root>/config) và file role: gộp mặc định mới với phần người dùng và Pi đã sửa, báo mục đã gộp và xung đột.
-function managedJson(file,content,mode=0o600){
+// force: sửa file hiện tại trước khi gộp (ép model/thinking của vai --models đổi).
+function managedJson(file,content,mode=0o600,force){
   wanted.add(file);
-  const result=reconcileConfigFile({root,file,content,mode,recorded:previous?.files[file],backup});
+  const result=reconcileConfigFile({root,file,content,mode,recorded:previous?.files[file],backup,force});
   if(result.preserved){preserved.push(result.preserved==='invalid'?`${file} (không đọc được ${path.extname(file)==='.md'?'frontmatter':'JSON'} nên chưa gộp mặc định mới)`:file);return;}
   if(result.changes.length||result.conflicts.length)merged.push({file,...result});
   if(state.files[file]!==result.recorded){state.files[file]=result.recorded;writeJson(statePath,state);}
 }
 /**
  * Model/thinking của mọi vai từ <agent-dir>/model-roles.json (chưa có thì preset mặc định). Bản cài trước khi có
- * file này: model/thinking người dùng đã sửa trong agents/*.md được chuyển thành ghi đè. Lỗi thì dừng trước khi ghi.
+ * file này: model/thinking người dùng đã sửa trong agents/*.md được chuyển thành ghi đè. --models chọn preset (ghi vào
+ * file); vai mà preset mới đổi được ép trong file gốc như pi-models preset. Lỗi thì dừng trước khi ghi.
  */
 function modelRolesPlan(){
   const presets=loadPresets(path.join(repoDir,'assets','configs','model-presets.json'));
@@ -87,9 +87,14 @@ function modelRolesPlan(){
     imported=legacyOverrides(presets,texts);
     config={...config,roles:imported};
   }
+  const preset=option('--models');
+  const before=preset===undefined?undefined:resolveModelRoles(presets,config);
+  if(preset!==undefined)config=withPreset(config,preset);
   const resolved=resolveModelRoles(presets,config);
-  if(resolved.errors.length)throw new Error(`${current.file} không hợp lệ:\n- ${resolved.errors.join('\n- ')}`);
-  return {file:current.file,exists:current.exists,config,imported,roles:resolved.roles};
+  if(resolved.errors.length)throw new Error(`${current.file} ${preset===undefined?'':`với --models ${preset} `}không hợp lệ:\n- ${resolved.errors.join('\n- ')}`);
+  const forced=before&&previous?changedRoles(before.roles,resolved.roles):[];
+  const write=!current.exists||JSON.stringify(config)!==JSON.stringify(current.config);
+  return {file:current.file,write,config,imported,preset,forced,roles:resolved.roles};
 }
 function copyTree(from,to){
   for(const entry of fs.readdirSync(from,{withFileTypes:true})){
@@ -172,16 +177,16 @@ try{
   const catalog=await checkCatalog({modules:path.join(root,'runtimes','current','node_modules'),agentDir,roles:models.roles});
   if(catalog.errors.length)throw new Error(`Model trong ${models.file} không dùng được:\n- ${catalog.errors.join('\n- ')}`);
   const files=buildConfiguration({root,agentDir,binDir,nodePath,platform:process.platform,home,repoDir,shellPath:state.shellPath,modelRoles:models.roles});
+  const native=nativeValues(models.roles);
   for(const specification of files){
     const file=localDefaults(specification);
-    (mergesConfig(file.path,{root,agentDir})?managedJson:managed)(file.path,file.content,file.mode);
+    const kind=models.forced.length?nativeKind(file.path,agentDir):undefined;
+    const force=kind&&(text=>forceNativeModels(kind,text,native,models.forced));
+    (mergesConfig(file.path,{root,agentDir})?managedJson:managed)(file.path,file.content,file.mode,force||undefined);
   }
-  // model-roles.json thuộc về người dùng: chỉ tạo khi chưa có, không ghi đè, không nằm trong danh sách file installer quản lý.
-  if(!models.exists){
-    fs.mkdirSync(agentDir,{recursive:true,mode:0o700});
-    const temporary=models.file+`.${process.pid}.install-tmp`;
-    fs.writeFileSync(temporary,JSON.stringify(models.config,null,2)+'\n',{mode:0o600});fs.renameSync(temporary,models.file);
-  }
+  // model-roles.json thuộc về người dùng: chỉ tạo khi chưa có hoặc ghi preset của --models, không nằm trong danh
+  // sách file installer quản lý.
+  if(models.write)writeModelRoles(models.file,models.config);
   for(const [name,action] of Object.entries({'pi':'main','pi-login':'login','pi-doctor':'doctor','pi-test':'test','pi-config':'doctor','firecrawl':'firecrawl','pi-models':'models','pi-mcp-adapter':'mcp-adapter'}))launcher(name,action);
   const auth=path.join(agentDir,'auth.json');
   if(!fs.existsSync(auth)){fs.mkdirSync(agentDir,{recursive:true,mode:0o700});fs.writeFileSync(auth,'{}\n',{mode:0o600});}
@@ -195,6 +200,7 @@ try{
   for(const entry of merged)console.log(describeMerge(entry).join('\n'));
   const imported=Object.entries(models.imported).map(([role,value])=>`${role}: ${[value.model,value.thinking&&`thinking ${value.thinking}`].filter(Boolean).join(', ')}`);
   if(imported.length)console.log(`Đã chuyển model/thinking bạn sửa trong agents/*.md sang ${models.file}:\n  - ${imported.join('\n  - ')}`);
+  if(models.preset!==undefined)console.log(`Đã chọn preset ${models.preset} trong ${models.file}.`);
   if(catalog.notes.length)console.log(`Mức thinking model không hỗ trợ (Pi dùng mức gần nhất):\n  - ${catalog.notes.join('\n  - ')}`);
   await run(nodePath,[path.join(root,'bin/launch.mjs'),'doctor']);
 }finally{fs.unlinkSync(lock);}

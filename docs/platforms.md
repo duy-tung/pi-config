@@ -41,6 +41,7 @@ $env:PI_CONFIG_SOURCE = (Get-Location).Path
 & .\install.ps1 --root "$env:TEMP\pi test\platform" --agent-dir "$env:TEMP\pi test\agent" --bin-dir "$env:TEMP\pi test\bin" --no-path
 ```
 
+- `--models <preset>`: chọn preset model (`default`, `claude` hoặc preset riêng trong `model-roles.json`), vd `curl … | bash -s -- --models claude`; xem [models.md](models.md).
 - `PI_CONFIG_SOURCE`: dùng checkout local, bỏ bước tải repo; hữu ích cho CI.
 - `PI_CONFIG_REF`: commit, tag hoặc branch để tải; mặc định `main`.
 - `PI_CONFIG_BOOTSTRAP_DIR`: nơi đặt Node/Git tải thêm. Mặc định Unix: `${XDG_DATA_HOME:-~/.local/share}/pi-config/bootstrap`; Windows: `%LOCALAPPDATA%\pi-config\bootstrap`.
