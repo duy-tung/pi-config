@@ -198,6 +198,39 @@ test("chính sách: lối đi nhanh, luật, bypass và tự bảo vệ", () => 
   }
 });
 
+test("cờ ghi viết gộp hoặc viết tắt (sort -oFILE, -uoFILE, --out=FILE) không lọt qua nhánh chỉ đọc hay cổng tự bảo vệ", () => {
+  const readOnly = (command) => isReadOnlyShell(analyzeShell(command));
+  for (const command of [
+    "sort -o out.txt in.txt", "sort -oout.txt in.txt", "sort -uoout.txt in.txt", "sort -u -o out.txt in.txt", "sort in.txt -o out.txt",
+    "sort --output=out.txt in.txt", "sort --output out.txt in.txt", "sort --out=out.txt in.txt", "sort --compress-prog=sh in.txt",
+    "base64 -Do out.bin in.b64", "base64 --outp=out.bin in.b64", "tree -Jo out.json", "tree -aR -H . ", "yq -Pi '.a = 1' f.yaml",
+    "yq -s '\"part\"' f.yaml", "yq --split-exp '\"part\"' f.yaml",
+  ]) assert.equal(readOnly(command), false, command);
+  // Chữ o là giá trị của cờ đứng trước (-t o: dấu phân cách), hoặc không thuộc tùy chọn output.
+  for (const command of ["sort -rn -k2 -to in.txt", "sort -t o in.txt", "sort -- -o", "base64 -d in.b64", "tree -L 2 --noreport", "yq -o=json '.a' f.yaml"]) {
+    assert.equal(readOnly(command), true, command);
+  }
+  const ws = workspace();
+  try {
+    const auto = context(ws);
+    // Trong bash, "\\" là ký tự escape: dùng "/" như Git Bash trên Windows.
+    const settings = path.join(ws.home, ".pi", "agent", "settings.json").replaceAll("\\", "/");
+    for (const command of [`sort -o${settings} payload.txt`, `sort -uo${settings} payload.txt`, `sort -o ${settings} payload.txt`,
+      `sort --output=${settings} payload.txt`, `sort --out=${settings} payload.txt`, `base64 -Do${settings} payload.b64`]) {
+      const facts = describeCall(bash(command), auto);
+      assert.equal(facts.writesSelf, true, command);
+      assert.equal(decide(bash(command), auto, facts).kind, "ask", command);
+    }
+    // Đích thường: không còn là lệnh chỉ đọc, đi qua bộ phân loại.
+    const outside = path.join(ws.dir, "out.txt").replaceAll("\\", "/");
+    for (const command of [`sort -o${outside} payload.txt`, "sort -oout.txt payload.txt", "sort --output=out.txt payload.txt"]) {
+      assert.equal(decide(bash(command), auto).kind, "classify", command);
+    }
+  } finally {
+    ws.cleanup();
+  }
+});
+
 test("luật deny của installer chặn cả thư mục bí mật và mọi cấp bên trong, ở cả hai mode", () => {
   const ws = workspace();
   try {

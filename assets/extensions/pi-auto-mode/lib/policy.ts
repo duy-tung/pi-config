@@ -6,7 +6,9 @@ import {
 } from "./paths.ts";
 import { detectPowerShellRisks, detectRisks } from "./risks.ts";
 import { allowCoversShell, firstMatch, type RuleMatchTarget, type RuleSet } from "./rules.ts";
-import { analyzeShell, commandName, commandText, isReadOnlyCommand, isReadOnlyShell, type ShellAnalysis, type SimpleCommand } from "./shell.ts";
+import {
+  analyzeShell, commandName, commandText, isReadOnlyCommand, isReadOnlyShell, optionOutputs, type ShellAnalysis, type SimpleCommand,
+} from "./shell.ts";
 
 /**
  * Quyết định tất định cho một lời gọi tool, trước khi cần tới bộ phân loại.
@@ -98,6 +100,7 @@ function shellPaths(analysis: ShellAnalysis, cwd: string, home: string): string[
       if (!looksLikePath(value)) return;
       result.add(resolveShellPath(value, cwd, home));
     });
+    for (const output of optionOutputs(command)) if (looksLikePath(output)) result.add(resolveShellPath(output, cwd, home));
     for (const redirect of command.redirects) {
       if (redirect.literal && looksLikePath(redirect.target) && !/^\d+$|^-$/u.test(redirect.target)) {
         result.add(resolveShellPath(redirect.target, cwd, home));
