@@ -321,8 +321,8 @@ export function describeCall(call: ToolCall, pc: PolicyContext): CallFacts {
     };
   }
   if (toolName === "fetch_content" || toolName === "web_search" || toolName === "source_check") {
-    const url = typeof input.url === "string" ? input.url : Array.isArray(input.urls) && typeof input.urls[0] === "string" ? input.urls[0] : undefined;
-    return { kind: "network", paths: [], summary, target: { toolName, url } };
+    const urls = [input.url, ...(Array.isArray(input.urls) ? input.urls : [])].filter((url): url is string => typeof url === "string");
+    return { kind: "network", paths: [], summary, target: { toolName, urls } };
   }
   if (toolName === "Agent") return { kind: "agent", paths: [], summary, target: { toolName } };
   if (toolName === "SubagentWorkflow" || toolName === "mcpScript") return { kind: "workflow", paths: [], summary, target: { toolName } };
@@ -481,6 +481,14 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
         }
       }
       if (!analysis.plain && analysis.problems.length) notes.push(`shell constructs: ${analysis.problems.slice(0, 4).join(", ")}`);
+      return { kind: "classify", notes };
+    }
+    case "network": {
+      // Deny/ask khớp bất kỳ URL nào; allow phải phủ mọi URL, kể cả khi có cả url và urls.
+      const targets = facts.target.urls?.length
+        ? facts.target.urls.map((url) => ({ toolName: call.toolName, urls: [url] }))
+        : [facts.target];
+      if (targets.every((target) => firstMatch(pc.rules.allow, target, pc.cwd, home))) return { kind: "allow", via: "allow rule" };
       return { kind: "classify", notes };
     }
     case "agent":
