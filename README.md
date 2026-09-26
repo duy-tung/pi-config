@@ -24,7 +24,7 @@ Chi tiết kiến trúc CPU, công cụ hệ thống và tùy chọn đường d
 
 ## Đăng nhập dịch vụ
 
-1. Chạy `pi-login`, dùng `/login` và chọn **Anthropic** cho parent Claude Opus 5.5 (gói Pro/Max) và bộ phân loại của auto mode (Claude Sonnet 5), hoặc đặt `ANTHROPIC_API_KEY`. Xem [docs/claude.md](docs/claude.md).
+1. Chạy `pi-login`, dùng `/login` và chọn **Anthropic** cho parent Claude Opus 5.5 (gói Pro/Max) và bộ phân loại của auto mode (Claude Sonnet 5), hoặc đặt `ANTHROPIC_API_KEY`. Xem [docs/claude-setup.md](docs/claude-setup.md).
 2. Trong `/login`, chọn **OpenAI Codex** cho worker/debugger (GPT-6 Sol) và reviewer (GPT-6 Astra).
 3. Trong `/login`, chọn **OpenCode Go** và nhập API key cho GLM. Pi cũng nhận biến môi trường `OPENCODE_API_KEY`.
 4. Chạy `firecrawl login --browser` để đăng nhập dịch vụ web.
@@ -98,7 +98,7 @@ Agent có context riêng và không giới hạn số lượt; dừng agent bằ
 
 ## Công cụ và mặc định
 
-- Web: `web_search` dùng native search của model hiện tại: provider `openai` cho Codex/OpenAI (Astra, Sol), `anthropic` cho Claude (bản vá pi-web-access); model khác (GLM) dùng Exa (endpoint MCP miễn phí, không cần key) rồi Firecrawl; lỗi mạng, quota, phản hồi hỏng chuyển sang provider kế tiếp. `fetch_content`, `get_search_content` dùng Firecrawl và kho kết quả. Phiên mới hiện `web_enable` để model bật web tools. CLI và skills hỗ trợ workflow bổ sung. Chi tiết: [docs/claude.md](docs/claude.md).
+- Web: `web_search` dùng native search của model hiện tại: provider `openai` cho Codex/OpenAI (Astra, Sol), `anthropic` cho Claude (bản vá pi-web-access); model khác (GLM) dùng Exa (endpoint MCP miễn phí, không cần key) rồi Firecrawl; lỗi mạng, quota, phản hồi hỏng chuyển sang provider kế tiếp. `fetch_content`, `get_search_content` dùng Firecrawl và kho kết quả. Phiên mới hiện `web_enable` để model bật web tools. CLI và skills hỗ trợ workflow bổ sung. Chi tiết: [docs/claude-setup.md](docs/claude-setup.md).
 - MCP filesystem: công cụ đọc trong workspace, kết nối khi cần. `mcp.json` đặt `allowInstall: false`: agent không tự cài thêm server MCP.
 - Code intelligence: pi-lens, TypeScript language server cài sẵn (không tự `npm install` `@types` vào cache của máy); Go/Rust/Python dùng language server của máy hoặc project.
 - Native compaction bật: reserve 16.384, giữ gần nhất 20.000 token.
