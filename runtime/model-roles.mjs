@@ -481,37 +481,56 @@ async function providerLogin(runtime, stored, provider) {
 }
 
 /**
- * Kiểm model của mọi vai trong catalog của runtime, không gọi mạng: model không có là lỗi (pi-subagents sẽ lặng lẽ
- * dùng model của parent), mức thinking model không hỗ trợ là ghi chú (Pi hạ về mức gần nhất). models.json và bộ nhớ
- * catalog (models-store.json) của agent dir được tính, để model tự khai báo cũng hợp lệ.
- * logins: thêm trạng thái đăng nhập của provider các vai dùng (pi-models); installer và pi-doctor không đọc auth.
+ * Kiểm model của mọi vai trong một catalog, không gọi mạng: model không có là lỗi (pi-subagents sẽ lặng lẽ dùng model
+ * của parent), mức thinking model không hỗ trợ là ghi chú (Pi hạ về mức gần nhất). find(provider, id): model hoặc
+ * undefined; clamp(model, level): mức Pi dùng; login(provider): nhãn đăng nhập hoặc undefined, không truyền thì không
+ * kiểm đăng nhập.
+ */
+export async function catalogReport({roles, find, clamp, login}) {
+  const errors = [], notes = [], providers = new Map();
+  for (const name of Object.keys(roles)) {
+    const {model, thinking} = roles[name];
+    const ref = parseModelRef(model);
+    const found = ref && find(ref.provider, ref.id);
+    if (!found) {
+      errors.push(`${name}: không có model ${model} trong catalog của Pi${roles[name].file ? ` (theo ${roles[name].file})` : ''}; kiểm tên provider/id, hoặc khai báo model trong models.json`);
+      continue;
+    }
+    if (!providers.has(ref.provider)) providers.set(ref.provider, []);
+    providers.get(ref.provider).push(name);
+    if (thinking === undefined) continue;
+    const level = name === 'auditor' || name === 'oracle' ? goalThinking(thinking) : thinking;
+    const clamped = clamp(found, level);
+    if (clamped !== level) notes.push(`${name}: ${model} không hỗ trợ thinking ${level}; Pi dùng ${clamped}`);
+  }
+  const loggedOut = [];
+  if (login) for (const [provider, names] of providers) if (!await login(provider)) loggedOut.push({provider, roles: names});
+  return {errors, notes, loggedOut};
+}
+
+/**
+ * catalogReport trên catalog của runtime đã cài. models.json và bộ nhớ catalog (models-store.json) của agent dir được
+ * tính, để model tự khai báo cũng hợp lệ. logins: thêm trạng thái đăng nhập của provider các vai dùng (pi-models);
+ * installer và pi-doctor không đọc auth.
  */
 export function checkCatalog({modules, agentDir, roles, logins = false}) {
-  return withCatalog({modules, agentDir}, async ({runtime, pi}) => {
-    const errors = [], notes = [], providers = new Map();
-    for (const name of Object.keys(roles)) {
-      const {model, thinking} = roles[name];
-      const ref = parseModelRef(model);
-      const found = ref && runtime.getModel(ref.provider, ref.id);
-      if (!found) {
-        errors.push(`${name}: không có model ${model} trong catalog của Pi${roles[name].file ? ` (theo ${roles[name].file})` : ''}; kiểm tên provider/id, hoặc khai báo model trong models.json`);
-        continue;
-      }
-      if (!providers.has(ref.provider)) providers.set(ref.provider, []);
-      providers.get(ref.provider).push(name);
-      if (thinking === undefined) continue;
-      const level = name === 'auditor' || name === 'oracle' ? goalThinking(thinking) : thinking;
-      const clamped = pi.clampThinkingLevel(found, level);
-      if (clamped !== level) notes.push(`${name}: ${model} không hỗ trợ thinking ${level}; Pi dùng ${clamped}`);
-    }
-    const loggedOut = [];
-    if (logins) {
-      const stored = read(path.join(agentDir, 'auth.json'));
-      for (const [provider, names] of providers) if (!await providerLogin(runtime, stored, provider)) loggedOut.push({provider, roles: names});
-    }
-    return {errors, notes, loggedOut};
+  return withCatalog({modules, agentDir}, ({runtime, pi}) => {
+    const stored = logins ? read(path.join(agentDir, 'auth.json')) : undefined;
+    return catalogReport({
+      roles, find: (provider, id) => runtime.getModel(provider, id), clamp: pi.clampThinkingLevel,
+      login: logins ? provider => providerLogin(runtime, stored, provider) : undefined,
+    });
   });
 }
+
+/**
+ * Catalog cho pi-models chạy ngoài phiên Pi: runtime đã cài, chế độ offline. /models trong phiên truyền catalog của
+ * chính phiên đó (cùng dạng {check, list}).
+ */
+export const offlineCatalog = ({modules, agentDir}) => ({
+  check: (roles, {logins = false} = {}) => checkCatalog({modules, agentDir, roles, logins}),
+  list: () => listCatalog({modules, agentDir}),
+});
 
 /** Provider trong catalog, trạng thái đăng nhập (như checkCatalog) và model kèm mức thinking hỗ trợ, cho pi-models list. */
 export function listCatalog({modules, agentDir}) {
@@ -528,19 +547,23 @@ export function listCatalog({modules, agentDir}) {
 const label = role => `${role.model ?? '?'} (${role.thinking ?? '?'})`;
 
 /** Cảnh báo cho vai đang dùng giá trị khác model-roles.json, kèm cách giữ hoặc bỏ giá trị đó. */
-export const driftWarning = (name, effective, wanted) =>
+export const driftWarning = (name, effective, wanted, command = 'pi-models') =>
   `${name} đang dùng ${label(effective)} theo ${effective.file}, khác ${MODEL_ROLES_FILE} (${label(wanted)}). ` +
-  `Giữ giá trị này: pi-models adopt ${name}; dùng lại ${MODEL_ROLES_FILE}: pi-models apply --reset.`;
+  `Giữ giá trị này: ${command} adopt ${name}; dùng lại ${MODEL_ROLES_FILE}: ${command} apply --reset.`;
 
-/** Cảnh báo provider chưa đăng nhập của checkCatalog. */
-export const loginWarning = ({provider, roles}) => `provider ${provider} (${roles.join(', ')}) chưa đăng nhập: chạy pi-login rồi /login.`;
+/** Cảnh báo provider chưa đăng nhập của checkCatalog; trong phiên Pi (command "/models") đăng nhập bằng /login. */
+export const loginWarning = ({provider, roles}, command = 'pi-models') =>
+  `provider ${provider} (${roles.join(', ')}) chưa đăng nhập: ${command.startsWith('/') ? 'dùng /login' : 'chạy pi-login rồi /login'}.`;
 
 /**
  * Bảng model của mọi vai cho pi-models và pi-doctor: giá trị theo model-roles.json, giá trị đang có hiệu lực khi
  * khác (đổi qua /model, /goal-settings, /agents hoặc sửa tay file gốc), và kết quả kiểm catalog của cả hai.
- * logins: cảnh báo cả provider chưa đăng nhập (pi-models).
+ * logins: cảnh báo cả provider chưa đăng nhập (pi-models). catalog: như offlineCatalog (mặc định: runtime đã cài).
+ * command: lệnh được gợi ý trong cảnh báo (pi-models, hoặc /models trong phiên Pi).
  */
-export async function modelRolesReport({root, agentDir, modules, logins = false}) {
+export async function modelRolesReport({
+  root, agentDir, modules, logins = false, catalog = offlineCatalog({modules, agentDir}), command = 'pi-models',
+}) {
   const lines = [], warnings = [], errors = [];
   const current = readModelRoles(agentDir);
   if (current.error) return {lines, warnings, errors: [current.error]};
@@ -557,14 +580,14 @@ export async function modelRolesReport({root, agentDir, modules, logins = false}
       continue;
     }
     lines.push(`  ${name}: ${label(effective[name])} theo ${effective[name].file}; ${MODEL_ROLES_FILE}: ${label(wanted)}${overridden}`);
-    warnings.push(driftWarning(name, effective[name], wanted));
+    warnings.push(driftWarning(name, effective[name], wanted, command));
   }
   // Giá trị đang có hiệu lực là thứ Pi dùng: model sai tên ở đó cũng bị thay lặng lẽ bằng model của parent.
   const checked = Object.fromEntries(ROLES.map(name => [name, drifted.has(name) && effective[name].model ? effective[name] : resolved.roles[name]]));
   try {
-    const catalog = await checkCatalog({modules, agentDir, roles: checked, logins});
-    errors.push(...catalog.errors);
-    warnings.push(...catalog.notes, ...catalog.loggedOut.map(loginWarning));
+    const report = await catalog.check(checked, {logins});
+    errors.push(...report.errors);
+    warnings.push(...report.notes, ...report.loggedOut.map(entry => loginWarning(entry, command)));
   } catch (error) {
     warnings.push(`không kiểm được model trong catalog của Pi: ${error.message}`);
   }

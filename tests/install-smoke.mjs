@@ -22,7 +22,7 @@ const doctor=spawnSync(process.execPath,[path.join(root,'bin/launch.mjs'),'docto
 fs.writeFileSync(webSearchPath,webSearchBytes);
 assert.equal(doctor.status,1,doctor.stdout+doctor.stderr);
 assert.match(doctor.stderr,/parallel-mcp có trong searchRouting\.providers nhưng không có trong webSearch\.allowedProviders/u);
-await run(process.execPath,['--test',...['patches','models','glm-wire','native-search-wire','claude-effort-wire','rewind-session','subagent-markdown','patched-typecheck','model-roles','model-commands'].map(name=>path.join(repo,`tests/${name}.test.mjs`))],{env:{...process.env,PI_CONFIG_TEST_ROOT:root}});
+await run(process.execPath,['--test',...['patches','models','glm-wire','native-search-wire','claude-effort-wire','rewind-session','subagent-markdown','patched-typecheck','model-roles','model-commands','models-command'].map(name=>path.join(repo,`tests/${name}.test.mjs`))],{env:{...process.env,PI_CONFIG_TEST_ROOT:root}});
 for(const profile of ['main'])await run(process.execPath,[path.join(repo,'tests/profile-integration.mjs'),root,profile]);
 for(const profile of ['main'])await run(process.execPath,[path.join(repo,'tests/agent-integration.mjs'),root,profile]);
 // Cài lại gộp ba chiều file JSON cấu hình: base là mặc định lần cài trước, lưu riêng trong <root>/state/defaults.
