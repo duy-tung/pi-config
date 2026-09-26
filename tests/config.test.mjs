@@ -124,6 +124,9 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.ok(!settings.packages.some((entry) => String(entry?.source ?? entry).includes("pi-permission-system")));
       assert.ok(!files.some((file) => file.path.includes("pi-permission-system")));
       assert.deepEqual(json(p.join(profile.agentDir, "keybindings.json"))["app.thinking.cycle"], ["alt+t"]);
+      // Alt+Enter từ terminal của Orca tới Pi thành Shift+Enter, nên Ctrl+Enter là phím follow-up thứ hai.
+      const windowsKeys = platform === "win32" || (platform === "linux" && Boolean(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP));
+      assert.deepEqual(json(p.join(profile.agentDir, "keybindings.json"))["app.message.followUp"], [windowsKeys ? "ctrl+q" : "alt+enter", "ctrl+enter"]);
       const firecrawl = json(p.join(profile.agentDir, "web-search.json"));
       // provider cố định sẽ bỏ qua searchRouting; native search theo model (Codex, Claude) đi trước, Firecrawl dự phòng.
       assert.equal(firecrawl.provider, undefined);
