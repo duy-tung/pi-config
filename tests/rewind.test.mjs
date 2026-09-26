@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import childProcess, { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -22,6 +23,22 @@ function sandbox() {
   const work = path.join(dir, "work");
   fs.mkdirSync(work);
   return { dir, work, store, capturer, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
+}
+
+// Quan sát lệnh Git thật để kiểm file nhạy cảm bị loại trước cat-file, không chỉ trước khi ghi blob.
+function observeHeadReads(t, work) {
+  const reads = [];
+  const spawn = childProcess.spawn;
+  t.mock.method(childProcess, "spawn", (command, args, options) => {
+    if (command === "git" && options.cwd === work && args.includes("cat-file")) reads.push(args.at(-1).split(":").slice(1).join(":"));
+    return spawn(command, args, options);
+  });
+  syncBuiltinESMExports();
+  t.after(() => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  });
+  return reads;
 }
 
 test("đếm dòng thêm/xóa như diff", () => {
@@ -72,6 +89,33 @@ test("kho blob: blob bị process khác dọn đúng lúc put đánh dấu tham 
     assert.equal(store.read(sha).toString(), "same content\n");
   } finally {
     fs.utimesSync = utimes;
+    cleanup();
+  }
+});
+
+test("captureBuffer không lưu file bí mật kể cả khi file đã bị xóa, vẫn lưu file mẫu", () => {
+  const { work, store, capturer, cleanup } = sandbox();
+  try {
+    for (const name of [".env", ".env.local", "auth.json", "credentials.json", "client.key", "client.pem", "id_rsa", "id_ed25519"]) {
+      const file = path.join(work, name);
+      const data = Buffer.from(`FAKE_SECRET=synthetic-${name}\n`);
+      fs.writeFileSync(file, data);
+      for (const removed of [false, true]) {
+        if (removed) fs.unlinkSync(file);
+        const version = capturer.captureBuffer(data, 0o600, file);
+        assert.equal(version.kind, "unprotected", `${name}, removed=${removed}`);
+        assert.match(version.reason, /bí mật/u);
+        assert.equal(store.has(sha256(data)), false, name);
+      }
+    }
+    for (const name of ["safe.txt", ".env.example", ".env.sample", ".env.template"]) {
+      const data = Buffer.from(`PUBLIC_FIXTURE=${name}\n`);
+      const version = capturer.captureBuffer(data, 0o644, path.join(work, name));
+      assert.equal(version.kind, "file", name);
+      assert.deepEqual(store.read(version.sha), data);
+      assert.equal(version.mode, 0o644);
+    }
+  } finally {
     cleanup();
   }
 });
@@ -352,6 +396,99 @@ test("git watcher nhận file bash sửa, tạo và xóa; bỏ qua file bị ign
     assert.equal(capturer.store.read(changes.get("dirty.txt").sha).toString(), "D1\n");
     assert.equal(capturer.store.read(changes.get("gone.txt").sha).toString(), "G0\n");
     assert.equal(changes.get("made.txt").kind, "absent");
+  } finally {
+    cleanup();
+  }
+});
+
+test("git watcher loại bí mật đã track trước khi đọc HEAD; file sạch, bẩn, xóa và mới đều không vào kho", async (t) => {
+  const { work, store, capturer, cleanup } = sandbox();
+  const git = (...args) => execFileSync("git", args, { cwd: work, stdio: "pipe" });
+  try {
+    git("init", "-q");
+    git("config", "core.autocrlf", "false");
+    const excludes = path.join(work, ".git", "fixture-excludes");
+    fs.writeFileSync(excludes, "");
+    git("config", "core.excludesFile", excludes);
+    const secrets = ["modified", "deleted", "dirty"].flatMap((state) =>
+      [".env", "auth.json", "client.key", "client.pem", "id_ed25519"].map((name) => `${state}/${name}`));
+    const contents = [];
+    const writeSecret = (name, stage) => {
+      const file = path.join(work, name);
+      const data = `FAKE_SECRET=synthetic-${name}-${stage}\n`;
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, data);
+      contents.push(data);
+    };
+    for (const name of secrets) writeSecret(name, "HEAD");
+    const allowed = ["safe.txt", ".env.example", ".env.sample", ".env.template"];
+    for (const name of allowed) fs.writeFileSync(path.join(work, name), `PUBLIC_FIXTURE=${name}-before\n`);
+    git("add", "-f", ".");
+    git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qm", "fixture");
+    assert.deepEqual(git("ls-files", "-z").toString().split("\0").filter(Boolean).sort(), [...secrets, ...allowed].sort());
+    for (const name of secrets.filter((name) => name.startsWith("dirty/"))) writeSecret(name, "before");
+    const reads = observeHeadReads(t, work);
+    const watcher = new GitWatcher(capturer, { slowMs: 5000, maxDirty: 500, maxBytes: 1024 * 1024 });
+    const window = await watcher.begin(work);
+    assert.ok(window);
+    for (const name of secrets) {
+      if (name.startsWith("deleted/")) fs.unlinkSync(path.join(work, name));
+      else writeSecret(name, "after");
+    }
+    writeSecret("new/.env", "after");
+    writeSecret("staged/auth.json", "after");
+    git("add", "-f", "--", "modified", "staged");
+    assert.ok(git("status", "--porcelain=v1", "-z", "--untracked-files=all").toString().split("\0").includes("?? new/.env"));
+    for (const name of allowed) fs.writeFileSync(path.join(work, name), `PUBLIC_FIXTURE=${name}-after\n`);
+    const changes = new Map((await watcher.end(window)).map((item) => [path.relative(work, item.file), item.before]));
+    assert.deepEqual(reads.sort(), [...allowed].sort(), "Chỉ đọc HEAD cho file được phép sao lưu");
+    assert.deepEqual([...changes.keys()].sort(), [...allowed].sort());
+    for (const data of contents) assert.equal(store.has(sha256(data)), false, "Không được lưu nội dung bí mật giả ở bất kỳ giai đoạn nào");
+    for (const name of allowed) {
+      assert.equal(changes.get(name).kind, "file", name);
+      assert.equal(store.read(changes.get(name).sha).toString(), `PUBLIC_FIXTURE=${name}-before\n`);
+    }
+  } finally {
+    cleanup();
+  }
+});
+
+test("git watcher và captureBuffer không sao lưu qua symlink tới file bí mật", async (t) => {
+  const { work, store, capturer, cleanup } = sandbox();
+  const git = (...args) => execFileSync("git", args, { cwd: work, stdio: "pipe" });
+  try {
+    const before = "FAKE_SECRET=synthetic-link-before\n";
+    const after = "FAKE_SECRET=synthetic-link-after\n";
+    fs.writeFileSync(path.join(work, ".env"), before);
+    fs.writeFileSync(path.join(work, "auth.json"), after);
+    const links = ["alias.txt", ".env.example"].map((name) => path.join(work, name));
+    try {
+      for (const link of links) fs.symlinkSync(".env", link, "file");
+    } catch (error) {
+      if (process.platform !== "win32" || !["EPERM", "EACCES"].includes(error.code)) throw error;
+      t.skip("Windows chưa cấp quyền tạo symlink file");
+      return;
+    }
+    git("init", "-q");
+    git("config", "core.autocrlf", "false");
+    git("config", "core.symlinks", "true");
+    git("add", "-f", ".");
+    git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qm", "fixture");
+    assert.match(git("ls-files", "--stage", "--", "alias.txt").toString(), /^120000 /u);
+    const reads = observeHeadReads(t, work);
+    const watcher = new GitWatcher(capturer, { slowMs: 5000, maxDirty: 500, maxBytes: 1024 * 1024 });
+    const window = await watcher.begin(work);
+    assert.ok(window);
+    for (const link of links) {
+      fs.unlinkSync(link);
+      fs.symlinkSync("auth.json", link, "file");
+    }
+    fs.writeFileSync(path.join(work, ".env"), after);
+    const changes = await watcher.end(window);
+    assert.deepEqual(reads, [], "Không đọc HEAD của tên alias hay file bí mật");
+    assert.deepEqual(changes, []);
+    for (const link of links) assert.equal(capturer.captureBuffer(Buffer.from(after), 0o600, link).kind, "unprotected");
+    for (const data of [before, after, ".env"]) assert.equal(store.has(sha256(data)), false);
   } finally {
     cleanup();
   }

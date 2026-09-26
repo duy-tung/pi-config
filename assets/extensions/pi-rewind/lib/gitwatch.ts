@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
-import { ABSENT, type Capturer, type FileVersion, realParent, sameVersion } from "./store.ts";
+import { ABSENT, type Capturer, type FileVersion, isSensitive, realParent, sameVersion } from "./store.ts";
 
 export interface GitResult {
   code: number;
@@ -161,6 +161,8 @@ export class GitWatcher {
     const fromHead: string[] = [];
     for (const file of candidates) {
       const absolute = path.join(window.top, file);
+      // File sạch đã track cũng phải được loại trước khi đưa vào hàng đợi đọc HEAD.
+      if (isSensitive(absolute)) continue;
       const after = this.capturer.capture(absolute);
       const before = window.before.get(file);
       if (before) {
@@ -205,6 +207,11 @@ export class GitWatcher {
     const worker = async () => {
       for (let file = queue.shift(); file !== undefined; file = queue.shift()) {
         const absolute = path.join(top, file);
+        // Sau các lần await, đường dẫn có thể đã đổi thành symlink tới file nhạy cảm.
+        if (isSensitive(absolute)) {
+          result.set(file, { kind: "unprotected", reason: "file chứa bí mật không được sao lưu" });
+          continue;
+        }
         if (tree.code === 0 && !modes.has(file)) {
           result.set(file, { ...ABSENT, dir: realParent(absolute) });
           continue;

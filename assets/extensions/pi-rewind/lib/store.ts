@@ -239,6 +239,7 @@ export class Capturer {
 
   /** Lưu nội dung đã có trong bộ nhớ (ví dụ blob lấy từ git) mà không đọc đĩa. */
   captureBuffer(data: Buffer, mode: number, file: string): FileVersion {
+    if (isSensitive(file)) return { kind: "unprotected", reason: "file chứa bí mật không được sao lưu" };
     if (data.length > this.options.maxBytes) {
       return { kind: "unprotected", reason: `lớn hơn ${Math.round(this.options.maxBytes / 1048576)} MiB` };
     }
