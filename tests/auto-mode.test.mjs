@@ -259,6 +259,118 @@ test("luật deny của installer chặn cả thư mục bí mật và mọi c�
   }
 });
 
+test("deny đường dẫn: glob, redirect và đích shell không xác định bị chặn trước allow/bypass", () => {
+  const ws = workspace();
+  try {
+    fs.writeFileSync(path.join(ws.cwd, ".env"), "FIXTURE_SECRET=synthetic\n");
+    fs.writeFileSync(path.join(ws.cwd, ".env.example"), "FIXTURE_SECRET=example\n");
+    for (const mode of ["auto", "bypass"]) for (const rule of ["Path", "Read"]) {
+      const pc = context(ws, { mode, rules: buildRuleSet(["Bash(cat *)"], ["Bash(cat *)"],
+        [`${rule}(*.env)`, `${rule}(*.env.*)`, `!${rule}(*.env.example)`]) });
+      for (const toolName of ["bash", "bg_run"]) for (const command of [
+        "cat .env", "cat .en?", "cat .en[v]", "cat .en*", "cat .env.example .en?", "cat < .en?",
+        "cat .e{nv,nv.example}", 'cat "$FILE"', "bash -c 'cat .en?'", "env -C other cat .en?",
+      ]) {
+        const decision = decide({ toolName, input: { command } }, pc);
+        assert.equal(decision.kind, "deny", `${mode}/${rule}/${toolName}: ${command}`);
+        assert.ok(decision.rule, command);
+      }
+    }
+    // Không biến glob đã quote/escape thành tập file. Chỉ dùng tên file hợp lệ trên mọi OS.
+    for (const command of ["cat '.en?'", 'cat ".en?"', "cat .en\\?", "cat '.e{nv,nv.example}'"]) {
+      const pc = context(ws, { rules: buildRuleSet([], [], ["Path(*.env)"]) });
+      assert.equal(decide(bash(command), pc).kind, "allow", command);
+    }
+    assert.equal(analyzeShell("cat < .en?").commands[0].redirects[0].glob, true);
+    assert.equal(analyzeShell("cat < '.en?'").commands[0].redirects[0].glob, false);
+    // Không có deny dương hoặc chỉ deny ghi thì đọc không bị guard mới chặn.
+    for (const rules of [buildRuleSet([], [], []), buildRuleSet([], [], ["!Path(*.env)"]), buildRuleSet([], [], ["Write(*.env)"])]) {
+      assert.equal(decide(bash("cat .en?"), context(ws, { rules })).kind, "allow");
+    }
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("deny đường dẫn: đọc đệ quy và tìm ngầm trong cwd không được bỏ qua file con", () => {
+  const ws = workspace();
+  try {
+    const sub = path.join(ws.cwd, "sub");
+    fs.mkdirSync(sub);
+    fs.writeFileSync(path.join(ws.cwd, ".env"), "FIXTURE_SECRET=synthetic\n");
+    fs.writeFileSync(path.join(sub, ".env"), "FIXTURE_SECRET=nested-synthetic\n");
+    fs.writeFileSync(path.join(sub, "safe.txt"), "FIXTURE_SECRET=descendant-synthetic\n");
+    fs.mkdirSync(path.join(ws.cwd, "-sub"));
+    fs.writeFileSync(path.join(ws.cwd, ".env.example"), "FIXTURE_SECRET=example\n");
+    fs.writeFileSync(path.join(ws.cwd, "safe.txt"), "FIXTURE=public\n");
+    fs.writeFileSync(path.join(ws.cwd, "patterns.txt"), "FIXTURE\n");
+    for (const mode of ["auto", "bypass"]) for (const rule of ["Path", "Read"]) {
+      const pc = context(ws, { mode, rules: buildRuleSet(["Bash(grep *)", "Bash(rg *)"], [],
+        [`${rule}(*.env)`, `${rule}(*.env.*)`, `!${rule}(*.env.example)`]) });
+      for (const toolName of ["bash", "bg_run"]) for (const command of [
+        "grep -r FIXTURE .", "grep -R FIXTURE sub", "grep -rn FIXTURE", "grep --recursive FIXTURE .",
+        "grep --rec FIXTURE .", "grep --dereference-rec FIXTURE .", "grep -d recurse FIXTURE .", "grep -drecurse FIXTURE .",
+        "grep --directories=recurse FIXTURE .", "egrep -r FIXTURE sub", "fgrep -R FIXTURE .",
+        "grep -r --color FIXTURE sub safe.txt", "grep -r --colour FIXTURE sub safe.txt",
+        "grep -r --context FIXTURE sub safe.txt",
+        "rg FIXTURE", "rg --hidden --no-ignore FIXTURE .", "rg FIXTURE sub", "rg FIXTURE missing", "rg --files", "rg --files sub",
+        "rg --glob '*.txt' FIXTURE .", "rg -e FIXTURE", "rg -fpatterns.txt", "rg --regexp=FIXTURE",
+        "find . -name '*.txt'", "tree sub", "du sub", "ls -laR .", "diff -r . sub", "diff safe.txt sub", "git grep FIXTURE",
+        "sort --files0-from=patterns.txt", "sort --files0-f patterns.txt", "wc --files0-from=-",
+        "git -C sub grep FIXTURE", "cd sub && rg FIXTURE safe.txt", "env -C sub rg FIXTURE safe.txt",
+        "printf '%s' sub | xargs grep -r FIXTURE",
+        // File tham số viết liền với cờ cũng là file đọc, không được coi là regexp.
+        "grep -f.env safe.txt", "rg --file=.env safe.txt", "grep --exclude-from=.env FIXTURE safe.txt",
+        // Không đoán cờ lạ thành một danh sách file đã kiểm.
+        "rg --unknown safe.txt", "grep --unknown safe.txt",
+      ]) assert.equal(decide({ toolName, input: { command } }, pc).kind, "deny", `${mode}/${rule}/${toolName}: ${command}`);
+      for (const toolName of ["grep", "find", "ls"]) for (const input of [{ pattern: "FIXTURE" }, { pattern: "FIXTURE", path: "." }, { pattern: "FIXTURE", path: sub }]) {
+        assert.equal(decide({ toolName, input }, pc).kind, "deny", `${mode}/${rule}/${toolName}: ${JSON.stringify(input)}`);
+      }
+      // File tường minh và ngoại lệ vẫn dùng được; pattern không bị nhầm với đích tìm.
+      for (const command of [
+        "cat safe.txt", "cat .env.example", "grep FIXTURE safe.txt", "grep -r FIXTURE safe.txt", "grep FIXTURE",
+        "grep -C2 FIXTURE safe.txt", "grep -C 2 FIXTURE safe.txt", "grep --context=2 FIXTURE safe.txt", "grep --color=never FIXTURE safe.txt",
+        "cat safe.txt | grep 'FIXTURE.*'", "rg FIXTURE safe.txt", "rg -n -e FIXTURE safe.txt", "rg -eFIXTURE safe.txt",
+        "rg --regexp=FIXTURE safe.txt", "rg -fpatterns.txt safe.txt", "rg --file=patterns.txt safe.txt",
+        "rg --glob '*.txt' FIXTURE safe.txt", "rg --files safe.txt", "rg FIXTURE -- safe.txt", "rg FIXTURE -",
+      ]) assert.equal(decide(bash(command), pc).kind, "allow", `${mode}/${rule}: ${command}`);
+      assert.equal(decide({ toolName: "grep", input: { pattern: "FIXTURE", path: "safe.txt" } }, pc).kind, "allow");
+      assert.equal(decide({ toolName: "read", input: { path: ".env.example" } }, pc).kind, "allow");
+      const descendant = { ...pc, rules: buildRuleSet([], [], [`${rule}(sub/safe.txt)`]) };
+      for (const command of ["diff --from-file=sub safe.txt", "diff --to-file=sub safe.txt", "diff --from-f=sub safe.txt",
+        "diff --to-f=sub safe.txt", "diff -- -sub safe.txt"]) {
+        assert.equal(decide(bash(command), descendant).kind, "deny", `${mode}/${rule}: ${command}`);
+      }
+    }
+    // Không có deny thì giữ lối đi hiện hành cho tìm kiếm trong workspace.
+    assert.equal(decide(bash("grep -r FIXTURE ."), context(ws)).kind, "allow");
+    assert.equal(decide(bash("rg FIXTURE"), context(ws)).kind, "allow");
+    assert.equal(decide({ toolName: "grep", input: { pattern: "FIXTURE" } }, context(ws)).kind, "allow");
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("deny đường dẫn: symlink thư mục không làm tập đích đệ quy trở thành an toàn", () => {
+  const ws = workspace();
+  try {
+    const target = path.join(ws.dir, "target");
+    fs.mkdirSync(target);
+    fs.writeFileSync(path.join(target, ".env"), "FIXTURE_SECRET=synthetic\n");
+    fs.symlinkSync(target, path.join(ws.cwd, "link"), process.platform === "win32" ? "junction" : "dir");
+    for (const mode of ["auto", "bypass"]) {
+      const pc = context(ws, { mode, rules: buildRuleSet([], [], ["Path(*.env)"]) });
+      for (const command of ["grep -R FIXTURE link", "rg --follow FIXTURE link", "cat link/.en?", "cat link/.env"]) {
+        assert.equal(decide(bash(command), pc).kind, "deny", `${mode}: ${command}`);
+      }
+      assert.equal(decide({ toolName: "grep", input: { pattern: "FIXTURE", path: "link" } }, pc).kind, "deny");
+    }
+  } finally {
+    ws.cleanup();
+  }
+});
+
 test("bypass: hỏi trước mọi lệnh xoá đệ quy ra ngoài thư mục tạm", () => {
   const ws = workspace();
   try {

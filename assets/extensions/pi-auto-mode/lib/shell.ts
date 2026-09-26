@@ -14,6 +14,8 @@ export interface Redirect {
   target: string;
   /** Đích là chữ thuần (không có biến/thay thế). */
   literal: boolean;
+  /** Đích có glob chưa trích dẫn, shell sẽ mở rộng khi thực thi. */
+  glob: boolean;
 }
 
 export interface SimpleCommand {
@@ -307,6 +309,7 @@ function lex(source: string, problems: Set<string>, nested: string[]): Token[] {
       continue;
     }
     if (ch === "*" || ch === "?" || ch === "[") glob = true;
+    if ((ch === "{" || ch === "}") && started) problems.add("brace expansion");
     word += ch;
     started = true;
     index++;
@@ -418,7 +421,7 @@ function build(tokens: Token[], problems: Set<string>): SimpleCommand[] {
         continue;
       }
       i++;
-      current.redirects.push({ op: token.value, fd: token.fd, target: target.value, literal: target.literal });
+      current.redirects.push({ op: token.value, fd: token.fd, target: target.value, literal: target.literal, glob: target.glob });
       continue;
     }
     if (!current.words.length && ASSIGNMENT.test(token.value) && token.literal) {
