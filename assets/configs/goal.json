@@ -1,14 +1,8 @@
 {
   "maxAutonomousRuns": 10,
   "disabled": false,
-  "provider": "openai-codex",
-  "model": "gpt-6-astra",
-  "thinkingLevel": "high",
   "auditorProjectResources": false,
   "oracle": {
-    "enabled": true,
-    "provider": "openai-codex",
-    "model": "gpt-6-astra",
-    "thinkingLevel": "high"
+    "enabled": true
   }
 }

@@ -1,8 +1,6 @@
 ---
 name: worker
 description: Triển khai task đã được parent chốt và kiểm thử phần thay đổi.
-model: openai-codex/gpt-6-sol
-thinking: max
 tools: "read, grep, find, ls, write, edit, bash"
 extensions: ["pi-anthropic-auth", "pi-auto-mode", "pi-usage"]
 inherit_context: false

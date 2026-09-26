@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { buildConfiguration } from "../lib/config.mjs";
+import { loadPresets, resolveModelRoles } from "../runtime/model-roles.mjs";
 
 const repoDir = fileURLToPath(new URL("../", import.meta.url));
 function fixture(platform) {
@@ -245,4 +246,35 @@ test("Windows credential helper chạy thật qua cmd với đường dẫn có 
 test("Đầu vào tương đối bị từ chối để không ghi nhầm workspace", () => {
   const { options } = fixture("linux");
   assert.throws(() => buildConfiguration({ ...options, agentDir: ".pi/agent" }), /agentDir phải là đường dẫn tuyệt đối/u);
+});
+
+test("model-roles: preset và ghi đè đi tới mọi file gốc (settings, file role, advisor, goal, auto mode)", () => {
+  const presets = loadPresets(path.join(repoDir, "assets", "configs", "model-presets.json"));
+  const { roles } = resolveModelRoles(presets, { preset: "claude", roles: { worker: { thinking: "max" }, oracle: { thinking: "max" } } });
+  const root = "/home/dev/pi", agentDir = "/home/dev/agent";
+  const files = buildConfiguration({ root, agentDir, binDir: "/home/dev/bin", nodePath: "/opt/node", platform: "linux", home: "/home/dev", repoDir, modelRoles: roles });
+  const read = (name) => files.find((entry) => entry.path === path.posix.join(agentDir, name)).content;
+  const settings = JSON.parse(read("settings.json"));
+  assert.deepEqual([settings.defaultProvider, settings.defaultModel, settings.defaultThinkingLevel], ["anthropic", "claude-opus-5-5", "high"]);
+  assert.deepEqual(settings.enabledModels, ["anthropic/claude-opus-5-5", "anthropic/claude-fable-5-1", "anthropic/claude-sonnet-5"]);
+  assert.deepEqual(settings.modelThinkingLevels, { "anthropic/claude-opus-5-5": "high", "anthropic/claude-fable-5-1": "high", "anthropic/claude-sonnet-5": "high" });
+  assert.deepEqual([settings.autoMode.model, settings.autoMode.stage2Reasoning, settings.autoMode.jev.model], ["anthropic/claude-sonnet-5", "low", "jev-1.13.0"]);
+  const frontmatter = (role) => read(`agents/${role}.md`).split("\n---\n")[0];
+  assert.match(frontmatter("worker"), /^model: anthropic\/claude-opus-5-5\nthinking: max$/mu);
+  assert.match(frontmatter("reviewer"), /^model: anthropic\/claude-fable-5-1\nthinking: high$/mu);
+  assert.match(frontmatter("researcher"), /^model: anthropic\/claude-sonnet-5\nthinking: high$/mu);
+  const advisor = JSON.parse(read("advisor.json"));
+  assert.deepEqual([advisor.executor, advisor.executorEffort, advisor.advisor, advisor.advisorEffort, advisor.alwaysOn],
+    ["anthropic/claude-opus-5-5", "high", "anthropic/claude-fable-5-1", "high", true]);
+  // pi-goal-x chỉ nhận tới xhigh.
+  const goal = JSON.parse(read("pi-goal-x-settings.json"));
+  assert.deepEqual([goal.provider, goal.model, goal.thinkingLevel, goal.maxAutonomousRuns], ["anthropic", "claude-sonnet-5", "high", 10]);
+  assert.deepEqual(goal.oracle, { enabled: true, provider: "anthropic", model: "claude-fable-5-1", thinkingLevel: "xhigh" });
+  // Hướng dẫn cho parent nêu đúng model/thinking của từng vai.
+  const guide = read("AGENTS.md");
+  assert.match(guide, /researcher dùng claude-sonnet-5\/high .*worker dùng claude-opus-5-5\/max; debugger dùng claude-opus-5-5\/high; reviewer dùng claude-fable-5-1\/high/u);
+  assert.match(guide, /Parent claude-opus-5-5\/high giữ thiết kế/u);
+  assert.match(guide, /Advisor claude-fable-5-1\/high luôn bật/u);
+  assert.match(guide, /auditor claude-sonnet-5\/high kiểm tra độc lập/u);
+  assert.doesNotMatch(guide, /\{\{/u);
 });

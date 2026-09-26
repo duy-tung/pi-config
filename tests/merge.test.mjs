@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {carryLocalControls, deepEqual, describeMerge, mergeConfig, reconcileJson} from '../lib/merge.mjs';
+import {carryLocalControls, deepEqual, describeMerge, mergeConfig, reconcileJson, reconcileRole} from '../lib/merge.mjs';
 
 const json = value => `${JSON.stringify(value, null, 2)}\n`;
 const merge = (base, next, current, settings = true) => mergeConfig({base, next, current, settings});
@@ -206,4 +206,41 @@ test('khóa "__proto__" trong JSON không đổi prototype của kết quả', (
   assert.equal(Object.getPrototypeOf(result.value), Object.prototype);
   assert.deepEqual(JSON.parse(JSON.stringify(result.value)), JSON.parse('{"__proto__": {"polluted": true}, "a": 2}'));
   assert.equal({}.polluted, undefined);
+});
+
+const role = ({model = 'openai-codex/gpt-6-sol', thinking = 'max', tools = '"read, bash"', prompt = 'Prompt v1.'} = {}) =>
+  `---\nname: worker\ndescription: Viết code.\nmodel: ${model}\nthinking: ${thinking}\ntools: ${tools}\n---\n\n${prompt}\n`;
+
+test('file role: sửa dòng model không giữ cả file; prompt và khóa khác của bản mới vẫn vào', () => {
+  const base = role(), next = role({model: 'anthropic/claude-opus-5-5', prompt: 'Prompt v2.'});
+  // Người dùng đổi thinking và tools; bản mới đổi model (từ model-roles.json) và prompt.
+  const current = role({thinking: 'high', tools: '"read"'});
+  const plan = reconcileRole({next, current, base});
+  assert.equal(plan.content, role({model: 'anthropic/claude-opus-5-5', thinking: 'high', tools: '"read"', prompt: 'Prompt v2.'}));
+  assert.deepEqual(plan.conflicts, []);
+  assert.deepEqual(describeMerge({file: 'agents/worker.md', ...plan}), [
+    'Đã gộp mặc định mới vào agents/worker.md, giữ phần bạn đã sửa:',
+    '  - model: "openai-codex/gpt-6-sol" → "anthropic/claude-opus-5-5"',
+    '  - cập nhật phần prompt theo bản mới',
+  ]);
+  // Người dùng sửa prompt, bản mới cũng đổi prompt: giữ prompt của người dùng và báo; khóa khác vẫn gộp.
+  const edited = reconcileRole({next, current: role({prompt: 'Prompt của tôi.'}), base});
+  assert.equal(edited.content, role({model: 'anthropic/claude-opus-5-5', prompt: 'Prompt của tôi.'}));
+  assert.deepEqual(describeMerge({file: 'w.md', ...edited}).at(-1),
+    '  - xung đột: giữ phần prompt bạn đã sửa; bản mới cũng đổi phần này (muốn nhận bản mới: đổi tên file rồi cài lại)');
+});
+
+test('file role: chưa sửa thì nhận bản mới; không đổi gì thì không ghi; chưa có base thì như trước', () => {
+  const base = role(), next = role({prompt: 'Prompt v2.'});
+  assert.deepEqual(reconcileRole({next, current: undefined, base}), {content: next, changes: [], conflicts: []});
+  assert.deepEqual(reconcileRole({next, current: base, base}), {content: next, changes: [], conflicts: []});
+  // Chỉ khác xuống dòng (CRLF trên Windows): cùng giá trị, không ghi.
+  assert.deepEqual(reconcileRole({next, current: next.replaceAll('\n', '\r\n'), base}), {changes: [], conflicts: []});
+  // Chưa có base: file khớp checksum lần trước thì nhận bản mới; đã sửa thì giữ mọi giá trị hiện có, thêm khóa thiếu.
+  assert.equal(reconcileRole({next, current: base, unedited: true}).content, next);
+  const additive = reconcileRole({next: next.replace('tools:', 'color: blue\ntools:'), current: role({model: 'anthropic/claude-opus-5-5'})});
+  assert.equal(additive.additive, true);
+  assert.equal(additive.content, role({model: 'anthropic/claude-opus-5-5'}).replace('\n---\n', '\ncolor: blue\n---\n'));
+  assert.match(describeMerge({file: 'w.md', ...additive}).at(-1), /giữ phần prompt hiện có, khác bản mới/u);
+  assert.deepEqual(reconcileRole({next, current: 'không có frontmatter', base}), {invalid: true, changes: [], conflicts: []});
 });

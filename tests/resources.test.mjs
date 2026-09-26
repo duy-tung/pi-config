@@ -155,11 +155,30 @@ test('managed JSON that is invalid or was never written by the installer is kept
     assert.throws(()=>reconcileConfigFile({root:f.root,file:link,content:'{}\n'}),/symlink/u);
   }
 });
-test('only JSON files in the agent directory and <root>/config are merged',t=>{
+test('only JSON files in the agent directory and <root>/config, and role files, are merged',t=>{
   const f=fixture(t),options={root:f.root,agentDir:f.agentDir};
   assert.equal(mergesConfig(path.join(f.agentDir,'settings.json'),options),true);
   assert.equal(mergesConfig(path.join(f.root,'config','pi-lens.json'),options),true);
+  assert.equal(mergesConfig(path.join(f.agentDir,'agents','worker.md'),options),true);
+  assert.equal(mergesConfig(path.join(f.agentDir,'agents','nested','worker.md'),options),false);
   assert.equal(mergesConfig(path.join(f.agentDir,'AGENTS.md'),options),false);
   assert.equal(mergesConfig(path.join(f.root,'profiles.json'),options),false);
   assert.equal(mergesConfig(path.join(f.root,'assets','configs','goal.json'),options),false);
+});
+test('role files keep their own default copy; a model edit no longer freezes the prompt',t=>{
+  const f=fixture(t),file=path.join(f.agentDir,'agents','worker.md');
+  const role=(model,prompt)=>`---\nname: worker\ndescription: Viết code.\nmodel: ${model}\nthinking: max\n---\n\n${prompt}\n`;
+  const first=reconcileConfigFile({root:f.root,file,content:role('openai-codex/gpt-6-sol','Prompt v1.')});
+  assert.equal(first.written,true);
+  assert.equal(path.extname(defaultsFile(f.root,file)),'.md');
+  assert.equal(fs.readFileSync(defaultsFile(f.root,file),'utf8'),role('openai-codex/gpt-6-sol','Prompt v1.'));
+  // Người dùng đổi model trong file role; bản mới đổi prompt: prompt mới vào, model của người dùng được giữ.
+  fs.writeFileSync(file,role('anthropic/claude-opus-5-5','Prompt v1.'));
+  const merged=reconcileConfigFile({root:f.root,file,content:role('openai-codex/gpt-6-sol','Prompt v2.'),recorded:first.recorded});
+  assert.equal(fs.readFileSync(file,'utf8'),role('anthropic/claude-opus-5-5','Prompt v2.'));
+  assert.deepEqual([merged.written,merged.conflicts],[true,[]]);
+  // Frontmatter không đọc được: giữ nguyên file như trước.
+  fs.writeFileSync(file,'Không còn frontmatter\n');
+  assert.equal(reconcileConfigFile({root:f.root,file,content:role('openai-codex/gpt-6-sol','Prompt v3.'),recorded:merged.recorded}).preserved,'invalid');
+  assert.equal(fs.readFileSync(file,'utf8'),'Không còn frontmatter\n');
 });

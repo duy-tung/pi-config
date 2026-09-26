@@ -7,6 +7,7 @@ import {buildConfiguration} from './lib/config.mjs';
 import {applyPatches} from './lib/patches.mjs';
 import {describeMerge} from './lib/merge.mjs';
 import {localDefaults,mergesConfig,reconcileConfigFile,reconcileResources} from './lib/resources.mjs';
+import {SUBAGENT_ROLES,checkCatalog,legacyOverrides,loadPresets,readModelRoles,resolveModelRoles} from './runtime/model-roles.mjs';
 import {run,download,npmCli,readJson,writeJson,sha256,shellQuote,assertSafePath} from './lib/system.mjs';
 
 const repoDir=path.dirname(fileURLToPath(import.meta.url));
@@ -60,13 +61,35 @@ function managed(file,content,mode=0o600){
   state.files[file]=hash;
   writeJson(statePath,state);
 }
-// Cấu hình JSON (agent dir, <root>/config): gộp mặc định mới với phần người dùng và Pi đã sửa, báo mục đã gộp và xung đột.
+// Cấu hình JSON (agent dir, <root>/config) và file role: gộp mặc định mới với phần người dùng và Pi đã sửa, báo mục đã gộp và xung đột.
 function managedJson(file,content,mode=0o600){
   wanted.add(file);
   const result=reconcileConfigFile({root,file,content,mode,recorded:previous?.files[file],backup});
-  if(result.preserved){preserved.push(result.preserved==='invalid'?`${file} (không đọc được JSON nên chưa gộp mặc định mới)`:file);return;}
+  if(result.preserved){preserved.push(result.preserved==='invalid'?`${file} (không đọc được ${path.extname(file)==='.md'?'frontmatter':'JSON'} nên chưa gộp mặc định mới)`:file);return;}
   if(result.changes.length||result.conflicts.length)merged.push({file,...result});
   if(state.files[file]!==result.recorded){state.files[file]=result.recorded;writeJson(statePath,state);}
+}
+/**
+ * Model/thinking của mọi vai từ <agent-dir>/model-roles.json (chưa có thì preset mặc định). Bản cài trước khi có
+ * file này: model/thinking người dùng đã sửa trong agents/*.md được chuyển thành ghi đè. Lỗi thì dừng trước khi ghi.
+ */
+function modelRolesPlan(){
+  const presets=loadPresets(path.join(repoDir,'assets','configs','model-presets.json'));
+  const current=readModelRoles(agentDir);
+  if(current.error)throw new Error(`${current.error}\nSửa file, hoặc xoá để dùng preset mặc định.`);
+  let config=current.config,imported={};
+  if(!current.exists&&previous){
+    const texts={};
+    for(const role of SUBAGENT_ROLES){
+      const file=path.join(agentDir,'agents',`${role}.md`);
+      if(fs.existsSync(file)&&previous.files[file]&&sha256(fs.readFileSync(file))!==previous.files[file])texts[role]=fs.readFileSync(file,'utf8');
+    }
+    imported=legacyOverrides(presets,texts);
+    config={...config,roles:imported};
+  }
+  const resolved=resolveModelRoles(presets,config);
+  if(resolved.errors.length)throw new Error(`${current.file} không hợp lệ:\n- ${resolved.errors.join('\n- ')}`);
+  return {file:current.file,exists:current.exists,config,imported,roles:resolved.roles};
 }
 function copyTree(from,to){
   for(const entry of fs.readdirSync(from,{withFileTypes:true})){
@@ -132,6 +155,7 @@ async function addPath(){
   }
 }
 try{
+  const models=modelRolesPlan();
   writeJson(statePath,state);
   copyTree(path.join(repoDir,'assets'),path.join(root,'assets'));
   copyTree(path.join(repoDir,'vendor'),path.join(root,'vendor'));
@@ -144,10 +168,19 @@ try{
   }
   for(const filename of ['profile-integration.mjs','agent-integration.mjs','scripted-provider.ts','agent-provider.ts','search-fixtures.mjs'])
     managed(path.join(root,'tests',filename),fs.readFileSync(path.join(repoDir,'tests',filename)));
-  const files=buildConfiguration({root,agentDir,binDir,nodePath,platform:process.platform,home,repoDir,shellPath:state.shellPath});
+  // Model sai tên thì pi-subagents lặng lẽ dùng model của parent: kiểm trong catalog của runtime trước khi ghi cấu hình.
+  const catalog=await checkCatalog({modules:path.join(root,'runtimes','current','node_modules'),agentDir,roles:models.roles});
+  if(catalog.errors.length)throw new Error(`Model trong ${models.file} không dùng được:\n- ${catalog.errors.join('\n- ')}`);
+  const files=buildConfiguration({root,agentDir,binDir,nodePath,platform:process.platform,home,repoDir,shellPath:state.shellPath,modelRoles:models.roles});
   for(const specification of files){
     const file=localDefaults(specification);
     (mergesConfig(file.path,{root,agentDir})?managedJson:managed)(file.path,file.content,file.mode);
+  }
+  // model-roles.json thuộc về người dùng: chỉ tạo khi chưa có, không ghi đè, không nằm trong danh sách file installer quản lý.
+  if(!models.exists){
+    fs.mkdirSync(agentDir,{recursive:true,mode:0o700});
+    const temporary=models.file+`.${process.pid}.install-tmp`;
+    fs.writeFileSync(temporary,JSON.stringify(models.config,null,2)+'\n',{mode:0o600});fs.renameSync(temporary,models.file);
   }
   for(const [name,action] of Object.entries({'pi':'main','pi-login':'login','pi-doctor':'doctor','pi-test':'test','pi-config':'doctor','firecrawl':'firecrawl','pi-models':'models','pi-mcp-adapter':'mcp-adapter'}))launcher(name,action);
   const auth=path.join(agentDir,'auth.json');
@@ -160,5 +193,8 @@ try{
   console.log(`Đăng nhập: pi-login → /login. Firecrawl: firecrawl login --browser. Jev cho auto mode: ${jevKey} (hoặc keyring: pi-mcp-adapter key set systemone).`);
   if(preserved.length)console.log('Giữ nguyên các file đã được bạn tùy chỉnh:\n'+preserved.join('\n'));
   for(const entry of merged)console.log(describeMerge(entry).join('\n'));
+  const imported=Object.entries(models.imported).map(([role,value])=>`${role}: ${[value.model,value.thinking&&`thinking ${value.thinking}`].filter(Boolean).join(', ')}`);
+  if(imported.length)console.log(`Đã chuyển model/thinking bạn sửa trong agents/*.md sang ${models.file}:\n  - ${imported.join('\n  - ')}`);
+  if(catalog.notes.length)console.log(`Mức thinking model không hỗ trợ (Pi dùng mức gần nhất):\n  - ${catalog.notes.join('\n  - ')}`);
   await run(nodePath,[path.join(root,'bin/launch.mjs'),'doctor']);
 }finally{fs.unlinkSync(lock);}

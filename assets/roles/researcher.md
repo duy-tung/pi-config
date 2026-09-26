@@ -1,8 +1,6 @@
 ---
 name: researcher
 description: Khảo sát code, docs, log và thu thập bằng chứng; chỉ đọc.
-model: opencode-go/glm-5.3-flash
-thinking: max
 tools: "read, grep, find, ls, ext:pi-web-access"
 extensions: ["pi-anthropic-auth", "pi-auto-mode", "pi-web-access"]
 inherit_context: false
