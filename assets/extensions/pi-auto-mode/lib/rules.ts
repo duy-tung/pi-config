@@ -213,7 +213,8 @@ export interface RuleMatchTarget {
   raw?: string;
   /** Đường dẫn tuyệt đối mà tool đọc hoặc ghi. */
   paths?: string[];
-  url?: string;
+  /** Mọi URL mà tool nhận, từ cả url và urls. */
+  urls?: string[];
   /** Lệnh shell có thể ghi (false khi đã chứng minh chỉ đọc). */
   writes?: boolean;
 }
@@ -238,7 +239,7 @@ export function ruleMatches(rule: Rule, target: RuleMatchTarget, cwd: string, ho
     // Luật có * ở đầu (vd *firecrawl-key.cjs*) khớp cả chuỗi gốc để không lọt qua cấu trúc lồng.
     return !!target.raw && rule.spec.trim().startsWith("*") && matchBash(rule.spec, target.raw);
   }
-  if (tool === "webfetch") return !!target.url && matchDomain(rule.spec, target.url);
+  if (tool === "webfetch") return (target.urls ?? []).some((url) => matchDomain(rule.spec as string, url));
   return false;
 }
 
@@ -250,7 +251,7 @@ export function allowCoversShell(rules: Rule[], commands: string[]): boolean {
 
 /**
  * Luật đầu tiên khớp trong danh sách. Ngoại lệ "!" được xét trên từng đơn vị
- * (từng đường dẫn, từng lệnh con) để `cat .env.example .env` vẫn bị deny vì .env.
+ * (từng đường dẫn, từng lệnh con, từng URL) để `cat .env.example .env` vẫn bị deny vì .env.
  */
 export function firstMatch(rules: Rule[], target: RuleMatchTarget, cwd: string, home = os.homedir()): Rule | undefined {
   const positives = rules.filter((rule) => !rule.negate);
@@ -266,7 +267,7 @@ export function firstMatch(rules: Rule[], target: RuleMatchTarget, cwd: string, 
   }
   const units: RuleMatchTarget[] = (target.commands ?? []).map((command) => ({ toolName: target.toolName, commands: [command] }));
   if (target.raw) units.push({ toolName: target.toolName, raw: target.raw });
-  if (target.url) units.push({ toolName: target.toolName, url: target.url });
+  for (const url of target.urls ?? []) units.push({ toolName: target.toolName, urls: [url] });
   if (!units.length) units.push({ toolName: target.toolName });
   for (const unit of units) {
     const hit = pick(unit, false);
