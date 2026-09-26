@@ -24,6 +24,8 @@ import { type EvalCase, formatReport, formatScreenCorpus, jevEvalScreen, runEval
 
 const WIDGET = "pi-auto-mode";
 const MCP_APPROVAL_EVENT = "pi-mcp-adapter:tool-approval-request";
+// /models (extension model-roles) vừa ghi model của vai autoMode vào settings.json.
+const MODEL_ROLES_EVENT = "pi-config:model-roles-changed";
 const DESTRUCTIVE_GIT = /\b(?:rm|rmdir|rimraf|git\s+(?:reset|checkout|restore|clean|stash|push|commit|add|rebase|branch\s+-[dD]))\b|\s-delete\b/u;
 
 type McpRequest = {
@@ -663,6 +665,13 @@ export default function piAutoMode(pi: ExtensionAPI) {
   pi.events.on("subagents:child:disposed", (payload: unknown) => {
     const identity = payload as { sessionId?: string };
     if (identity?.sessionId) unlinkChild(identity.sessionId);
+  });
+  // Chỉ đọc lại model của bộ phân loại, có hiệu lực từ lần phân loại kế tiếp; luật và chế độ giữ như lúc mở phiên.
+  // applied báo lại cho /models là phiên này đã nhận.
+  pi.events.on(MODEL_ROLES_EVENT, (payload: unknown) => {
+    const fresh = loadConfig(agentDir);
+    config = { ...config, model: fresh.model, stage2Model: fresh.stage2Model, stage2Reasoning: fresh.stage2Reasoning };
+    (payload as { applied?: string[] } | undefined)?.applied?.push("autoMode");
   });
 
   pi.on("before_agent_start", (event) => {

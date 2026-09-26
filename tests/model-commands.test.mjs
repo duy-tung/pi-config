@@ -1,64 +1,13 @@
 import assert from 'node:assert/strict';
-import crypto from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import {fileURLToPath} from 'node:url';
 import {buildConfiguration} from '../lib/config.mjs';
 import {mergesConfig} from '../lib/resources.mjs';
-import {defaultsFile, planConfigFile, reconcileConfigFile} from '../runtime/merge.mjs';
-import {ROLES, changedRoles, loadPresets, resolveModelRoles} from '../runtime/model-roles.mjs';
-import {planModelFiles, runModels, writeModelFiles} from '../runtime/models.mjs';
-
-const repoDir = fileURLToPath(new URL('../', import.meta.url));
-const presets = loadPresets(path.join(repoDir, 'assets', 'configs', 'model-presets.json'));
-const sha256 = data => crypto.createHash('sha256').update(data).digest('hex');
-const readJson = file => JSON.parse(fs.readFileSync(file, 'utf8'));
-
-/** Bản cài giả: file cấu hình, base và checksum như installer ghi, cùng bản mẫu AGENTS.md và preset trong <root>/assets. */
-function install(t, roles = resolveModelRoles(presets).roles) {
-  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-model-commands-'));
-  t.after(() => fs.rmSync(temp, {recursive: true, force: true}));
-  const root = path.join(temp, 'root'), agentDir = path.join(temp, 'agent');
-  const options = {root, agentDir, binDir: path.join(temp, 'bin'), nodePath: process.execPath, home: temp, repoDir};
-  const state = {files: {}};
-  const reinstall = modelRoles => {
-    for (const {path: file, content} of buildConfiguration({...options, modelRoles})) {
-      if (mergesConfig(file, {root, agentDir})) {
-        state.files[file] = reconcileConfigFile({root, file, content, recorded: state.files[file]}).recorded;
-      } else {
-        fs.mkdirSync(path.dirname(file), {recursive: true});
-        fs.writeFileSync(file, content);
-        state.files[file] = sha256(content);
-      }
-    }
-    for (const name of ['AGENTS.md', path.join('configs', 'model-presets.json')]) {
-      const copy = path.join(root, 'assets', name);
-      fs.mkdirSync(path.dirname(copy), {recursive: true});
-      fs.copyFileSync(path.join(repoDir, 'assets', name), copy);
-      state.files[copy] = sha256(fs.readFileSync(copy));
-    }
-    fs.writeFileSync(path.join(root, 'install-state.json'), JSON.stringify(state));
-  };
-  reinstall(roles);
-  const statePath = path.join(root, 'install-state.json');
-  return {root, agentDir, options, statePath, state: () => readJson(statePath), file: name => path.join(agentDir, name)};
-}
-
-function snapshot(...dirs) {
-  const files = {};
-  const walk = dir => {
-    for (const entry of fs.existsSync(dir) ? fs.readdirSync(dir, {withFileTypes: true}) : []) {
-      const file = path.join(dir, entry.name);
-      // Runtime của bản cài thật được nối vào bằng symlink/junction: không thuộc phần được so.
-      if (entry.isSymbolicLink()) continue;
-      if (entry.isDirectory()) walk(file); else files[file] = sha256(fs.readFileSync(file));
-    }
-  };
-  for (const dir of dirs) walk(dir);
-  return files;
-}
+import {defaultsFile, planConfigFile} from '../runtime/merge.mjs';
+import {ROLES, changedRoles, resolveModelRoles} from '../runtime/model-roles.mjs';
+import {planModelFiles, runModels, usage, whenApplied, writeModelFiles} from '../runtime/models.mjs';
+import {linkRuntime, presets, readJson, sha256, simulatedInstall as install, snapshot} from './install-fixture.mjs';
 
 test('áp preset mới vào bản cài: giữ phần người dùng sửa, vai không đổi giữ giá trị đổi qua /model; cài lại sau đó không đổi gì', t => {
   const f = install(t);
@@ -166,17 +115,77 @@ test('pi-models: tham số sai và khóa của installer báo lỗi, không ghi 
   assert.deepEqual(snapshot(f.root, f.agentDir), before);
 });
 
+test('whenApplied gom các vai theo thời điểm có hiệu lực; thời điểm riêng thay mặc định', () => {
+  assert.deepEqual(whenApplied([]), []);
+  assert.deepEqual(whenApplied(['main', 'worker', 'reviewer', 'advisor', 'autoMode']), [
+    'Có hiệu lực: main, autoMode ở phiên Pi mở sau; worker, reviewer ở lần gọi Agent kế tiếp; advisor ở lần hỏi advisor kế tiếp.',
+  ]);
+  assert.deepEqual(whenApplied(['auditor', 'oracle', 'worker'], {auditor: 'ở phiên mới', oracle: 'ở phiên mới'}), [
+    'Có hiệu lực: auditor, oracle ở phiên mới; worker ở lần gọi Agent kế tiếp.',
+  ]);
+  assert.match(usage('/models'), /^\/models: model và thinking của từng vai/u);
+  assert.match(usage('/models'), /^ {2}\/models reset <vai>\.\.\. \| --all {5}bỏ ghi đè/mu);
+});
+
+test('catalog và effects truyền vào (như /models trong phiên): kiểm model, xem, liệt kê bằng catalog đó; effects nhận vai có giá trị mới', async t => {
+  // Bản cài giả không có runtime: mọi bước phải dùng catalog truyền vào.
+  const f = install(t);
+  const profiles = {main: {agentDir: f.agentDir, runtime: 'current'}};
+  const known = new Set(['anthropic/claude-opus-5-5', 'anthropic/claude-sonnet-5', 'anthropic/claude-fable-5-1', 'openai-codex/gpt-6-sol', 'openai-codex/gpt-6-astra', 'opencode-go/glm-5.3-flash']);
+  const catalog = {
+    check: async (roles, {logins = false} = {}) => ({
+      errors: Object.entries(roles).filter(([, role]) => !known.has(role.model)).map(([name, role]) => `${name}: không có model ${role.model}`),
+      notes: [], loggedOut: logins ? [{provider: 'openai-codex', roles: ['worker']}] : [],
+    }),
+    list: async () => [{id: 'anthropic', name: 'Anthropic', login: 'OAuth', models: [{id: 'claude-opus-5-5', levels: ['low', 'high']}]}],
+  };
+  const applied = [];
+  const effects = async changed => {
+    applied.push(changed);
+    return [`áp ngay: ${changed.join(', ')}`];
+  };
+  const run = async (...args) => {
+    const lines = [];
+    const out = {log: line => lines.push(line), warn: line => lines.push(line), error: line => lines.push(line)};
+    return {status: await runModels({root: f.root, profiles, args, out, command: '/models', catalog, effects}), text: lines.join('\n')};
+  };
+  const before = snapshot(f.root, f.agentDir);
+  const wrong = await run('set', 'worker', 'anthropic/claude-sonnet-9');
+  assert.equal(wrong.status, 1);
+  assert.match(wrong.text, /^\/models: Model không dùng được, chưa ghi gì:\n- worker: không có model anthropic\/claude-sonnet-9$/mu);
+  const preview = await run('set', 'worker', 'anthropic/claude-sonnet-5', '--dry-run');
+  assert.equal(preview.status, 0, preview.text);
+  assert.match(preview.text, /^cảnh báo: provider openai-codex \(worker\) chưa đăng nhập: dùng \/login\.$/mu);
+  assert.deepEqual([applied, snapshot(f.root, f.agentDir)], [[], before], 'lỗi và --dry-run không ghi, không gọi effects');
+  const set = await run('set', 'worker', 'anthropic/claude-sonnet-5');
+  assert.equal(set.status, 0, set.text);
+  assert.deepEqual(applied, [['worker']]);
+  assert.match(set.text, /\náp ngay: worker$/u);
+  // Preset claude giữ main và autoMode; worker chỉ ghi đè model nên đổi thinking theo preset (max → high).
+  assert.equal((await run('preset', 'claude')).status, 0);
+  assert.deepEqual(applied[1], ['researcher', 'worker', 'debugger', 'reviewer', 'advisor', 'auditor', 'oracle']);
+  // Lệch qua /agents: cảnh báo gợi ý lệnh /models.
+  fs.writeFileSync(f.file('agents/reviewer.md'), fs.readFileSync(f.file('agents/reviewer.md'), 'utf8').replace('thinking: high', 'thinking: low'));
+  const shown = await run();
+  assert.equal(shown.status, 0, shown.text);
+  assert.match(shown.text, /Giữ giá trị này: \/models adopt reviewer; dùng lại model-roles\.json: \/models apply --reset\./u);
+  const listed = await run('list');
+  assert.match(listed.text, /^anthropic: đã đăng nhập \(OAuth\), 1 model; vai: main, researcher, worker, debugger, reviewer, advisor, auditor, oracle, autoMode$/mu);
+  assert.match(listed.text, /^Xem model của một provider: \/models list <provider>$/mu);
+  const unknown = await run('frobnicate');
+  assert.equal(unknown.status, 1);
+  assert.match(unknown.text, /^\/models: không có lệnh "frobnicate"\n\/models: model và thinking/u);
+});
+
 const testRoot = process.env.PI_CONFIG_TEST_ROOT;
 test('pi-models trên runtime thật: xem trước, preset, model sai tên, lệch rồi adopt, reset, set, apply, list', {skip: !testRoot}, async t => {
   const f = install(t);
-  fs.mkdirSync(path.join(f.root, 'runtimes'));
-  // Nối runtime của bản cài thật (không chép); gỡ liên kết trước khi xoá thư mục tạm để không đụng tới runtime đó.
-  const link = path.join(f.root, 'runtimes', 'current');
-  fs.symlinkSync(path.join(testRoot, 'runtimes', 'current'), link, process.platform === 'win32' ? 'junction' : 'dir');
+  // Gỡ liên kết trước khi xoá thư mục tạm để không đụng tới runtime đó.
+  const unlink = linkRuntime(f.root, testRoot);
   try {
     await commands(f);
   } finally {
-    fs.unlinkSync(link);
+    unlink();
   }
 });
 
@@ -203,7 +212,7 @@ async function commands(f) {
   assert.equal(switched.status, 0, switched.text);
   assert.deepEqual(readJson(modelRoles), {preset: 'claude', roles: {}});
   assert.match(frontmatter('worker'), /^model: anthropic\/claude-opus-5-5\nthinking: high$/mu);
-  assert.match(switched.text, /Vai của pi-subagents dùng model mới ở lần gọi Agent kế tiếp/u);
+  assert.match(switched.text, /^Có hiệu lực: researcher, worker, debugger, reviewer ở lần gọi Agent kế tiếp; advisor ở lần hỏi advisor kế tiếp; auditor, oracle ở phiên Pi mở sau\.$/mu);
   assert.equal(fs.existsSync(path.join(f.root, '.install.lock')), false);
   // Model sai tên: dừng trước khi ghi.
   const unchanged = snapshot(f.root, f.agentDir);

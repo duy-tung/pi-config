@@ -2,9 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import {
-  MODEL_ROLES_FILE, ROLES, SUBAGENT_ROLES, THINKING_LEVELS, adoptRoles, changedRoles, checkCatalog, driftWarning, driftedRoles,
-  effectiveModelRoles, fillRoleNames, forceNativeModels, listCatalog, loadPresets, loginWarning, modelRolesReport, nativeValues,
-  nextModelDefault, parseModelRef, readModelRoles, resolveModelRoles, withPreset, withRole, withoutRoles, writeModelRoles,
+  MODEL_ROLES_FILE, ROLES, SUBAGENT_ROLES, THINKING_LEVELS, adoptRoles, changedRoles, driftWarning, driftedRoles,
+  effectiveModelRoles, fillRoleNames, forceNativeModels, loadPresets, loginWarning, modelRolesReport, nativeValues,
+  nextModelDefault, offlineCatalog, parseModelRef, readModelRoles, resolveModelRoles, withPreset, withRole, withoutRoles,
+  writeModelRoles,
 } from './model-roles.mjs';
 import {backupFile, defaultsFile, describeMerge, planConfigFile, writeAtomic, writeConfigPlan} from './merge.mjs';
 
@@ -13,17 +14,29 @@ import {backupFile, defaultsFile, describeMerge, planConfigFile, writeAtomic, wr
  * vào các file gốc, cùng cách gộp với installer, không cần chạy lại installer.
  */
 
-export const USAGE = `pi-models: model và thinking của từng vai (${ROLES.join(', ')})
-  pi-models                          bảng model của mọi vai, chỗ lệch với ${MODEL_ROLES_FILE}, kiểm catalog
-  pi-models list [provider]          provider (đã đăng nhập chưa) và model trong catalog của Pi
-  pi-models preset <tên>             chọn preset (có sẵn hoặc preset riêng trong ${MODEL_ROLES_FILE})
-  pi-models set <vai> [provider/id] [thinking]
-                                     ghi đè model và/hoặc thinking của một vai
-  pi-models reset <vai>... | --all   bỏ ghi đè, vai dùng lại giá trị của preset
-  pi-models adopt [vai...]           ghi giá trị đang chạy (đổi qua /model, /agents...) vào ${MODEL_ROLES_FILE}
-  pi-models apply [--reset]          áp ${MODEL_ROLES_FILE} vào file gốc; --reset ép cả vai đang lệch
-Lệnh ghi nhận --dry-run: in thay đổi, không ghi file.
-Thinking: ${THINKING_LEVELS.join(', ')}.`;
+const USAGE_LINES = [
+  ['', `bảng model của mọi vai, chỗ lệch với ${MODEL_ROLES_FILE}, kiểm catalog`],
+  ['list [provider]', 'provider (đã đăng nhập chưa) và model trong catalog của Pi'],
+  ['preset <tên>', `chọn preset (có sẵn hoặc preset riêng trong ${MODEL_ROLES_FILE})`],
+  ['set <vai> [provider/id] [thinking]', 'ghi đè model và/hoặc thinking của một vai'],
+  ['reset <vai>... | --all', 'bỏ ghi đè, vai dùng lại giá trị của preset'],
+  ['adopt [vai...]', `ghi giá trị đang chạy (đổi qua /model, /agents...) vào ${MODEL_ROLES_FILE}`],
+  ['apply [--reset]', `áp ${MODEL_ROLES_FILE} vào file gốc; --reset ép cả vai đang lệch`],
+];
+
+/** Hướng dẫn của pi-models, hoặc của /models trong phiên Pi (command). */
+export function usage(command = 'pi-models') {
+  const lines = USAGE_LINES.map(([args, text]) => {
+    const left = `  ${command}${args ? ` ${args}` : ''}`;
+    return left.length < 37 ? `${left.padEnd(37)}${text}` : `${left}\n${' '.repeat(37)}${text}`;
+  });
+  return [
+    `${command}: model và thinking của từng vai (${ROLES.join(', ')})`, ...lines,
+    'Lệnh ghi nhận --dry-run: in thay đổi, không ghi file.', `Thinking: ${THINKING_LEVELS.join(', ')}.`,
+  ].join('\n');
+}
+
+export const USAGE = usage();
 
 const sha256 = data => crypto.createHash('sha256').update(data).digest('hex');
 const label = role => `${role.model ?? '?'} (${role.thinking ?? '?'})`;
@@ -111,8 +124,8 @@ function roleNames(names) {
 }
 
 /** Giá trị của pi-models set: model dạng provider/id và/hoặc mức thinking, mỗi loại tối đa một lần. */
-function roleFields(values) {
-  if (!values.length) throw new Error('thiếu giá trị: pi-models set <vai> [provider/id] [thinking]');
+function roleFields(values, command) {
+  if (!values.length) throw new Error(`thiếu giá trị: ${command} set <vai> [provider/id] [thinking]`);
   const fields = {};
   for (const value of values) {
     const field = THINKING_LEVELS.includes(value) ? 'thinking' : parseModelRef(value) ? 'model' : undefined;
@@ -123,11 +136,32 @@ function roleFields(values) {
   return fields;
 }
 
+// Khi nào một phiên Pi đang chạy nhận giá trị mới: pi-subagents đọc lại file role ở mỗi lần gọi Agent, advisor đọc lại
+// advisor.json ở mỗi lần hỏi; phiên chính, pi-goal-x và auto mode đọc cấu hình khi mở phiên.
+const APPLIED_AT = {
+  ...Object.fromEntries(SUBAGENT_ROLES.map(name => [name, 'ở lần gọi Agent kế tiếp'])), advisor: 'ở lần hỏi advisor kế tiếp',
+  main: 'ở phiên Pi mở sau', auditor: 'ở phiên Pi mở sau', oracle: 'ở phiên Pi mở sau', autoMode: 'ở phiên Pi mở sau',
+};
+
+/**
+ * Câu báo các vai vừa đổi giá trị trong file gốc có hiệu lực khi nào (effects mặc định của runModels), gom các vai
+ * cùng thời điểm. when: thời điểm riêng theo vai (vd /models trong phiên).
+ */
+export function whenApplied(changed, when = {}) {
+  const groups = new Map();
+  for (const name of changed) {
+    const at = when[name] ?? APPLIED_AT[name];
+    groups.set(at, [...(groups.get(at) ?? []), name]);
+  }
+  return groups.size ? [`Có hiệu lực: ${[...groups].map(([at, names]) => `${names.join(', ')} ${at}`).join('; ')}.`] : [];
+}
+
 /**
  * Chạy một lệnh ghi: edit trả model-roles.json mới và các vai cần ép trong file gốc; kiểm cấu hình và catalog, in
- * thay đổi, rồi (trừ --dry-run) ghi model-roles.json trước, file gốc sau. Có lỗi thì không ghi gì.
+ * thay đổi, rồi (trừ --dry-run) ghi model-roles.json trước, file gốc sau. Có lỗi thì không ghi gì. Sau khi ghi,
+ * effects nhận các vai có giá trị hiệu lực đổi và trả các dòng báo (phiên Pi áp ngay những gì áp được).
  */
-async function change({root, agentDir, modules, out, dryRun, edit}) {
+async function change({root, agentDir, catalog, effects, command, out, dryRun, edit}) {
   const run = async () => {
     if (dryRun) out.log('Xem trước (--dry-run), chưa ghi file nào.');
     const presets = loadPresets(path.join(root, 'assets', 'configs', 'model-presets.json'));
@@ -140,14 +174,14 @@ async function change({root, agentDir, modules, out, dryRun, edit}) {
     if (!config) return 0;
     const after = resolveModelRoles(presets, config);
     if (after.errors.length) throw new Error(`${current.file} sẽ không hợp lệ:\n- ${after.errors.join('\n- ')}`);
-    const catalog = await checkCatalog({modules, agentDir, roles: after.roles, logins: true});
-    if (catalog.errors.length) throw new Error(`Model không dùng được, chưa ghi gì:\n- ${catalog.errors.join('\n- ')}`);
+    const report = await catalog.check(after.roles, {logins: true});
+    if (report.errors.length) throw new Error(`Model không dùng được, chưa ghi gì:\n- ${report.errors.join('\n- ')}`);
     const statePath = path.join(root, 'install-state.json');
     const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     const forced = force(before.roles, after.roles);
     const {plans, missing} = planModelFiles({root, agentDir, state, roles: after.roles, force: forced});
     if (missing.length) {
-      throw new Error(`Chưa có mặc định của lần cài trước cho:\n- ${missing.join('\n- ')}\nChạy lại installer một lần rồi dùng pi-models.`);
+      throw new Error(`Chưa có mặc định của lần cài trước cho:\n- ${missing.join('\n- ')}\nChạy lại installer một lần rồi dùng ${command}.`);
     }
     const configChanged = !current.exists || JSON.stringify(config) !== JSON.stringify(current.config);
     const changed = changedRoles(before.roles, after.roles);
@@ -170,22 +204,24 @@ async function change({root, agentDir, modules, out, dryRun, edit}) {
       else if (plan.preserved) out.log(`Không cập nhật ${plan.file}: không đọc được ${plan.file.endsWith('.md') ? 'frontmatter' : 'JSON'}.`);
       else if (plan.conflicts?.length) out.log(describeMerge({file: plan.file, conflicts: plan.conflicts, additive: plan.additive}).join('\n'));
     }
-    if (catalog.notes.length) out.log(`Mức thinking model không hỗ trợ (Pi dùng mức gần nhất):\n  - ${catalog.notes.join('\n  - ')}`);
-    for (const provider of catalog.loggedOut) out.warn(`cảnh báo: ${loginWarning(provider)}`);
+    if (report.notes.length) out.log(`Mức thinking model không hỗ trợ (Pi dùng mức gần nhất):\n  - ${report.notes.join('\n  - ')}`);
+    for (const provider of report.loggedOut) out.warn(`cảnh báo: ${loginWarning(provider, command)}`);
     if (dryRun) return 0;
     if (configChanged) writeModelRoles(current.file, config);
     writeModelFiles({root, statePath, state, plans});
     const now = effectiveModelRoles(agentDir);
-    for (const name of driftedRoles(after.roles, now)) out.warn(`cảnh báo: ${driftWarning(name, now[name], after.roles[name])}`);
-    if (written.length) out.log('Vai của pi-subagents dùng model mới ở lần gọi Agent kế tiếp; phiên chính, advisor, goal và auto mode ở phiên Pi mở sau.');
-    return 0;
+    for (const name of driftedRoles(after.roles, now)) out.warn(`cảnh báo: ${driftWarning(name, now[name], after.roles[name], command)}`);
+    return changedRoles(effective, now);
   };
-  return dryRun ? run() : withInstallLock(root, run);
+  // Hiệu lực được báo sau khi nhả khóa: phiên Pi có thể đổi model ngay, và advisor khi đó tự ghi advisor.json.
+  const changed = dryRun ? await run() : await withInstallLock(root, run);
+  if (Array.isArray(changed)) for (const line of await effects(changed)) out.log(line);
+  return 0;
 }
 
 /** In bảng provider hoặc model của một provider trong catalog. */
-async function list({agentDir, modules, provider, roles, out}) {
-  const providers = await listCatalog({modules, agentDir});
+async function list({catalog, command, provider, roles, out}) {
+  const providers = await catalog.list();
   const using = new Map();
   for (const name of ROLES) {
     const model = roles?.[name]?.model;
@@ -197,7 +233,7 @@ async function list({agentDir, modules, provider, roles, out}) {
       const used = ROLES.filter(name => roles?.[name]?.model?.startsWith(`${entry.id}/`));
       out.log(`${entry.id}: ${status(entry)}, ${entry.models.length} model${used.length ? `; vai: ${used.join(', ')}` : ''}`);
     }
-    out.log('Xem model của một provider: pi-models list <provider>');
+    out.log(`Xem model của một provider: ${command} list <provider>`);
     return 0;
   }
   const entry = providers.find(item => item.id === provider);
@@ -211,28 +247,35 @@ async function list({agentDir, modules, provider, roles, out}) {
   return 0;
 }
 
-/** Lệnh pi-models (launch.mjs). Trả exit code; lỗi được in ra, không ném. */
-export async function runModels({root, profiles, args, out = console}) {
+/**
+ * Lệnh pi-models (launch.mjs) và /models trong phiên Pi. Trả exit code; lỗi được in ra, không ném.
+ * command: tên lệnh trong hướng dẫn và lỗi. catalog: catalog của phiên Pi (dạng offlineCatalog) thay cho runtime đã cài
+ * ở chế độ offline. effects(vai): các dòng báo khi nào vai có giá trị hiệu lực mới (phiên Pi áp ngay phần áp được).
+ */
+export async function runModels({root, profiles, args, out = console, command = 'pi-models', catalog, effects = whenApplied}) {
   try {
     const flags = args.filter(arg => arg.startsWith('--'));
-    const [command = 'show', ...rest] = args.filter(arg => !arg.startsWith('--'));
-    if (command === 'help' || flags.includes('--help')) {
-      out.log(USAGE);
+    const [name = 'show', ...rest] = args.filter(arg => !arg.startsWith('--'));
+    if (name === 'help' || flags.includes('--help')) {
+      out.log(usage(command));
       return 0;
     }
     const accepted = {show: [], list: [], preset: ['--dry-run'], set: ['--dry-run'], reset: ['--dry-run', '--all'], adopt: ['--dry-run'], apply: ['--dry-run', '--reset']};
-    if (!Object.hasOwn(accepted, command)) throw new Error(`không có lệnh "${command}"\n${USAGE}`);
-    for (const flag of flags) if (!accepted[command].includes(flag)) throw new Error(`pi-models ${command} không nhận ${flag}`);
+    if (!Object.hasOwn(accepted, name)) throw new Error(`không có lệnh "${name}"\n${usage(command)}`);
+    for (const flag of flags) if (!accepted[name].includes(flag)) throw new Error(`${command} ${name} không nhận ${flag}`);
     const dryRun = flags.includes('--dry-run');
-    const profile = profiles.main;
-    const agentDir = profile.agentDir;
-    const modules = path.join(root, 'runtimes', profile.runtime, 'node_modules');
-    if (command === 'show') {
-      if (rest.length) throw new Error(`không có lệnh "${rest[0]}"\n${USAGE}`);
+    const catalogOf = profile => (profile === profiles.main && catalog) ||
+      offlineCatalog({modules: path.join(root, 'runtimes', profile.runtime, 'node_modules'), agentDir: profile.agentDir});
+    const agentDir = profiles.main.agentDir;
+    if (name === 'show') {
+      if (rest.length) throw new Error(`không có lệnh "${rest[0]}"\n${usage(command)}`);
       let status = 0;
-      for (const [name, entry] of Object.entries(profiles)) {
-        const report = await modelRolesReport({root, agentDir: entry.agentDir, modules: path.join(root, 'runtimes', entry.runtime, 'node_modules'), logins: true});
-        out.log(`${name}: ${report.lines.join('\n') || 'không đọc được cấu hình model'}`);
+      for (const [profileName, entry] of Object.entries(profiles)) {
+        const report = await modelRolesReport({
+          root, agentDir: entry.agentDir, modules: path.join(root, 'runtimes', entry.runtime, 'node_modules'), logins: true,
+          catalog: catalogOf(entry), command,
+        });
+        out.log(`${profileName}: ${report.lines.join('\n') || 'không đọc được cấu hình model'}`);
         for (const warning of report.warnings) out.warn(`cảnh báo: ${warning}`);
         for (const error of report.errors) {
           out.error(`lỗi: ${error}`);
@@ -241,50 +284,50 @@ export async function runModels({root, profiles, args, out = console}) {
       }
       return status;
     }
-    if (command === 'list') {
-      if (rest.length > 1) throw new Error('pi-models list [provider]');
+    if (name === 'list') {
+      if (rest.length > 1) throw new Error(`${command} list [provider]`);
       const current = readModelRoles(agentDir);
       const roles = current.error ? undefined : resolveModelRoles(loadPresets(path.join(root, 'assets', 'configs', 'model-presets.json')), current.config).roles;
-      return await list({agentDir, modules, provider: rest[0], roles, out});
+      return await list({catalog: catalogOf(profiles.main), command, provider: rest[0], roles, out});
     }
-    const context = {root, agentDir, modules, out, dryRun};
-    if (command === 'preset') {
-      if (rest.length !== 1) throw new Error('pi-models preset <tên>');
+    const context = {root, agentDir, catalog: catalogOf(profiles.main), effects, command, out, dryRun};
+    if (name === 'preset') {
+      if (rest.length !== 1) throw new Error(`${command} preset <tên>`);
       return await change({...context, edit: ({config}) => ({config: withPreset(config, rest[0]), force: changedRoles})});
     }
-    if (command === 'set') {
-      if (!rest.length) throw new Error('pi-models set <vai> [provider/id] [thinking]');
+    if (name === 'set') {
+      if (!rest.length) throw new Error(`${command} set <vai> [provider/id] [thinking]`);
       const [role] = roleNames(rest.slice(0, 1));
-      const fields = roleFields(rest.slice(1));
+      const fields = roleFields(rest.slice(1), command);
       return await change({...context, edit: ({config}) => ({config: withRole(config, role, fields), force: () => [role]})});
     }
-    if (command === 'reset') {
+    if (name === 'reset') {
       const all = flags.includes('--all');
-      if (all === Boolean(rest.length)) throw new Error('pi-models reset <vai>... hoặc pi-models reset --all');
+      if (all === Boolean(rest.length)) throw new Error(`${command} reset <vai>... hoặc ${command} reset --all`);
       const names = all ? [] : roleNames(rest);
       return await change({...context, edit: ({config}) => {
-        const overridden = config?.roles && typeof config.roles === 'object' ? Object.keys(config.roles).filter(name => ROLES.includes(name)) : [];
+        const overridden = config?.roles && typeof config.roles === 'object' ? Object.keys(config.roles).filter(role => ROLES.includes(role)) : [];
         const targets = all ? overridden : names;
         const message = targets.length ? undefined : 'Không có vai nào được ghi đè.';
         return {config: targets.length ? withoutRoles(config, targets) : undefined, force: () => targets, message};
       }});
     }
-    if (command === 'adopt') {
+    if (name === 'adopt') {
       const names = roleNames(rest);
       return await change({...context, edit: ({config, before, effective}) => {
         const targets = names.length ? names : driftedRoles(before.roles, effective);
         const {config: next, adopted} = adoptRoles(config, before.roles, effective, targets);
         const entries = Object.entries(adopted);
         if (!entries.length) return {message: `Không vai nào lệch với ${MODEL_ROLES_FILE}${names.length ? ` trong ${names.join(', ')}` : ''}.`};
-        const message = `Ghi vào ${MODEL_ROLES_FILE}: ${entries.map(([name, fields]) => `${name} ${[fields.model, fields.thinking].filter(Boolean).join(' ')}`).join(', ')}`;
+        const message = `Ghi vào ${MODEL_ROLES_FILE}: ${entries.map(([role, fields]) => `${role} ${[fields.model, fields.thinking].filter(Boolean).join(' ')}`).join(', ')}`;
         return {config: next, force: () => [], message};
       }});
     }
-    if (rest.length) throw new Error('pi-models apply [--reset]');
+    if (rest.length) throw new Error(`${command} apply [--reset]`);
     const reset = flags.includes('--reset');
     return await change({...context, edit: ({config}) => ({config, force: () => (reset ? ROLES : [])})});
   } catch (error) {
-    out.error(`pi-models: ${error.message}`);
+    out.error(`${command}: ${error.message}`);
     return 1;
   }
 }

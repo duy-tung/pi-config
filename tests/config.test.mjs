@@ -45,7 +45,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       });
       assert.equal(settings.shellPath, options.shellPath);
       assert.equal(settings.skills.length, 3);
-      assert.deepEqual(settings.extensions, ["rose-pine-palette.ts", "pi-rewind", "claude-usage", "pi-auto-mode"]
+      assert.deepEqual(settings.extensions, ["rose-pine-palette.ts", "pi-rewind", "claude-usage", "model-roles", "pi-auto-mode"]
         .map((entry) => p.join(options.root, "assets", "extensions", entry)));
       assert.equal(settings.doubleEscapeAction, "none");
       assert.deepEqual(settings.rewind, { storageDir: p.join(options.root, "state", "rewind"), retentionDays: 30 });
