@@ -5,8 +5,11 @@ import {
   criticalPathReason, insideAny, insideTemporary, isSelfProtected, protectedReason, resolveShellPath, resolveToolPath, temporaryRoots,
 } from "./paths.ts";
 import { detectPowerShellRisks, detectRisks } from "./risks.ts";
-import { allowCoversShell, firstMatch, type RuleMatchTarget, type RuleSet } from "./rules.ts";
-import { analyzeShell, commandName, commandText, isReadOnlyCommand, isReadOnlyShell, type ShellAnalysis, type SimpleCommand } from "./shell.ts";
+import { isRegularFile, searchReadPaths, unverifiableShellPaths } from "./read-scope.ts";
+import { allowCoversShell, firstMatch, isPathRule, ruleAppliesTo, type RuleMatchTarget, type RuleSet } from "./rules.ts";
+import {
+  analyzeShell, commandName, commandText, isReadOnlyCommand, isReadOnlyShell, optionOutputs, type ShellAnalysis, type SimpleCommand,
+} from "./shell.ts";
 
 /**
  * Quyết định tất định cho một lời gọi tool, trước khi cần tới bộ phân loại.
@@ -98,6 +101,9 @@ function shellPaths(analysis: ShellAnalysis, cwd: string, home: string): string[
       if (!looksLikePath(value)) return;
       result.add(resolveShellPath(value, cwd, home));
     });
+    for (const output of optionOutputs(command)) if (looksLikePath(output)) result.add(resolveShellPath(output, cwd, home));
+    // grep/rg có thể đọc file tham số viết liền với cờ, vd -f.env hoặc --file=.env.
+    for (const file of searchReadPaths(command)?.paths ?? []) result.add(resolveShellPath(file, cwd, home));
     for (const redirect of command.redirects) {
       if (redirect.literal && looksLikePath(redirect.target) && !/^\d+$|^-$/u.test(redirect.target)) {
         result.add(resolveShellPath(redirect.target, cwd, home));
@@ -420,6 +426,23 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
 
   const deny = firstMatch(pc.rules.deny, facts.target, pc.cwd, home);
   if (deny) return { kind: "deny", rule: deny.raw, reason: `Permission to use ${call.toolName} has been denied by the rule ${deny.raw}.` };
+
+  // Không giao luật deny tất định cho classifier, ask, allow hoặc bypass quyết định lại.
+  // Ngoại lệ !Path chỉ miễn từng file đã biết, không miễn cả tập đích chưa kiểm được.
+  const pathDeny = pc.rules.deny.find((rule) => !rule.negate && isPathRule(rule) &&
+    (facts.kind === "shell"
+      ? (["read", "path"].includes(rule.tool.toLowerCase()) || facts.target.writes !== false)
+      : facts.kind === "read" && ruleAppliesTo(rule, call.toolName)));
+  if (pathDeny) {
+    const uncertain = facts.kind === "shell"
+      ? unverifiableShellPaths(facts.analysis as ShellAnalysis, pc.cwd, home)
+      : call.toolName !== "read" && facts.paths.some((file) => !isRegularFile(file))
+        ? `${call.toolName} may read descendants that have not been checked` : undefined;
+    if (uncertain) return {
+      kind: "deny", rule: pathDeny.raw,
+      reason: `Cannot enforce the path deny rule ${pathDeny.raw}: ${uncertain}. Use explicit permitted files.`,
+    };
+  }
 
   const ask = firstMatch(pc.rules.ask, facts.target, pc.cwd, home);
   if (ask) return { kind: "ask", reason: `The rule ${ask.raw} requires your confirmation.` };

@@ -25,6 +25,8 @@
 
 Khôi phục code chỉ đụng tới file đã theo dõi trong phiên, giống Claude Code. Không theo dõi: sửa tay trên file chưa từng theo dõi, file bị `.gitignore` sửa bằng bash, bash ngoài git worktree, background agent/shell job, file lớn hơn 20 MiB và file chứa bí mật (`.env`, khóa, `auth.json`…). Symlink, thư mục cha đã đổi hoặc nội dung hiện tại không sao lưu được thì bỏ qua và báo tên file. Repo cần hơn 2 giây để chuẩn bị theo dõi (`git status` và chụp file bẩn), có hơn 500 file chưa commit (ví dụ `node_modules` chưa ignore) hoặc có file chưa commit cần chụp tổng cộng hơn 256 MiB (đo trước khi chụp, không tính file không được lưu như file quá 20 MiB) sẽ tắt theo dõi bash trong phiên và báo; edit/write vẫn được theo dõi.
 
+File có tên nhạy cảm bị loại kể cả khi đã track trong Git hoặc vừa bị xóa; đường dẫn còn phân giải qua symlink tới file nhạy cảm cũng bị loại. Git watcher kiểm trước khi đọc nội dung từ `HEAD`, và bước ghi buffer vào kho kiểm lại. `.env.example`, `.env.sample`, `.env.template` vẫn được sao lưu nếu không trỏ tới file bí mật. Đây là lọc theo tên file, không quét nội dung để phát hiện mọi loại secret; bản sửa không xóa blob đã có trong kho cũ.
+
 ## Lưu trữ
 
 - Metadata checkpoint là custom entry `pi-rewind` trong file phiên (không vào context model), nên còn sau `/resume` và đi theo nhánh hội thoại.

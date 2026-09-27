@@ -14,6 +14,8 @@ export interface Redirect {
   target: string;
   /** Đích là chữ thuần (không có biến/thay thế). */
   literal: boolean;
+  /** Đích có glob chưa trích dẫn, shell sẽ mở rộng khi thực thi. */
+  glob: boolean;
 }
 
 export interface SimpleCommand {
@@ -307,6 +309,7 @@ function lex(source: string, problems: Set<string>, nested: string[]): Token[] {
       continue;
     }
     if (ch === "*" || ch === "?" || ch === "[") glob = true;
+    if ((ch === "{" || ch === "}") && started) problems.add("brace expansion");
     word += ch;
     started = true;
     index++;
@@ -418,7 +421,7 @@ function build(tokens: Token[], problems: Set<string>): SimpleCommand[] {
         continue;
       }
       i++;
-      current.redirects.push({ op: token.value, fd: token.fd, target: target.value, literal: target.literal });
+      current.redirects.push({ op: token.value, fd: token.fd, target: target.value, literal: target.literal, glob: target.glob });
       continue;
     }
     if (!current.words.length && ASSIGNMENT.test(token.value) && token.literal) {
@@ -485,6 +488,73 @@ const always: Validator = () => true;
 const noneOf = (...flags: string[]): Validator => (args) =>
   !args.some((arg) => flags.some((flag) => arg === flag || (flag.startsWith("--") && arg.startsWith(`${flag}=`))));
 const positionals = (args: string[]) => args.filter((arg) => !arg.startsWith("-"));
+
+/** Cú pháp tùy chọn của một lệnh, theo cách getopt_long đọc. */
+interface OptionSyntax {
+  /** Chữ cờ ngắn nhận giá trị: phần còn lại của cụm (-oFILE) hoặc từ kế tiếp (-o FILE). */
+  shortValues: string;
+  /** Tùy chọn dài nhận giá trị ở từ kế tiếp khi không viết "=". */
+  longValues: string[];
+}
+
+interface OptionUse {
+  option: string;
+  value?: string;
+  /** Chỉ số trong args của từ chứa giá trị. */
+  at?: number;
+}
+
+/**
+ * Nơi các tùy chọn cần tìm xuất hiện trong args, dừng ở "--": chữ cờ ngắn ở mọi vị trí của cụm (-uo FILE, -uoFILE)
+ * trừ phần là giá trị của cờ đứng trước, và tùy chọn dài viết tắt bằng tiền tố như getopt_long (--out=FILE là --output).
+ */
+function findOptions(args: string[], syntax: OptionSyntax, wanted: { short?: string; long?: string[] }): OptionUse[] {
+  const result: OptionUse[] = [];
+  const prefixOf = (name: string, option: string) => name.length > 2 && option.startsWith(name);
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--") break;
+    if (arg.startsWith("--")) {
+      const eq = arg.indexOf("=");
+      const name = eq < 0 ? arg : arg.slice(0, eq);
+      let use: Omit<OptionUse, "option"> = eq < 0 ? {} : { value: arg.slice(eq + 1), at: i };
+      if (eq < 0 && i + 1 < args.length && syntax.longValues.some((option) => prefixOf(name, option))) {
+        i++;
+        use = { value: args[i], at: i };
+      }
+      for (const option of wanted.long ?? []) if (prefixOf(name, option)) result.push({ option, ...use });
+      continue;
+    }
+    if (arg.length < 2 || !arg.startsWith("-")) continue;
+    for (let j = 1; j < arg.length; j++) {
+      const flag = arg[j];
+      const takes = syntax.shortValues.includes(flag);
+      let use: Omit<OptionUse, "option"> = {};
+      if (takes && j + 1 < arg.length) use = { value: arg.slice(j + 1), at: i };
+      else if (takes && i + 1 < args.length) use = { value: args[i + 1], at: i + 1 };
+      if (wanted.short?.includes(flag)) result.push({ option: `-${flag}`, ...use });
+      if (takes) {
+        if (use.at === i + 1) i++;
+        break;
+      }
+    }
+  }
+  return result;
+}
+
+const SORT_OPTIONS: OptionSyntax = {
+  shortValues: "kotST",
+  longValues: [
+    "--key", "--field-separator", "--output", "--buffer-size", "--temporary-directory", "--compress-program", "--parallel",
+    "--batch-size", "--random-source", "--sort", "--files0-from",
+  ],
+};
+// GNU base64 có -w; base64 của BSD/macOS có -b, -i FILE, -o FILE.
+const BASE64_OPTIONS: OptionSyntax = { shortValues: "bwio", longValues: ["--wrap", "--break", "--input", "--output"] };
+// yq (pflag): cụm cờ ngắn như getopt; -i sửa file tại chỗ, -s ghi mỗi kết quả ra một file.
+const YQ_OPTIONS: OptionSyntax = { shortValues: "fIops", longValues: ["--front-matter", "--indent", "--output-format", "--input-format", "--split-exp"] };
+const SORT_OUTPUT = { short: "o", long: ["--output"] };
+const BASE64_OUTPUT = { short: "o", long: ["--output"] };
 
 const GIT_READ: Record<string, Validator> = {
   status: always,
@@ -565,6 +635,9 @@ const PACKAGE_READ: Record<string, Set<string>> = {
   brew: new Set(["list", "info", "--version", "search", "outdated", "deps", "leaves"]),
 };
 
+// bun pm: chỉ lệnh con in thông tin (cache không kèm rm). pack chạy lifecycle script của package; trust, migrate, version, pkg ghi file.
+const BUN_PM_READ = new Set(["ls", "bin", "cache", "untrusted", "default-trusted"]);
+
 const VERSION_ONLY = new Set(["node", "python", "python3", "ruby", "perl", "java", "rustc", "deno", "tsc", "php", "lua", "uv", "docker", "kubectl", "terraform"]);
 
 const READ_ONLY: Record<string, Validator> = {
@@ -577,12 +650,13 @@ const READ_ONLY: Record<string, Validator> = {
   md5sum: always, shasum: always, sha1sum: always, sha256sum: always, sha512sum: always, cksum: always,
   test: always, "[": always, type: always, ps: always, pgrep: always, uptime: always, sw_vers: always,
   arch: always, nproc: always, getconf: always, locale: always, jq: always, pushd: always, popd: always, dirs: always,
-  sort: noneOf("-o", "--output", "--compress-program"),
+  sort: (args) => !findOptions(args, SORT_OPTIONS, { short: "o", long: ["--output", "--compress-program"] }).length,
   uniq: (args) => positionals(args).length <= 1,
-  tree: noneOf("-o", "-R"),
-  base64: (args) => !args.some((arg) => arg === "-o" || arg === "--output" || arg.startsWith("--output=") || /^-o./u.test(arg)),
+  // tree tự đọc cờ: cờ nhận giá trị lấy từ kế tiếp, nên chữ o/R ở bất kỳ đâu trong cụm là -o/-R.
+  tree: (args) => !args.some((arg) => /^-[^-]*[oR]/u.test(arg)),
+  base64: (args) => !findOptions(args, BASE64_OPTIONS, BASE64_OUTPUT).length,
   xxd: (args) => !args.includes("-r") && !args.includes("-revert") && positionals(args).length <= 1,
-  yq: noneOf("-i", "--inplace"),
+  yq: (args) => !findOptions(args, YQ_OPTIONS, { short: "is", long: ["--inplace", "--split-exp"] }).length,
   hostname: (args) => args.length === 0,
   date: (args) => !args.some((arg) => arg === "-s" || arg.startsWith("--set")),
   find: (args) => !args.some((arg) => ["-exec", "-execdir", "-ok", "-okdir", "-delete", "-fls", "-fprint", "-fprint0", "-fprintf"].includes(arg)),
@@ -622,6 +696,7 @@ export function isReadOnlyCommand(command: SimpleCommand): boolean {
   const args = command.words.slice(1);
   if (VERSION_ONLY.has(name)) return args.length === 1 && ["--version", "-v", "-V", "version"].includes(args[0]);
   const table = PACKAGE_READ[name];
+  if (name === "bun" && args[0] === "pm" && (!BUN_PM_READ.has(args[1] ?? "") || (args[1] === "cache" && args.length > 2))) return false;
   if (table) return args.length > 0 && table.has(args[0]) && !args.includes("-g") && !args.includes("--global");
   const validator = READ_ONLY[name];
   return validator ? validator(args) : false;
@@ -630,6 +705,18 @@ export function isReadOnlyCommand(command: SimpleCommand): boolean {
 /** Cả chuỗi lệnh chỉ đọc: plain, và mọi lệnh cấp cao nhất đều chỉ đọc. */
 export function isReadOnlyShell(analysis: ShellAnalysis): boolean {
   return analysis.plain && analysis.commands.length > 0 && analysis.commands.every(isReadOnlyCommand);
+}
+
+/**
+ * File output của sort/base64 (-o FILE, -oFILE, cụm -uoFILE, --out=FILE): đường dẫn viết liền với cờ không phải là
+ * một từ riêng, nên kiểm tự bảo vệ cần lấy ở đây. Chỉ trả giá trị là chữ thuần.
+ */
+export function optionOutputs(command: SimpleCommand): string[] {
+  const name = commandName(command);
+  const found = name === "sort" ? findOptions(command.words.slice(1), SORT_OPTIONS, SORT_OUTPUT)
+    : name === "base64" ? findOptions(command.words.slice(1), BASE64_OPTIONS, BASE64_OUTPUT)
+    : [];
+  return found.flatMap((use) => (use.value !== undefined && use.at !== undefined && command.literal[use.at + 1] ? [use.value] : []));
 }
 
 /** Chuỗi chuẩn hóa của lệnh (các từ nối bằng một khoảng trắng) để khớp luật. */

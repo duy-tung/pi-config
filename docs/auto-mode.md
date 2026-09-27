@@ -22,7 +22,7 @@
 
 Mỗi tool call đi qua các bước sau, dừng ở bước đầu tiên có kết quả (thứ tự của Claude Code):
 
-1. **Luật `deny`** → chặn, ở cả hai mode. Áp dụng cho tool file, đối số đường dẫn của lệnh shell (kể cả `$()`, `bash -c`, `sudo`, `xargs`) và tham số đường dẫn của MCP.
+1. **Luật `deny`** → chặn, ở cả hai mode. Áp dụng cho tool file, đối số đường dẫn của lệnh shell (kể cả `$()`, `bash -c`, `sudo`, `xargs`) và tham số đường dẫn của MCP. Khi có deny đường dẫn áp dụng mà không kiểm được tập file, chặn trước `ask`, `allow`, bypass và bộ phân loại; xem giới hạn đọc bên dưới.
 2. **Luật `ask`** → hỏi người dùng (không có UI thì chặn).
 3. **`rm`/`rmdir`/`find -delete` vào `/`, thư mục cấp đầu, `~`, thư mục con trực tiếp của `~`, thư mục làm việc hoặc thư mục cha của nó** → auto: gửi bộ phân loại kèm ghi chú; bypass: hỏi người dùng.
 4. **Bypass, lệnh xoá đệ quy** (riêng pi-config) → hỏi người dùng. Nhận ra `rm -r`/`-R`/`--recursive` với mọi thứ tự cờ (`rm -fr`, `rm -r -f`, `/bin/rm`, `rm x -rf`), `find -delete` hoặc `-exec rm`, `git clean` (trừ `-n`/`--dry-run`), `rimraf`, `cmd /c rd /s`, `Remove-Item -Recurse`, kể cả trong `bash -c`, `$()`, `xargs` và qua `bg_run`. Không hỏi khi:
@@ -52,10 +52,17 @@ Mỗi tool call đi qua các bước sau, dừng ở bước đầu tiên có k�
 8. **Lối đi nhanh** (không gọi model):
    - `read`, `grep`, `find`, `ls` trong thư mục làm việc, `additionalDirectories`, thư mục tạm, thư mục skill đã cấu hình, tài liệu của Pi và agent dir; todo, `ask_user_question`, công cụ đọc của pi-lens, `web_enable`, `get_search_content`, goal, advisor, trạng thái `bg_*`;
    - `edit`/`write` trong thư mục làm việc, `additionalDirectories` hoặc thư mục tạm, trừ đường dẫn được bảo vệ (`.git/`, `.pi/`, `.claude/`, `.github/`, `.vscode/`, file rc của shell, `.npmrc`, `AGENTS.md`, `CLAUDE.md`…);
-   - lệnh shell chứng minh được là chỉ đọc: toàn chữ thuần (không biến, `$()`, subshell, heredoc, gán biến môi trường), mọi lệnh con nằm trong danh sách đọc (`ls`, `cat`, `rg`, `git status/log/diff/show`, `gh pr view`…, `sed -n 1,20p`, `find` không `-exec/-delete`), chuyển hướng chỉ tới `/dev/null`, và mọi đường dẫn nằm trong các thư mục đọc tự do ở trên;
+   - lệnh shell chứng minh được là chỉ đọc: toàn chữ thuần (không biến, `$()`, subshell, heredoc, gán biến môi trường), mọi lệnh con nằm trong danh sách đọc (`ls`, `cat`, `rg`, `git status/log/diff/show`, `gh pr view`…, `sed -n 1,20p`, `find` không `-exec/-delete`) và không có cờ ghi file (`sort -o`, `base64 -o`, `tree -o`, `yq -i`/`-s`, kể cả cụm cờ `-uoFILE` và tên dài viết tắt `--out=`), chuyển hướng chỉ tới `/dev/null`, và mọi đường dẫn nằm trong các thư mục đọc tự do ở trên;
    - `mkdir`/`touch`/`cp`/`mv` với mọi đích trong workspace (không có `cd` trong chuỗi lệnh);
    - luật `allow` hẹp. Khi ở auto mode, luật allow cho phép chạy code tùy ý bị bỏ qua (`Bash(*)`, `python *`, `node *`, `npm run *`, `bash`, `sudo`, `Agent`, `SubagentWorkflow`…), như Claude Code.
 9. **Bộ phân loại** cho mọi thứ khác: đọc ngoài workspace (vd `grep` token trong `~/` — tool `grep` của Pi tìm cả file ẩn), lệnh shell còn lại, `bg_run`, `fetch_content` (trừ domain trong allow), spawn `Agent`, `SubagentWorkflow`, cài server MCP (bản cài đặt `allowInstall: false` nên pi-mcp-adapter vẫn từ chối sau đó), từng lời gọi MCP (qua sự kiện duyệt của pi-mcp-adapter, gồm cả lời gọi trong `mcpScript`), sửa file ngoài workspace hoặc vào đường dẫn được bảo vệ, tool lạ.
+
+### Giới hạn đọc khi có deny đường dẫn
+
+- `Path(...)`/`Read(...)` không cho qua glob shell chưa trích dẫn (kể cả chuyển hướng), brace expansion, biến, script lồng, wrapper hoặc chuỗi đổi thư mục có tập đích không kiểm được. `bash`, `bg_run` dùng cùng cổng; PowerShell chưa có bộ phân tích đường dẫn nên bị chặn khi có deny đường dẫn áp dụng.
+- `grep`/`rg` chỉ được đọc stdin hoặc các file thường được chỉ rõ, với cú pháp tùy chọn đã nhận diện; vẫn kiểm file mẫu `-f`/`--file`. Tìm trong thư mục, đích vắng của `rg`/`grep -r`, cờ chưa hiểu, `find`/`tree`/`du`, `ls -R`, `diff` với thư mục, `git grep` và danh sách file gián tiếp của `sort`/`wc` bị chặn. Tool `grep`/`find`/`ls` của Pi cũng chặn đích thư mục, kể cả mặc định là cwd.
+- Vì preset mặc định có deny `.env`, tìm cả cây workspace sẽ bị chặn dù hiện chưa có file bí mật. Dùng file tường minh được phép, vd `rg TODO src/main.ts`; `cat .env.example` vẫn dùng được nhờ ngoại lệ. Ngoại lệ từng file không miễn cả glob hoặc thư mục; deny chỉ ghi không chặn lệnh đã chứng minh chỉ đọc.
+- Đây là kiểm tra bảo thủ trước tool call, không có bộ lọc file tại lúc thực thi. Không quét cây rồi coi snapshot là bảo đảm an toàn; chưa thay thế sandbox cho chương trình tùy ý, nội dung script, thay đổi file/symlink đồng thời hay cơ chế đọc gián tiếp chưa nhận diện.
 
 ### Bộ phân loại
 
