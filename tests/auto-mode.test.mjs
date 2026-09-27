@@ -198,6 +198,76 @@ test("chính sách: lối đi nhanh, luật, bypass và tự bảo vệ", () => 
   }
 });
 
+for (const mode of ["auto", "bypass"]) {
+  for (const kind of ["deny", "ask"]) {
+    test(`fetch_content: ${kind} xét mọi URL trong ${mode}`, (t) => {
+      const ws = workspace();
+      t.after(ws.cleanup);
+      const rule = "WebFetch(domain:restricted.example.com)";
+      const pc = context(ws, { mode, rules: buildRuleSet(["WebFetch"], kind === "ask" ? [rule] : [], kind === "deny" ? [rule] : []) });
+      const allowed = "https://github.com/a/b", restricted = "https://restricted.example.com/private";
+      for (const input of [
+        { url: restricted },
+        { urls: [allowed, restricted] },
+        { urls: [restricted, allowed] },
+        { urls: [allowed, allowed, restricted] },
+        { url: allowed, urls: [restricted] },
+        { url: restricted, urls: [allowed] },
+        { urls: ["not a URL", restricted] },
+      ]) {
+        const decision = decide({ toolName: "fetch_content", input }, pc);
+        assert.equal(decision.kind, kind, JSON.stringify(input));
+        assert.ok(decision.reason.includes(rule), decision.reason);
+        if (kind === "deny") assert.equal(decision.rule, rule);
+      }
+      // Deny của URL phía sau vẫn ưu tiên hơn ask của URL phía trước.
+      const priority = context(ws, { mode, rules: buildRuleSet(["WebFetch"], ["WebFetch(domain:github.com)"], [rule]) });
+      assert.equal(decide({ toolName: "fetch_content", input: { urls: [allowed, restricted] } }, priority).kind, "deny");
+    });
+  }
+}
+
+test("fetch_content: auto chỉ dùng allow khi mọi URL đều được phủ", (t) => {
+  const ws = workspace();
+  t.after(ws.cleanup);
+  const pc = context(ws, { rules: buildRuleSet(["WebFetch(domain:github.com)", "WebFetch(domain:nodejs.org)"], [], []) });
+  const github = "https://github.com/a/b", node = "https://nodejs.org/api/", other = "https://other.example.com/";
+  for (const input of [
+    { url: github }, { urls: [github] }, { urls: [github, `${github}/issues`] },
+    { urls: [github, node] }, { urls: [node, github] }, { url: github, urls: [node] },
+  ]) assert.deepEqual(decide({ toolName: "fetch_content", input }, pc), { kind: "allow", via: "allow rule" }, JSON.stringify(input));
+  for (const input of [
+    { urls: [github, other] }, { urls: [other, github] }, { urls: [github, node, other] },
+    { url: github, urls: [other] }, { url: other, urls: [github] },
+    { urls: [github, "not a URL"] }, { urls: [github, ""] }, { url: "not a URL" }, {}, { urls: [] },
+  ]) assert.equal(decide({ toolName: "fetch_content", input }, pc).kind, "classify", JSON.stringify(input));
+  // Luật cho toàn bộ tool và bypass giữ nguyên hành vi khi không có deny/ask.
+  const call = { toolName: "fetch_content", input: { urls: [github, other] } };
+  for (const rule of ["WebFetch", "fetch_content"]) {
+    assert.equal(decide(call, context(ws, { rules: buildRuleSet([rule], [], []) })).kind, "allow");
+  }
+  assert.deepEqual(decide(call, { ...pc, mode: "bypass" }), { kind: "allow", via: "bypass" });
+});
+
+test("fetch_content: ngoại lệ permission chỉ áp dụng cho từng URL", (t) => {
+  const ws = workspace();
+  t.after(ws.cleanup);
+  const rules = ["WebFetch(domain:*.example.com)", "!WebFetch(domain:public.example.com)"];
+  const publicUrl = "https://public.example.com/", privateUrl = "https://private.example.com/";
+  for (const mode of ["auto", "bypass"]) {
+    for (const kind of ["deny", "ask"]) {
+      const pc = context(ws, { mode, rules: buildRuleSet(["WebFetch"], kind === "ask" ? rules : [], kind === "deny" ? rules : []) });
+      assert.equal(decide({ toolName: "fetch_content", input: { urls: [publicUrl, `${publicUrl}docs`] } }, pc).kind, "allow");
+      for (const input of [{ urls: [publicUrl, privateUrl] }, { urls: [privateUrl, publicUrl] }, { url: publicUrl, urls: [privateUrl] }]) {
+        assert.equal(decide({ toolName: "fetch_content", input }, pc).kind, kind, `${mode}: ${JSON.stringify(input)}`);
+      }
+    }
+  }
+  const pc = context(ws, { rules: buildRuleSet(rules, [], []) });
+  assert.equal(decide({ toolName: "fetch_content", input: { urls: [privateUrl, `${privateUrl}docs`] } }, pc).kind, "allow");
+  assert.equal(decide({ toolName: "fetch_content", input: { urls: [privateUrl, publicUrl] } }, pc).kind, "classify");
+});
+
 test("luật deny của installer chặn cả thư mục bí mật và mọi cấp bên trong, ở cả hai mode", () => {
   const ws = workspace();
   try {
