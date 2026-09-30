@@ -19,7 +19,7 @@ Skill nằm trong `assets/skills/` của repo và được cài vào `<root>/ass
 ## Bắt đầu
 
 ```text
-/skill:setup            một lần mỗi repo: tracker, AGENTS.md, CODING_STANDARDS.md, format và hook
+/skill:setup            một lần mỗi repo: tracker, AGENTS.md, CODING_STANDARDS.md, skill theo stack, format và hook
 /skill:create-verify    một lần mỗi app: verify skill + feature map trong .agents/skills/verify-<app>/
 /skill:work ?           bất cứ lúc nào: "giờ nên chạy lệnh gì?"
 ```
@@ -197,7 +197,7 @@ Khi thật sự cần, bạn tự chạy lệnh bằng `!<lệnh>` trong editor 
 | `afk` | Chạy không giám sát theo hợp đồng, như một goal. |
 | `ship` | Mở PR (deslop, commit có thứ tự, body briefing), babysit, land khi được yêu cầu. |
 | `reflect` | Bài học lặp lại → nấc mạnh nhất của thang; chỉ áp dụng dòng bạn duyệt. |
-| `setup` | Cấu hình repo: tracker, domain docs, AGENTS.md gọn, `CODING_STANDARDS.md`, `.pi-lens.json`, hook commit. |
+| `setup` | Cấu hình repo: tracker, domain docs, AGENTS.md gọn, `CODING_STANDARDS.md`, skill theo stack, `.pi-lens.json`, hook commit. |
 | `create-verify`, `maintain-verify` | Tạo và giữ verify skill kèm feature map cho từng app (web, CLI, API, mobile). |
 | `context-audit` | Đo context luôn-bật và cắt tỉa với ba phép thử. |
 | `improve-architecture` | Khảo sát cơ hội "làm sâu module", báo cáo HTML, rồi grill phương án bạn chọn. |
@@ -206,9 +206,13 @@ Khi thật sự cần, bạn tự chạy lệnh bằng `!<lệnh>` trong editor 
 | `handoff` | Nén hội thoại thành tài liệu bàn giao. |
 | `wait-what` | Nói lại tin nhắn cuối bằng lời đơn giản. |
 
-### 20 kỷ luật (model tự nạp; chỉ mô tả nằm trong context)
+### 17 kỷ luật (model tự nạp; chỉ mô tả nằm trong context)
 
-grilling, domain-modeling, codebase-design, principles, tdd, diagnose, prove, interrogate, how, why, prototype, research, decision-log, unslop, writing-for-agents, resolving-merge-conflicts, wizard, typescript, python, mobile.
+grilling, domain-modeling, codebase-design, principles, tdd, diagnose, prove, interrogate, how, why, prototype, research, decision-log, unslop, writing-for-agents, resolving-merge-conflicts, wizard.
+
+### Skill theo stack (chỉ trong repo dùng stack đó)
+
+`typescript`, `python`, `mobile` (Swift, Kotlin, Dart) nằm trong [assets/stack-skills](../assets/stack-skills), không nằm trong danh sách skill chung. `/skill:setup` nhận stack của repo và đề nghị chép skill khớp vào `.agents/skills/<tên>/` của repo; Pi chỉ nạp nó khi làm việc trong repo đó. Chạy lại `/skill:setup` sau khi nâng pi-config để cập nhật bản chép (có diff trước khi ghi).
 
 ## Trong repo của bạn
 

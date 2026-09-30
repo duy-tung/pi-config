@@ -14,7 +14,7 @@
 - **Exhaustive matches.** The compiler must fail when a new variant goes unhandled: `never` in TypeScript, `assert_never` in Python, a sealed `when` in Kotlin, a `switch` with no `default` in Swift.
 - **Derive types from the authoritative schema** (OpenAPI, protobuf, GraphQL, migrations) instead of hand-rolling a parallel type.
 - **Strengthen a type only where partiality appears.** A runtime assertion or a "should never happen" throw marks the spot. Push the check into the type, then stop.
-- Language idioms: the `typescript`, `python` and `mobile` skills.
+- Language idioms: the repo's stack skill (`typescript`, `python` or `mobile`), which `/skill:setup` adds to the repo when its stack matches.
 
 **Test.** Is this data crossing a system boundary right now? If not, validation is redundant. Can you write a comment explaining when this combination of fields is valid? If so, split it into a sum type. If a variant is added next month, will the compiler show the next agent every place to handle it?
 

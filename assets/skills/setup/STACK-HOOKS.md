@@ -119,5 +119,5 @@ Simulator and emulator suites are too slow for pre-commit: put them in `.githook
 
 Offer; do not recommend by default. On yes:
 
-- TypeScript: load the `typescript` skill and follow its BOUNDARIES.md.
-- Python: load the `python` skill and follow its BOUNDARIES.md.
+- TypeScript: follow [BOUNDARIES.md](../../stack-skills/typescript/BOUNDARIES.md) of the `typescript` stack skill.
+- Python: follow [BOUNDARIES.md](../../stack-skills/python/BOUNDARIES.md) of the `python` stack skill.

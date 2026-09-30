@@ -141,7 +141,7 @@ Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều
 | `@pi-archimedes/image-paste` | 2.8.0 |
 | `@mariozechner/clipboard` | 0.3.9 |
 | Firecrawl CLI | 1.24.6 |
-| Skills quy trình (tstack) | Trong repo: [assets/skills](assets/skills) |
+| Skills quy trình (tstack) | Trong repo: [assets/skills](assets/skills); skill theo stack (typescript, python, mobile) trong [assets/stack-skills](assets/stack-skills), `/skill:setup` chép vào repo dùng stack đó |
 | Firecrawl skills | Commit trong [sources.lock.json](sources.lock.json) |
 
 Các manifest và lockfile nằm trong [manifests](manifests). Năm package có peer range chưa gồm Pi 0.99.1 (pi-lens, pi-background-tasks, pi-goal-x, pi-advisor-flow, pi-mcp-adapter) được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json). Quy trình nâng phiên bản (vendor, lockfile, tính lại checksum bản vá): [docs/upgrade.md](docs/upgrade.md).

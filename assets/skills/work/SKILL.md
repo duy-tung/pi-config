@@ -66,4 +66,4 @@ Answer `?` from this map. Name commands exactly as written.
 
 **Anytime.** `/skill:handoff` moves work to another session, harness or person. `/skill:wait-what` when a message did not land. `/rewind` discards a failed approach, code and conversation both.
 
-**Disciplines the agent loads on its own** (you can name them too): grilling, domain-modeling, codebase-design, principles, tdd, diagnose, prove, interrogate, how, why, prototype, research, decision-log, unslop, writing-for-agents, resolving-merge-conflicts, wizard, typescript, python, mobile.
+**Disciplines the agent loads on its own** (you can name them too): grilling, domain-modeling, codebase-design, principles, tdd, diagnose, prove, interrogate, how, why, prototype, research, decision-log, unslop, writing-for-agents, resolving-merge-conflicts, wizard. Per repo, `/skill:setup` adds the stack skill (typescript, python or mobile).
