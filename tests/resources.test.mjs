@@ -48,6 +48,14 @@ test('relative paths, local package references and patterns preserve configured 
   assert.equal(result.archived.length,0);
   for(const file of [entry,helper,localPackage,prompt,theme])assert.ok(fs.existsSync(file));
 });
+test('a removed skill inside the installer skills directory is archived; an explicitly referenced one is kept',t=>{
+  const f=fixture(t),kept=owned(f,'assets/skills/keep/SKILL.md'),old=owned(f,'assets/skills/old/SKILL.md'),pinned=owned(f,'assets/skills/pinned/SKILL.md');
+  const settings=owned(f,'agent/settings.json',{skills:['../assets/skills','../assets/skills/pinned']});
+  f.wanted.add(settings);f.wanted.add(kept);
+  const result=reconcileResources(f);
+  assert.deepEqual(result.archived,[old]);assert.deepEqual(result.preserved,[pinned]);
+  assert.ok(fs.existsSync(kept)&&fs.existsSync(pinned)&&!fs.existsSync(old));
+});
 test('registry entries outside managed directories cannot be removed',t=>{
   const f=fixture(t),outside=owned(f,'personal-note.json');
   reconcileResources(f);assert.ok(fs.existsSync(outside));
