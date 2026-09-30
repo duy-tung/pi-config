@@ -29,19 +29,9 @@ export function formatTokens(tokens: number): string {
   return `${Math.max(1, Math.round(tokens / 1_000))}k`;
 }
 
-/** Nhãn footer; tokens null (ngay sau compaction, chưa có phản hồi mới) thì không hiện gì. */
-export function statusText(tokens: number | null | undefined, edge: number): { zone?: Zone; text?: string } {
-  if (typeof tokens !== "number" || !Number.isFinite(tokens) || tokens < 0) return {};
-  const zone = zoneOf(tokens, edge);
-  const used = `${formatTokens(tokens)}/${formatTokens(edge)}`;
-  if (zone === "green") return { zone, text: `zone ${used}` };
-  if (zone === "yellow") return { zone, text: `zone ${used} gần mép` };
-  return { zone, text: `dumb zone ${used} · /clear, handoff hoặc /compact ở ranh giới` };
-}
-
 /**
- * Nhắc cho model khi context vừa vượt lên vàng hoặc đỏ: footer chỉ người dùng thấy, còn quyết định ở ranh giới pha
- * (work/PHASE-BOUNDARIES.md) cần cả agent biết để đề xuất đúng lúc. Mỗi lần vượt ngưỡng chỉ nhắc một lần.
+ * Nhắc cho model khi context vừa vượt lên vàng hoặc đỏ: quyết định ở ranh giới pha (work/PHASE-BOUNDARIES.md)
+ * cần agent biết để đề xuất đúng lúc. Mỗi lần vượt ngưỡng chỉ nhắc một lần.
  */
 export function zoneHint(zone: Zone, tokens: number, edge: number): string {
   const used = `${formatTokens(tokens)}/${formatTokens(edge)}`;

@@ -11,7 +11,7 @@ Skill nằm trong `assets/skills/` của repo và được cài vào `<root>/ass
 | Trụ cột | Trên Pi |
 |---|---|
 | **Căn chỉnh trước khi build** | `/skill:grill-with-docs` hỏi từng vòng, mỗi câu có đáp án đề xuất. Sự thật do agent tự tra (code giao `explorer`, docs/web giao `researcher`), quyết định là của người. Câu "cách nào tốt hơn" mà chạy thử trả lời được thì agent tự làm prototype. |
-| **Ở trong smart zone** | Footer báo vùng context theo mép 150k: xanh, vàng khi gần mép, đỏ khi quá mép. `/context-budget` đo phần luôn-bật. Việc đọc code rộng giao `explorer`, tra docs/web giao `researcher`. Hết một pha thì chọn: tiếp tục, `/clear`, handoff, subagent hoặc `/compact`. |
+| **Ở trong smart zone** | Vùng context theo mép 150k: xanh, vàng khi gần mép, đỏ khi quá mép; agent được nhắc khi vượt lên vàng hoặc đỏ. `/context-budget` đo phần luôn-bật. Việc đọc code rộng giao `explorer`, tra docs/web giao `researcher`. Hết một pha thì chọn: tiếp tục, `/clear`, handoff, subagent hoặc `/compact`. |
 | **Chứng minh trên sản phẩm thật** | Mỗi app có verify skill kèm feature map (`/skill:create-verify`). Vai `verifier`, context sạch và không sửa code, trả VERIFIED, NOT VERIFIED hoặc INCONCLUSIVE kèm bằng chứng. Người viết không tự chấm. |
 | **Mã hoá bài học vào cấu trúc** | Thang ưu tiên, từ mạnh nhất: type và kiến trúc; lint, hook, CI và luật pi-lens; `CODING_STANDARDS.md`; skill; một dòng trong AGENTS.md. `/skill:reflect` đưa mỗi bài học lên nấc cao nhất có thể. |
 | **Tự chủ có hợp đồng** | Việc đảo ngược được thì cứ làm. `/skill:afk` chạy theo hợp đồng viết, **như một goal** (xem dưới). Git guard trong auto mode chặn tất định các lệnh git phá huỷ. |
@@ -64,7 +64,7 @@ Skill kỷ luật (grilling, tdd, diagnose, prove, interrogate…) được mode
 
 ## Ranh giới pha và smart zone
 
-Footer hiện `zone 42k/150k` (xanh), `gần mép` (vàng) hoặc `dumb zone` (đỏ). Cửa sổ 1M của Opus làm auto-compaction chạy rất muộn, nên màu này mới là tín hiệu hết pha. Model không thấy footer, nên lần đầu context vượt lên vàng hoặc đỏ, agent nhận thêm một nhắc ngắn ở lượt kế tiếp để tự đề xuất ranh giới. Hết một pha thì chọn theo cây quyết định trong `/skill:work`:
+Extension `smart-zone` theo dõi context theo mép 150k: xanh, vàng khi gần mép, đỏ khi quá mép (footer không hiện nhãn này). Cửa sổ 1M của Opus làm auto-compaction chạy rất muộn, nên vùng này mới là tín hiệu hết pha: lần đầu context vượt lên vàng hoặc đỏ, agent nhận một nhắc ngắn ở lượt kế tiếp để đề xuất ranh giới với bạn. Hết một pha thì chọn theo cây quyết định trong `/skill:work`:
 - **tiếp tục** khi pha sau cần pha này làm nguồn gốc (grill sang implement);
 - **`/clear`** khi mọi thứ đã nằm trong spec, ticket hoặc commit. Phiên cũ vẫn mở lại được qua `/resume` hoặc menu của phiên mới;
 - **`/skill:handoff`** khi đổi harness, repo hoặc người;
@@ -213,7 +213,7 @@ grilling, domain-modeling, codebase-design, principles, tdd, diagnose, prove, in
 | `Explore`, `general-purpose`, `ticket-worker`, ba agent review | `researcher`, `worker`, `reviewer` + file trục trong `interrogate/axes/`, `verifier` |
 | Seat review ngoài qua `codex`/`gemini` CLI | Vai khác họ model trong preset |
 | `effort: high` theo skill | Parent đã chạy Opus/high; skill không đổi thinking giữa phiên (giữ prompt cache) |
-| Hook `guard_git.py`, PreCompact, status line | Git guard trong auto mode, extension `smart-zone` (footer, nhắc compaction, `/context-budget`) |
+| Hook `guard_git.py`, PreCompact, status line | Git guard trong auto mode, extension `smart-zone` (nhắc vùng context và compaction, `/context-budget`) |
 | `.claude/skills/verify-<app>/`, hook format trong `.claude/settings.json` | `.agents/skills/verify-<app>/`, `.pi-lens.json` kèm hook commit |
 | Background Bash, `/loop` | `bg_run` (phiên tự thức khi job xong) |
 | afk tự vòng lặp | afk chạy như goal: tự tiếp tục, Oracle khi kẹt, auditor độc lập khi xong |

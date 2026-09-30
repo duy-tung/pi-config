@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import smartZone from "../assets/extensions/smart-zone/index.ts";
 import { budgetReport, contextFileEntries, skillEntries, skillRoot, toolSource } from "../assets/extensions/smart-zone/lib/budget.ts";
-import { COMPACTION_NOTICE, crossedUp, DEFAULT_EDGE, formatTokens, parseTokens, statusText, zoneHint, zoneOf } from "../assets/extensions/smart-zone/lib/zone.ts";
+import { COMPACTION_NOTICE, crossedUp, DEFAULT_EDGE, formatTokens, parseTokens, zoneHint, zoneOf } from "../assets/extensions/smart-zone/lib/zone.ts";
 
 test("mép smart zone: đọc 150k, 1m, số trần; giá trị sai dùng mặc định", () => {
   assert.equal(parseTokens(undefined), DEFAULT_EDGE);
@@ -20,14 +20,6 @@ test("vùng: xanh dưới 2/3 mép, vàng tới mép, đỏ khi quá mép", () =
   assert.equal(zoneOf(149_999, 150_000), "yellow");
   assert.equal(zoneOf(150_000, 150_000), "red");
   assert.deepEqual([formatTokens(950), formatTokens(42_300), formatTokens(1_000_000), formatTokens(1_500_000)], ["1k", "42k", "1M", "1.5M"]);
-});
-
-test("nhãn footer theo vùng; chưa biết số token thì không hiện", () => {
-  assert.deepEqual(statusText(42_000, 150_000), { zone: "green", text: "zone 42k/150k" });
-  assert.deepEqual(statusText(120_000, 150_000), { zone: "yellow", text: "zone 120k/150k gần mép" });
-  assert.deepEqual(statusText(180_000, 150_000), { zone: "red", text: "dumb zone 180k/150k · /clear, handoff hoặc /compact ở ranh giới" });
-  assert.deepEqual(statusText(null, 150_000), {});
-  assert.deepEqual(statusText(undefined, 150_000), {});
 });
 
 test("nhắc cho model chỉ khi vùng đi lên (xanh→vàng, vàng→đỏ), mỗi lần vượt một lần", () => {
@@ -132,17 +124,17 @@ function fakeCtx(tokens, { hasUI = true } = {}) {
   return { ctx, calls };
 }
 
-test("extension: footer theo vùng, nhắc khi auto-compaction chạy, không làm gì ở agent con", async () => {
+test("extension: không hiện gì ở footer, nhắc model khi vượt mép và khi auto-compaction chạy, bỏ qua agent con", async () => {
   const { pi, handlers, commands, sent } = fakePi();
   smartZone(pi);
   const green = fakeCtx(10_000);
   handlers.get("session_start")({}, green.ctx);
-  assert.deepEqual(green.calls.status, [["smart-zone", "<success>zone 10k/150k"]]);
+  assert.deepEqual(green.calls.status, [], "không có nhãn footer");
   assert.equal(sent.length, 0, "vùng xanh không nhắc model");
   const red = fakeCtx(160_000);
   handlers.get("turn_end")({}, red.ctx);
-  assert.match(red.calls.status[0][1], /^<error>dumb zone 160k\/150k/u);
-  // Model không thấy footer: lần đầu vượt lên đỏ thì xếp một nhắc ẩn vào lượt kế tiếp; các lượt đỏ sau không nhắc lại.
+  assert.deepEqual(red.calls.status, []);
+  // Lần đầu vượt lên đỏ thì xếp một nhắc ẩn vào lượt kế tiếp; các lượt đỏ sau không nhắc lại.
   assert.equal(sent.length, 1);
   assert.equal(sent[0][0].customType, "smart-zone");
   assert.equal(sent[0][0].display, false);
@@ -150,10 +142,10 @@ test("extension: footer theo vùng, nhắc khi auto-compaction chạy, không l�
   assert.deepEqual(sent[0][1], { deliverAs: "nextTurn" });
   handlers.get("turn_end")({}, fakeCtx(170_000).ctx);
   assert.equal(sent.length, 1);
-  // Ngay sau compaction chưa có số token: xoá nhãn thay vì giữ nhãn cũ.
+  // Ngay sau compaction chưa có số token: chỉ báo auto-compaction.
   const compacted = fakeCtx(null);
   handlers.get("session_compact")({ reason: "threshold" }, compacted.ctx);
-  assert.deepEqual(compacted.calls.status, [["smart-zone", undefined]]);
+  assert.deepEqual(compacted.calls.status, []);
   assert.deepEqual(compacted.calls.notify, [[COMPACTION_NOTICE, "warning"]]);
   // Sau compaction context tụt về: vượt lên vàng lần nữa thì nhắc lại.
   handlers.get("turn_end")({}, fakeCtx(20_000).ctx);
