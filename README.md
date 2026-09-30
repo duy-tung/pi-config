@@ -156,7 +156,7 @@ node install.mjs --root /duong-dan/platform --agent-dir /duong-dan/agent --bin-d
 
 Role, subagents, goal settings, advisor settings và cấu hình công cụ cùng nằm trong agent directory. Một runtime Pi duy nhất ở `runtimes/current`; Firecrawl CLI ở `tools/firecrawl`.
 
-Khi chạy lại, installer dùng lockfile và checksum để kiểm tính nhất quán; runtime được cài lại khi lockfile hoặc kết quả bản vá đổi, để bản vá luôn áp lên file gốc.
+Khi chạy lại, installer dùng lockfile và checksum để kiểm tính nhất quán; runtime được cài lại khi lockfile hoặc kết quả bản vá đổi, để bản vá luôn áp lên file gốc. Bản runtime và nguồn cũ được chuyển vào `<root>/backups`; mỗi lần cài chỉ giữ bản gần nhất của mỗi loại (và 3 lần gỡ tài nguyên gần nhất), còn bản sao file cấu hình trước khi ghi đè thì giữ nguyên.
 
 File JSON cấu hình trong agent directory và `<root>/config`, kể cả `settings.json` mà Pi ghi lại khi đổi model hay thinking, được gộp ba chiều với mặc định của lần cài trước (lưu ở `<root>/state/defaults`):
 - Giá trị bạn chưa đổi nhận mặc định mới; giá trị bạn đã đổi được giữ. Nếu mặc định mới cũng đổi chính giá trị đó, installer giữ của bạn và báo xung đột kèm mặc định mới.

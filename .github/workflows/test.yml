@@ -79,6 +79,23 @@ jobs:
           $DownloadedText = [Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes((Join-Path $PWD 'install.ps1')))
           $BootstrapText = $DownloadedText.TrimStart([char]0xFEFF)
           & ([scriptblock]::Create($BootstrapText)) @BootstrapArguments
+      - name: add-path.ps1 giữ PATH của user dạng REG_EXPAND_SZ
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
+          $raw = { $key.GetValue('Path', $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames) }
+          $key.SetValue('Path', '%USERPROFILE%\pi-probe;C:\Tools', [Microsoft.Win32.RegistryValueKind]::ExpandString)
+          & .\lib\add-path.ps1 -Directory 'C:\pi bin'
+          & .\lib\add-path.ps1 -Directory 'C:\pi bin\'
+          & .\lib\add-path.ps1 -Directory "$env:USERPROFILE\pi-probe"
+          $value = & $raw
+          if ($value -ne 'C:\pi bin;%USERPROFILE%\pi-probe;C:\Tools') { throw "unexpected Path: $value" }
+          if ($key.GetValueKind('Path') -ne [Microsoft.Win32.RegistryValueKind]::ExpandString) { throw "Path is no longer REG_EXPAND_SZ" }
+          $key.DeleteValue('Path')
+          & .\lib\add-path.ps1 -Directory 'C:\pi bin'
+          if ((& $raw) -ne 'C:\pi bin') { throw "unexpected Path when empty: $(& $raw)" }
+          $key.Close()
       - name: Chẩn đoán npm Windows khi thất bại
         if: failure() && runner.os == 'Windows'
         shell: powershell
