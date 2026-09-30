@@ -8,6 +8,7 @@ import {
   workflowLabel, writeModelRoles,
 } from './model-roles.mjs';
 import {backupFile, defaultsFile, describeMerge, planConfigFile, writeAtomic, writeConfigPlan} from './merge.mjs';
+import {acquireInstallLock} from './install-lock.mjs';
 
 /**
  * pi-models: xem và đổi model/thinking của các vai. Lệnh ghi sửa <agent-dir>/model-roles.json rồi áp ngay phần model
@@ -99,22 +100,11 @@ export function writeModelFiles({root, statePath, state, plans}) {
 
 /** Khóa chung với installer: không ghi cùng lúc với một lần cài hay một pi-models khác. */
 async function withInstallLock(root, fn) {
-  const lock = path.join(root, '.install.lock');
-  let descriptor;
+  const release = acquireInstallLock(root);
   try {
-    descriptor = fs.openSync(lock, 'wx', 0o600);
-  } catch (error) {
-    if (error.code !== 'EEXIST') throw error;
-    throw new Error(`Installer hoặc pi-models khác đang chạy (có ${lock}). Chờ xong rồi thử lại; nếu chắc không còn tiến trình nào thì xoá file này.`);
-  }
-  try {
-    fs.writeFileSync(descriptor, String(process.pid));
-    fs.closeSync(descriptor);
-    descriptor = undefined;
     return await fn();
   } finally {
-    if (descriptor !== undefined) fs.closeSync(descriptor);
-    fs.rmSync(lock, {force: true});
+    release();
   }
 }
 

@@ -452,8 +452,8 @@ function pathRuleList(pc: PolicyContext): string {
 
 /**
  * Bỏ khỏi kết quả tool grep của Pi các dòng thuộc file bị luật deny đường dẫn chặn đọc.
- * Dòng có dạng "<đường dẫn>:<dòng>: nội dung" hoặc "<đường dẫn>-<dòng>- ngữ cảnh", đường dẫn tương đối
- * với thư mục tìm; xét mọi cách tách có thể và bỏ dòng khi bất kỳ cách nào trỏ vào file bị deny.
+ * Dòng có dạng "<đường dẫn>:<dòng>: nội dung" hoặc "<đường dẫn>-<dòng>- ngữ cảnh" (tools/grep.js của Pi), đường
+ * dẫn tương đối với thư mục tìm.
  */
 export function filterDeniedGrep(text: string, searchPath: string, pc: PolicyContext): { text: string; removed: number } {
   const denied = deniedPath("grep", pc);
@@ -471,11 +471,11 @@ export function filterDeniedGrep(text: string, searchPath: string, pc: PolicyCon
   };
   let removed = 0;
   const kept = text.split("\n").filter((line) => {
-    for (const match of line.matchAll(/[:-]\d+[:-] /gu)) {
-      if (match.index && isDenied(line.slice(0, match.index))) {
-        removed++;
-        return false;
-      }
+    // Đường dẫn là phần trước dấu tách đầu tiên; phần sau là nội dung file, có thể chứa chuỗi giống dấu tách.
+    const match = /[:-]\d+[:-] /u.exec(line);
+    if (match?.index && isDenied(line.slice(0, match.index))) {
+      removed++;
+      return false;
     }
     return true;
   });

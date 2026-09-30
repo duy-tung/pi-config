@@ -19,6 +19,8 @@ interface Holder {
   host?: string;
   token?: string;
   at: number;
+  /** Inode của file khóa lúc đọc: phân biệt khóa đã xét với khóa mới cùng tên. */
+  ino?: number;
 }
 
 /** Kết quả một lần thử: release khi đã lấy được khóa; removed khi đã gỡ một khóa bỏ lại. */
@@ -122,9 +124,10 @@ export class StorageLock {
   private holder(file = this.file): Holder | undefined {
     let text: string;
     let mtimeMs: number;
+    let ino: number;
     try {
       text = fs.readFileSync(file, "utf8");
-      mtimeMs = fs.statSync(file).mtimeMs;
+      ({ mtimeMs, ino } = fs.statSync(file));
     } catch {
       return undefined;
     }
@@ -132,14 +135,14 @@ export class StorageLock {
       const value = JSON.parse(text) as Record<string, unknown>;
       if (value && typeof value.at === "number") {
         return {
-          at: value.at, pid: typeof value.pid === "number" ? value.pid : undefined,
+          at: value.at, pid: typeof value.pid === "number" ? value.pid : undefined, ino,
           host: typeof value.host === "string" ? value.host : undefined, token: typeof value.token === "string" ? value.token : undefined,
         };
       }
     } catch {
       /* đang được ghi hoặc hỏng */
     }
-    return { at: mtimeMs };
+    return { at: mtimeMs, ino };
   }
 
   private stale(holder: Holder): boolean {
@@ -155,6 +158,12 @@ export class StorageLock {
    * nên không có khoảng hở giữa lúc kiểm và lúc xoá; lỡ lấy phải khóa mới thì trả lại bằng hard link (không ghi đè).
    */
   private remove(holder: Holder): void {
+    // Khóa đã bị thay (inode khác) thì không đụng tới: tránh cả khoảng khóa vắng mặt khi phải trả lại.
+    try {
+      if (holder.ino !== undefined && fs.statSync(this.file).ino !== holder.ino) return;
+    } catch {
+      return;
+    }
     const aside = `${this.file}.${randomUUID()}.stale`;
     try {
       fs.renameSync(this.file, aside);
@@ -162,7 +171,7 @@ export class StorageLock {
       return; // process khác vừa gỡ, hoặc Windows còn mở file
     }
     const taken = this.holder(aside);
-    if (!taken || taken.token !== holder.token || taken.at !== holder.at) {
+    if (!taken || taken.token !== holder.token || taken.at !== holder.at || taken.ino !== holder.ino) {
       try {
         fs.linkSync(aside, this.file);
       } catch {

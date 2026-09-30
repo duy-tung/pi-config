@@ -218,8 +218,12 @@ test("git guard: tên lệnh viết khác (escape, nháy, biến đã gán) vẫ
   const blocked = [
     "g\\it push --force origin feature", '"gi"t push -f origin feature', "gi''t push --force", "GIT=git; $GIT reset --hard",
     'export G=git; "$G" clean -fdx', "X='git push'; $X --force", "r\\m -rf /", "${GIT:-git} reset --hard",
+    // Tiền tố tùy chọn dài, git và GNU rm nhận như tùy chọn đầy đủ.
+    "git commit --no-veri -m x", "git push --no-ver", "git reset --har", "git clean --forc", "git switch --disc main",
+    "git push --forc origin feature", "git branch --del --forc x", "rm --recur /",
   ];
-  const passed = ["echo digit", "ls; rm -r build", "GIT=git; $GIT status", "$UNSET push --force"];
+  const passed = ["echo digit", "ls; rm -r build", "GIT=git; $GIT status", "$UNSET push --force",
+    "git push --force-with-lease origin feature", "git clean --dry -f", "git restore --sta .", "git commit --all -m x", "git push --tags"];
   const wrong = [];
   for (const command of blocked) if (!checkGitGuard(command, { cwd: f.dirs.feature ?? Object.values(f.dirs)[0], env: environment() })) wrong.push(`phải chặn: ${command}`);
   for (const command of passed) {

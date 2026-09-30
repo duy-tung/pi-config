@@ -13,6 +13,13 @@ const args=[path.join(repo,'install.mjs'),'--root',root,'--agent-dir',agentDir,'
 await run(process.execPath,args,{timeout:2*npmTimeout()+600000});
 await run(process.execPath,[path.join(root,'bin/launch.mjs'),'main','--version']);
 await run(process.execPath,[path.join(root,'bin/launch.mjs'),'models']);
+// scripts/rehash-patches.mjs chạy được trên runtime vừa cài: mọi bản vá khớp manifest.
+{
+  const rehash=spawnSync(process.execPath,[path.join(repo,'scripts/rehash-patches.mjs'),'--modules',path.join(root,'runtimes','current','node_modules')],{encoding:'utf8'});
+  assert.equal(rehash.status,0,rehash.stdout+rehash.stderr);
+  assert.match(rehash.stdout,/Mọi bản vá khớp manifest hiện tại\./u);
+  assert.doesNotMatch(rehash.stdout,/^(?:FAIL|NEW) /mu);
+}
 // Launcher trong bin-dir chạy được; Node ghim trong launcher bị gỡ thì báo cách sửa thay vì lỗi "not found".
 {
   const windows=process.platform==='win32';
@@ -44,7 +51,7 @@ fs.renameSync(lensAside,lensDir);
 assert.equal(missing.status,1,missing.stdout+missing.stderr);
 assert.match(missing.stderr,/^current\/pi-lens: chưa cài \(thiếu /mu);
 assert.doesNotMatch(missing.stderr,/ENOENT|at file:/u);
-await run(process.execPath,['--test',...['patches','models','glm-wire','native-search-wire','claude-effort-wire','rewind-session','subagent-markdown','patched-typecheck','model-roles','model-commands','models-command'].map(name=>path.join(repo,`tests/${name}.test.mjs`))],{env:{...process.env,PI_CONFIG_TEST_ROOT:root}});
+await run(process.execPath,['--test',...['patches','extensions-typecheck','models','glm-wire','native-search-wire','claude-effort-wire','rewind-session','subagent-markdown','patched-typecheck','model-roles','model-commands','models-command'].map(name=>path.join(repo,`tests/${name}.test.mjs`))],{env:{...process.env,PI_CONFIG_TEST_ROOT:root}});
 for(const profile of ['main'])await run(process.execPath,[path.join(repo,'tests/profile-integration.mjs'),root,profile]);
 for(const profile of ['main'])await run(process.execPath,[path.join(repo,'tests/agent-integration.mjs'),root,profile]);
 // Cài lại gộp ba chiều file JSON cấu hình: base là mặc định lần cài trước, lưu riêng trong <root>/state/defaults.

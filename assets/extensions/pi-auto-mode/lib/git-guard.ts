@@ -824,8 +824,19 @@ function parseOpts(args: string[], shortValue = "", longValue: string[] = []): O
     positional.push(arg);
     i++;
   }
+  // git và GNU rm nhận tiền tố duy nhất của tùy chọn dài (--no-veri = --no-verify, --har = --hard). Tiền tố của
+  // tùy chọn guard xét được tính như tùy chọn đó; tiền tố mơ hồ thì git báo lỗi, nên chặn cũng không hại.
+  for (const name of [...longs]) {
+    if (name.length < 4) continue;
+    for (const option of GUARDED_LONGS) if (option !== name && option.startsWith(name)) longs.add(option);
+  }
   return { letters, longs, positional };
 }
+
+const GUARDED_LONGS = [
+  "--no-verify", "--force", "--mirror", "--prune", "--all", "--branches", "--delete", "--tags", "--hard", "--dry-run",
+  "--discard-changes", "--staged", "--worktree", "--cached", "--recursive",
+];
 
 /** [tùy chọn toàn cục, lệnh con, đối số] của một lời gọi git. */
 function splitGit(words: string[]): [string[], string, string[]] {

@@ -111,7 +111,8 @@ test('pi-models: tham số sai và khóa của installer báo lỗi, không ghi 
   }
   assert.match((await run('help')).text, /pi-models set <vai> \[provider\/id\] \[thinking\]/u);
   const lock = path.join(f.root, '.install.lock');
-  fs.writeFileSync(lock, '1');
+  // Khóa của một tiến trình còn chạy (chính test này); khóa của tiến trình đã chết thì được gỡ (install-lock.test.mjs).
+  fs.writeFileSync(lock, String(process.pid));
   const locked = await run('set', 'worker', 'high');
   assert.equal(locked.status, 1);
   assert.match(locked.text, /Installer hoặc pi-models khác đang chạy/u);

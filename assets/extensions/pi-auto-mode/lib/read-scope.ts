@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { resolveShellPath } from "./paths.ts";
@@ -115,6 +116,7 @@ export interface PathScope {
 
 const WALK_LIMIT = 50_000;
 const WALK_MS = 500;
+const GIT_CHECKS = 20;
 // Lệnh không đọc nội dung file từ đối số: tham số chưa biết của chúng không làm lộ file bị deny.
 const NO_READ = new Set([
   "echo", "printf", "true", "false", ":", "pwd", "sleep", "date", "whoami", "id", "uname", "hostname", "exit", "return",
@@ -123,6 +125,11 @@ const NO_READ = new Set([
 ]);
 // Chỉ liệt kê tên/kích thước, không đọc nội dung: không cần duyệt cây để kiểm luật đọc.
 const NAMES_ONLY = new Set(["find", "tree", "du", "ls"]);
+// Đọc nội dung cả cây thư mục khi nhận thư mục làm đối số.
+const ARCHIVERS = new Set(["tar", "bsdtar", "gtar", "zip", "7z", "7za", "jar", "cpio", "pax"]);
+const COPIERS = new Set(["cp", "rsync", "scp"]);
+const isRecursiveCopy = (arg: string) =>
+  /^-[^-]*[rRa]/u.test(arg) || ["--recursive", "--archive"].includes(arg);
 const FIND_ACTIONS = /^-(?:exec|execdir|ok|okdir|fprint|fprint0|fprintf|fls)$/u;
 const LOOP_KEYWORDS = new Set(["for", "select"]);
 const SHELL_KEYWORDS = new Set(["if", "then", "else", "elif", "fi", "do", "done", "while", "until", "!", "{", "}", "time"]);
@@ -144,12 +151,24 @@ function denies(file: string, denied: DeniedPath, link = true): { file: string; 
  * Duyệt cây (không theo symlink thư mục) tìm file khớp luật deny. Giới hạn số mục và thời gian;
  * vượt giới hạn thì không kết luận được. skipHidden: rg mặc định bỏ file/thư mục ẩn.
  */
-export function findDenied(root: string, denied: DeniedPath, skipHidden = false): PathScope {
+/** git bỏ qua file này (.gitignore, .git/info/exclude, core.excludesFile); ngoài repo hoặc lỗi thì coi như không. */
+export function gitIgnored(file: string): boolean {
+  try {
+    return spawnSync("git", ["check-ignore", "-q", "--", path.basename(file)], {
+      cwd: path.dirname(file), stdio: "ignore", timeout: 2000, windowsHide: true,
+    }).status === 0;
+  } catch {
+    return false;
+  }
+}
+
+export function findDenied(root: string, denied: DeniedPath, skipHidden = false, skipIgnored = false): PathScope {
   const started = Date.now();
   const first = denies(root, denied);
   if (first) return { evidence: first };
   const queue = [root];
   let seen = 0;
+  let gitChecks = 0;
   while (queue.length) {
     const dir = queue.shift() as string;
     let entries: fs.Dirent[];
@@ -161,7 +180,12 @@ export function findDenied(root: string, denied: DeniedPath, skipHidden = false)
       if (entry.name === ".git" || (skipHidden && entry.name.startsWith("."))) continue;
       const file = path.join(dir, entry.name);
       const hit = denies(file, denied, entry.isSymbolicLink());
-      if (hit) return { evidence: hit };
+      if (hit) {
+        // rg mặc định không đọc file git bỏ qua: chỉ hỏi git với file đã khớp luật, tối đa GIT_CHECKS lần mỗi lệnh.
+        if (!skipIgnored) return { evidence: hit };
+        if (++gitChecks > GIT_CHECKS) return { uncertain: `too many files in ${root} match the path deny rules to check against .gitignore` };
+        if (!gitIgnored(file)) return { evidence: hit };
+      }
       if (entry.isDirectory()) queue.push(file);
     }
   }
@@ -240,6 +264,13 @@ function directoryChange(command: SimpleCommand, home: string): string | null | 
     const index = words.findIndex((word, i) => i > 0 && !word.startsWith("-"));
     return index < 0 ? home : literal(index);
   }
+  if (name === "tar" || name === "bsdtar" || name === "gtar") {
+    for (let i = 1; i < words.length; i++) {
+      if (words[i] === "-C" || words[i] === "--directory") return i + 1 < words.length ? literal(i + 1) : undefined;
+      if (words[i].startsWith("--directory=")) return command.literal[i] ? words[i].slice("--directory=".length) : null;
+    }
+    return undefined;
+  }
   if (name === "env" || name === "git") {
     for (let i = 1; i < words.length; i++) {
       if (words[i] === "-C" || (name === "env" && words[i] === "--chdir")) return i + 1 < words.length ? literal(i + 1) : undefined;
@@ -258,6 +289,40 @@ function rgSearchesHidden(arg: string): boolean {
   for (const flag of arg.slice(1)) {
     if (flag === "u" || flag === ".") return true;
     if ("ABCEefgMjmtTr".includes(flag)) return false; // phần còn lại là giá trị của cờ
+  }
+  return false;
+}
+
+/** Đối số chữ thuần (không glob) có thể là đường dẫn: từ, giá trị --opt=, @file, đích chuyển hướng, phần sau ":". */
+function literalOperands(command: SimpleCommand): string[] {
+  const words = new Set<string>();
+  const add = (value: string) => {
+    if (!value || /[\r\n]/u.test(value) || /^[a-z][a-z0-9+.-]+:\/\//iu.test(value)) return;
+    words.add(value);
+    const colon = value.indexOf(":");
+    if (colon > 0 && colon < value.length - 1 && !/^[A-Za-z]:[\\/]/u.test(value)) words.add(value.slice(colon + 1));
+  };
+  command.words.forEach((word, index) => {
+    if (index === 0 || command.glob[index]) return;
+    let value = word.startsWith("@") ? word.slice(1) : word;
+    if (value.startsWith("-")) {
+      const eq = value.indexOf("=");
+      if (eq < 0) return;
+      value = value.slice(eq + 1).replace(/^@/u, "");
+    }
+    add(value);
+  });
+  for (const redirect of command.redirects) if (!redirect.glob && !/^\d+$|^-$/u.test(redirect.target)) add(redirect.target);
+  return [...words];
+}
+
+/** rg có đọc file bị .gitignore bỏ qua không: --no-ignore*, -u (một lần trở lên), --unrestricted. */
+function rgSearchesIgnored(arg: string): boolean {
+  if (arg.startsWith("--no-ignore") || arg === "--unrestricted") return true;
+  if (!/^-[^-]/u.test(arg)) return false;
+  for (const flag of arg.slice(1)) {
+    if (flag === "u") return true;
+    if ("ABCEefgMjmtTr".includes(flag)) return false;
   }
   return false;
 }
@@ -317,6 +382,12 @@ export function shellPathScope(analysis: ShellAnalysis, cwd: string, home: strin
       uncertain.push(`${name} has an argument known only at run time`);
       continue;
     }
+    // Chữ thuần: luật deny thường chỉ xét theo cwd; ở đây xét theo mọi thư mục mà cd/env -C/git -C có thể chuyển tới,
+    // và phần đường dẫn của dạng <rev>:<path> (git show HEAD:.env) hoặc <host>:<path>.
+    for (const word of literalOperands(command)) for (const dir of dirs) {
+      const hit = denies(resolveShellPath(word, dir, home), denied);
+      if (hit) return { evidence: hit };
+    }
     const globs = [
       ...command.words.filter((_, index) => index > 0 && command.glob[index]),
       ...command.redirects.filter((redirect) => redirect.glob).map((redirect) => redirect.target),
@@ -337,13 +408,19 @@ export function shellPathScope(analysis: ShellAnalysis, cwd: string, home: strin
     // Lệnh đọc nội dung cả cây: duyệt thư mục tìm file bị deny.
     let trees: string[] = [];
     let skipHidden = false;
+    let skipIgnored = false;
     if (SEARCH.has(name)) {
       const search = searchReadPaths(command);
       if (!search) { uncertain.push(`${name} uses options that are not recognized`); continue; }
       if (search.recursive && !search.filesOnly) trees = search.paths;
       skipHidden = name === "rg" && !args.some(rgSearchesHidden);
+      skipIgnored = name === "rg" && !args.some(rgSearchesIgnored);
     } else if (name === "git" && args.includes("grep")) {
       trees = ["."];
+    } else if (ARCHIVERS.has(name) || (COPIERS.has(name) && args.some(isRecursiveCopy))) {
+      // Đóng gói hoặc sao chép cả cây: nội dung file bên dưới rời khỏi chỗ cũ. Đích cuối của cp/rsync/scp chỉ bị ghi.
+      const operands = args.filter((arg) => !arg.startsWith("-"));
+      trees = COPIERS.has(name) ? operands.slice(0, -1) : operands;
     } else if (name === "diff") {
       if (args.some((arg) => {
         const key = arg.split("=", 1)[0];
@@ -355,7 +432,7 @@ export function shellPathScope(analysis: ShellAnalysis, cwd: string, home: strin
     for (const tree of trees) for (const dir of dirs) {
       const file = resolveShellPath(tree, dir, home);
       if (!fs.existsSync(file) || isRegularFile(file)) continue;
-      const hit = merge(findDenied(file, denied, skipHidden));
+      const hit = merge(findDenied(file, denied, skipHidden, skipIgnored));
       if (hit) return { evidence: hit };
     }
   }
