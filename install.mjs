@@ -8,7 +8,7 @@ import {applyPatches} from './lib/patches.mjs';
 import {backupFile,describeMerge,reconcileConfigFile} from './runtime/merge.mjs';
 import {localDefaults,mergesConfig,reconcileResources} from './lib/resources.mjs';
 import {SUBAGENT_ROLES,changedRoles,checkCatalog,forceNativeModels,legacyOverrides,loadPresets,nativeKind,nativeValues,readModelRoles,resolveModelRoles,withPreset,writeModelRoles} from './runtime/model-roles.mjs';
-import {run,download,npmCli,readJson,writeJson,sha256,shellQuote,assertSafePath} from './lib/system.mjs';
+import {run,download,npmCli,npmTimeout,readJson,writeJson,sha256,shellQuote,assertSafePath} from './lib/system.mjs';
 
 const repoDir=path.dirname(fileURLToPath(import.meta.url));
 const argv=process.argv.slice(2);
@@ -116,7 +116,10 @@ async function installRuntime(name,relative){
   for(const file of ['package.json','package-lock.json'])fs.copyFileSync(path.join(source,file),path.join(stage,file));
   console.log(`${name}: cài dependency từ lockfile`);
   try{
-    await run(nodePath,[npmCli(),'ci','--ignore-scripts','--omit=dev','--no-fund'],{cwd:stage});
+    await run(nodePath,[npmCli(),'ci','--ignore-scripts','--omit=dev','--no-fund'],{
+      cwd:stage,timeout:npmTimeout(),
+      timeoutHint:'Tải package từ registry npm quá chậm. Chạy lại installer (gói đã tải nằm trong cache của npm), hoặc tăng giới hạn bằng PI_CONFIG_NPM_TIMEOUT_MINUTES (mặc định 30).',
+    });
     if(fs.existsSync(dest)){
       const backup=path.join(root,'backups',`runtime-${name}-${Date.now()}`);fs.mkdirSync(path.dirname(backup),{recursive:true});fs.renameSync(dest,backup);
     }

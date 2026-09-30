@@ -4,12 +4,13 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
-import {run,readJson,writeJson,sha256} from '../lib/system.mjs';
+import {run,npmTimeout,readJson,writeJson,sha256} from '../lib/system.mjs';
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const temporary=fs.mkdtempSync(path.join(os.tmpdir(),'pi-config-smoke-'));
 const root=path.join(temporary,'platform with spaces'),agentDir=path.join(temporary,'agent'),binDir=path.join(temporary,'bin');
 const args=[path.join(repo,'install.mjs'),'--root',root,'--agent-dir',agentDir,'--bin-dir',binDir,'--no-path'];
-await run(process.execPath,args,{timeout:1800000});
+// Lần cài đầu chạy npm ci cho runtime và Firecrawl, mỗi lần tối đa npmTimeout() (registry chậm trên runner Windows).
+await run(process.execPath,args,{timeout:2*npmTimeout()+600000});
 await run(process.execPath,[path.join(root,'bin/launch.mjs'),'main','--version']);
 await run(process.execPath,[path.join(root,'bin/launch.mjs'),'models']);
 // Cài mới tạo model-roles.json (thuộc về người dùng) với preset mặc định.

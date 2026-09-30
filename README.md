@@ -171,6 +171,8 @@ File khác đã tùy chỉnh (`AGENTS.md`) được giữ và báo đường d�
 
 Nâng cấp từ bản Pi 0.87.1: pi-mcp-adapter 3.x đọc `<agent-dir>/mcp-adapter.json` thay cho `mcp.json`. Installer ghi file mới; `mcp.json` cũ chưa sửa được lưu vào backup, còn nếu bạn đã thêm server vào đó thì file được giữ và adapter nhắc khi mở phiên: chuyển các server trong `mcpServers` sang `mcp-adapter.json` rồi xóa `mcp.json`.
 
+`npm ci` của installer được tối đa 30 phút (lệnh khác 10 phút). Mạng tới registry npm chậm thì tăng bằng `PI_CONFIG_NPM_TIMEOUT_MINUTES`, ví dụ `PI_CONFIG_NPM_TIMEOUT_MINUTES=60 node install.mjs` (PowerShell: `$env:PI_CONFIG_NPM_TIMEOUT_MINUTES=60`); chạy lại cũng nhanh hơn vì gói đã tải nằm trong cache của npm.
+
 Dừng các phiên Pi trước khi cập nhật. Dùng revision đã qua CI thay vì chạy `pi update` hoặc `npm update` trên runtime ghim. Nếu còn `.install.lock`, kiểm tra PID và chỉ xóa lock khi tiến trình đó đã dừng.
 
 ## Phát triển và kiểm thử
