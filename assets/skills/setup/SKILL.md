@@ -1,6 +1,6 @@
 ---
 name: setup
-description: "Configure this repo for tstack skills: tracker, domain docs, AGENTS.md pointers, coding standards, stack hooks."
+description: "Configure this repo for tstack skills: tracker, domain docs, AGENTS.md pointers, coding standards, stack skills, stack hooks."
 disable-model-invocation: true
 ---
 
@@ -11,7 +11,7 @@ Write the per-repo files the tstack skills read. Explore first, ask one section 
 In every step:
 
 - Never overwrite an existing file without showing the diff and getting approval.
-- Re-runs update in place: one `## Agent skills` block, one `.tstack/` ignore line, one `format` setting in `.pi-lens.json`, no duplicate hook entries. A file that already matches its draft is reported as unchanged.
+- Re-runs update in place: one `## Agent skills` block, one `.tstack/` ignore line, one `format` setting in `.pi-lens.json`, one copy per stack skill, no duplicate hook entries. A file that already matches its draft is reported as unchanged.
 
 ## 1. Explore
 
@@ -19,7 +19,7 @@ Read what exists. Ask nothing yet.
 
 - **Remote**: `git remote -v`. Run `gh auth status` for a GitHub remote, `glab auth status` for a GitLab one.
 - **Instruction files**: `AGENTS.md`, `CLAUDE.md`. Note whether `CLAUDE.md` holds only `@AGENTS.md`, whether an `## Agent skills` block exists, and which paths it points to.
-- **Prior setup**: `docs/agents/`, `CODING_STANDARDS.md`, `.pi-lens.json`, `.agents/skills/verify-*/`.
+- **Prior setup**: `docs/agents/`, `CODING_STANDARDS.md`, `.pi-lens.json`, `.agents/skills/verify-*/`, and stack skills in `.agents/skills/typescript/`, `python/` or `mobile/`.
 - **Domain docs**: `CONTEXT.md`, `CONTEXT-MAP.md`, `docs/adr/`, `src/*/docs/adr/`. A `.scratch/` folder hints at a local tracker.
 - **Stack**: `package.json` and its lockfile, `tsconfig.json`, `pyproject.toml`, `requirements*.txt`, `uv.lock`, `poetry.lock`, `Podfile`, `*.xcodeproj`, `Package.swift`, `build.gradle` or `build.gradle.kts`, `pubspec.yaml`.
 - **Monorepo signals**: `pnpm-workspace.yaml`, `workspaces` in `package.json`, `turbo.json`, `nx.json`, several `packages/*` with their own `src/`.
@@ -58,6 +58,7 @@ Draft every file below, show the drafts, let the user edit, then write.
 - **`CLAUDE.md`**, only where D calls for it: the single line `@AGENTS.md`.
 - **`CODING_STANDARDS.md`**: only when absent, from [CODING_STANDARDS.md](templates/project/CODING_STANDARDS.md), with the language examples cut to the repo's languages. Leave an existing one untouched.
 - **`.gitignore`**: append `.tstack/` unless it is already ignored.
+- **Stack skills**, one per stack found: [typescript](../../stack-skills/typescript/SKILL.md) for `tsconfig.json` or TypeScript in `package.json`, [python](../../stack-skills/python/SKILL.md) for a Python manifest or lockfile, [mobile](../../stack-skills/mobile/SKILL.md) for an iOS, Android or Flutter app. They are not in the global skill list, so the agent sees one only in a repo that has it. Copy the whole directory to `.agents/skills/<name>/`, with [LICENSE](../../stack-skills/LICENSE) inside it. When the copy exists and differs, show the diff and replace it only on approval.
 
 ## 4. Stack hooks
 
@@ -75,4 +76,4 @@ When the repo has a runnable surface and no `.agents/skills/verify-*/`, tell the
 
 ## 6. Report
 
-List every file as created, updated, unchanged or skipped (with the reason), the labels created, the `.pi-lens.json` and hook entries added, and each proof with its result. Leave the changes uncommitted for the user to review. Tell the user they can edit `docs/agents/*.md` directly, and re-run `/skill:setup` to switch trackers or after upgrading pi-config. Name the next step: `/skill:create-verify` when step 5 applies, and `/skill:context-audit` when the instruction file runs past about 100 lines.
+List every file as created, updated, unchanged or skipped (with the reason), the labels created, the stack skills copied, the `.pi-lens.json` and hook entries added, and each proof with its result. Leave the changes uncommitted for the user to review. Tell the user they can edit `docs/agents/*.md` directly, and re-run `/skill:setup` to switch trackers or after upgrading pi-config. Name the next step: `/skill:create-verify` when step 5 applies, and `/skill:context-audit` when the instruction file runs past about 100 lines.

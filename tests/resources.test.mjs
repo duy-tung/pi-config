@@ -55,6 +55,8 @@ test('a removed skill inside the installer skills directory is archived; an expl
   const result=reconcileResources(f);
   assert.deepEqual(result.archived,[old]);assert.deepEqual(result.preserved,[pinned]);
   assert.ok(fs.existsSync(kept)&&fs.existsSync(pinned)&&!fs.existsSync(old));
+  // Thư mục của skill đã gỡ không còn lại rỗng; thư mục skills còn skill khác thì giữ.
+  assert.ok(!fs.existsSync(path.dirname(old))&&fs.existsSync(path.dirname(path.dirname(old))));
 });
 test('registry entries outside managed directories cannot be removed',t=>{
   const f=fixture(t),outside=owned(f,'personal-note.json');

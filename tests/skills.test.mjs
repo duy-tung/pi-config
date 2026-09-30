@@ -8,6 +8,8 @@ import { SUBAGENT_ROLES } from "../runtime/model-roles.mjs";
 // Skills quy trình (chuyển từ tstack sang Pi): kiểm cấu trúc và mọi tham chiếu, như tests/check_refs.py của tstack.
 const repoDir = fileURLToPath(new URL("../", import.meta.url));
 const skillsDir = path.join(repoDir, "assets", "skills");
+// Skill theo stack: ngoài danh sách chung, /skill:setup chép vào .agents/skills/ của repo dùng stack đó.
+const stackDir = path.join(repoDir, "assets", "stack-skills");
 const rel = (file) => path.relative(repoDir, file).replaceAll("\\", "/");
 
 function walk(dir) {
@@ -33,22 +35,27 @@ function frontmatter(text) {
   return fields;
 }
 
-const skills = new Map();
-for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
-  if (!entry.isDirectory()) continue;
-  const file = path.join(skillsDir, entry.name, "SKILL.md");
-  if (!fs.existsSync(file)) continue;
-  skills.set(entry.name, { file, fields: frontmatter(fs.readFileSync(file, "utf8")) });
+function readSkills(dir) {
+  const found = new Map();
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const file = path.join(dir, entry.name, "SKILL.md");
+    if (!fs.existsSync(file)) continue;
+    found.set(entry.name, { file, fields: frontmatter(fs.readFileSync(file, "utf8")) });
+  }
+  return found;
 }
+const skills = readSkills(skillsDir);
+const stackSkills = readSkills(stackDir);
 const userInvoked = (name) => skills.get(name)?.fields?.["disable-model-invocation"] === "true";
-const markdown = walk(skillsDir).filter((file) => file.endsWith(".md"));
+const markdown = [...walk(skillsDir), ...walk(stackDir)].filter((file) => file.endsWith(".md"));
 // Bỏ code block và comment HTML như check_refs.py: ví dụ trong code không phải tham chiếu thật.
 const prose = (file) => fs.readFileSync(file, "utf8").replace(/^```[\s\S]*?^```/gmu, "").replace(/<!--[\s\S]*?-->/gu, "");
 
 test("mỗi skill có frontmatter hợp lệ theo luật tên của Pi và chuẩn Agent Skills", () => {
-  assert.ok(skills.size >= 38, `chỉ có ${skills.size} skill`);
+  assert.ok(skills.size >= 35, `chỉ có ${skills.size} skill`);
   const allowed = new Set(["name", "description", "disable-model-invocation", "argument-hint", "license", "compatibility", "metadata", "allowed-tools"]);
-  for (const [dir, { fields }] of skills) {
+  for (const [dir, { fields }] of [...skills, ...stackSkills]) {
     assert.ok(fields, `${dir}: thiếu frontmatter`);
     assert.equal(fields.name, dir, `${dir}: name phải trùng tên thư mục`);
     assert.match(fields.name, /^[a-z0-9]+(?:-[a-z0-9]+)*$/u, dir);
@@ -67,7 +74,7 @@ test("không còn tham chiếu riêng của Claude Code trong skills", () => {
     /NotebookEdit|disallowedTools/u, /^effort:|^paths:/mu,
   ];
   const problems = [];
-  for (const file of walk(skillsDir)) {
+  for (const file of [...walk(skillsDir), ...walk(stackDir)]) {
     const text = fs.readFileSync(file, "utf8");
     for (const pattern of forbidden) if (pattern.test(text)) problems.push(`${rel(file)}: ${pattern}`);
   }
@@ -83,13 +90,35 @@ test("mọi /skill:<tên> trỏ tới skill có thật; skill chỉ tự nạp s
     for (const match of text.matchAll(/\/skill:([a-z0-9-]+)/gu)) {
       if (!skills.has(match[1])) problems.push(`${rel(file)}: /skill:${match[1]} không tồn tại`);
     }
-    if (!file.startsWith(skillsDir)) continue;
+    if (!file.startsWith(skillsDir) && !file.startsWith(stackDir)) continue;
     // "Load the `a` skill", "Load the `a` and `b` skills", "load the `a`, `b` and `c` skills".
     for (const match of text.matchAll(/\b[Ll]oad(?:s|ing)? the ((?:`[a-z0-9-]+`(?:,? (?:and )?)?)+) skills?\b/gu)) {
       for (const [, name] of match[1].matchAll(/`([a-z0-9-]+)`/gu)) {
-        if (!skills.has(name)) problems.push(`${rel(file)}: nạp skill ${name} không tồn tại`);
+        if (stackSkills.has(name)) problems.push(`${rel(file)}: ${name} là skill theo stack, chỉ có trong repo đã chạy /skill:setup`);
+        else if (!skills.has(name)) problems.push(`${rel(file)}: nạp skill ${name} không tồn tại`);
         else if (userInvoked(name)) problems.push(`${rel(file)}: nạp ${name} là skill chỉ người gọi; hãy bảo người dùng chạy /skill:${name}`);
       }
+    }
+  }
+  assert.deepEqual(problems, []);
+});
+
+test("skill theo stack nằm ngoài danh sách chung, setup chép được và bản chép tự đứng", () => {
+  assert.deepEqual([...stackSkills.keys()].sort(), ["mobile", "python", "typescript"]);
+  for (const name of stackSkills.keys()) assert.ok(!fs.existsSync(path.join(skillsDir, name)), `${name} còn trong assets/skills`);
+  const setup = prose(path.join(skillsDir, "setup", "SKILL.md"));
+  for (const name of stackSkills.keys()) assert.ok(setup.includes(`](../../stack-skills/${name}/SKILL.md)`), `setup không trỏ tới ${name}`);
+  // Bản chép sang repo khác mang theo giấy phép (gồm notice của nguồn gốc MIT).
+  assert.equal(fs.readFileSync(path.join(stackDir, "LICENSE"), "utf8"), fs.readFileSync(path.join(skillsDir, "LICENSE"), "utf8"));
+  assert.ok(setup.includes("](../../stack-skills/LICENSE)"), "setup không chép LICENSE");
+  // Bản chép nằm trong .agents/skills/<tên>/ của repo khác: link tương đối không được ra khỏi thư mục skill.
+  const problems = [];
+  for (const file of walk(stackDir).filter((entry) => entry.endsWith(".md"))) {
+    const own = path.join(stackDir, path.relative(stackDir, file).split(path.sep)[0]);
+    for (const match of prose(file).matchAll(/\]\(([^)\s]+)\)/gu)) {
+      const target = match[1].split("#")[0];
+      if (!target || /^[a-z][a-z+.-]*:/iu.test(target)) continue;
+      if (path.relative(own, path.resolve(path.dirname(file), target)).startsWith("..")) problems.push(`${rel(file)}: ${match[1]}`);
     }
   }
   assert.deepEqual(problems, []);
