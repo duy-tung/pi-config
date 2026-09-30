@@ -108,6 +108,9 @@ test("skill theo stack nằm ngoài danh sách chung, setup chép được và b
   for (const name of stackSkills.keys()) assert.ok(!fs.existsSync(path.join(skillsDir, name)), `${name} còn trong assets/skills`);
   const setup = prose(path.join(skillsDir, "setup", "SKILL.md"));
   for (const name of stackSkills.keys()) assert.ok(setup.includes(`](../../stack-skills/${name}/SKILL.md)`), `setup không trỏ tới ${name}`);
+  // Bản chép sang repo khác mang theo giấy phép (gồm notice của nguồn gốc MIT).
+  assert.equal(fs.readFileSync(path.join(stackDir, "LICENSE"), "utf8"), fs.readFileSync(path.join(skillsDir, "LICENSE"), "utf8"));
+  assert.ok(setup.includes("](../../stack-skills/LICENSE)"), "setup không chép LICENSE");
   // Bản chép nằm trong .agents/skills/<tên>/ của repo khác: link tương đối không được ra khỏi thư mục skill.
   const problems = [];
   for (const file of walk(stackDir).filter((entry) => entry.endsWith(".md"))) {

@@ -58,7 +58,7 @@ Draft every file below, show the drafts, let the user edit, then write.
 - **`CLAUDE.md`**, only where D calls for it: the single line `@AGENTS.md`.
 - **`CODING_STANDARDS.md`**: only when absent, from [CODING_STANDARDS.md](templates/project/CODING_STANDARDS.md), with the language examples cut to the repo's languages. Leave an existing one untouched.
 - **`.gitignore`**: append `.tstack/` unless it is already ignored.
-- **Stack skills**, one per stack found: [typescript](../../stack-skills/typescript/SKILL.md) for `tsconfig.json` or TypeScript in `package.json`, [python](../../stack-skills/python/SKILL.md) for a Python manifest or lockfile, [mobile](../../stack-skills/mobile/SKILL.md) for an iOS, Android or Flutter app. They are not in the global skill list, so the agent sees one only in a repo that has it. Copy the whole directory to `.agents/skills/<name>/`. When the copy exists and differs, show the diff and replace it only on approval.
+- **Stack skills**, one per stack found: [typescript](../../stack-skills/typescript/SKILL.md) for `tsconfig.json` or TypeScript in `package.json`, [python](../../stack-skills/python/SKILL.md) for a Python manifest or lockfile, [mobile](../../stack-skills/mobile/SKILL.md) for an iOS, Android or Flutter app. They are not in the global skill list, so the agent sees one only in a repo that has it. Copy the whole directory to `.agents/skills/<name>/`, with [LICENSE](../../stack-skills/LICENSE) inside it. When the copy exists and differs, show the diff and replace it only on approval.
 
 ## 4. Stack hooks
 
