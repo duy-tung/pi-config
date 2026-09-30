@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { resolveShellPath } from "./paths.ts";
@@ -115,6 +116,7 @@ export interface PathScope {
 
 const WALK_LIMIT = 50_000;
 const WALK_MS = 500;
+const GIT_CHECKS = 20;
 // Lệnh không đọc nội dung file từ đối số: tham số chưa biết của chúng không làm lộ file bị deny.
 const NO_READ = new Set([
   "echo", "printf", "true", "false", ":", "pwd", "sleep", "date", "whoami", "id", "uname", "hostname", "exit", "return",
@@ -149,12 +151,24 @@ function denies(file: string, denied: DeniedPath, link = true): { file: string; 
  * Duyệt cây (không theo symlink thư mục) tìm file khớp luật deny. Giới hạn số mục và thời gian;
  * vượt giới hạn thì không kết luận được. skipHidden: rg mặc định bỏ file/thư mục ẩn.
  */
-export function findDenied(root: string, denied: DeniedPath, skipHidden = false): PathScope {
+/** git bỏ qua file này (.gitignore, .git/info/exclude, core.excludesFile); ngoài repo hoặc lỗi thì coi như không. */
+export function gitIgnored(file: string): boolean {
+  try {
+    return spawnSync("git", ["check-ignore", "-q", "--", path.basename(file)], {
+      cwd: path.dirname(file), stdio: "ignore", timeout: 2000, windowsHide: true,
+    }).status === 0;
+  } catch {
+    return false;
+  }
+}
+
+export function findDenied(root: string, denied: DeniedPath, skipHidden = false, skipIgnored = false): PathScope {
   const started = Date.now();
   const first = denies(root, denied);
   if (first) return { evidence: first };
   const queue = [root];
   let seen = 0;
+  let gitChecks = 0;
   while (queue.length) {
     const dir = queue.shift() as string;
     let entries: fs.Dirent[];
@@ -166,7 +180,12 @@ export function findDenied(root: string, denied: DeniedPath, skipHidden = false)
       if (entry.name === ".git" || (skipHidden && entry.name.startsWith("."))) continue;
       const file = path.join(dir, entry.name);
       const hit = denies(file, denied, entry.isSymbolicLink());
-      if (hit) return { evidence: hit };
+      if (hit) {
+        // rg mặc định không đọc file git bỏ qua: chỉ hỏi git với file đã khớp luật, tối đa GIT_CHECKS lần mỗi lệnh.
+        if (!skipIgnored) return { evidence: hit };
+        if (++gitChecks > GIT_CHECKS) return { uncertain: `too many files in ${root} match the path deny rules to check against .gitignore` };
+        if (!gitIgnored(file)) return { evidence: hit };
+      }
       if (entry.isDirectory()) queue.push(file);
     }
   }
@@ -297,6 +316,17 @@ function literalOperands(command: SimpleCommand): string[] {
   return [...words];
 }
 
+/** rg có đọc file bị .gitignore bỏ qua không: --no-ignore*, -u (một lần trở lên), --unrestricted. */
+function rgSearchesIgnored(arg: string): boolean {
+  if (arg.startsWith("--no-ignore") || arg === "--unrestricted") return true;
+  if (!/^-[^-]/u.test(arg)) return false;
+  for (const flag of arg.slice(1)) {
+    if (flag === "u") return true;
+    if ("ABCEefgMjmtTr".includes(flag)) return false;
+  }
+  return false;
+}
+
 /** Bỏ từ khoá điều khiển đứng đầu (if, do, then...) để lấy lệnh thật. */
 function stripKeywords(command: SimpleCommand): SimpleCommand {
   let start = 0;
@@ -378,11 +408,13 @@ export function shellPathScope(analysis: ShellAnalysis, cwd: string, home: strin
     // Lệnh đọc nội dung cả cây: duyệt thư mục tìm file bị deny.
     let trees: string[] = [];
     let skipHidden = false;
+    let skipIgnored = false;
     if (SEARCH.has(name)) {
       const search = searchReadPaths(command);
       if (!search) { uncertain.push(`${name} uses options that are not recognized`); continue; }
       if (search.recursive && !search.filesOnly) trees = search.paths;
       skipHidden = name === "rg" && !args.some(rgSearchesHidden);
+      skipIgnored = name === "rg" && !args.some(rgSearchesIgnored);
     } else if (name === "git" && args.includes("grep")) {
       trees = ["."];
     } else if (ARCHIVERS.has(name) || (COPIERS.has(name) && args.some(isRecursiveCopy))) {
@@ -400,7 +432,7 @@ export function shellPathScope(analysis: ShellAnalysis, cwd: string, home: strin
     for (const tree of trees) for (const dir of dirs) {
       const file = resolveShellPath(tree, dir, home);
       if (!fs.existsSync(file) || isRegularFile(file)) continue;
-      const hit = merge(findDenied(file, denied, skipHidden));
+      const hit = merge(findDenied(file, denied, skipHidden, skipIgnored));
       if (hit) return { evidence: hit };
     }
   }

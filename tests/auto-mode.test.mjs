@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -488,6 +489,29 @@ test("deny đường dẫn: đường dẫn sau cd/env -C/git -C/tar -C, <rev>:<
     // ~user khác: không coi là file trong workspace nên auto không cho qua nhanh.
     assert.equal(decide(bash("cat ~someone-else/notes.txt"), context(ws)).kind, "classify");
     assert.equal(resolveShellPath(`~${user}/x`, ws.cwd, ws.home), path.join(ws.home, "x"));
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("deny đường dẫn: rg không bị chặn vì file đã .gitignore; bộ lọc grep chỉ tách đường dẫn ở dấu tách đầu tiên", () => {
+  const ws = workspace();
+  try {
+    spawnSync("git", ["init", "-q"], { cwd: ws.cwd });
+    fs.writeFileSync(path.join(ws.cwd, ".gitignore"), "secrets/\n");
+    fs.mkdirSync(path.join(ws.cwd, "secrets"));
+    fs.writeFileSync(path.join(ws.cwd, "secrets", "prod.env"), "FIXTURE_SECRET=synthetic\n");
+    fs.writeFileSync(path.join(ws.cwd, "a.ts"), "// TODO\n");
+    for (const mode of ["auto", "bypass"]) {
+      const pc = context(ws, { mode, rules: buildRuleSet([], [], ["Path(*.env)"]) });
+      assert.notEqual(decide(bash("rg TODO"), pc).kind, "deny", mode);
+      assert.notEqual(decide(bash("rg --hidden TODO ."), pc).kind, "deny", mode);
+      for (const command of ["rg -u TODO", "rg --no-ignore TODO .", "grep -r TODO .", "git grep TODO"]) {
+        assert.equal(decide(bash(command), pc).kind, "deny", `${mode}: ${command}`);
+      }
+      const filtered = filterDeniedGrep(["a.ts:3: see .env:1: foo", "secrets/prod.env:1: X", "a.ts-2- ctx .env-1- y"].join("\n"), ws.cwd, pc);
+      assert.equal(filtered.text, ["a.ts:3: see .env:1: foo", "a.ts-2- ctx .env-1- y"].join("\n"));
+    }
   } finally {
     ws.cleanup();
   }
