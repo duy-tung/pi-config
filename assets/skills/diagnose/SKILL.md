@@ -110,7 +110,7 @@ With a correct seam, follow the test rules in the `tdd` skill (load it if it is 
 
 ### Two failed fixes: attack the premise
 
-When two fixes that share one premise have failed the same check, stop fixing. Call `ask_advisor` before a third attempt: its answer is advice, not proof.
+When two fixes that share one premise have failed the same check, stop fixing. Call `ask_advisor` before a third attempt when it is listed and has calls left: its answer is advice, not proof. A subagent, which has no `ask_advisor`, reports the premise and both failed fixes to its parent instead.
 
 1. Write the premise down: the one sentence every failed fix assumed.
 2. Take a census before the next fix, as a rerunnable script. Count the symptom per actor (worker, thread, request type, tenant, file). It shows who holds the imbalance, not how large it is.

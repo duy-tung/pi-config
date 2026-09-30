@@ -18,7 +18,7 @@ Show this to the user, then immediately proceed to Step 2. The user reads and th
 
 ### 2. Spawn subagents
 
-Produce 3+ candidates. Each must be a **radically different** interface for the deepened module. Seat them in different roles so they come from different model families (AGENTS.md lists each role's model): one `researcher` agent, one `reviewer` agent, and your own design. Add a `worker` agent when a candidate needs code to run before it can be judged. Spawn the agents in one response (parallel Agent calls). Write your own candidate before you collect theirs with `get_subagent_result`, so it stays independent.
+Produce 3+ candidates. Each must be a **radically different** interface for the deepened module. Seat them in roles on different models, so their blind spots differ (AGENTS.md lists each role's model): by default one `researcher` agent, one `reviewer` agent, and your own design. When a role runs your own model (the `researcher` under the `tree` preset), only its constraint sets its candidate apart: say so when you present it. Add a `worker` agent when a candidate needs code to run before it can be judged. Spawn the agents in one response (parallel Agent calls). Write your own candidate before you collect theirs with `get_subagent_result`, so it stays independent.
 
 Prompt each subagent with a separate technical brief (file paths, coupling details, dependency category from [DEEPENING.md](DEEPENING.md), what sits behind the seam). The brief is independent of the user-facing problem-space explanation in Step 1. Give each seat, yours included, a different design constraint:
 
@@ -39,6 +39,6 @@ Each candidate outputs:
 
 ### 3. Present and compare
 
-Present designs sequentially so the user can absorb each one, each labelled with the role that produced it, then compare them in prose. Contrast by **depth** (leverage at the interface), **locality** (where change concentrates), and **seam placement**. When two seats share a model family (all of them do under the `claude` preset), say so: their blind spots are correlated.
+Present designs sequentially so the user can absorb each one, each labelled with the role that produced it, then compare them in prose. Contrast by **depth** (leverage at the interface), **locality** (where change concentrates), and **seam placement**. When two seats share a model family (all of them do under the `claude` and `tree` presets), say so: their blind spots are correlated.
 
 After comparing, give your own recommendation: which design you think is strongest and why. If elements from different designs would combine well, propose a hybrid. Be opinionated: the user wants a strong read, not a menu.

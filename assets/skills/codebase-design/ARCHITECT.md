@@ -14,7 +14,7 @@ Skip this phase only for greenfield work with no surrounding system to integrate
 
 **Usage first.** Before any type, write the caller's view: the README or quickstart a consumer reads, plus two or three realistic call sites in their code (what they import, what they call, what comes back). The caller's experience is the spec. The types serve it. When the sketch and the usage disagree, reconcile the sketch to the usage, not the reverse.
 
-**At least two candidates.** Produce at least two structurally distinct candidates before choosing, even when the first looks sufficient: whole-shape alternatives, not point fixes inside one shape. Run [DESIGN-IT-TWICE.md](DESIGN-IT-TWICE.md) (candidates from different roles, so different model families, each with a different constraint). For a small change, two `researcher` agents with the same grounding and different constraints are enough. Add these runner rules to every brief:
+**At least two candidates.** Produce at least two structurally distinct candidates before choosing, even when the first looks sufficient: whole-shape alternatives, not point fixes inside one shape. Run [DESIGN-IT-TWICE.md](DESIGN-IT-TWICE.md) (candidates from roles on different models where the preset allows, each with a different constraint). For a small change, two `researcher` agents with the same grounding and different constraints are enough. Add these runner rules to every brief:
 
 - Write the caller's usage and two or three call sites before the types; derive the type sketch from them.
 - Data structures first. Trace each dominant access pattern through the proposed structure. If the answer is "we'll add a map / index / cache later," the structure is wrong.

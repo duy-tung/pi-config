@@ -106,6 +106,30 @@ test("agent được nhắc tới là role có thật của pi-config", () => {
   assert.deepEqual(problems, []);
 });
 
+test("preset được skill nhắc tới có trong model-presets.json", () => {
+  const presets = new Set(Object.keys(JSON.parse(fs.readFileSync(path.join(repoDir, "assets", "configs", "model-presets.json"), "utf8"))));
+  const problems = [];
+  for (const file of markdown) {
+    for (const match of prose(file).matchAll(/((?:`[\w-]+`(?:,? (?:and )?)?)+) presets?\b/gu)) {
+      for (const [, name] of match[1].matchAll(/`([\w-]+)`/gu)) {
+        if (!presets.has(name)) problems.push(`${rel(file)}: preset ${name} không có (${[...presets].join(", ")})`);
+      }
+    }
+  }
+  assert.deepEqual(problems, []);
+});
+
+test("skill gọi ask_advisor nói cách làm khi hết lượt hoặc không có tool (advisor tắt, subagent)", () => {
+  // Số lượt advisor tính theo phiên và subagent không có ask_advisor (agent-tree, AGENTS.md).
+  const problems = [];
+  for (const file of markdown) {
+    const text = prose(file);
+    if (!text.includes("`ask_advisor`")) continue;
+    if (!/calls (?:are )?left/u.test(text) || !/no `ask_advisor`/u.test(text)) problems.push(rel(file));
+  }
+  assert.deepEqual(problems, []);
+});
+
 test("link tương đối trong skills trỏ tới file có thật", () => {
   const problems = [];
   for (const file of markdown) {

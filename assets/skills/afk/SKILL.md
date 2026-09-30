@@ -69,9 +69,10 @@ Start every iteration by re-reading `contract.md` and the last rows of the ledge
 
 ## 5. Stop
 
-- **Predicate met:** load the `prove` skill and check the whole run against the predicate on the real artifact. Write the report (section 6), then call `update_goal {status: "complete", completion_summary}`. The independent auditor checks the workspace against the verification contract. If it rejects, the goal stays open with its feedback: treat that feedback as the next unit.
+- **Predicate met:** load the `prove` skill and check the whole run against the predicate on the real artifact. Write the report (section 6). If the advisor's completion gate is on and calls are left, send the report as the `ask_advisor` draft and act on what it finds. Then call `update_goal {status: "complete", completion_summary}`. The independent auditor checks the workspace against the verification contract. If it rejects, the goal stays open with its feedback: treat that feedback as the next unit.
 - **Escape hatch hit:** write up why in the report, with what was tried, then call `update_goal {status: "blocked", reason, attempted_actions}`. pi-goal-x consults its Oracle once per blocker; when it returns advice, the goal stays active: read the advice and try it before you give up.
 - Never relax the predicate. A plateau is not a stop: pivot the approach. On a pivot you may call `ask_advisor`; its answer is advice, not proof.
+- Advisor calls are one budget for the whole session (the footer shows `advisor n/N`), and the run spans many units: spend them on pivots and the final check, never on a routine unit. With no calls left, or no `ask_advisor` listed, skip the advisor steps and log that you did.
 
 ## 6. Morning report
 
