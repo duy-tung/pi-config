@@ -378,7 +378,7 @@
       },
       "file": "dist/index.ts",
       "originalSha256": "2d00301c9c17e57ca60d53fec4352e1af8e7a2579f1cbd1761d1b2ae1e3223ba",
-      "patchedSha256": "647ed5fab00ca3523c9b7e7ae009a45be0ce9752ad4254948db7322367f9d61a",
+      "patchedSha256": "bafdbac7816dd3f73615cd4d9c7c7e3a21c2258dcd9ddab8fff266e1427aa1af",
       "edits": [
         {
           "before": "  const startStatusRefresh = (ctx, model, force) => {\n",
@@ -387,7 +387,7 @@
         },
         {
           "before": "  \"gpt-6-sol\"\n]);",
-          "after": "  \"gpt-6-sol\",\n  // Local integration (pi-config): the Codex model catalog lists the Fast (priority) tier for GPT-6 Astra.\n  \"gpt-6-astra\"\n]);",
+          "after": "  \"gpt-6-sol\",\n  // Local integration (pi-config): the Codex model catalog lists the Fast (priority) tier for GPT-6 Astra;\n  // GPT-6.1 Sol has a Fast tier too (listed as a -fast variant by the gateways in the Pi 0.99.1 catalog).\n  \"gpt-6-astra\",\n  \"gpt-6.1-sol\"\n]);",
           "count": 1
         },
         {

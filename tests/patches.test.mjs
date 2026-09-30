@@ -85,9 +85,9 @@ test("metadata ghim mười hai bản vá cho một runtime", async () => {
   const subagentsIndex = data.patches.find((spec) => spec.package === "@tintinweb/pi-subagents" && spec.file === "src/index.ts");
   const marker = 'Symbol.for("pi-config:mention-clone-spawn")';
   assert.ok(clone.edits.some((edit) => edit.after.includes(marker)) && subagentsIndex.edits.some((edit) => edit.after.includes(marker)));
-  // pi-usage: Astra có Codex fast; request qua ModelRuntime dùng chung (advisor, auditor, Oracle) cũng theo fast.
+  // pi-usage: Astra và GPT-6.1 Sol có Codex fast; request qua ModelRuntime dùng chung (advisor, auditor, Oracle) cũng theo fast.
   const usage = data.patches.find((spec) => spec.package === "@narumitw/pi-usage");
-  assert.ok(usage.edits.some((edit) => edit.before.includes('"gpt-6-sol"') && edit.after.includes('"gpt-6-astra"')));
+  assert.ok(usage.edits.some((edit) => edit.before.includes('"gpt-6-sol"') && edit.after.includes('"gpt-6-astra"') && edit.after.includes('"gpt-6.1-sol"')));
   assert.ok(usage.edits.some((edit) => edit.after.includes("runtime.streamSimple = wrapped") && edit.after.includes("requestModel ?? model")));
   // bg_run giữ mặc định của upstream: job xong tự đánh thức model; bản vá chỉ giới hạn shell job và viết lại mô tả.
   const background = data.patches.filter((spec) => spec.package === "pi-background-tasks");
