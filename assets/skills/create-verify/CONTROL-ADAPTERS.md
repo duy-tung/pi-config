@@ -104,7 +104,7 @@ Run it with `node .agents/skills/verify-notes/scripts/drive-create-note.mjs "htt
 
 ### Browser MCP servers (optional)
 
-Use one only when the user has configured it. The user adds it to `~/.pi/agent/mcp.json`; the agent cannot (`allowInstall: false`), so give them the entry, for example `"playwright": {"command": "npx", "args": ["@playwright/mcp@latest", "--isolated", "--headless"]}` under `mcpServers`. Call its tools through the `mcp` proxy: `mcp({connect: "playwright"})`, `mcp({search: "snapshot"})` for the exact names (the proxy prefixes each tool with its server name), then `mcp({tool: "<name>", args: {...}})`. Tool names below omit that prefix.
+Use one only when the user has configured it. The user adds it to `~/.pi/agent/mcp-adapter.json` (pi-mcp-adapter's file; Pi's built-in MCP is off); the agent cannot (`allowInstall: false`), so give them the entry, for example `"playwright": {"command": "npx", "args": ["@playwright/mcp@latest", "--isolated", "--headless"]}` under `mcpServers`. Call its tools through the `mcp` proxy: `mcp({connect: "playwright"})`, `mcp({search: "snapshot"})` for the exact names (the proxy prefixes each tool with its server name), then `mcp({tool: "<name>", args: {...}})`. Tool names below omit that prefix.
 
 - **Playwright MCP.** `--isolated` keeps the profile in memory. A persistent profile serves one browser at a time, so parallel runs need `--isolated` or a distinct `--user-data-dir`. For a signed-in run, `--storage-state <file>` loads cookies into the isolated context.
   - Inspect with `browser_snapshot`: the accessibility tree, with a ref for each element. Pass `filename` to save it as evidence.

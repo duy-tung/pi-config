@@ -58,7 +58,8 @@ export function skillRoot(location: string): string {
 /** Nguồn của một tool: tên package trong node_modules, tên thư mục extension, hoặc built-in. */
 export function toolSource(tool: ToolLike): string {
   const file = tool.sourceInfo?.path;
-  if (!file) return tool.sourceInfo?.source || "built-in";
+  // Pi 0.99 đặt path "builtin:<tên>" cho tool dựng sẵn (0.87: "<builtin:<tên>>"): gộp vào một nhóm.
+  if (!file || tool.sourceInfo?.source === "builtin" || /^<?builtin:/u.test(file)) return tool.sourceInfo?.source || "built-in";
   const parts = split(file);
   const modules = parts.lastIndexOf("node_modules");
   if (modules >= 0 && parts[modules + 1]) {

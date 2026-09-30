@@ -6,8 +6,9 @@ import test from "node:test";
 import { pathToFileURL } from "node:url";
 import { anthropicSearchEvents, sse } from "./search-fixtures.mjs";
 
-// Opus 5.5 qua gói Pro/Max: Pi gửi effort theo lượt bằng system message rỗng, pi-anthropic-auth bỏ
-// message đó; bản vá phải đưa đúng mức /thinking của phiên vào output_config. fetch giả, không gọi mạng.
+// Opus 5.5 qua gói Pro/Max: Pi ghim output_config.effort ở "high" và gửi effort theo lượt bằng system message
+// rỗng mang output_config; pi-anthropic-auth >= 3.3.2 giữ message đó khi shape OAuth (upstream PR #79), nên
+// message cuối cùng phải mang đúng mức /thinking của phiên. fetch giả, không gọi mạng.
 const root = process.env.PI_CONFIG_TEST_ROOT;
 test("Opus 5.5 qua OAuth gửi đúng mức thinking của phiên", { skip: !root, timeout: 120000 }, async () => {
   const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pi-claude-effort-")));
@@ -48,8 +49,11 @@ test("Opus 5.5 qua OAuth gửi đúng mức thinking của phiên", { skip: !roo
       const [body] = bodies;
       assert.match(body.system[0].text, /^x-anthropic-billing-header:/u, "Request phải qua shaping OAuth");
       assert.equal(body.thinking.type, "adaptive");
-      assert.equal(body.output_config.effort, level);
-      assert.ok(!body.messages.some((message) => message.role === "system" && Array.isArray(message.content) && message.content.length === 0));
+      assert.equal(body.output_config.effort, "high", "Pi ghim effort cấp request");
+      const last = body.messages.at(-1);
+      assert.equal(last.role, "system");
+      assert.deepEqual(last.content, []);
+      assert.deepEqual(last.output_config, { effort: level }, "Effort theo lượt phải còn sau shaping OAuth");
     }
     assert.deepEqual(errors, []);
     session.dispose();

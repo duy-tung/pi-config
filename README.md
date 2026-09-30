@@ -2,7 +2,7 @@
 
 [![Kiểm thử cài đặt](https://github.com/duy-tung/pi-config/actions/workflows/test.yml/badge.svg)](https://github.com/duy-tung/pi-config/actions/workflows/test.yml)
 
-Bộ cài **Pi 0.87.1** cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, native web search theo model (Codex, Claude) với Exa và Firecrawl dự phòng, quota Claude trong footer, permission kiểu Claude Code (auto mode và bypass, kèm git guard) và giao diện Rosé Pine. Đi kèm bộ skill quy trình **tstack** (grill → spec → tickets → implement → prove → review → ship, chạy không giám sát bằng goal) đã chuyển sang Pi: [docs/workflow.md](docs/workflow.md). Dependency, nguồn skills và bản vá được ghim để tái lập cấu hình.
+Bộ cài **Pi 0.99.1** cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, native web search theo model (Codex, Claude) với Exa và Firecrawl dự phòng, quota Claude trong footer, permission kiểu Claude Code (auto mode và bypass, kèm git guard) và giao diện Rosé Pine. Đi kèm bộ skill quy trình **tstack** (grill → spec → tickets → implement → prove → review → ship, chạy không giám sát bằng goal) đã chuyển sang Pi: [docs/workflow.md](docs/workflow.md). Dependency, nguồn skills và bản vá được ghim để tái lập cấu hình.
 
 ## Cài đặt
 
@@ -25,7 +25,7 @@ Chi tiết kiến trúc CPU, công cụ hệ thống và tùy chọn đường d
 ## Đăng nhập dịch vụ
 
 1. Chạy `pi-login`, dùng `/login` và chọn **Anthropic** cho parent Claude Opus 5.5 (gói Pro/Max) và bộ phân loại của auto mode (Claude Sonnet 5), hoặc đặt `ANTHROPIC_API_KEY`. Xem [docs/claude-setup.md](docs/claude-setup.md).
-2. Trong `/login`, chọn **OpenAI Codex** cho worker/debugger (GPT-6 Sol) và reviewer (GPT-6 Astra).
+2. Trong `/login`, chọn **OpenAI Codex (legacy)** cho worker/debugger (GPT-6 Sol) và reviewer (GPT-6 Astra). Pi 0.99 đổi tên hiển thị; provider vẫn là `openai-codex`. "Sign in with ChatGPT" của provider **OpenAI** là provider khác (`openai`), preset không dùng.
 3. Trong `/login`, chọn **OpenCode Go** và nhập API key cho GLM. Pi cũng nhận biến môi trường `OPENCODE_API_KEY`.
 4. Chạy `firecrawl login --browser` để đăng nhập dịch vụ web.
 5. Tuỳ chọn: tạo API key TypeSafe tại [console.typesafe.ai](https://console.typesafe.ai), thêm `export TYPESAFE_API_KEY="<key>"` vào `~/.zshrc` hoặc `~/.bashrc` (Windows: `setx TYPESAFE_API_KEY "<key>"`) rồi mở terminal mới, để auto mode sàng lọc bằng Jev. Đây là cách tài liệu TypeSafe và đa số package Jev hướng dẫn; muốn giữ key trong keyring của hệ điều hành thay vì biến môi trường thì chạy `pi-mcp-adapter key set systemone`. Chưa có key thì bộ phân loại LLM làm cả hai giai đoạn như trước.
@@ -103,7 +103,7 @@ Agent có context riêng và không giới hạn số lượt; dừng agent bằ
 ## Công cụ và mặc định
 
 - Web: `web_search` dùng native search của model hiện tại: provider `openai` cho Codex/OpenAI (Astra, Sol), `anthropic` cho Claude (bản vá pi-web-access); model khác (GLM) dùng Exa (endpoint MCP miễn phí, không cần key) rồi Firecrawl; lỗi mạng, quota, phản hồi hỏng chuyển sang provider kế tiếp. `fetch_content`, `get_search_content` dùng Firecrawl và kho kết quả. Phiên mới hiện `web_enable` để model bật web tools. CLI và skills hỗ trợ workflow bổ sung. Chi tiết: [docs/claude-setup.md](docs/claude-setup.md).
-- MCP filesystem: công cụ đọc trong workspace, kết nối khi cần. `mcp.json` đặt `allowInstall: false`: agent không tự cài thêm server MCP.
+- MCP filesystem: công cụ đọc trong workspace, kết nối khi cần. MCP do pi-mcp-adapter quản lý qua `mcp-adapter.json` (đặt `allowInstall: false`: agent không tự cài thêm server MCP). MCP, codemode và `tool_search` dựng sẵn của Pi 0.99 được tắt trong `extensions` của settings (`-builtin:mcp`, `-builtin:codemode`, `-builtin:tool-search`) để không có hai `/mcp` và để mọi lời gọi tool đi qua cổng permission như trước; bật lại trong `pi config` nếu cần.
 - Code intelligence: pi-lens, TypeScript language server cài sẵn (không tự `npm install` `@types` vào cache của máy); Go/Rust/Python dùng language server của máy hoặc project.
 - Native compaction bật: reserve 16.384, giữ gần nhất 20.000 token. Với cửa sổ 1M, auto-compaction chạy rất muộn; footer báo smart zone (xanh / vàng gần mép 150k / đỏ) để chọn ranh giới pha, và `/context-budget` đo phần context luôn-bật (extension `smart-zone`).
 - Cache warming tắt. Advisor, goal auditor và Oracle bật như mô tả ở trên. Jev của auto mode chỉ chạy khi bạn đã lưu key TypeSafe (tính theo token đầu vào, khoảng $0,0001 mỗi lần sàng lọc). Goal và background follow-up chỉ chạy theo thao tác/cấu hình đã chọn.
@@ -122,24 +122,25 @@ Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều
 
 | Thành phần | Phiên bản |
 |---|---|
+| Pi (`@earendil-works/pi-coding-agent`, `pi-ai`, `pi-agent-core`, `pi-tui`) | 0.99.1 |
 | `@tintinweb/pi-subagents` | 0.19.0 |
-| `@gotgenes/pi-anthropic-auth` | 3.2.2 |
-| `pi-mcp-adapter` | 2.37.0 |
-| `pi-web-access` | 0.31.0 |
+| `@gotgenes/pi-anthropic-auth` | 3.3.3 |
+| `pi-mcp-adapter` | 3.3.0 |
+| `pi-web-access` | 0.33.0 |
 | `@juicesharp/rpiv-ask-user-question`, `rpiv-todo` | 2.11.0 |
-| `@narumitw/pi-usage` | 0.61.0 |
-| `pi-lens` | 4.2.1 |
-| `pi-background-tasks` | 2.6.5 |
-| `pi-goal-x` | 0.31.8 |
-| `pi-advisor-flow` | 0.8.1 |
-| `pi-open-tui` | 0.3.8 |
+| `@narumitw/pi-usage` | 0.61.1 |
+| `pi-lens` | 4.3.0 |
+| `pi-background-tasks` | 2.6.8 |
+| `pi-goal-x` | 0.31.9 |
+| `pi-advisor-flow` | 0.9.0 |
+| `pi-open-tui` | 0.3.10 |
 | `@pi-archimedes/image-paste` | 2.8.0 |
 | `@mariozechner/clipboard` | 0.3.9 |
-| Firecrawl CLI | 1.24.4 |
+| Firecrawl CLI | 1.24.6 |
 | Skills quy trình (tstack) | Trong repo: [assets/skills](assets/skills) |
 | Firecrawl skills | Commit trong [sources.lock.json](sources.lock.json) |
 
-Các manifest và lockfile nằm trong [manifests](manifests). Hai package có peer range chưa gồm Pi 0.87.1 (pi-lens, pi-background-tasks) được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json).
+Các manifest và lockfile nằm trong [manifests](manifests). Năm package có peer range chưa gồm Pi 0.99.1 (pi-lens, pi-background-tasks, pi-goal-x, pi-advisor-flow, pi-mcp-adapter) được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json).
 
 ## Quản lý cấu hình
 
@@ -165,6 +166,8 @@ File JSON cấu hình trong agent directory và `<root>/config`, kể cả `sett
 Model và thinking của các file trên sinh từ `<agent-dir>/model-roles.json`. File này thuộc về bạn: installer chỉ tạo khi chưa có (hoặc ghi preset khi cài với `--models <preset>`), kiểm model trong catalog của Pi trước khi ghi cấu hình, và dừng khi file sai. `pi-models` đổi file này và áp ngay theo cùng cách gộp ([docs/models.md](docs/models.md)).
 
 File khác đã tùy chỉnh (`AGENTS.md`) được giữ và báo đường dẫn. Tài nguyên do installer quản lý, không còn được yêu cầu và chưa chỉnh sửa, được lưu vào backup; tài nguyên còn được cấu hình tham chiếu được giữ. Auth và file riêng của người dùng không thuộc danh sách tài nguyên được dọn.
+
+Nâng cấp từ bản Pi 0.87.1: pi-mcp-adapter 3.x đọc `<agent-dir>/mcp-adapter.json` thay cho `mcp.json`. Installer ghi file mới; `mcp.json` cũ chưa sửa được lưu vào backup, còn nếu bạn đã thêm server vào đó thì file được giữ và adapter nhắc khi mở phiên: chuyển các server trong `mcpServers` sang `mcp-adapter.json` rồi xóa `mcp.json`.
 
 Dừng các phiên Pi trước khi cập nhật. Dùng revision đã qua CI thay vì chạy `pi update` hoặc `npm update` trên runtime ghim. Nếu còn `.install.lock`, kiểm tra PID và chỉ xóa lock khi tiến trình đó đã dừng.
 

@@ -76,6 +76,7 @@ test("nguồn tool: package trong node_modules, thư mục extension, built-in",
   assert.equal(toolSource({ name: "x", sourceInfo: { path: "/r/assets/extensions/pi-rewind/index.ts" } }), "pi-rewind");
   assert.equal(toolSource({ name: "y", sourceInfo: { path: "/r/assets/extensions/rose-pine-palette.ts" } }), "rose-pine-palette");
   assert.equal(toolSource({ name: "read", sourceInfo: { source: "builtin" } }), "builtin");
+  assert.equal(toolSource({ name: "read", sourceInfo: { path: "builtin:read", source: "builtin" } }), "builtin");
   assert.equal(toolSource({ name: "read" }), "built-in");
 });
 

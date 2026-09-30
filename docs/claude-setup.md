@@ -6,11 +6,11 @@ Parent mặc định là **Claude Opus 5.5/high** (`anthropic/claude-opus-5-5`, 
 
 Tài liệu Claude Code ghi OAuth của gói Pro/Max dành cho Claude Code và ứng dụng native của Anthropic, và Anthropic có thể thực thi giới hạn này không báo trước. Nếu Claude không dùng được, chọn model khác bằng `/model`; role của Agent không phụ thuộc Claude. Bộ phân loại của auto mode chạy Claude Sonnet 5 qua cùng đăng nhập; khi Sonnet 5 lỗi, nó dùng model của phiên, nên sau khi đổi `/model` sang model Codex thì auto mode duyệt được tiếp.
 
-`@gotgenes/pi-anthropic-auth` 3.2.2 shape request OAuth (billing header, system prompt) cho mọi request đi qua provider `anthropic`, và tự thử lại khi Anthropic yêu cầu phiên bản Claude Code mới hơn. Cảnh báo extra usage của Pi vẫn bật (`warnings.anthropicExtraUsage`): request Claude không qua shaping có thể bị tính vào extra usage.
+`@gotgenes/pi-anthropic-auth` 3.3.3 shape request OAuth (billing header, system prompt) cho mọi request đi qua provider `anthropic`, và tự thử lại khi Anthropic yêu cầu phiên bản Claude Code mới hơn. Cảnh báo extra usage của Pi vẫn bật (`warnings.anthropicExtraUsage`): request Claude không qua shaping có thể bị tính vào extra usage.
 
 ## Mức thinking (effort)
 
-Opus 5.5 không tắt được thinking; `/thinking` (Alt+T) đổi effort `low`…`max`. Pi gửi effort theo lượt bằng một system message rỗng chỉ có `output_config`, và pi-anthropic-auth bỏ message rỗng khi shape request OAuth, nên mọi mức đều thành `high`. Bản vá trong [assets/patches.json](../assets/patches.json) đưa mức hiện tại vào `output_config.effort` của request. Đổi mức thinking giữa phiên làm mất prompt cache một lần. Với API key, request không qua shaping và giữ cơ chế gốc của Pi.
+Opus 5.5 không tắt được thinking; `/thinking` (Alt+T) đổi effort `low`…`max`. Pi ghim `output_config.effort` của request ở `high` và gửi effort theo lượt bằng một system message rỗng chỉ có `output_config`; từ 3.3.2, pi-anthropic-auth giữ message đó khi shape request OAuth, nên mức `/thinking` của phiên có hiệu lực mà không cần bản vá (`tests/claude-effort-wire.test.mjs` kiểm điều này). Đổi mức thinking giữa phiên làm mất prompt cache một lần. Với API key, request không qua shaping và giữ cơ chế gốc của Pi.
 
 ## Quota trong footer và `/claude-usage`
 
@@ -26,7 +26,7 @@ pi-usage chưa hỗ trợ Anthropic nên pi-config có extension `claude-usage`:
 
 ## Native web search
 
-`web_search` (pi-web-access 0.31.0) định tuyến `["openai", "anthropic", "exa", "firecrawl"]` với `useCurrentModel: true`; mô tả tool ghi "OpenAI, Anthropic, Exa, Firecrawl":
+`web_search` (pi-web-access 0.33.0) định tuyến `["openai", "anthropic", "exa", "firecrawl"]` với `useCurrentModel: true`; mô tả tool ghi "OpenAI, Anthropic, Exa, Firecrawl":
 
 | Model hiện tại | Cách tìm |
 |---|---|

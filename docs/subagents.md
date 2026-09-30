@@ -33,7 +33,7 @@ Gõ `@role nội dung` ở prompt để giao việc thẳng cho role; agent đan
 
 Ở cả hai chế độ, agent khởi động từ mention luôn chạy nền, kể cả worker/debugger, và kết quả về parent qua thông báo completion. Lời gọi `Agent` của mention không qua bộ phân loại vì chính người dùng đã gõ `@role`; agent con vẫn có cổng permission của role.
 
-Bản vá `src/mention-clone.ts` của pi-subagents cho bản sao chạy được trên Pi 0.87; trước đó bản sao lỗi và tự quay về chạy thẳng. Đổi chế độ cho project bằng `/agents` → Settings → Agent mentions (lưu vào `.pi/subagents.json`), hoặc cho mọi project bằng `agentMentions` trong `subagents.json` của Pi.
+Bản vá `src/mention-clone.ts` của pi-subagents cho bản sao chạy được trên Pi 0.87 trở lên (vẫn cần trên 0.99.1); trước đó bản sao lỗi và tự quay về chạy thẳng. Đổi chế độ cho project bằng `/agents` → Settings → Agent mentions (lưu vào `.pi/subagents.json`), hoặc cho mọi project bằng `agentMentions` trong `subagents.json` của Pi.
 
 ## Context và thực thi
 

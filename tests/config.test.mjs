@@ -48,8 +48,8 @@ for (const platform of ["darwin", "linux", "win32"]) {
       // Skills quy trình đi cùng repo (assets/skills), không tải từ nguồn ngoài.
       assert.equal(settings.skills[0], p.join(options.root, "assets", "skills"));
       assert.ok(!settings.skills.some((entry) => entry.includes("mattpocock")));
-      assert.deepEqual(settings.extensions, ["rose-pine-palette.ts", "pi-rewind", "claude-usage", "model-roles", "smart-zone", "pi-auto-mode"]
-        .map((entry) => p.join(options.root, "assets", "extensions", entry)));
+      assert.deepEqual(settings.extensions, [...["rose-pine-palette.ts", "pi-rewind", "claude-usage", "model-roles", "smart-zone", "pi-auto-mode"]
+        .map((entry) => p.join(options.root, "assets", "extensions", entry)), "-builtin:mcp", "-builtin:codemode", "-builtin:tool-search"]);
       assert.equal(settings.doubleEscapeAction, "none");
       assert.deepEqual(settings.rewind, { storageDir: p.join(options.root, "state", "rewind"), retentionDays: 30 });
       assert.equal(settings.workspaceHistory, undefined);
@@ -101,8 +101,9 @@ for (const platform of ["darwin", "linux", "win32"]) {
     const { p, options, json, profiles, files } = fixture(platform);
     const forward = (value) => value.replaceAll("\\", "/");
     for (const profile of Object.values(profiles)) {
-      const mcp = json(p.join(profile.agentDir, "mcp.json"));
-      assert.deepEqual(mcp.settings, { hostConfigDiscovery: "off", allowInstall: false });
+      assert.ok(!files.some((file) => file.path === p.join(profile.agentDir, "mcp.json")), "mcp.json thuộc MCP dựng sẵn của Pi");
+      const mcp = json(p.join(profile.agentDir, "mcp-adapter.json"));
+      assert.deepEqual(mcp.settings, { hostConfigDiscovery: "off", allowInstall: false, scriptMode: false });
       const server = mcp.mcpServers.workspace;
       assert.equal(server.command, options.nodePath);
       assert.deepEqual(server.args, [p.join(options.root, "bin", "workspace-mcp.mjs")]);
@@ -125,7 +126,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.equal(settings.autoMode.model, "anthropic/claude-sonnet-5");
       // Giai đoạn 1 là Jev khi có key, model ghim phiên bản (ngưỡng chỉnh theo phiên bản).
       assert.deepEqual(settings.autoMode.jev, { model: "jev-1.13.0", flagAt: 0.3, riskAt: 0.5, probe: true });
-      assert.ok(settings.extensions.at(-1).endsWith("pi-auto-mode"), "pi-auto-mode phải nạp sau cùng");
+      assert.ok(settings.extensions.filter((entry) => !entry.startsWith("-")).at(-1).endsWith("pi-auto-mode"), "pi-auto-mode phải nạp sau cùng");
       assert.ok(!settings.packages.some((entry) => String(entry?.source ?? entry).includes("pi-permission-system")));
       assert.ok(!files.some((file) => file.path.includes("pi-permission-system")));
       assert.deepEqual(json(p.join(profile.agentDir, "keybindings.json"))["app.thinking.cycle"], ["alt+t"]);

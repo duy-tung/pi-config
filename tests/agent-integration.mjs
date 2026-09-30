@@ -29,7 +29,7 @@ const fixture = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `pi-config
 const agentDir = path.join(fixture, "fixture agent");
 const cwd = path.join(fixture, "fixture workspace");
 for (const dir of [agentDir, cwd]) fs.mkdirSync(dir, { recursive: true });
-for (const name of ["settings.json", "keybindings.json", "models.json", "advisor.json", "subagents.json", "mcp.json", "open-tui.json", "pi-goal-x-settings.json", "pi-usage.json"]) {
+for (const name of ["settings.json", "keybindings.json", "models.json", "advisor.json", "subagents.json", "mcp-adapter.json", "open-tui.json", "pi-goal-x-settings.json", "pi-usage.json"]) {
   if (fs.existsSync(path.join(configuration.agentDir, name))) fs.copyFileSync(path.join(configuration.agentDir, name), path.join(agentDir, name));
 }
 // Kiểm cơ chế của bản cài với model của preset default (provider giả chỉ có các model này), dù model-roles.json

@@ -54,7 +54,7 @@ Say in one line of the answer which depth you ran and why.
 
 ### Discover the sources
 
-MCP servers come from the user's `mcp.json` and are reached through the `mcp` proxy tool: `mcp({})` lists them, and `mcp({server: "<name>"})` shows a server's tools and instructions. Map each server to one evidence category, using its name, its tool names, and its server instructions. When a server fits two categories, choose the one matching its primary evidence and record the ambiguity in the coverage map.
+MCP servers come from the user's MCP config (`~/.pi/agent/mcp-adapter.json`, or a project `.mcp.json`) and are reached through the `mcp` proxy tool: `mcp({})` lists them, and `mcp({server: "<name>"})` shows a server's tools and instructions. Map each server to one evidence category, using its name, its tool names, and its server instructions. When a server fits two categories, choose the one matching its primary evidence and record the ambiguity in the coverage map.
 
 | Category | Playbook | Servers it covers |
 |---|---|---|
@@ -92,7 +92,7 @@ What each category surfaces best. Use it to know what to expect back, and to nam
 
 Every skip goes in Sources consulted with its reason. Two reasons are valid:
 
-- **No server is available** for that category. This is a gap, not a choice: "Real-time team chat: not searched. No matching MCP server, so the conversational record was not searchable." Name the server that would close it: the user adds it to `mcp.json`, and `/mcp` shows its status and authentication.
+- **No server is available** for that category. This is a gap, not a choice: "Real-time team chat: not searched. No matching MCP server, so the conversational record was not searchable." Name the server that would close it: the user adds it to `~/.pi/agent/mcp-adapter.json`, and `/mcp` shows its status and authentication.
 - **The source is provably irrelevant**, not "probably irrelevant". The bar is high: "Error / exception tracking: skipped. The target is a build-time script with no runtime code path."
 
 ## 5. Synthesize

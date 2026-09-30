@@ -62,6 +62,8 @@ export const SAFE_TOOLS = new Set([
   "pi_lens_activate_tools",
   "get_goal", "create_goal", "update_goal", "set_goal_tasks", "update_goal_task", "submit_goal_oracle_advice",
   "ask_advisor", "record_advisor_outcome",
+  // Pi 0.99 (builtin:tool-search): chỉ khai báo tool đã đăng ký cho lượt sau; mỗi lời gọi tool đó vẫn qua cổng.
+  "tool_search",
 ]);
 const READ_TOOLS = new Set(["read", "grep", "find", "ls"]);
 const WRITE_TOOLS = new Set(["edit", "write"]);

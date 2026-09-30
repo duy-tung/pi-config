@@ -194,6 +194,8 @@ export default function piAutoMode(pi: ExtensionAPI) {
   function selfPaths(): string[] {
     return [
       path.join(agentDir, "settings.json"), path.join(agentDir, "keybindings.json"), path.join(agentDir, "extensions"),
+      // Server MCP stdio là lệnh chạy ở lần mở phiên sau: mcp.json (MCP dựng sẵn của Pi) và mcp-adapter.json (pi-mcp-adapter 3.x).
+      path.join(agentDir, "mcp.json"), path.join(agentDir, "mcp-adapter.json"),
       config.stateDir, ...(selfDir ? [selfDir] : []),
     ];
   }
@@ -564,6 +566,9 @@ export default function piAutoMode(pi: ExtensionAPI) {
 
   pi.on("tool_call", async (event, ctx) => {
     latest = ctx;
+    // Pi 0.99: lời gọi lồng (codemode, ctx.executeTool) cũng phát tool_call, có parentToolCallId và id "<cha>/<n>" không
+    // có trong transcript; mỗi lời gọi được duyệt riêng như lời gọi của model.
+    if (event.parentToolCallId) log({ event: "nested", tool: event.toolName, parent: event.parentToolCallId });
     return gate(ctx, { toolName: event.toolName, input: event.input as Record<string, unknown> }, event.toolCallId);
   });
 

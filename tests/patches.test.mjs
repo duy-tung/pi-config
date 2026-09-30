@@ -50,10 +50,12 @@ test("insertFile chỉ đọc file trong assets/patches", async () => {
   }
 });
 
-test("metadata ghim mười một bản vá cho một runtime", async () => {
+test("metadata ghim mười hai bản vá cho một runtime", async () => {
   const data = await loadPatchData();
   assert.equal(data.schemaVersion, 1);
-  assert.equal(data.patches.length, 11);
+  assert.equal(data.patches.length, 12);
+  // pi-anthropic-auth >= 3.3.2 tự giữ effort theo lượt (upstream PR #79): không còn vá.
+  assert.ok(!data.patches.some((spec) => spec.package === "@gotgenes/pi-anthropic-auth"));
   for (const spec of data.patches) {
     assert.match(spec.originalSha256, /^[a-f0-9]{64}$/);
     assert.match(spec.patchedSha256, /^[a-f0-9]{64}$/);
@@ -74,7 +76,7 @@ test("metadata ghim mười một bản vá cho một runtime", async () => {
   const auditor = data.patches.find((spec) => spec.package === "pi-goal-x");
   assert.equal(auditor.file, "extensions/goal-auditor.ts");
   assert.ok(auditor.edits.some((edit) => edit.after.includes("subagents:child:session-created")));
-  // pi-subagents mention-clone trên Pi 0.87: bản sao lấy hội thoại qua SessionManager (không gán state của agent),
+  // pi-subagents mention-clone trên Pi 0.87 trở lên: bản sao lấy hội thoại qua SessionManager (không gán state của agent),
   // system prompt qua before_agent_start, và agent do bản sao khởi động luôn chạy nền (kể cả role ghim foreground).
   const clone = data.patches.find((spec) => spec.package === "@tintinweb/pi-subagents" && spec.file === "src/mention-clone.ts");
   assert.ok(clone.edits.some((edit) => edit.after.includes("SessionManager.inMemory(ctx.cwd, undefined, ctx.sessionManager.getBranch())")));
@@ -92,5 +94,9 @@ test("metadata ghim mười một bản vá cho một runtime", async () => {
   assert.deepEqual(background.map((spec) => spec.file), ["dist/src/extension.js"]);
   assert.ok(!background[0].edits.some((edit) => edit.before.includes("triggerOnCompletion ?? true")));
   assert.ok(background[0].edits.some((edit) => edit.after.includes("completion notification wakes you")));
+  // rpiv: typebox thành peer để Pi 0.99 không cảnh báo dependency lúc khởi động; loader của Pi cấp bản typebox của nó.
+  const rpiv = data.patches.filter((spec) => spec.package.startsWith("@juicesharp/rpiv-"));
+  assert.deepEqual(rpiv.map((spec) => spec.file), ["package.json", "package.json"]);
+  for (const spec of rpiv) assert.ok(spec.edits.some((edit) => edit.after.includes('"typebox": "*"')));
   await assert.rejects(applyPatches({ root: os.tmpdir(), runtimes: ["../escape"] }), /Runtime phải/);
 });

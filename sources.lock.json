@@ -2,9 +2,9 @@
   {
     "name": "firecrawl-cli-source",
     "repo": "firecrawl/cli",
-    "commit": "8f954f6e9f12721bc29135b115dd9bc085d29d2d",
-    "url": "https://codeload.github.com/firecrawl/cli/tar.gz/8f954f6e9f12721bc29135b115dd9bc085d29d2d",
-    "sha256": "e367a6ea5d980fd40bcb3b79cf054c91e036dec7962beac982c62bd7ba22dfe0"
+    "commit": "5ec60749e4d257f85699e8d96968e0a666fa0468",
+    "url": "https://codeload.github.com/firecrawl/cli/tar.gz/5ec60749e4d257f85699e8d96968e0a666fa0468",
+    "sha256": "d34214b600d67452f6ea0d90cf2c3ff6a49272ea40be9e30584e7960f5053acb"
   },
   {
     "name": "firecrawl-workflows",
