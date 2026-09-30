@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { GitGuardConfig, PermissionMode } from "./config.ts";
@@ -7,7 +8,7 @@ import {
   criticalPathReason, insideAny, insideTemporary, isSelfProtected, protectedReason, resolveShellPath, resolveToolPath, temporaryRoots,
 } from "./paths.ts";
 import { detectPowerShellRisks, detectRisks } from "./risks.ts";
-import { isRegularFile, searchReadPaths, unverifiableShellPaths } from "./read-scope.ts";
+import { type DeniedPath, searchReadPaths, shellPathScope } from "./read-scope.ts";
 import { allowCoversShell, firstMatch, isPathRule, ruleAppliesTo, type RuleMatchTarget, type RuleSet } from "./rules.ts";
 import {
   analyzeShell, commandName, commandText, isReadOnlyCommand, isReadOnlyShell, optionOutputs, type ShellAnalysis, type SimpleCommand,
@@ -22,7 +23,7 @@ export type Decision =
   | { kind: "allow"; via: string }
   | { kind: "deny"; reason: string; rule?: string; message?: string }
   | { kind: "ask"; reason: string }
-  | { kind: "classify"; notes: string[] };
+  | { kind: "classify"; notes: string[]; escalate?: boolean };
 
 export interface PolicyContext {
   mode: PermissionMode;
@@ -439,6 +440,48 @@ export function gitGuardBlock(call: ToolCall, pc: PolicyContext): GitGuardBlock 
   return checkGitGuard(command, { cwd: pc.cwd, env: pc.env, protectedBranches: pc.gitGuard?.protectedBranches, git: pc.git });
 }
 
+/** Luật deny đường dẫn chặn đọc một file (có tính ngoại lệ !Path). */
+export function deniedPath(toolName: string, pc: PolicyContext, home = pc.home ?? os.homedir(), writes = false): DeniedPath {
+  return (file) => firstMatch(pc.rules.deny, { toolName, paths: [file], writes }, pc.cwd, home)?.raw;
+}
+
+function pathRuleList(pc: PolicyContext): string {
+  const rules = pc.rules.deny.filter((rule) => !rule.negate && isPathRule(rule)).map((rule) => rule.raw);
+  return rules.length > 4 ? `${rules.slice(0, 4).join(", ")}…` : rules.join(", ");
+}
+
+/**
+ * Bỏ khỏi kết quả tool grep của Pi các dòng thuộc file bị luật deny đường dẫn chặn đọc.
+ * Dòng có dạng "<đường dẫn>:<dòng>: nội dung" hoặc "<đường dẫn>-<dòng>- ngữ cảnh", đường dẫn tương đối
+ * với thư mục tìm; xét mọi cách tách có thể và bỏ dòng khi bất kỳ cách nào trỏ vào file bị deny.
+ */
+export function filterDeniedGrep(text: string, searchPath: string, pc: PolicyContext): { text: string; removed: number } {
+  const denied = deniedPath("grep", pc);
+  const cache = new Map<string, boolean>();
+  const isDenied = (relative: string) => {
+    let hit = cache.get(relative);
+    if (hit === undefined) {
+      const candidates = [path.resolve(searchPath, relative), path.resolve(path.dirname(searchPath), relative)];
+      hit = candidates.some((file) => !!denied(file) || (() => {
+        try { return !!denied(fs.realpathSync.native(file)); } catch { return false; }
+      })());
+      cache.set(relative, hit);
+    }
+    return hit;
+  };
+  let removed = 0;
+  const kept = text.split("\n").filter((line) => {
+    for (const match of line.matchAll(/[:-]\d+[:-] /gu)) {
+      if (match.index && isDenied(line.slice(0, match.index))) {
+        removed++;
+        return false;
+      }
+    }
+    return true;
+  });
+  return { text: kept.join("\n"), removed };
+}
+
 export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(call, pc)): Decision {
   const home = pc.home ?? os.homedir();
   const notes: string[] = [];
@@ -450,21 +493,26 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
   const guard = gitGuardBlock(call, pc);
   if (guard) return { kind: "deny", rule: "git guard", reason: guard.reason, message: gitGuardDenial(guard) };
 
-  // Không giao luật deny tất định cho classifier, ask, allow hoặc bypass quyết định lại.
-  // Ngoại lệ !Path chỉ miễn từng file đã biết, không miễn cả tập đích chưa kiểm được.
-  const pathDeny = pc.rules.deny.find((rule) => !rule.negate && isPathRule(rule) &&
-    (facts.kind === "shell"
-      ? (["read", "path"].includes(rule.tool.toLowerCase()) || facts.target.writes !== false)
-      : facts.kind === "read" && ruleAppliesTo(rule, call.toolName)));
+  // Luật deny đường dẫn với lệnh shell có tập đích không đọc được từ argv (glob, cây thư mục, biến...):
+  // chặn khi thấy file thật khớp luật; không kiểm được thì auto giao bộ phân loại, bypass hỏi người dùng.
+  // Tool grep của Pi được lọc ở kết quả (filterDeniedGrep); find/ls chỉ liệt kê tên.
+  let unverified: string | undefined;
+  const pathDeny = facts.kind === "shell" && pc.rules.deny.some((rule) => !rule.negate && isPathRule(rule) &&
+    (["read", "path"].includes(rule.tool.toLowerCase()) || facts.target.writes !== false));
   if (pathDeny) {
-    const uncertain = facts.kind === "shell"
-      ? unverifiableShellPaths(facts.analysis as ShellAnalysis, pc.cwd, home)
-      : call.toolName !== "read" && facts.paths.some((file) => !isRegularFile(file))
-        ? `${call.toolName} may read descendants that have not been checked` : undefined;
-    if (uncertain) return {
-      kind: "deny", rule: pathDeny.raw,
-      reason: `Cannot enforce the path deny rule ${pathDeny.raw}: ${uncertain}. Use explicit permitted files.`,
-    };
+    const denied = deniedPath(call.toolName, pc, home, facts.target.writes !== false);
+    const scope = call.toolName === "powershell"
+      ? { uncertain: "PowerShell commands are not parsed for paths" }
+      : shellPathScope(facts.analysis as ShellAnalysis, pc.cwd, home, denied);
+    if (scope.evidence) {
+      const shown = path.relative(pc.cwd, scope.evidence.file) || scope.evidence.file;
+      return {
+        kind: "deny", rule: scope.evidence.rule,
+        reason: `Permission to use ${call.toolName} has been denied by the rule ${scope.evidence.rule}: the command would read ${shown}. ` +
+          "Name the permitted files explicitly, or use the grep tool, which leaves out denied files.",
+      };
+    }
+    unverified = scope.uncertain;
   }
 
   const ask = firstMatch(pc.rules.ask, facts.target, pc.cwd, home);
@@ -489,10 +537,18 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
     notes.push(...facts.risks.map((risk) => `this command ${risk}`));
   }
 
-  if (pc.mode === "bypass") return { kind: "allow", via: "bypass" };
+  if (pc.mode === "bypass") {
+    if (unverified) return { kind: "ask", reason: `The path deny rules cannot be checked for this command (${unverified}).` };
+    return { kind: "allow", via: "bypass" };
+  }
 
   if (facts.writesSelf) {
     return { kind: "ask", reason: "This changes Pi's permission configuration, which only you can approve in auto mode." };
+  }
+
+  if (unverified) {
+    notes.push(`the path deny rules (${pathRuleList(pc)}) cannot be checked because ${unverified}; block it if it may read such a file`);
+    return { kind: "classify", notes, escalate: true };
   }
 
   switch (facts.kind) {

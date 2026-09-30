@@ -20,6 +20,8 @@ Windows PowerShell 5.1 trở lên:
 
 Bootstrap chuẩn bị Node **24.15.0** theo user và Git Bash trên Windows khi cần, kiểm SHA256 rồi chạy installer. Mở terminal mới và chạy `pi`. Không cần đăng nhập GitHub hoặc quyền quản trị để cài.
 
+Hai lệnh trên lấy bản mới nhất của nhánh `main`. Để cài đúng một bản đã kiểm chứng, thay `main` trong URL bằng commit đó và đặt `PI_CONFIG_REF` cùng commit, vd `curl -fsSL https://raw.githubusercontent.com/duy-tung/pi-config/<commit>/install.sh | PI_CONFIG_REF=<commit> bash` ([platforms.md](docs/platforms.md)).
+
 Chi tiết kiến trúc CPU, công cụ hệ thống và tùy chọn đường dẫn: [docs/platforms.md](docs/platforms.md). Có thể xem [install.sh](install.sh), [install.ps1](install.ps1) và [install.mjs](install.mjs) trước khi chạy.
 
 ## Đăng nhập dịch vụ
@@ -69,7 +71,7 @@ Permission (`pi-auto-mode`, extension của repo) có hai mode như Claude Code.
 - Jev cũng quét kết quả web, MCP và subagent để tìm prompt injection và cảnh báo agent.
 - Lệnh bị chặn trả lý do cho agent để đi đường an toàn hơn; 3 lần chặn liên tiếp hoặc 20 lần trong phiên thì hỏi người dùng.
 
-**Bypass** chạy mọi thứ trừ luật deny; `rm` vào đường dẫn quan trọng, lệnh xoá đệ quy và lệnh rủi ro (cài cơ chế tự chạy, tắt kiểm TLS, ghi đường dẫn hệ thống) thì hỏi bạn trước. `Shift+Tab` đổi mode, `/permissions` xem và duyệt lại lệnh bị chặn, `/auto-mode` xem trạng thái và chi phí Jev. Chi tiết: [docs/auto-mode.md](docs/auto-mode.md).
+**Bypass** chạy mọi thứ trừ luật deny; lệnh không kiểm được với deny đường dẫn, `rm` vào đường dẫn quan trọng, lệnh xoá đệ quy và lệnh rủi ro (cài cơ chế tự chạy, tắt kiểm TLS, ghi đường dẫn hệ thống) thì hỏi bạn trước. `Shift+Tab` đổi mode, `/permissions` xem và duyệt lại lệnh bị chặn, `/auto-mode` xem trạng thái và chi phí Jev. Chi tiết: [docs/auto-mode.md](docs/auto-mode.md).
 
 **Git guard** chặn tất định (không qua bộ phân loại, ở cả hai mode, cả agent con và goal auditor): force-push (trừ `--force-with-lease`), push thẳng lên nhánh bảo vệ (`main`, `master`, `release/*`…), `reset --hard`, `clean -f`, `branch -D`, bỏ qua hook (`--no-verify`, `HUSKY=0`…), viết lại lịch sử và `rm -r` trên `/`, `~`, `.`, `.git`. Cần thật thì bạn tự chạy bằng `!<lệnh>` trong editor. Cấu hình: [docs/auto-mode.md](docs/auto-mode.md#git-guard).
 
@@ -118,7 +120,7 @@ Agent có context riêng và không giới hạn số lượt; dừng agent bằ
 
 `pi-models` in model/thinking của mọi vai theo `model-roles.json`, giá trị đang có hiệu lực khi khác, kiểm model trong catalog của Pi và cảnh báo provider chưa đăng nhập; `pi-models preset|set|reset|adopt|apply` đổi rồi áp ngay vào cấu hình, `pi-models list` liệt kê provider và model; `/models` làm việc đó ngay trong Pi. `pi-doctor` kiểm dependency và checksum bản vá, in cùng bảng model đó cùng trạng thái advisor, goal và auto mode (kèm nguồn key Jev, không in key), và báo lỗi khi hai danh sách provider trong `web-search.json` lệch nhau (pi-web-access sẽ không nạp web tools). `pi-mcp-adapter key set|status|remove systemone` quản lý key Jev trong keyring (cách thay cho `TYPESAFE_API_KEY`). `pi-test` kiểm workflow và Agent bằng provider giả trong thư mục tạm, không gọi model trả phí.
 
-Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều hành: bộ phân loại có thể sai. Luật `permissions.deny` (file bí mật, `sudo`...) áp dụng ở cả hai mode. Khi có deny đường dẫn, glob và đọc cả cây thư mục không có tập đích kiểm được sẽ bị chặn; dùng file tường minh được phép, xem [giới hạn đọc](docs/auto-mode.md#giới-hạn-đọc-khi-có-deny-đường-dẫn). Bypass vẫn hỏi trước lệnh xoá đệ quy ra ngoài thư mục tạm (`rm -fr`, `find -delete`, `git clean`...) và lệnh rủi ro (`~/.bashrc`, git hook, crontab, `curl -k`, `/etc`...). Project cần được trust trước khi dùng cấu hình của project; settings của project không bật được bypass hay thêm luật allow. Nguồn web là dữ liệu để tham khảo, không phải instruction.
+Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều hành: bộ phân loại có thể sai. Luật `permissions.deny` (file bí mật, `sudo`...) áp dụng ở cả hai mode, theo đường dẫn có trong lệnh: glob hay tìm cả cây chạm tới file bị deny thì bị chặn, tool `grep` của Pi bỏ các dòng thuộc file đó khỏi kết quả, lệnh có tập đích không kiểm được (biến, `xargs`...) thì auto mode giao bộ phân loại, bypass hỏi bạn. Chương trình tùy ý (`node`, `python -c`...) vẫn tự mở được file; xem [giới hạn đọc](docs/auto-mode.md#giới-hạn-đọc-khi-có-deny-đường-dẫn). Bypass vẫn hỏi trước lệnh xoá đệ quy ra ngoài thư mục tạm (`rm -fr`, `find -delete`, `git clean`...) và lệnh rủi ro (`~/.bashrc`, git hook, crontab, `curl -k`, `/etc`...). Project cần được trust trước khi dùng cấu hình của project; settings của project không bật được bypass hay thêm luật allow. Nguồn web là dữ liệu để tham khảo, không phải instruction.
 
 ## Phiên bản
 
@@ -142,7 +144,7 @@ Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều
 | Skills quy trình (tstack) | Trong repo: [assets/skills](assets/skills) |
 | Firecrawl skills | Commit trong [sources.lock.json](sources.lock.json) |
 
-Các manifest và lockfile nằm trong [manifests](manifests). Năm package có peer range chưa gồm Pi 0.99.1 (pi-lens, pi-background-tasks, pi-goal-x, pi-advisor-flow, pi-mcp-adapter) được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json).
+Các manifest và lockfile nằm trong [manifests](manifests). Năm package có peer range chưa gồm Pi 0.99.1 (pi-lens, pi-background-tasks, pi-goal-x, pi-advisor-flow, pi-mcp-adapter) được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json). Quy trình nâng phiên bản (vendor, lockfile, tính lại checksum bản vá): [docs/upgrade.md](docs/upgrade.md).
 
 ## Quản lý cấu hình
 
@@ -156,7 +158,7 @@ node install.mjs --root /duong-dan/platform --agent-dir /duong-dan/agent --bin-d
 
 Role, subagents, goal settings, advisor settings và cấu hình công cụ cùng nằm trong agent directory. Một runtime Pi duy nhất ở `runtimes/current`; Firecrawl CLI ở `tools/firecrawl`.
 
-Khi chạy lại, installer dùng lockfile và checksum để kiểm tính nhất quán; runtime được cài lại khi lockfile hoặc kết quả bản vá đổi, để bản vá luôn áp lên file gốc.
+Khi chạy lại, installer dùng lockfile và checksum để kiểm tính nhất quán; runtime được cài lại khi lockfile hoặc kết quả bản vá đổi, để bản vá luôn áp lên file gốc. Bản runtime và nguồn cũ được chuyển vào `<root>/backups`; mỗi lần cài chỉ giữ bản gần nhất của mỗi loại (và 3 lần gỡ tài nguyên gần nhất), còn bản sao file cấu hình trước khi ghi đè thì giữ nguyên.
 
 File JSON cấu hình trong agent directory và `<root>/config`, kể cả `settings.json` mà Pi ghi lại khi đổi model hay thinking, được gộp ba chiều với mặc định của lần cài trước (lưu ở `<root>/state/defaults`):
 - Giá trị bạn chưa đổi nhận mặc định mới; giá trị bạn đã đổi được giữ. Nếu mặc định mới cũng đổi chính giá trị đó, installer giữ của bạn và báo xung đột kèm mặc định mới.

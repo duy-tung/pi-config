@@ -5,6 +5,7 @@ import os from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {buildConfiguration} from './lib/config.mjs';
 import {applyPatches} from './lib/patches.mjs';
+import {pruneBackups} from './lib/backups.mjs';
 import {backupFile,describeMerge,reconcileConfigFile} from './runtime/merge.mjs';
 import {localDefaults,mergesConfig,reconcileResources} from './lib/resources.mjs';
 import {SUBAGENT_ROLES,changedRoles,checkCatalog,forceNativeModels,legacyOverrides,loadPresets,nativeKind,nativeValues,readModelRoles,resolveModelRoles,withPreset,writeModelRoles} from './runtime/model-roles.mjs';
@@ -57,6 +58,7 @@ function managed(file,content,mode=0o600){
   const temporary=file+`.${process.pid}.install-tmp`;fs.writeFileSync(temporary,bytes,{mode});fs.renameSync(temporary,file);
   if(process.platform!=='win32')fs.chmodSync(file,mode);
   state.files[file]=hash;
+  // Ghi state ngay sau mỗi file: cài bị ngắt giữa chừng thì lần sau vẫn nhận ra file này là của installer.
   writeJson(statePath,state);
 }
 // Cấu hình JSON (agent dir, <root>/config) và file role: gộp mặc định mới với phần người dùng và Pi đã sửa, báo mục đã gộp và xung đột.
@@ -155,17 +157,22 @@ function retireSources(names){
     delete state.sources[name];writeJson(statePath,state);
   }
 }
+// Launcher ghim đúng Node lúc cài (có thể là Node 24.15.0 sẵn có, vd của nvm): Node đó bị gỡ thì báo cách sửa.
+const missingNode=`pi-config: không thấy Node tại ${nodePath}. Chạy lại installer (install.sh hoặc install.ps1) để dùng Node đã ghim.`;
 function launcher(name,action){
   const target=path.join(root,'bin/launch.mjs');
   if(process.platform==='win32'){
-    managed(path.join(binDir,name+'.cmd'),`@echo off\r\nsetlocal DisableDelayedExpansion\r\n"${nodePath}" "${target}" "${action}" %*\r\n`,0o755);
-  }else managed(path.join(binDir,name),`#!/bin/sh\nexec ${shellQuote(nodePath)} ${shellQuote(target)} ${shellQuote(action)} "$@"\n`,0o755);
+    // cmd đọc file theo code page OEM: thông báo ASCII, không đặt trong khối ( ) vì đường dẫn có thể chứa ngoặc.
+    managed(path.join(binDir,name+'.cmd'),`@echo off\r\nsetlocal DisableDelayedExpansion\r\nif exist "${nodePath}" goto run\r\n`+
+      `echo pi-config: Node not found at "${nodePath}". Run install.ps1 again to use the pinned Node. 1>&2\r\nexit /b 9009\r\n`+
+      `:run\r\n"${nodePath}" "${target}" "${action}" %*\r\n`,0o755);
+  }else managed(path.join(binDir,name),`#!/bin/sh\nif [ ! -x ${shellQuote(nodePath)} ]; then echo ${shellQuote(missingNode)} >&2; exit 127; fi\nexec ${shellQuote(nodePath)} ${shellQuote(target)} ${shellQuote(action)} "$@"\n`,0o755);
 }
 async function addPath(){
   if(argv.includes('--no-path'))return;
   if(process.platform==='win32'){
     const script=path.join(root,'bin/add-path.ps1');
-    managed(script,'param([string]$Directory)\n$p=[Environment]::GetEnvironmentVariable("Path","User")\nif (($p -split ";") -notcontains $Directory) {[Environment]::SetEnvironmentVariable("Path",($Directory+";"+$p),"User")}\n');
+    managed(script,fs.readFileSync(path.join(repoDir,'lib','add-path.ps1')));
     await run('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',script,binDir]);
   }else{
     const line=`export PATH=${shellQuote(binDir)}:"$PATH"`;
@@ -211,6 +218,8 @@ try{
   await addPath();
   reconcileResources({root,agentDir,binDir,state,wanted});
   state.installedAt=new Date().toISOString();writeJson(statePath,state);
+  const pruned=pruneBackups(root);
+  if(pruned.length)console.log(`Đã xoá ${pruned.length} bản runtime/nguồn/tài nguyên cũ trong ${path.join(root,'backups')} (giữ bản gần nhất).`);
   console.log(`\nĐã cài Pi vào ${root}. Mở terminal mới rồi chạy pi.`);
   const jevKey=process.platform==='win32'?'setx TYPESAFE_API_KEY "<key>"':'export TYPESAFE_API_KEY="<key>" trong ~/.zshrc hoặc ~/.bashrc';
   console.log(`Đăng nhập: pi-login → /login. Firecrawl: firecrawl login --browser. Jev cho auto mode: ${jevKey} (hoặc keyring: pi-mcp-adapter key set systemone).`);

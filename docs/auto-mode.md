@@ -68,7 +68,7 @@ Lớp chặn tất định cho lệnh git và `rm` phá huỷ (`lib/git-guard.ts
 - viết lại hoặc xoá lịch sử: `filter-branch`/`filter-repo`, `update-ref -d`, `reflog expire`, `gc --prune=now`;
 - `rm -r` trên `/`, `~`, `$HOME`, `.`, `..`, `*`, `.git`.
 
-Guard đọc lệnh như shell: chữ trong nháy, trong heredoc có delimiter trong nháy hoặc trong comment là dữ liệu (commit message nhắc tới `git reset --hard` vẫn qua); `$(...)`, backtick, heredoc hay `echo ... |` đưa vào `bash`/`sh` thì được kiểm như lệnh, cùng `sudo`, `env`, `timeout`, `xargs`, `flock`, `bash -c`, `eval`, hàm, vòng lặp và subshell. Lỗi của bộ phân tích luôn cho qua. PowerShell không qua guard (cú pháp khác). Đây là dây an toàn chống tai nạn, không phải hàng rào chống người cố tình lách.
+Guard đọc lệnh như shell: chữ trong nháy, trong heredoc có delimiter trong nháy hoặc trong comment là dữ liệu (commit message nhắc tới `git reset --hard` vẫn qua); `$(...)`, backtick, heredoc hay `echo ... |` đưa vào `bash`/`sh` thì được kiểm như lệnh, cùng `sudo`, `env`, `timeout`, `xargs`, `flock`, `bash -c`, `eval`, hàm, vòng lặp và subshell. Tên lệnh viết khác (`g\it`, `"gi"t`, `gi''t`) hoặc lấy từ biến đã gán trong lệnh (`GIT=git; $GIT reset --hard`, `${GIT:-git}`) cũng được kiểm. Lỗi của bộ phân tích luôn cho qua. PowerShell không qua guard (cú pháp khác). Đây là dây an toàn chống tai nạn, không phải hàng rào chống người cố tình lách.
 
 Khi bị chặn, agent nhận lý do kèm cách an toàn hơn; bạn tự chạy lệnh bằng `!<lệnh>` trong editor của Pi (lệnh `!` của người dùng không qua cổng). Lần chặn hiện trong `/permissions` với luật `git guard` và không tính vào giới hạn chặn của bộ phân loại.
 
@@ -83,10 +83,14 @@ Cấu hình:
 
 ### Giới hạn đọc khi có deny đường dẫn
 
-- `Path(...)`/`Read(...)` không cho qua glob shell chưa trích dẫn (kể cả chuyển hướng), brace expansion, biến, script lồng, wrapper hoặc chuỗi đổi thư mục có tập đích không kiểm được. `bash`, `bg_run` dùng cùng cổng; PowerShell chưa có bộ phân tích đường dẫn nên bị chặn khi có deny đường dẫn áp dụng.
-- `grep`/`rg` chỉ được đọc stdin hoặc các file thường được chỉ rõ, với cú pháp tùy chọn đã nhận diện; vẫn kiểm file mẫu `-f`/`--file`. Tìm trong thư mục, đích vắng của `rg`/`grep -r`, cờ chưa hiểu, `find`/`tree`/`du`, `ls -R`, `diff` với thư mục, `git grep` và danh sách file gián tiếp của `sort`/`wc` bị chặn. Tool `grep`/`find`/`ls` của Pi cũng chặn đích thư mục, kể cả mặc định là cwd.
-- Vì preset mặc định có deny `.env`, tìm cả cây workspace sẽ bị chặn dù hiện chưa có file bí mật. Dùng file tường minh được phép, vd `rg TODO src/main.ts`; `cat .env.example` vẫn dùng được nhờ ngoại lệ. Ngoại lệ từng file không miễn cả glob hoặc thư mục; deny chỉ ghi không chặn lệnh đã chứng minh chỉ đọc.
-- Đây là kiểm tra bảo thủ trước tool call, không có bộ lọc file tại lúc thực thi. Không quét cây rồi coi snapshot là bảo đảm an toàn; chưa thay thế sandbox cho chương trình tùy ý, nội dung script, thay đổi file/symlink đồng thời hay cơ chế đọc gián tiếp chưa nhận diện.
+Luật `Path(...)`/`Read(...)` kiểm đường dẫn có trong lệnh, ở cả auto lẫn bypass:
+
+- **Chặn khi có bằng chứng.** Đường dẫn chữ thuần khớp luật; glob hoặc chuyển hướng mở rộng (như bash mặc định, trên hệ file lúc gọi) ra file khớp luật; lệnh đọc nội dung cả cây (`grep -r`, `rg --hidden`/`-uu`, `diff` với thư mục, `git grep`) khi cây thật sự có file khớp luật. Đường dẫn tương đối sau `cd`, `env -C`, `git -C` được xét theo mọi thư mục có thể. Symlink được xét theo cả đích thật. Lý do chặn nêu file và luật.
+- **Cho chạy khi không đọc được file bị deny.** `rg` mặc định bỏ file ẩn (`.env`); `find`, `tree`, `du`, `ls -R`, `rg --files` chỉ liệt kê tên; biến ở lệnh không đọc file (`echo $HOME`), phép gán `FOO=1 npm test`, wrapper `timeout`/`env`/`time` với đối số chữ thuần, heredoc.
+- **Không kiểm được.** Đối số chỉ biết lúc chạy (`cat "$FILE"`, `$(...)`), brace expansion, `xargs`, `find -exec`, cờ grep/rg chưa nhận diện, danh sách file gián tiếp (`sort --files0-from`), cây quá 50.000 mục, PowerShell: auto mode giao bộ phân loại (lên thẳng giai đoạn 2, kèm ghi chú luật), bypass hỏi bạn.
+- **Tool của Pi.** `grep` được tìm cả thư mục; dòng thuộc file bị deny bị bỏ khỏi kết quả, kèm một dòng báo số dòng đã bỏ. `find`, `ls` chỉ trả tên. `read` vào file bị deny bị chặn.
+
+Đây là kiểm theo argv lúc gọi tool, không phải sandbox: chương trình tùy ý (`node`, `python -c`, script) vẫn tự mở được file, và file có thể đổi sau lúc kiểm. Vì preset mặc định có deny `.env`, `grep -r` ở gốc repo có `.env` sẽ bị chặn; dùng tool `grep` của Pi hoặc `rg` (bỏ file ẩn). `cat .env.example` vẫn dùng được nhờ ngoại lệ.
 
 ### Bộ phân loại
 

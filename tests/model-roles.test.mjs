@@ -172,6 +172,12 @@ test('điền model/thinking của vai vào hướng dẫn cho parent; tên vai 
   const {roles} = resolveModelRoles(presets);
   assert.equal(fillRoleNames('Parent {{main}}; reviewer {{reviewer}}.', roles), 'Parent claude-opus-5-5/high; reviewer gpt-6-astra/high.');
   assert.throws(() => fillRoleNames('{{coder}}', roles), /Không có vai coder/u);
+  // Gate và số lượt của advisor theo đúng vai, không ghi cứng trong AGENTS.md.
+  const tree = {...roles, advisor: {...roles.advisor, gates: ['plan', 'failure', 'completion'], calls: 7}};
+  assert.equal(fillRoleNames('{{advisor.gates}}; {{advisor.calls}}', tree), 'trước plan, lỗi lặp, trước khi xong; 7');
+  const none = {...roles, advisor: {...roles.advisor, gates: [], calls: undefined}};
+  assert.equal(fillRoleNames('{{advisor.gates}}; {{advisor.calls}}', none), 'không gate nào; không giới hạn');
+  assert.throws(() => fillRoleNames('{{advisor.model}}', roles), /Không có trường model/u);
 });
 
 test('bản cài cũ: model/thinking đã sửa trong file role thành ghi đè, giá trị như mặc định thì bỏ qua', () => {

@@ -119,12 +119,12 @@ export class StorageLock {
     return () => this.release(token);
   }
 
-  private holder(): Holder | undefined {
+  private holder(file = this.file): Holder | undefined {
     let text: string;
     let mtimeMs: number;
     try {
-      text = fs.readFileSync(this.file, "utf8");
-      mtimeMs = fs.statSync(this.file).mtimeMs;
+      text = fs.readFileSync(file, "utf8");
+      mtimeMs = fs.statSync(file).mtimeMs;
     } catch {
       return undefined;
     }
@@ -150,15 +150,26 @@ export class StorageLock {
     return !alive(holder.pid);
   }
 
-  /** Gỡ đúng khóa đã xét: process khác có thể vừa gỡ nó và tạo khóa mới. */
+  /**
+   * Gỡ đúng khóa đã xét: process khác có thể vừa gỡ nó và tạo khóa mới. Đổi tên (nguyên tử) rồi mới kiểm nội dung,
+   * nên không có khoảng hở giữa lúc kiểm và lúc xoá; lỡ lấy phải khóa mới thì trả lại bằng hard link (không ghi đè).
+   */
   private remove(holder: Holder): void {
-    const again = this.holder();
-    if (!again || again.token !== holder.token || again.at !== holder.at) return;
+    const aside = `${this.file}.${randomUUID()}.stale`;
     try {
-      fs.unlinkSync(this.file);
+      fs.renameSync(this.file, aside);
     } catch {
-      /* process khác vừa gỡ */
+      return; // process khác vừa gỡ, hoặc Windows còn mở file
     }
+    const taken = this.holder(aside);
+    if (!taken || taken.token !== holder.token || taken.at !== holder.at) {
+      try {
+        fs.linkSync(aside, this.file);
+      } catch {
+        /* đã có khóa mới hơn */
+      }
+    }
+    fs.rmSync(aside, { force: true });
   }
 
   private release(token: string): void {

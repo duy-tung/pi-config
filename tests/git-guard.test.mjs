@@ -212,6 +212,23 @@ test("git guard: toàn bộ bảng ca của bản Python, kể cả lệnh thư�
   assert.deepEqual(wrong, []);
 });
 
+test("git guard: tên lệnh viết khác (escape, nháy, biến đã gán) vẫn bị kiểm", (t) => {
+  const f = fixture();
+  t.after(f.cleanup);
+  const blocked = [
+    "g\\it push --force origin feature", '"gi"t push -f origin feature', "gi''t push --force", "GIT=git; $GIT reset --hard",
+    'export G=git; "$G" clean -fdx', "X='git push'; $X --force", "r\\m -rf /", "${GIT:-git} reset --hard",
+  ];
+  const passed = ["echo digit", "ls; rm -r build", "GIT=git; $GIT status", "$UNSET push --force"];
+  const wrong = [];
+  for (const command of blocked) if (!checkGitGuard(command, { cwd: f.dirs.feature ?? Object.values(f.dirs)[0], env: environment() })) wrong.push(`phải chặn: ${command}`);
+  for (const command of passed) {
+    const block = checkGitGuard(command, { cwd: f.dirs.feature ?? Object.values(f.dirs)[0], env: environment() });
+    if (block) wrong.push(`phải cho qua: ${command} <${block.reason}>`);
+  }
+  assert.deepEqual(wrong, []);
+});
+
 test("git guard: tắt bằng PI_GIT_GUARD của tiến trình, không bằng phép gán trong lệnh; danh sách nhánh từ môi trường và settings", (t) => {
   const f = fixture();
   t.after(f.cleanup);

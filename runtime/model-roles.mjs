@@ -327,11 +327,21 @@ export function roleModel(text) {
   return {model: fields?.model || undefined, thinking: fields?.thinking || undefined};
 }
 
-/** Điền {{vai}} trong văn bản (AGENTS.md của agent dir) bằng id model/thinking của vai đó, vd claude-opus-5-5/high. */
+/**
+ * Điền {{vai}} trong văn bản (AGENTS.md của agent dir) bằng id model/thinking của vai đó, vd claude-opus-5-5/high;
+ * {{advisor.gates}} bằng các gate đang bật, {{advisor.calls}} bằng số lượt mỗi phiên.
+ */
 export function fillRoleNames(text, roles) {
-  return text.replace(/\{\{(\w+)\}\}/gu, (match, name) => {
+  return text.replace(/\{\{(\w+)(?:\.(\w+))?\}\}/gu, (match, name, field) => {
     if (!ROLES.includes(name)) throw new Error(`Không có vai ${name} cho ${match}`);
-    return `${parseModelRef(roles[name].model).id}/${roles[name].thinking}`;
+    const role = roles[name];
+    if (field === undefined) return `${parseModelRef(role.model).id}/${role.thinking}`;
+    if (name === 'advisor' && field === 'gates') {
+      const gates = role.gates ?? ADVISOR_GATES;
+      return gates.length ? gates.map(gate => GATE_LABELS[gate]).join(', ') : 'không gate nào';
+    }
+    if (name === 'advisor' && field === 'calls') return role.calls === undefined ? 'không giới hạn' : String(role.calls);
+    throw new Error(`Không có trường ${field} của vai ${name} cho ${match}`);
   });
 }
 
