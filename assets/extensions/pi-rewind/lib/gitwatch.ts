@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
-import { ABSENT, type Capturer, type FileVersion, isSensitive, realParent, sameVersion } from "./store.ts";
+import { type Capturer, type FileVersion, isSensitive, realParent, sameVersion } from "./store.ts";
 
 export interface GitResult {
   code: number;
@@ -24,8 +24,8 @@ export function runGit(cwd: string, args: string[], input?: string, timeoutMs = 
       timedOut = true;
       child.kill("SIGKILL");
     }, timeoutMs);
-    child.stdout.on("data", (chunk: Buffer) => out.push(chunk));
-    child.stderr.on("data", (chunk: Buffer) => err.push(chunk));
+    child.stdout?.on("data", (chunk: Buffer) => out.push(chunk));
+    child.stderr?.on("data", (chunk: Buffer) => err.push(chunk));
     child.on("error", () => {
       clearTimeout(timer);
       resolve({ code: 127, stdout: Buffer.alloc(0), stderr: "không chạy được git", timedOut });
@@ -173,7 +173,7 @@ export class GitWatcher {
       }
       // Trước tool file này sạch: nội dung trước là HEAD, hoặc chưa tồn tại nếu untracked.
       const code = status.get(file) ?? "";
-      if (code === "??" || !window.head) changes.push({ file: absolute, before: { ...ABSENT, dir: realParent(absolute) } });
+      if (code === "??" || !window.head) changes.push({ file: absolute, before: { kind: "absent", dir: realParent(absolute) } });
       else fromHead.push(file);
     }
     if (fromHead.length && window.head) {
@@ -213,7 +213,7 @@ export class GitWatcher {
           continue;
         }
         if (tree.code === 0 && !modes.has(file)) {
-          result.set(file, { ...ABSENT, dir: realParent(absolute) });
+          result.set(file, { kind: "absent", dir: realParent(absolute) });
           continue;
         }
         const blob = await runGit(top, ["cat-file", "--filters", `${head}:${file}`], undefined, 30000);

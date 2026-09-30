@@ -175,7 +175,7 @@ Nâng cấp từ bản Pi 0.87.1: pi-mcp-adapter 3.x đọc `<agent-dir>/mcp-ada
 
 `npm ci` của installer được tối đa 30 phút (lệnh khác 10 phút). Mạng tới registry npm chậm thì tăng bằng `PI_CONFIG_NPM_TIMEOUT_MINUTES`, ví dụ `PI_CONFIG_NPM_TIMEOUT_MINUTES=60 node install.mjs` (PowerShell: `$env:PI_CONFIG_NPM_TIMEOUT_MINUTES=60`); chạy lại cũng nhanh hơn vì gói đã tải nằm trong cache của npm.
 
-Dừng các phiên Pi trước khi cập nhật. Dùng revision đã qua CI thay vì chạy `pi update` hoặc `npm update` trên runtime ghim. Nếu còn `.install.lock`, kiểm tra PID và chỉ xóa lock khi tiến trình đó đã dừng.
+Dừng các phiên Pi trước khi cập nhật. Dùng revision đã qua CI thay vì chạy `pi update` hoặc `npm update` trên runtime ghim. `.install.lock` còn sót từ lần cài bị ngắt được installer và `pi-models` tự gỡ khi tiến trình ghi trong đó đã dừng; tiến trình còn chạy thì báo PID.
 
 ## Phát triển và kiểm thử
 

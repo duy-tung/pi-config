@@ -53,8 +53,9 @@ data.patches.forEach((spec, index) => {
   const source = fs.readFileSync(path.join(packageRoot, spec.file), "utf8").replace(/\r\n/g, "\n");
   const original = sourceHash(source);
   if (original === spec.patchedSha256) {
-    console.log(`FAIL ${label}: source đã được vá; dùng node_modules chưa vá`);
-    failed++;
+    // Runtime đã cài (đã vá) chỉ kiểm được là khớp manifest; nâng phiên bản thì dùng node_modules chưa vá.
+    if (version === spec.versions.current) console.log(`OK   ${label}@${version} (đã vá)`);
+    else { console.log(`FAIL ${label}: source đã vá nhưng phiên bản ${version} khác ${spec.versions.current}`); failed++; }
     return;
   }
   let patched;

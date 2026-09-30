@@ -428,12 +428,13 @@ export default function piRewind(pi: ExtensionAPI) {
       case "code":
       case "both": {
         if (!checkpoint) throw new Error("Failed to restore the code:\nThis message has no code checkpoint.");
+        const mode = choice.action; // giữ kiểu đã thu hẹp trong closure bên dưới
         await locked(async () => {
           const plan = planRestore(history.targetsFor(checkpoint), capturer);
           assertSamePlan(shown, plan);
           await journaled(ctx, plan, checkpoint.id, async () => {
             const previous = await applyPlan(ctx, plan);
-            if (choice.action === "both") {
+            if (mode === "both") {
               const leafBefore = ctx.sessionManager.getLeafId();
               try {
                 await navigate(ctx, choice.entryId);
@@ -443,12 +444,12 @@ export default function piRewind(pi: ExtensionAPI) {
                   await restoreCode(ctx, new Map(Object.entries(previous)));
                   throw error;
                 }
-                record(choice.action, checkpoint.id, previous);
+                record(mode, checkpoint.id, previous);
                 throw error;
               }
             }
-            record(choice.action, checkpoint.id, previous);
-            if (choice.action === "code") {
+            record(mode, checkpoint.id, previous);
+            if (mode === "code") {
               const count = Object.keys(previous).length;
               ctx.ui.notify(count ? `Restored the code in ${describeFiles(Object.keys(previous))}.` : "The code has not changed (nothing was restored).", "info");
             }
@@ -499,7 +500,8 @@ export default function piRewind(pi: ExtensionAPI) {
     const streamFn = ((streamModel: typeof model, context: never, options: never) =>
       ctx.modelRegistry.streamSimple(streamModel, context, options)) as never;
     const { text, usage } = await generateSummaryWithUsage(
-      prefix, requestModel, 16384, auth.apiKey, auth.headers, undefined, instructions, undefined, ctx.thinkingLevel, streamFn, auth.env,
+      // Header null (bỏ header mặc định) được chuyển nguyên như compaction của Pi.
+      prefix, requestModel, 16384, auth.apiKey, auth.headers as Record<string, string> | undefined, undefined, instructions, undefined, ctx.thinkingLevel, streamFn, auth.env,
     );
     const leaf = manager.getLeafId();
     const tokensBefore = buildSessionContext(entries, leaf).messages.reduce((sum, message) => sum + estimateTokens(message), 0);
@@ -827,10 +829,11 @@ export default function piRewind(pi: ExtensionAPI) {
     if (canSummarize) options.push("Summarize from here", "Summarize up to here");
     options.push("Never mind");
     const option = await ctx.ui.select("Confirm you want to restore to the point before you sent this message", options);
-    const action = ({
+    const actions = {
       "Restore code and conversation": "both", "Restore conversation": "conversation", "Restore code": "code",
       "Summarize from here": "summarize", "Summarize up to here": "summarize_up_to",
-    } as const)[option as "Restore code"];
+    } as const;
+    const action: (typeof actions)[keyof typeof actions] | undefined = actions[option as keyof typeof actions];
     if (!action) return undefined;
     const instructions = action === "summarize" || action === "summarize_up_to"
       ? (await ctx.ui.input("Add context (optional)", "add context (optional)"))?.trim() || undefined

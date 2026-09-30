@@ -122,7 +122,7 @@ export function mergeSnapshot(previous: QuotaSnapshot | undefined, next: QuotaSn
   if (!previous) return next;
   const merged: QuotaSnapshot = { ...previous };
   for (const [key, value] of Object.entries(next)) {
-    if (value !== undefined) (merged as Record<string, unknown>)[key] = value;
+    if (value !== undefined) (merged as unknown as Record<string, unknown>)[key] = value;
   }
   return merged;
 }

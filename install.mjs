@@ -7,6 +7,7 @@ import {buildConfiguration} from './lib/config.mjs';
 import {applyPatches} from './lib/patches.mjs';
 import {pruneBackups} from './lib/backups.mjs';
 import {backupFile,describeMerge,reconcileConfigFile} from './runtime/merge.mjs';
+import {acquireInstallLock} from './runtime/install-lock.mjs';
 import {localDefaults,mergesConfig,reconcileResources} from './lib/resources.mjs';
 import {SUBAGENT_ROLES,changedRoles,checkCatalog,forceNativeModels,legacyOverrides,loadPresets,nativeKind,nativeValues,readModelRoles,resolveModelRoles,withPreset,writeModelRoles} from './runtime/model-roles.mjs';
 import {run,download,npmCli,npmTimeout,readJson,writeJson,sha256,shellQuote,assertSafePath} from './lib/system.mjs';
@@ -37,8 +38,7 @@ if(previous && (previous.agentDir!==agentDir || previous.binDir!==binDir))throw 
 if(!previous && fs.existsSync(root) && fs.readdirSync(root).length)throw new Error('Root đã có dữ liệu không thuộc pi-config. Dùng --root khác; cấu hình hiện tại không bị ghi đè.');
 if(!previous && fs.existsSync(path.join(agentDir,'settings.json')))throw new Error('Pi đã có settings ở agent-dir. Dùng --agent-dir khác để nghiệm thu trước khi chuyển.');
 fs.mkdirSync(root,{recursive:true,mode:0o700});fs.mkdirSync(binDir,{recursive:true});
-const lock=path.join(root,'.install.lock');
-const lockFd=fs.openSync(lock,'wx',0o600);fs.writeFileSync(lockFd,String(process.pid));fs.closeSync(lockFd);
+const releaseLock=acquireInstallLock(root);
 const state={version:1,root,agentDir,binDir,nodePath,platform:process.platform,arch:process.arch,
   shellPath:shellPath ?? previous?.shellPath,files:previous?.files ?? {},runtimes:previous?.runtimes ?? {},sources:previous?.sources ?? {}};
 const preserved=[],merged=[],wanted=new Set();
@@ -230,4 +230,4 @@ try{
   if(models.preset!==undefined)console.log(`Đã chọn preset ${models.preset} trong ${models.file}.`);
   if(catalog.notes.length)console.log(`Mức thinking model không hỗ trợ (Pi dùng mức gần nhất):\n  - ${catalog.notes.join('\n  - ')}`);
   await run(nodePath,[path.join(root,'bin/launch.mjs'),'doctor']);
-}finally{fs.unlinkSync(lock);}
+}finally{releaseLock();}
