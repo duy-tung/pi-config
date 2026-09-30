@@ -170,11 +170,11 @@ async function check(name,fn) {
   activePhase=name;console.log(`Agent ${profile}: ${name}`);
   try {await fn();results.push({name,status:'PASS'});}catch(error){results.push({name,status:'FAIL',error:error.stack});}
 }
-await check('native delegation tools and five task roles are available',async()=>{
+await check('native delegation tools and six task roles are available',async()=>{
   const names=session.getAllTools().map(tool=>tool.name);
   assert.ok(names.includes('Agent'));
   for(const name of ['get_subagent_result','steer_subagent'])assert.ok(names.includes(name));
-  assert.deepEqual(fs.readdirSync(path.join(agentDir,'agents')).sort(),['debugger.md','researcher.md','reviewer.md','verifier.md','worker.md']);
+  assert.deepEqual(fs.readdirSync(path.join(agentDir,'agents')).sort(),['debugger.md','explorer.md','researcher.md','reviewer.md','verifier.md','worker.md']);
 });
 await check('researcher uses GLM/max and separate context',async()=>{
   const out=await run('sol',invocation('sol'),[[tool('read',{path:'safe.txt'})],final('CHILD_OK')]);
@@ -185,11 +185,11 @@ await check('researcher uses GLM/max and separate context',async()=>{
   assert.match(JSON.stringify(child.at(-1).messages),/SAFE_CONTENT/);
 });
 const configured=Object.fromEntries(modelRoles.SUBAGENT_ROLES.map(role=>[role,[modelId(defaults.subagents[role].model),defaults.subagents[role].thinking]]));
-for(const role of ['researcher','worker','debugger','reviewer','verifier']) {
+for(const role of ['researcher','explorer','worker','debugger','reviewer','verifier']) {
   await check(`native ${role} keeps its configured model/effort despite conflicting tool parameters`,async()=>{
     const id='configured-'+role;
     const [expectedModel,expectedEffort]=configured[role];
-    const opposite=role==='researcher'?'openai-codex/gpt-6-sol':'opencode-go/glm-5.3-flash';
+    const opposite=role==='researcher'||role==='explorer'?'openai-codex/gpt-6-sol':'opencode-go/glm-5.3-flash';
     const out=await run(id,invocation(id,{subagent_type:role,model:opposite,thinking:'off',inherit_context:true,isolated:true,max_turns:999}));
     assert.equal(out[0]?.isError,false,JSON.stringify(out));
     const seen=control.seen.filter(x=>x.key==='child_'+id);
@@ -197,10 +197,16 @@ for(const role of ['researcher','worker','debugger','reviewer','verifier']) {
     assert.ok(!JSON.stringify(seen).includes('CASE:parent_'+id));
   });
 }
-await check('researcher gets pi-web-access tools from its role',async()=>{
+await check('researcher gets pi-web-access tools from its role; explorer reads code without web tools',async()=>{
   await run('web',invocation('web'));
   const child=control.seen.filter(x=>x.key==='child_web');assert.ok(child.length>0);
   for(const name of ['web_search','fetch_content'])assert.ok(child[0].tools.includes(name),JSON.stringify(child[0].tools));
+  const out=await run('explore',invocation('explore',{subagent_type:'explorer'}),[[tool('read',{path:'safe.txt'})],final('MAP_OK')]);
+  assert.equal(out[0]?.isError,false,JSON.stringify(out));
+  const explorer=control.seen.filter(x=>x.key==='child_explore');assert.ok(explorer.length>0);
+  for(const name of ['read','grep','find','ls','bash'])assert.ok(explorer[0].tools.includes(name),JSON.stringify(explorer[0].tools));
+  for(const name of ['web_search','fetch_content','write','edit'])assert.ok(!explorer[0].tools.includes(name),JSON.stringify(explorer[0].tools));
+  assert.ok(explorer.at(-1).messages.some(m=>m.role==='toolResult'&&!m.isError&&JSON.stringify(m.content).includes('SAFE_CONTENT')),'explorer đọc được code');
 });
 await check('Codex fast mode reaches Sol and Astra role requests; other providers are untouched',async()=>{
   for(const [role,tier] of [['worker','priority'],['debugger','priority'],['reviewer','priority'],['verifier','priority'],['researcher',undefined]]){
@@ -229,8 +235,8 @@ await check('researcher runs read-only shell commands (git archaeology, rg) with
   assert.ok(messages.some(m=>m.role==='toolResult'&&!m.isError&&JSON.stringify(m.content).includes('SAFE_CONTENT')),JSON.stringify(messages));
   assert.ok(!control.seen.filter(x=>x.key==='child_shell')[0].tools.includes('write'));
 });
-await check('verifier and reviewer cannot write files',async()=>{
-  for(const role of ['verifier','reviewer']){
+await check('verifier, reviewer and explorer cannot write files',async()=>{
+  for(const role of ['verifier','reviewer','explorer']){
     const id='nowrite-'+role;
     const out=await run(id,invocation(id,{subagent_type:role}),[[tool('write',{path:`${id}.txt`,content:'should-not-exist'})],final('BLOCKED')]);
     assert.equal(out[0]?.isError,false,JSON.stringify(out));assert.equal(fs.existsSync(path.join(cwd,`${id}.txt`)),false,role);

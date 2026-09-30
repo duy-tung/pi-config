@@ -1,10 +1,6 @@
 {
   "alwaysOn": true,
   "simpleMode": false,
-  "advisorMaxCallsPerSession": 5,
-  "advisorPlanGate": false,
-  "advisorFailureGate": true,
-  "advisorCompletionGate": true,
   "advisorAutoLoopGate": false,
   "gateFailureMode": "warn-and-continue",
   "advisorScoutEnabled": false,

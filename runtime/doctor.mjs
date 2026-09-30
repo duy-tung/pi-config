@@ -76,7 +76,8 @@ for(const [name,p] of Object.entries(profiles)){
   const advisorFile=path.join(p.agentDir,'advisor.json');
   if(p.packages.includes('pi-advisor-flow')&&fs.existsSync(advisorFile)){
     const advisor=read(advisorFile),main=`${s.defaultProvider}/${s.defaultModel}`;
-    console.log(`  advisor ${advisor.alwaysOn===true?`luôn bật, tối đa ${advisor.advisorMaxCallsPerSession??'∞'} lần/phiên`:'tắt'}`);
+    const gates=[['advisorPlanGate','trước plan'],['advisorFailureGate','lỗi lặp'],['advisorCompletionGate','trước khi xong']].filter(([key])=>advisor[key]!==false).map(([,text])=>text);
+    console.log(`  advisor ${advisor.alwaysOn===true?`luôn bật, gate: ${gates.join(', ')||'không (chỉ khi được gọi)'}; tối đa ${advisor.advisorMaxCallsPerSession??'∞'} lần/phiên`:'tắt'}`);
     // alwaysOn đặt model của phiên thành executor mỗi lần mở phiên.
     if(advisor.alwaysOn===true&&advisor.executor&&advisor.executor!==main)
       warnings.push(`${name}: advisor.json bật alwaysOn với executor ${advisor.executor}; mỗi phiên sẽ chuyển từ ${main} sang model này`);

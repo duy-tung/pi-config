@@ -23,13 +23,13 @@ Explore with the method in [EXPLORER.md](EXPLORER.md) yourself, starting from `s
 
 ## 3. Complex: explore in parallel
 
-Split the question into 2 to 4 exploration angles, each a distinct slice of the subsystem (for example: the entry points and request flow, the data model and its storage, the seam with service Y). Before spawning, find each angle's entry points and call sites with `symbol_search`, or `lsp_navigation` references and incomingCalls (after `pi_lens_activate_tools`). Spawn one `researcher` agent per angle, all in one response (parallel Agent calls). Each prompt is everything below the divider in [EXPLORER.md](EXPLORER.md), with the question and that agent's angle filled in.
+Split the question into 2 to 4 exploration angles, each a distinct slice of the subsystem (for example: the entry points and request flow, the data model and its storage, the seam with service Y). Before spawning, find each angle's entry points and call sites with `symbol_search`, or `lsp_navigation` references and incomingCalls (after `pi_lens_activate_tools`). Spawn one `explorer` agent per angle, all in one response (parallel Agent calls). Each prompt is everything below the divider in [EXPLORER.md](EXPLORER.md), with the question and that agent's angle filled in.
 
-Researchers do not see this conversation; they read AGENTS.md themselves. Put every pointer an explorer needs into its angle: paths, symbols, and the user's own words for the feature.
+Explorers do not see this conversation; they read AGENTS.md themselves. Put every pointer an explorer needs into its angle: paths, symbols, and the user's own words for the feature.
 
 ## 4. Synthesize
 
-Write the explanation yourself with [EXPLAINER.md](EXPLAINER.md), from all the explorers' full reports (`get_subagent_result`). You own their output. A researcher reports only what its searches reached, so an absence in a report is not an absence in the code. Before you write a call chain, an ownership claim, or a gotcha, read the code that proves it. Resolve contradictions in the code, not by majority.
+Write the explanation yourself with [EXPLAINER.md](EXPLAINER.md), from all the explorers' full reports (`get_subagent_result`). You own their output. An explorer reports only what its searches reached, so an absence in a report is not an absence in the code. Before you write a call chain, an ownership claim, or a gotcha, read the code that proves it. Resolve contradictions in the code, not by majority.
 
 ## 5. Present
 

@@ -94,6 +94,11 @@ test('pi-models: tham số sai và khóa của installer báo lỗi, không ghi 
     [['set', 'worker'], /thiếu giá trị/u],
     [['set', 'worker', 'ultra'], /"ultra" không phải model dạng provider\/id hay mức thinking/u],
     [['set', 'worker', 'high', 'max'], /chỉ nêu một thinking/u],
+    [['set', 'worker', 'gates=plan'], /gates= chỉ dùng cho vai advisor/u],
+    [['set', 'advisor', 'gates=plan,soon'], /gates= nhận danh sách cách nhau bởi dấu phẩy gồm plan, failure, completion, hoặc none/u],
+    [['set', 'advisor', 'gates=plan,plan'], /gates= nhận danh sách/u],
+    [['set', 'advisor', 'calls=0'], /calls= nhận số nguyên từ 1 đến 100/u],
+    [['set', 'advisor', 'calls=7', 'calls=8'], /chỉ nêu một calls/u],
     [['reset'], /pi-models reset <vai>\.\.\. hoặc pi-models reset --all/u],
     [['reset', 'worker', '--all'], /pi-models reset <vai>\.\.\. hoặc pi-models reset --all/u],
     [['preset'], /pi-models preset <tên>/u],
@@ -163,14 +168,34 @@ test('catalog và effects truyền vào (như /models trong phiên): kiểm mode
   assert.match(set.text, /\náp ngay: worker$/u);
   // Preset claude giữ main và autoMode; worker chỉ ghi đè model nên đổi thinking theo preset (max → high).
   assert.equal((await run('preset', 'claude')).status, 0);
-  assert.deepEqual(applied[1], ['researcher', 'worker', 'debugger', 'reviewer', 'verifier', 'advisor', 'auditor', 'oracle']);
+  assert.deepEqual(applied[1], ['researcher', 'explorer', 'worker', 'debugger', 'reviewer', 'verifier', 'advisor', 'auditor', 'oracle']);
   // Lệch qua /agents: cảnh báo gợi ý lệnh /models.
   fs.writeFileSync(f.file('agents/reviewer.md'), fs.readFileSync(f.file('agents/reviewer.md'), 'utf8').replace('thinking: high', 'thinking: low'));
   const shown = await run();
   assert.equal(shown.status, 0, shown.text);
   assert.match(shown.text, /Giữ giá trị này: \/models adopt reviewer; dùng lại model-roles\.json: \/models apply --reset\./u);
+  // Gate và số lượt của advisor: ghi đè trong model-roles.json, áp vào advisor.json như model.
+  const gates = await run('set', 'advisor', 'gates=completion,plan,failure', 'calls=7');
+  assert.equal(gates.status, 0, gates.text);
+  assert.match(gates.text, /^advisor: anthropic\/claude-fable-5-1 \(high; gate lỗi lặp, trước khi xong; 5 lượt\/phiên\) → anthropic\/claude-fable-5-1 \(high; gate trước plan, lỗi lặp, trước khi xong; 7 lượt\/phiên\)$/mu);
+  assert.deepEqual(readJson(f.file('model-roles.json')).roles.advisor, {gates: ['plan', 'failure', 'completion'], calls: 7});
+  const advisorFile = readJson(f.file('advisor.json'));
+  assert.deepEqual([advisorFile.advisorPlanGate, advisorFile.advisorFailureGate, advisorFile.advisorCompletionGate, advisorFile.advisorMaxCallsPerSession], [true, true, true, 7]);
+  assert.deepEqual(applied.at(-1), ['advisor']);
+  assert.equal((await run('set', 'advisor', 'gates=none')).status, 0);
+  assert.deepEqual(readJson(f.file('model-roles.json')).roles.advisor, {gates: [], calls: 7});
+  assert.equal(readJson(f.file('advisor.json')).advisorPlanGate, false);
+  // Preset tree: cả ba gate và 7 lượt đến từ preset khi bỏ ghi đè.
+  assert.equal((await run('reset', 'advisor')).status, 0);
+  const tree = await run('preset', 'tree');
+  assert.equal(tree.status, 0, tree.text);
+  assert.match(tree.text, /^debugger: anthropic\/claude-opus-5-5 \(high\) → anthropic\/claude-opus-5-5 \(medium\)$/mu);
+  const treeAdvisor = readJson(f.file('advisor.json'));
+  assert.deepEqual([treeAdvisor.advisor, treeAdvisor.advisorPlanGate, treeAdvisor.advisorMaxCallsPerSession], ['anthropic/claude-fable-5-1', true, 7]);
+  assert.equal(readJson(f.file('settings.json')).autoMode.model, 'anthropic/claude-opus-5-5');
+  assert.match(fs.readFileSync(f.file('agents/explorer.md'), 'utf8'), /^model: anthropic\/claude-opus-5-5\nthinking: medium$/mu);
   const listed = await run('list');
-  assert.match(listed.text, /^anthropic: đã đăng nhập \(OAuth\), 1 model; vai: main, researcher, worker, debugger, reviewer, verifier, advisor, auditor, oracle, autoMode$/mu);
+  assert.match(listed.text, /^anthropic: đã đăng nhập \(OAuth\), 1 model; vai: main, researcher, explorer, worker, debugger, reviewer, verifier, advisor, auditor, oracle, autoMode$/mu);
   assert.match(listed.text, /^Xem model của một provider: \/models list <provider>$/mu);
   const unknown = await run('frobnicate');
   assert.equal(unknown.status, 1);
@@ -204,15 +229,15 @@ async function commands(f) {
   assert.match(preview.text, /Xem trước \(--dry-run\)/u);
   assert.match(preview.text, /preset: default → claude/u);
   assert.match(preview.text, /worker: openai-codex\/gpt-6-sol \(max\) → anthropic\/claude-opus-5-5 \(high\)/u);
-  assert.match(preview.text, /Sẽ cập nhật: settings\.json, advisor\.json, pi-goal-x-settings\.json, agents\/researcher\.md, agents\/worker\.md, agents\/debugger\.md, agents\/reviewer\.md, agents\/verifier\.md, AGENTS\.md/u);
+  assert.match(preview.text, /Sẽ cập nhật: settings\.json, advisor\.json, pi-goal-x-settings\.json, agents\/researcher\.md, agents\/explorer\.md, agents\/worker\.md, agents\/debugger\.md, agents\/reviewer\.md, agents\/verifier\.md, AGENTS\.md/u);
   // Bản cài giả không có auth.json: provider của mọi vai chưa đăng nhập.
-  assert.match(preview.text, /provider anthropic \(main, researcher, worker, debugger, reviewer, verifier, advisor, auditor, oracle, autoMode\) chưa đăng nhập: chạy pi-login rồi \/login/u);
+  assert.match(preview.text, /provider anthropic \(main, researcher, explorer, worker, debugger, reviewer, verifier, advisor, auditor, oracle, autoMode\) chưa đăng nhập: chạy pi-login rồi \/login/u);
   assert.deepEqual(snapshot(f.root, f.agentDir), before);
   const switched = await run('preset', 'claude');
   assert.equal(switched.status, 0, switched.text);
   assert.deepEqual(readJson(modelRoles), {preset: 'claude', roles: {}});
   assert.match(frontmatter('worker'), /^model: anthropic\/claude-opus-5-5\nthinking: high$/mu);
-  assert.match(switched.text, /^Có hiệu lực: researcher, worker, debugger, reviewer, verifier ở lần gọi Agent kế tiếp; advisor ở lần hỏi advisor kế tiếp; auditor, oracle ở phiên Pi mở sau\.$/mu);
+  assert.match(switched.text, /^Có hiệu lực: researcher, explorer, worker, debugger, reviewer, verifier ở lần gọi Agent kế tiếp; advisor ở lần hỏi advisor kế tiếp; auditor, oracle ở phiên Pi mở sau\.$/mu);
   assert.equal(fs.existsSync(path.join(f.root, '.install.lock')), false);
   // Model sai tên: dừng trước khi ghi.
   const unchanged = snapshot(f.root, f.agentDir);

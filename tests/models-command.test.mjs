@@ -35,6 +35,10 @@ test('/models: gợi ý thay cả chuỗi tham số, theo từng lệnh và vị
   assert.deepEqual(values('list a'), ['list anthropic']);
   assert.equal(values('frobnicate '), null);
   assert.deepEqual(splitArgs('  set  worker\thigh '), ['set', 'worker', 'high']);
+  // advisor: thêm gates= và calls=, tới 4 giá trị.
+  assert.deepEqual(values('set advisor g'), ['set advisor gates=plan,failure,completion', 'set advisor gates=failure,completion', 'set advisor gates=completion', 'set advisor gates=none']);
+  assert.deepEqual(values('set advisor gates=none c'), ['set advisor gates=none calls=']);
+  assert.deepEqual(values('set worker g'), null, 'vai khác không có gate');
 });
 
 test('/models: menu các vai đánh dấu ghi đè và giá trị đang chạy khi lệch; menu của vai', () => {
@@ -62,6 +66,19 @@ test('/models: menu các vai đánh dấu ghi đè và giá trị đang chạy k
   ]);
   assert.deepEqual(role.actions, [{pick: 'model'}, {pick: 'thinking'}, {args: ['reset', 'worker']}]);
   assert.equal(roleMenu('main', roles.main).options.length, 2, 'vai không ghi đè thì không có mục bỏ ghi đè');
+  // Advisor: bật/tắt từng gate (chọn là đổi ngay), đổi số lượt; dòng của vai kèm gate và số lượt.
+  const advisor = {model: 'anthropic/claude-fable-5-1', thinking: 'high', gates: ['failure', 'completion'], calls: 5, source: {gates: 'override'}};
+  const gates = roleMenu('advisor', advisor, {model: 'anthropic/claude-fable-5-1', thinking: 'high', gates: [], calls: 5});
+  assert.equal(gates.title, 'advisor: anthropic/claude-fable-5-1 · high · gate lỗi lặp, trước khi xong · 5 lượt');
+  assert.deepEqual(gates.options.slice(2), [
+    'Bật gate trước plan (đang tắt)', 'Tắt gate lỗi lặp (đang bật)', 'Tắt gate trước khi xong (đang bật)', 'Đổi số lượt mỗi phiên… (đang 5)',
+    'Bỏ ghi đè, dùng preset (anthropic/claude-fable-5-1 · high · gate không · 5 lượt)',
+  ]);
+  assert.deepEqual(gates.actions.slice(2), [
+    {args: ['set', 'advisor', 'gates=plan,failure,completion']}, {args: ['set', 'advisor', 'gates=completion']},
+    {args: ['set', 'advisor', 'gates=failure']}, {pick: 'calls'}, {args: ['reset', 'advisor']},
+  ]);
+  assert.deepEqual(roleMenu('advisor', {...advisor, gates: ['completion']}).actions[4], {args: ['set', 'advisor', 'gates=none']});
   assert.deepEqual(levelOptions(['low', 'high', 'max'], 'high'), ['low', 'high (đang dùng)', 'max']);
   assert.equal(levelOf('high (đang dùng)'), 'high');
 });

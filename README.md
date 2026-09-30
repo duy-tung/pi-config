@@ -81,7 +81,8 @@ Pi dùng `Agent` của **@tintinweb/pi-subagents**:
 
 | Role | Model/effort | Phạm vi |
 |---|---|---|
-| `researcher` | GLM-5.3-Flash/max | Khảo sát code/docs/log/web và lịch sử git, thu thập bằng chứng; chỉ đọc (bash cho lệnh đọc) |
+| `researcher` | GLM-5.3-Flash/max | Khảo sát docs/log/web và lịch sử git (cả code khi cần kèm nguồn ngoài), thu thập bằng chứng; chỉ đọc (bash cho lệnh đọc) |
+| `explorer` | GLM-5.3-Flash/high | Đọc code trong workspace, trả bản đồ file/symbol/luồng gọi; chỉ đọc, không web |
 | `worker` | GPT-6 Sol/max | Triển khai và kiểm thử phần việc đã chốt |
 | `debugger` | GPT-6 Sol/max | Tái hiện lỗi, tìm nguyên nhân, sửa và kiểm hồi quy |
 | `reviewer` | GPT-6 Astra/high | Review độc lập (cả ba trục của `interrogate`); chỉ đọc, bash để chạy diff, test và script thử |
@@ -89,23 +90,24 @@ Pi dùng `Agent` của **@tintinweb/pi-subagents**:
 
 Parent Claude Opus 5.5/high giữ thiết kế, quyết định quan trọng và nghiệm thu cuối. GLM chạy trực tiếp qua OpenCode Go trong Pi.
 
-Bảng trên là preset `default`. Model và thinking của mọi vai (parent, các role, advisor, goal auditor, Oracle, auto mode) đặt trong `<agent-dir>/model-roles.json` và đổi bằng `pi-models`, ví dụ `pi-models preset claude` (chỉ cần đăng nhập Claude) hay `pi-models set worker anthropic/claude-opus-5-5 high`. Trong Pi, `/models` mở menu các vai và áp ngay cho phiên đang chạy. Xem [docs/models.md](docs/models.md).
+Bảng trên là preset `default`. Model và thinking của mọi vai (parent, các role, advisor, goal auditor, Oracle, auto mode) đặt trong `<agent-dir>/model-roles.json` và đổi bằng `pi-models`, ví dụ `pi-models preset claude` (chỉ cần đăng nhập Claude), `pi-models preset tree` (quy trình agent tree: Opus làm, Fable trực advisor; [docs/workflow.md](docs/workflow.md#agent-tree)) hay `pi-models set worker anthropic/claude-opus-5-5 high`. Trong Pi, `/models` mở menu các vai và áp ngay cho phiên đang chạy. Xem [docs/models.md](docs/models.md).
 
 ```text
-@researcher Tìm luồng xử lý timeout và báo file/dòng.
+@explorer Tìm luồng xử lý timeout và báo file/dòng.
+@researcher Tra changelog của thư viện HTTP về timeout mặc định.
 @worker Triển khai phần đã chốt, chạy kiểm thử liên quan.
 @debugger Tái hiện lỗi và sửa với regression test.
 @reviewer Review diff, nêu lỗi có bằng chứng.
 ```
 
-Agent có context riêng và không giới hạn số lượt; dừng agent bằng `/agents` → chọn agent → `x` hai lần. Khi parent gọi, researcher/reviewer chạy nền theo mặc định (tối đa 4 cùng lúc), worker/debugger/verifier chạy foreground (tối đa 2); vượt giới hạn thì xếp hàng. Parent điều phối để tránh ghi chồng file. Gõ `@role nội dung` thì agent chạy nền và báo kết quả cho parent khi xong. Mặc định task là đúng nội dung bạn gõ; chế độ `model` (`/agents` → Settings → Agent mentions) cho một bản sao hội thoại viết task có context. Chi tiết cấu hình, quyền và vòng đời: [docs/subagents.md](docs/subagents.md).
+Agent có context riêng và không giới hạn số lượt; dừng agent bằng `/agents` → chọn agent → `x` hai lần. Khi parent gọi, explorer/researcher/reviewer chạy nền theo mặc định (tối đa 4 cùng lúc), worker/debugger/verifier chạy foreground (tối đa 2); vượt giới hạn thì xếp hàng. Parent điều phối để tránh ghi chồng file. Gõ `@role nội dung` thì agent chạy nền và báo kết quả cho parent khi xong. Mặc định task là đúng nội dung bạn gõ; chế độ `model` (`/agents` → Settings → Agent mentions) cho một bản sao hội thoại viết task có context. Chi tiết cấu hình, quyền và vòng đời: [docs/subagents.md](docs/subagents.md).
 
 ## Công cụ và mặc định
 
 - Web: `web_search` dùng native search của model hiện tại: provider `openai` cho Codex/OpenAI (Astra, Sol), `anthropic` cho Claude (bản vá pi-web-access); model khác (GLM) dùng Exa (endpoint MCP miễn phí, không cần key) rồi Firecrawl; lỗi mạng, quota, phản hồi hỏng chuyển sang provider kế tiếp. `fetch_content`, `get_search_content` dùng Firecrawl và kho kết quả. Phiên mới hiện `web_enable` để model bật web tools. CLI và skills hỗ trợ workflow bổ sung. Chi tiết: [docs/claude-setup.md](docs/claude-setup.md).
 - MCP filesystem: công cụ đọc trong workspace, kết nối khi cần. MCP do pi-mcp-adapter quản lý qua `mcp-adapter.json` (đặt `allowInstall: false`: agent không tự cài thêm server MCP). MCP, codemode và `tool_search` dựng sẵn của Pi 0.99 được tắt trong `extensions` của settings (`-builtin:mcp`, `-builtin:codemode`, `-builtin:tool-search`) để không có hai `/mcp` và để mọi lời gọi tool đi qua cổng permission như trước; bật lại trong `pi config` nếu cần.
 - Code intelligence: pi-lens, TypeScript language server cài sẵn (không tự `npm install` `@types` vào cache của máy); Go/Rust/Python dùng language server của máy hoặc project.
-- Native compaction bật: reserve 16.384, giữ gần nhất 20.000 token. Với cửa sổ 1M, auto-compaction chạy rất muộn; footer báo smart zone (xanh / vàng gần mép 150k / đỏ) để chọn ranh giới pha, và `/context-budget` đo phần context luôn-bật (extension `smart-zone`).
+- Native compaction bật: reserve 16.384, giữ gần nhất 20.000 token. Với cửa sổ 1M, auto-compaction chạy rất muộn; footer báo smart zone (xanh / vàng gần mép 150k / đỏ) để chọn ranh giới pha, và `/context-budget` đo phần context luôn-bật (extension `smart-zone`). Footer còn một dòng cây agent (`high/medium · agents 1/4 · advisor 2/7 · jev 41↑5`), và `/agent-tree` mở sơ đồ phiên chính, advisor, Jev, subagent kèm log sự kiện (extension `agent-tree`, [docs/workflow.md](docs/workflow.md#agent-tree)).
 - Cache warming tắt. Advisor, goal auditor và Oracle bật như mô tả ở trên. Jev của auto mode chỉ chạy khi bạn đã lưu key TypeSafe (tính theo token đầu vào, khoảng $0,0001 mỗi lần sàng lọc). Goal và background follow-up chỉ chạy theo thao tác/cấu hình đã chọn.
 - Codex fast mode bật mặc định (`codexFastMode:true`): mọi request tới GPT-6 Sol (worker, debugger) và GPT-6 Astra (reviewer, advisor, goal auditor, Oracle) đi hàng `priority`. Theo catalog của Codex, Sol nhanh khoảng 1,5 lần, Astra khoảng 2 lần; đổi lại tốn quota Codex nhiều hơn (Pi tính chi phí gấp đôi). Tắt bằng `/fast` khi phiên đang dùng model Codex, hoặc `/usage` → Settings → Codex Fast mode khi đang dùng Opus. Footer hiện `fast` khi phiên đang dùng model Codex có fast.
 - Header/footer/editor do pi-open-tui quản lý. Footer hiển thị model, thinking, quota (Codex qua pi-usage; Claude từ header phản hồi và `/api/oauth/usage` khi mở phiên, 15 phút một lần nếu header đã cũ; chi tiết bằng `/claude-usage`), context % kèm token/cửa sổ, token/cost và trạng thái công cụ liên quan. Palette terminal theo theme của phiên và được phục hồi khi thoát.

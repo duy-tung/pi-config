@@ -48,7 +48,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       // Skills quy trình đi cùng repo (assets/skills), không tải từ nguồn ngoài.
       assert.equal(settings.skills[0], p.join(options.root, "assets", "skills"));
       assert.ok(!settings.skills.some((entry) => entry.includes("mattpocock")));
-      assert.deepEqual(settings.extensions, [...["rose-pine-palette.ts", "pi-rewind", "claude-usage", "model-roles", "smart-zone", "pi-auto-mode"]
+      assert.deepEqual(settings.extensions, [...["rose-pine-palette.ts", "pi-rewind", "claude-usage", "model-roles", "smart-zone", "agent-tree", "pi-auto-mode"]
         .map((entry) => p.join(options.root, "assets", "extensions", entry)), "-builtin:mcp", "-builtin:codemode", "-builtin:tool-search"]);
       assert.equal(settings.doubleEscapeAction, "none");
       assert.deepEqual(settings.rewind, { storageDir: p.join(options.root, "state", "rewind"), retentionDays: 30 });
@@ -62,7 +62,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.deepEqual(settings.enabledModels, ["anthropic/claude-opus-5-5", "openai-codex/gpt-6-sol", "openai-codex/gpt-6-astra", "opencode-go/glm-5.3-flash"]);
       if (name === "main") {
       const roles = {
-        researcher: ["opencode-go/glm-5.3-flash", "max"], worker: ["openai-codex/gpt-6-sol", "max"],
+        researcher: ["opencode-go/glm-5.3-flash", "max"], explorer: ["opencode-go/glm-5.3-flash", "high"], worker: ["openai-codex/gpt-6-sol", "max"],
         debugger: ["openai-codex/gpt-6-sol", "max"], reviewer: ["openai-codex/gpt-6-astra", "high"],
         verifier: ["openai-codex/gpt-6-astra", "high"],
       };
@@ -84,7 +84,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       }
       const subagents = json(p.join(profile.agentDir, "subagents.json"));
       assert.deepEqual([subagents.maxConcurrent, subagents.maxConcurrentForeground, subagents.defaultMaxTurns, subagents.backgroundByDefault], [4, 2, 0, true]);
-      assert.equal(files.filter(file=>file.path.startsWith(p.join(profile.agentDir,"agents")+p.sep)).length,5);
+      assert.equal(files.filter(file=>file.path.startsWith(p.join(profile.agentDir,"agents")+p.sep)).length,6);
       } else {
         assert.ok(!files.some(file => file.path.startsWith(p.join(profile.agentDir,"agents")+p.sep)));
       }
@@ -308,10 +308,10 @@ test("pi-models dựng mặc định mới từ base của preset khác: giống
       kinds.push(kind);
       assert.equal(nextModelDefault(kind, entry.content, nativeValues(after)), fresh.get(entry.path), entry.path);
     }
-    assert.deepEqual(kinds.sort(), ["advisor", "debugger", "goal", "researcher", "reviewer", "settings", "verifier", "worker"]);
+    assert.deepEqual(kinds.sort(), ["advisor", "debugger", "explorer", "goal", "researcher", "reviewer", "settings", "verifier", "worker"]);
     const template = fs.readFileSync(path.join(repoDir, "assets", "AGENTS.md"), "utf8");
     assert.equal(fillRoleNames(template, after), fresh.get(p.join(options.agentDir, "AGENTS.md")));
-    assert.deepEqual(changedRoles(before, after), ["researcher", "worker", "debugger", "reviewer", "verifier", "advisor", "auditor", "oracle", "autoMode"]);
+    assert.deepEqual(changedRoles(before, after), ["researcher", "explorer", "worker", "debugger", "reviewer", "verifier", "advisor", "auditor", "oracle", "autoMode"]);
   }
 });
 
