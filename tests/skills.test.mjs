@@ -149,7 +149,7 @@ test("preset được skill nhắc tới có trong model-presets.json", () => {
 });
 
 test("skill gọi ask_advisor nói cách làm khi hết lượt hoặc không có tool (advisor tắt, subagent)", () => {
-  // Số lượt advisor tính theo phiên và subagent không có ask_advisor (agent-tree, AGENTS.md).
+  // Số lượt advisor tính theo phiên và subagent không có ask_advisor (AGENTS.md).
   const problems = [];
   for (const file of markdown) {
     const text = prose(file);

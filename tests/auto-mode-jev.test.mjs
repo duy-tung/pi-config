@@ -5,7 +5,6 @@ import path from "node:path";
 import test from "node:test";
 import { classify, classifyWithFallback } from "../assets/extensions/pi-auto-mode/lib/classifier.ts";
 import { loadConfig, parseJev } from "../assets/extensions/pi-auto-mode/lib/config.ts";
-import { classifierDecision, DECISION_EVENT } from "../assets/extensions/pi-auto-mode/lib/decision-event.ts";
 import { caseScreenAction, formatReport, formatScreenCorpus, jevEvalScreen, runEval, runScreenCorpus } from "../assets/extensions/pi-auto-mode/lib/eval.ts";
 import {
   evaluate, JEV_DEFAULT_ENDPOINT, JevError, loadKeyStore, parseAnswers, parseEndpoint, redactSecrets, resolveAccess,
@@ -292,30 +291,6 @@ test("bộ phân loại: Jev làm giai đoạn 1, gắn cờ thì tới thẳng 
   assert.deepEqual(switched.result, { kind: "allow", stage: 2 });
   assert.equal(switched.fellBack, true);
   assert.equal(screens, 1);
-});
-
-test("sự kiện quyết định: Jev cho qua là sharp, gắn cờ là split tới giai đoạn 2, không có Jev là classifier", async () => {
-  assert.equal(DECISION_EVENT, "pi-config:auto-mode-decision");
-  // Cùng cách cổng ghi trace: lớp Jev đặt outcome (và score khi Jev đã trả lời) trong lúc phân loại.
-  const decideWith = async (outcome, answers, { jev = true, score } = {}) => {
-    const trace = {};
-    const screen = outcome && (async () => {
-      if (jev && score !== undefined) Object.assign(trace, { jev: true, score });
-      trace.outcome = outcome;
-      return outcome === "unavailable" ? { kind: outcome, reason: "network" } : { kind: outcome };
-    });
-    const complete = async () => answers.shift();
-    const result = await classify({ systemPrompt: "S", blocks: ["T"], complete, timeoutMs: 5_000, screen });
-    return classifierDecision("bash", result, trace);
-  };
-  assert.deepEqual(await decideWith("clear", [], { score: 0.04321 }), { tool: "bash", stage: "sharp", allowed: true, score: 0.043 });
-  assert.deepEqual(await decideWith("flag", ["<block>no</block>"], { score: 0.8 }),
-    { tool: "bash", stage: "split", allowed: true, flaggedBy: "jev", classifierStage: 2, score: 0.8 });
-  assert.deepEqual(await decideWith("flag", ["<block>yes</block><rule>Persistence</rule><reason>Cron.</reason>"], { jev: false }),
-    { tool: "bash", stage: "split", allowed: false, flaggedBy: "policy", classifierStage: 2, via: "Persistence" });
-  assert.deepEqual(await decideWith(undefined, ["<block>no</block>"]), { tool: "bash", stage: "classifier", allowed: true, classifierStage: 1 });
-  assert.deepEqual(await decideWith("unavailable", ["<block>no</block>"]), { tool: "bash", stage: "classifier", allowed: true, classifierStage: 1 });
-  assert.deepEqual(classifierDecision("write", { kind: "unavailable", reason: "x" }, {}), { tool: "write", stage: "classifier", allowed: false, via: "unavailable" });
 });
 
 test("cấu hình Jev: mặc định, tắt hẳn, giá trị sai dùng mặc định", () => {

@@ -50,9 +50,9 @@ settings.autoMode = { ...settings.autoMode, model: "config-test/worker", stateDi
 Object.assign(settings, {
   defaultProvider: "config-test", defaultModel: "parent", defaultThinkingLevel: "off",
   enabledModels: ["config-test/parent", "config-test/worker"],
-  // Giữ pi-rewind, claude-usage, model-roles, smart-zone, agent-tree và pi-auto-mode (nạp sau cùng) của bản cài;
+  // Giữ pi-rewind, claude-usage, model-roles, smart-zone và pi-auto-mode (nạp sau cùng) của bản cài;
   // các extension giao diện khác không cần trong RPC.
-  extensions: [...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && /\/(?:pi-rewind|claude-usage|model-roles|smart-zone|agent-tree)$/u.test(entry.replaceAll("\\", "/"))),
+  extensions: [...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && /\/(?:pi-rewind|claude-usage|model-roles|smart-zone)$/u.test(entry.replaceAll("\\", "/"))),
     fileURLToPath(new URL("./scripted-provider.ts", import.meta.url)),
     ...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && entry.replaceAll("\\", "/").endsWith("/pi-auto-mode")),
     // Giữ các loại trừ extension dựng sẵn (-builtin:mcp...) của bản cài.
@@ -620,26 +620,6 @@ await check("clipboard image shortcut, attachment, deleted marker and size guard
     Module._load=originalLoad;childProcess.spawnSync=originalSpawn;syncBuiltinESMExports();
     if(display===undefined)delete process.env.DISPLAY;else process.env.DISPLAY=display;
   }
-});
-await check("agent-tree: footer from real config and session events, /agent-tree toggles the tree widget", async () => {
-  assert.ok(session.extensionRunner.getRegisteredCommands().some((command) => command.name === "agent-tree"), "Missing /agent-tree");
-  // Số liệu thật của fixture: advisor.json và subagents.json của bản cài, vai với model giả; Jev tắt; chưa có subagent.
-  const advisor = readJson(path.join(agentDir, "advisor.json"));
-  const calls = advisor.advisorMaxCallsPerSession === undefined ? "\\d+" : `\\d+/${advisor.advisorMaxCallsPerSession}`;
-  const concurrent = readJson(path.join(agentDir, "subagents.json")).maxConcurrent ?? 10;
-  const footer = new RegExp(`^\\w+(?:/\\w+)? · agents 0/${concurrent} · ${advisor.alwaysOn ? `advisor ${calls}` : "advisor off"}$`, "u");
-  await run("agent-tree", [[tool("bash", { command: "printf tree-ok", timeout: 10 })]]);
-  assert.match(statuses.get("agent-tree") ?? "", footer);
-  const seen = control.seen.length;
-  await session.prompt("/agent-tree");
-  const lines = widgets.get("agent-tree");
-  assert.ok(Array.isArray(lines) && lines.length <= 10, JSON.stringify(lines));
-  assert.match(lines[0], /^main {6}parent · /u);
-  assert.ok(lines.some((line) => /^agents {4}0\/\d+ đang chạy · worker(?:\/\w+)?: worker ○/u.test(line)), lines.join("\n"));
-  assert.ok(lines.some((line) => /^jev {7}tắt \(autoMode\.jev false\)/u.test(line)), lines.join("\n"));
-  await session.prompt("/agent-tree off");
-  assert.equal(widgets.has("agent-tree"), false);
-  assert.equal(control.seen.length, seen, "/agent-tree không gọi model");
 });
 await check("headless auto mode never prompts and fails closed without a verdict", async () => {
   session.extensionRunner.setUIContext(undefined, "print");

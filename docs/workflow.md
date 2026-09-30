@@ -109,7 +109,6 @@ pi-models preset tree        # hoặc /models → Chọn preset… → tree; cà
 | Jev: `sharp` chạy thẳng, `split` lên Opus | Giai đoạn 1 của auto mode (Jev, cần key TypeSafe); lệnh bị gắn cờ do vai `autoMode` (Opus 5.5/low trong preset `tree`) xét | Ngưỡng `autoMode.jev.flagAt`/`riskAt` trong `settings.json` ([auto-mode.md](auto-mode.md)); model: `pi-models set autoMode …` |
 | Subagent effort medium: worker (sửa, chạy test), explorer (đọc code), researcher (tra docs) | Vai `worker`, `explorer`, `researcher` (và `debugger`) của pi-subagents; explorer và researcher chạy nền song song | `pi-models set worker … medium`; số agent chạy cùng lúc: `/agents` → Settings |
 | Quay về main · review + verify | Phiên chính nghiệm thu; `reviewer` và `verifier` (Fable 5.1) kiểm độc lập khi cần | Vai `reviewer`, `verifier` |
-| Session log, dòng trạng thái | Extension `agent-tree`: footer và `/agent-tree` | Xem dưới |
 
 Mọi giá trị ở trên là preset; ghi đè từng vai trong `<agent-dir>/model-roles.json`, hoặc tạo preset riêng kế thừa `tree` (`"presets": {"tree-lite": {"extends": "tree", "roles": {...}}}`). Chi tiết: [models.md](models.md).
 
@@ -122,35 +121,6 @@ Skill quy trình (từ tstack) chạy nguyên trên agent tree. Chỗ hai bên g
 - Số lượt `calls` tính theo phiên. `/skill:afk` làm nhiều unit trong một phiên nên chỉ gọi advisor khi pivot và nghiệm thu cuối. Advisor tắt, hết lượt hoặc đang ở subagent (worker, debugger không có `ask_advisor`) thì skill bỏ bước advisor và ghi rõ; subagent báo parent.
 - Đọc code giao `explorer`, tra docs/web/lịch sử git giao `researcher`.
 - Preset `tree` cho researcher, explorer, worker, debugger chạy cùng model với phiên chính; chỉ reviewer, verifier, advisor (Fable 5.1) khác model. `interrogate`, `decision-log`, eval của `writing-for-agents` và design it twice nói rõ khi hai seat cùng model.
-
-### Footer và `/agent-tree`
-
-Extension `agent-tree` cho thấy cây agent của phiên, chỉ từ cấu hình và sự kiện thật. Footer luôn có một dòng ngắn, ví dụ `high/medium · agents 1/4 · advisor 2/7 · jev 41↑5`:
-- `high/medium`: thinking của phiên chính / thinking phổ biến nhất trong các file vai (`agents/*.md`);
-- `agents 1/4`: subagent đang chạy (sự kiện của pi-subagents) / `maxConcurrent` trong `subagents.json` (project ghi đè, không đặt thì 10 như pi-subagents);
-- `advisor 2/7`: số lần `ask_advisor` trả về lời khuyên trong phiên / `advisorMaxCallsPerSession` (không giới hạn thì chỉ hiện số lần); `advisor off` khi `alwaysOn` tắt;
-- `jev 41↑5`: số lệnh đã qua lớp Jev của auto mode, trong đó 5 bị gắn cờ và đẩy lên model xét kỹ. Chưa có lệnh nào qua Jev (chưa lưu key TypeSafe hoặc `autoMode.jev: false`) thì phần này không hiện.
-
-`/agent-tree` bật hoặc tắt widget đầy đủ phía trên ô nhập (`/agent-tree on`, `/agent-tree off`):
-
-```
-main      claude-opus-5-5 · high · 1M · lập kế hoạch, quyết định
-advisor   claude-fable-5-1 · high · 2/7 lần · trước plan, lỗi lặp, trước khi xong
-          gần nhất: Chạy lại test tích hợp rồi mới báo xong.
-jev       41 sàng lọc · 36 sharp → chạy · 5 split → claude-opus-5-5 (low)
-agents    1/4 đang chạy · opus-5-5/medium: worker ◐ explorer ○ researcher ○ debugger ○
-          fable-5-1/high: reviewer ○ verifier ○
-log       23:49:28 explorer xong (12s) · Tìm chỗ gọi API
-          23:49:30 jev sharp → chạy bash · ×3
-          23:49:31 advisor: Chạy lại test tích hợp rồi mới báo xong.
-```
-
-- **advisor**: model, effort, gate và giới hạn lấy từ `advisor.json`; "gần nhất" là dòng đầu của lời khuyên cuối.
-- **jev**: `sharp` là lệnh Jev cho chạy thẳng; `split` là lệnh bị gắn cờ (bởi Jev, hoặc bởi chính sách khi thấy rủi ro) và được model trong `autoMode.stage2Model` (thiếu thì `autoMode.model`) xét ở mức `stage2Reasoning`. `N LLM xét` đếm lệnh bộ phân loại LLM xét khi không có Jev.
-- **agents**: vai gom theo model/thinking; ◐ đang chạy, ○ rảnh.
-- **log**: tối đa 5 sự kiện gần nhất có giờ: subagent bắt đầu, xong, lỗi; lời khuyên hoặc lỗi của advisor; jev split; lệnh bị chặn; compaction. `jev sharp` liền nhau gộp một dòng.
-
-Số liệu tính cho phiên hiện tại và về 0 khi mở phiên mới. Agent con và chế độ print không có footer hay widget. pi-auto-mode phát sự kiện `pi-config:auto-mode-decision` (`{tool, stage, allowed, via?, classifierStage?, flaggedBy?, score?, child}`; `stage` là `policy`, `user`, `sharp`, `split` hoặc `classifier`) cho extension khác đọc; sự kiện không đổi quyết định.
 
 ## afk chạy như một goal
 
@@ -243,7 +213,7 @@ grilling, domain-modeling, codebase-design, principles, tdd, diagnose, prove, in
 | `Explore`, `general-purpose`, `ticket-worker`, ba agent review | `researcher`, `worker`, `reviewer` + file trục trong `interrogate/axes/`, `verifier` |
 | Seat review ngoài qua `codex`/`gemini` CLI | Vai khác họ model trong preset |
 | `effort: high` theo skill | Parent đã chạy Opus/high; skill không đổi thinking giữa phiên (giữ prompt cache) |
-| Hook `guard_git.py`, PreCompact, status line | Git guard trong auto mode, extension `smart-zone` (footer, nhắc compaction, `/context-budget`), extension `agent-tree` (footer cây agent, `/agent-tree`) |
+| Hook `guard_git.py`, PreCompact, status line | Git guard trong auto mode, extension `smart-zone` (footer, nhắc compaction, `/context-budget`) |
 | `.claude/skills/verify-<app>/`, hook format trong `.claude/settings.json` | `.agents/skills/verify-<app>/`, `.pi-lens.json` kèm hook commit |
 | Background Bash, `/loop` | `bg_run` (phiên tự thức khi job xong) |
 | afk tự vòng lặp | afk chạy như goal: tự tiếp tục, Oracle khi kẹt, auditor độc lập khi xong |
