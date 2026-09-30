@@ -284,7 +284,8 @@ test("model-roles: preset và ghi đè đi tới mọi file gốc (settings, fil
   const guide = read("AGENTS.md");
   assert.match(guide, /researcher dùng claude-sonnet-5\/high .*worker dùng claude-opus-5-5\/max; debugger dùng claude-opus-5-5\/high; reviewer dùng claude-fable-5-1\/high, chỉ đọc; verifier dùng claude-fable-5-1\/high/u);
   assert.match(guide, /Parent claude-opus-5-5\/high giữ thiết kế/u);
-  assert.match(guide, /Advisor claude-fable-5-1\/high: gọi ask_advisor/u);
+  assert.match(guide, /Advisor claude-fable-5-1\/high: gọi ask_advisor đúng các gate đang bật \(lỗi lặp, trước khi xong;/u);
+  assert.match(guide, /Số lượt: 5 mỗi phiên/u);
   assert.match(guide, /auditor claude-sonnet-5\/high kiểm tra độc lập/u);
   assert.doesNotMatch(guide, /\{\{/u);
 });

@@ -182,8 +182,11 @@ test('catalog và effects truyền vào (như /models trong phiên): kiểm mode
   const advisorFile = readJson(f.file('advisor.json'));
   assert.deepEqual([advisorFile.advisorPlanGate, advisorFile.advisorFailureGate, advisorFile.advisorCompletionGate, advisorFile.advisorMaxCallsPerSession], [true, true, true, 7]);
   assert.deepEqual(applied.at(-1), ['advisor']);
+  // AGENTS.md nói đúng gate và số lượt đang bật.
+  assert.match(fs.readFileSync(f.file('AGENTS.md'), 'utf8'), /gate đang bật \(trước plan, lỗi lặp, trước khi xong;.*Số lượt: 7 mỗi phiên/u);
   assert.equal((await run('set', 'advisor', 'gates=none')).status, 0);
   assert.deepEqual(readJson(f.file('model-roles.json')).roles.advisor, {gates: [], calls: 7});
+  assert.match(fs.readFileSync(f.file('AGENTS.md'), 'utf8'), /gate đang bật \(không gate nào;/u);
   assert.equal(readJson(f.file('advisor.json')).advisorPlanGate, false);
   // Preset tree: cả ba gate và 7 lượt đến từ preset khi bỏ ghi đè.
   assert.equal((await run('reset', 'advisor')).status, 0);
