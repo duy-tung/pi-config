@@ -17,7 +17,8 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 50
+    # npm ci trên runner Windows có lúc chậm (5-9 phút mỗi tarball): smoke và bootstrap mỗi bước cài một root mới.
+    timeout-minutes: 120
     env:
       CI: 'true'
       npm_config_timing: 'true'
