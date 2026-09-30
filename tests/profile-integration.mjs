@@ -160,6 +160,8 @@ const { builtInExtensions } = await import(pathToFileURL(path.join(modules, "@ea
 const loader = new sdk.DefaultResourceLoader({ cwd, agentDir, extensionFactories: builtInExtensions });
 await loader.reload();
 assert.deepEqual(loader.getExtensions().errors, []);
+// Cảnh báo package của Pi (vd. extension tự cài typebox thay vì dùng bản Pi cấp) hiện lúc khởi động như lỗi extension.
+assert.deepEqual(loader.getExtensions().warnings ?? [], []);
 const runtime = await sdk.ModelRuntime.create({ authPath: path.join(agentDir, "auth.json"), refreshOnCreate: false });
 const sessionManager = sdk.SessionManager.create(cwd, path.join(fixture, "sessions"));
 const { session } = await sdk.createAgentSession({ cwd, agentDir, resourceLoader: loader, modelRuntime: runtime, sessionManager });
