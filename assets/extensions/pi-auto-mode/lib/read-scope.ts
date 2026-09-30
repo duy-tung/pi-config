@@ -127,9 +127,10 @@ const FIND_ACTIONS = /^-(?:exec|execdir|ok|okdir|fprint|fprint0|fprintf|fls)$/u;
 const LOOP_KEYWORDS = new Set(["for", "select"]);
 const SHELL_KEYWORDS = new Set(["if", "then", "else", "elif", "fi", "do", "done", "while", "until", "!", "{", "}", "time"]);
 
-function denies(file: string, denied: DeniedPath): { file: string; rule: string } | undefined {
+function denies(file: string, denied: DeniedPath, link = true): { file: string; rule: string } | undefined {
   const rule = denied(file);
   if (rule) return { file, rule };
+  if (!link) return undefined;
   // Symlink tới file bị deny cũng bị deny: kiểm cả đích thật.
   try {
     const real = fs.realpathSync.native(file);
@@ -159,7 +160,7 @@ export function findDenied(root: string, denied: DeniedPath, skipHidden = false)
       }
       if (entry.name === ".git" || (skipHidden && entry.name.startsWith("."))) continue;
       const file = path.join(dir, entry.name);
-      const hit = denies(file, denied);
+      const hit = denies(file, denied, entry.isSymbolicLink());
       if (hit) return { evidence: hit };
       if (entry.isDirectory()) queue.push(file);
     }

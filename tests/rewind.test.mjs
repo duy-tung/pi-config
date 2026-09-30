@@ -719,6 +719,15 @@ test("khóa kho giữa các process Pi: đang bận thì báo lỗi, khóa bỏ 
     assert.equal(new copy.StorageLock(storage).tryAcquire(), undefined);
     releaseFirst();
     assert.equal(fs.existsSync(first.file), false);
+    // Gỡ khóa bỏ lại mà process khác vừa thay bằng khóa mới: khóa mới còn nguyên, không sót file tạm.
+    fs.writeFileSync(first.file, JSON.stringify({ pid: dead, host: os.hostname(), token: "stale", at: Date.now() - 1000 }));
+    const staleHolder = first.holder();
+    fs.writeFileSync(first.file, JSON.stringify({ pid: process.pid, host: os.hostname(), token: "fresh", at: Date.now() }));
+    first.remove(staleHolder);
+    assert.equal(JSON.parse(fs.readFileSync(first.file, "utf8")).token, "fresh");
+    first.remove(first.holder());
+    assert.equal(fs.existsSync(first.file), false);
+    assert.deepEqual(fs.readdirSync(path.dirname(first.file)).filter((name) => name.endsWith(".stale")), []);
   } finally {
     cleanup();
   }

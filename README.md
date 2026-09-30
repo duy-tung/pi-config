@@ -20,6 +20,8 @@ Windows PowerShell 5.1 trở lên:
 
 Bootstrap chuẩn bị Node **24.15.0** theo user và Git Bash trên Windows khi cần, kiểm SHA256 rồi chạy installer. Mở terminal mới và chạy `pi`. Không cần đăng nhập GitHub hoặc quyền quản trị để cài.
 
+Hai lệnh trên lấy bản mới nhất của nhánh `main`. Để cài đúng một bản đã kiểm chứng, thay `main` trong URL bằng commit đó và đặt `PI_CONFIG_REF` cùng commit, vd `curl -fsSL https://raw.githubusercontent.com/duy-tung/pi-config/<commit>/install.sh | PI_CONFIG_REF=<commit> bash` ([platforms.md](docs/platforms.md)).
+
 Chi tiết kiến trúc CPU, công cụ hệ thống và tùy chọn đường dẫn: [docs/platforms.md](docs/platforms.md). Có thể xem [install.sh](install.sh), [install.ps1](install.ps1) và [install.mjs](install.mjs) trước khi chạy.
 
 ## Đăng nhập dịch vụ

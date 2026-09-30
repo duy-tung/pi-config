@@ -157,11 +157,16 @@ function retireSources(names){
     delete state.sources[name];writeJson(statePath,state);
   }
 }
+// Launcher ghim đúng Node lúc cài (có thể là Node 24.15.0 sẵn có, vd của nvm): Node đó bị gỡ thì báo cách sửa.
+const missingNode=`pi-config: không thấy Node tại ${nodePath}. Chạy lại installer (install.sh hoặc install.ps1) để dùng Node đã ghim.`;
 function launcher(name,action){
   const target=path.join(root,'bin/launch.mjs');
   if(process.platform==='win32'){
-    managed(path.join(binDir,name+'.cmd'),`@echo off\r\nsetlocal DisableDelayedExpansion\r\n"${nodePath}" "${target}" "${action}" %*\r\n`,0o755);
-  }else managed(path.join(binDir,name),`#!/bin/sh\nexec ${shellQuote(nodePath)} ${shellQuote(target)} ${shellQuote(action)} "$@"\n`,0o755);
+    // cmd đọc file theo code page OEM: thông báo ASCII, không đặt trong khối ( ) vì đường dẫn có thể chứa ngoặc.
+    managed(path.join(binDir,name+'.cmd'),`@echo off\r\nsetlocal DisableDelayedExpansion\r\nif exist "${nodePath}" goto run\r\n`+
+      `echo pi-config: Node not found at "${nodePath}". Run install.ps1 again to use the pinned Node. 1>&2\r\nexit /b 9009\r\n`+
+      `:run\r\n"${nodePath}" "${target}" "${action}" %*\r\n`,0o755);
+  }else managed(path.join(binDir,name),`#!/bin/sh\nif [ ! -x ${shellQuote(nodePath)} ]; then echo ${shellQuote(missingNode)} >&2; exit 127; fi\nexec ${shellQuote(nodePath)} ${shellQuote(target)} ${shellQuote(action)} "$@"\n`,0o755);
 }
 async function addPath(){
   if(argv.includes('--no-path'))return;

@@ -5,7 +5,9 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 import {SUBAGENT_ROLES,modelRolesReport} from './model-roles.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=file=>{
-  const text=fs.readFileSync(file,'utf8');
+  let text;
+  try{text=fs.readFileSync(file,'utf8');}
+  catch(error){if(error.code==='ENOENT')throw new Error(`Thiếu ${file}. Chạy lại installer (install.sh hoặc install.ps1).`);throw error;}
   try{return JSON.parse(text);}catch(error){throw new Error(`JSON hỏng: ${file}: ${error.message}`);}
 };
 const sha256=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
@@ -15,7 +17,9 @@ const errors=[],warnings=[];
 for(const [label,relative] of Object.entries({current:'runtimes/current',firecrawl:'tools/firecrawl'})){
   const dir=path.join(root,relative),manifest=read(path.join(dir,'package.json'));
   for(const [pkg,version] of Object.entries(manifest.dependencies)){
-    const actual=read(path.join(dir,'node_modules',pkg,'package.json')).version;
+    const metadata=path.join(dir,'node_modules',pkg,'package.json');
+    if(!fs.existsSync(metadata)){errors.push(`${label}/${pkg}: chưa cài (thiếu ${metadata})`);continue;}
+    const actual=read(metadata).version;
     const expected=manifest.piPlatform?.localPackages?.[pkg]?.version ?? version;
     if(actual!==expected)errors.push(`${label}/${pkg}: sai phiên bản ${actual}`);
   }
@@ -23,6 +27,7 @@ for(const [label,relative] of Object.entries({current:'runtimes/current',firecra
 }
 for(const patch of read(path.join(root,'patches/manifest.json'))){
   const file=path.join(root,'runtimes',patch.runtime,'node_modules',patch.package,patch.file);
+  if(!fs.existsSync(file)){errors.push(`Thiếu file đã vá: ${patch.package}/${patch.file}`);continue;}
   const hash=crypto.createHash('sha256').update(fs.readFileSync(file,'utf8').replaceAll('\r\n','\n')).digest('hex');
   if(hash!==patch.patchedSha256)errors.push(`Bản vá đã đổi: ${patch.package}/${patch.file}`);
 }

@@ -13,6 +13,19 @@ const args=[path.join(repo,'install.mjs'),'--root',root,'--agent-dir',agentDir,'
 await run(process.execPath,args,{timeout:2*npmTimeout()+600000});
 await run(process.execPath,[path.join(root,'bin/launch.mjs'),'main','--version']);
 await run(process.execPath,[path.join(root,'bin/launch.mjs'),'models']);
+// Launcher trong bin-dir chạy được; Node ghim trong launcher bị gỡ thì báo cách sửa thay vì lỗi "not found".
+{
+  const windows=process.platform==='win32';
+  const launcherPath=path.join(binDir,windows?'pi.cmd':'pi');
+  const exec=file=>windows?spawnSync('cmd.exe',['/d','/c',file,'--version'],{encoding:'utf8'}):spawnSync(file,['--version'],{encoding:'utf8'});
+  const ok=exec(launcherPath);
+  assert.equal(ok.status,0,ok.stdout+ok.stderr);
+  const broken=path.join(temporary,windows?'broken.cmd':'broken');
+  fs.writeFileSync(broken,fs.readFileSync(launcherPath,'utf8').replaceAll(process.execPath,path.join(temporary,'gone','node'+(windows?'.exe':''))),{mode:0o755});
+  const gone=exec(broken);
+  assert.equal(gone.status,windows?9009:127,gone.stdout+gone.stderr);
+  assert.match(gone.stderr,windows?/Node not found at .*Run install\.ps1 again/u:/không thấy Node tại .*Chạy lại installer/u);
+}
 // Cài mới tạo model-roles.json (thuộc về người dùng) với preset mặc định.
 const modelRolesPath=path.join(agentDir,'model-roles.json');
 assert.deepEqual(readJson(modelRolesPath),{preset:'default',roles:{}});
@@ -23,6 +36,14 @@ const doctor=spawnSync(process.execPath,[path.join(root,'bin/launch.mjs'),'docto
 fs.writeFileSync(webSearchPath,webSearchBytes);
 assert.equal(doctor.status,1,doctor.stdout+doctor.stderr);
 assert.match(doctor.stderr,/parallel-mcp có trong searchRouting\.providers nhưng không có trong webSearch\.allowedProviders/u);
+// Thiếu package trong runtime: doctor báo từng package bằng một dòng, không ném ENOENT.
+const lensDir=path.join(root,'runtimes','current','node_modules','pi-lens'),lensAside=`${lensDir}.aside`;
+fs.renameSync(lensDir,lensAside);
+const missing=spawnSync(process.execPath,[path.join(root,'bin/launch.mjs'),'doctor'],{encoding:'utf8'});
+fs.renameSync(lensAside,lensDir);
+assert.equal(missing.status,1,missing.stdout+missing.stderr);
+assert.match(missing.stderr,/^current\/pi-lens: chưa cài \(thiếu /mu);
+assert.doesNotMatch(missing.stderr,/ENOENT|at file:/u);
 await run(process.execPath,['--test',...['patches','models','glm-wire','native-search-wire','claude-effort-wire','rewind-session','subagent-markdown','patched-typecheck','model-roles','model-commands','models-command'].map(name=>path.join(repo,`tests/${name}.test.mjs`))],{env:{...process.env,PI_CONFIG_TEST_ROOT:root}});
 for(const profile of ['main'])await run(process.execPath,[path.join(repo,'tests/profile-integration.mjs'),root,profile]);
 for(const profile of ['main'])await run(process.execPath,[path.join(repo,'tests/agent-integration.mjs'),root,profile]);

@@ -1,6 +1,6 @@
 # Hệ điều hành và bootstrap
 
-Installer cài vào thư mục của người dùng, không yêu cầu `sudo` hoặc Administrator. Bản Node được ghim **24.15.0**. Nếu Node đang có đúng phiên bản này thì dùng lại; nếu thiếu hoặc khác phiên bản, bootstrap tải bản riêng và kiểm SHA256 đã ghim trước khi chạy. Không thay Node của các dự án khác.
+Installer cài vào thư mục của người dùng, không yêu cầu `sudo` hoặc Administrator. Bản Node được ghim **24.15.0**. Nếu Node đang có đúng phiên bản này thì dùng lại; nếu thiếu hoặc khác phiên bản, bootstrap tải bản riêng và kiểm SHA256 đã ghim trước khi chạy. Không thay Node của các dự án khác. Launcher (`pi`, `pi-doctor`...) ghim đúng Node lúc cài; nếu đó là Node có sẵn (vd của nvm) và sau này bị gỡ, launcher báo lỗi kèm cách sửa: chạy lại installer, hoặc cài với `PI_CONFIG_FRESH_TOOLCHAIN=1` để dùng bản riêng trong thư mục bootstrap.
 
 | Hệ điều hành | Kiến trúc có binary | Điều kiện |
 | --- | --- | --- |
