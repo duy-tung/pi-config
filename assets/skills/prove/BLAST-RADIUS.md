@@ -28,7 +28,7 @@ Step 4 is usually one small script that imports the same library the app ships a
    - Clients and data from the previous version: installed mobile builds, open browser tabs, persisted state.
 4. **Be honest about each risk:** a real chance of happening and a real cost if it does. Keep the risks you confirmed apart from the ones you checked and cleared. Cite a real `file:line`. A search that finds nothing is still an answer. Never make up a caller or an API.
 5. **Prove the one fact:** write a script or test that runs the real code, run it, and paste what happened.
-6. **Wide change:** ask the same question of two `researcher` agents in one response (parallel Agent calls), collect both with `get_subagent_result`, and merge their answers. Different reviewers catch different real bugs.
+6. **Wide change:** ask the same question of two `explorer` agents in one response (parallel Agent calls), collect both with `get_subagent_result`, and merge their answers. Different reviewers catch different real bugs.
 
 ## Reply
 

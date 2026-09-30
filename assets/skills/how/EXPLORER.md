@@ -1,6 +1,6 @@
 # Explorer brief
 
-On the simple path, follow this method yourself. On the complex path, send everything below the divider as a `researcher` agent's prompt, with `{QUESTION}` and `{EXPLORATION_ANGLE}` filled in.
+On the simple path, follow this method yourself. On the complex path, send everything below the divider as an `explorer` agent's prompt, with `{QUESTION}` and `{EXPLORATION_ANGLE}` filled in.
 
 ---
 

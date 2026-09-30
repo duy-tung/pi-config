@@ -35,7 +35,7 @@ for (const name of ["settings.json", "keybindings.json", "models.json", "advisor
   if (fs.existsSync(path.join(configuration.agentDir, name))) fs.copyFileSync(path.join(configuration.agentDir, name), path.join(agentDir, name));
 }
 fs.mkdirSync(path.join(agentDir, "agents"));
-for (const name of ["researcher", "worker", "debugger", "reviewer", "verifier"]) {
+for (const name of ["researcher", "explorer", "worker", "debugger", "reviewer", "verifier"]) {
   const role = fs.readFileSync(path.join(configuration.agentDir, "agents", `${name}.md`), "utf8")
     .replace(/^model: .+$/m, "model: config-test/worker")
     .replace('"pi-auto-mode"', '"pi-auto-mode", "scripted-provider"');
@@ -50,9 +50,9 @@ settings.autoMode = { ...settings.autoMode, model: "config-test/worker", stateDi
 Object.assign(settings, {
   defaultProvider: "config-test", defaultModel: "parent", defaultThinkingLevel: "off",
   enabledModels: ["config-test/parent", "config-test/worker"],
-  // Giữ pi-rewind, claude-usage, model-roles, smart-zone và pi-auto-mode (nạp sau cùng) của bản cài;
+  // Giữ pi-rewind, claude-usage, model-roles, smart-zone, agent-tree và pi-auto-mode (nạp sau cùng) của bản cài;
   // các extension giao diện khác không cần trong RPC.
-  extensions: [...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && /\/(?:pi-rewind|claude-usage|model-roles|smart-zone)$/u.test(entry.replaceAll("\\", "/"))),
+  extensions: [...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && /\/(?:pi-rewind|claude-usage|model-roles|smart-zone|agent-tree)$/u.test(entry.replaceAll("\\", "/"))),
     fileURLToPath(new URL("./scripted-provider.ts", import.meta.url)),
     ...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && entry.replaceAll("\\", "/").endsWith("/pi-auto-mode")),
     // Giữ các loại trừ extension dựng sẵn (-builtin:mcp...) của bản cài.
@@ -149,7 +149,7 @@ const sdk = await import(pathToFileURL(path.join(modules, "@earendil-works", "pi
 const control = { plans: {}, seen: [], classifier: [] };
 globalThis[Symbol.for("pi-config:test")] = control;
 const errors = [], prompts = [], notices = [], results = [];
-const statuses = new Map();
+const statuses = new Map(), widgets = new Map();
 // Câu trả lời định sẵn cho dialog Rewind (RPC dùng select); dialog khác dùng mặc định.
 const rewindAnswers = [];
 // Chạy một lần khi màn hình xác nhận của Rewind mở (vd. người dùng sửa file trong lúc hộp thoại mở).
@@ -189,6 +189,7 @@ const ui = {
   getToolsExpanded: () => false, getEditorText: () => "", getTheme: () => undefined,
   pasteToEditor: text => { imageDraft += text; },
   setStatus: (key, value) => { if (value === undefined) statuses.delete(key); else statuses.set(key, value); },
+  setWidget: (key, value) => { if (value === undefined) widgets.delete(key); else widgets.set(key, value); },
 };
 await session.bindExtensions({ uiContext: ui, mode: "rpc", onError: (error) => errors.push(error),
   commandContextActions: { waitForIdle: () => session.waitForIdle(), navigateTree: (id, options) => session.navigateTree(id, options) } });
@@ -612,6 +613,26 @@ await check("clipboard image shortcut, attachment, deleted marker and size guard
     Module._load=originalLoad;childProcess.spawnSync=originalSpawn;syncBuiltinESMExports();
     if(display===undefined)delete process.env.DISPLAY;else process.env.DISPLAY=display;
   }
+});
+await check("agent-tree: footer from real config and session events, /agent-tree toggles the tree widget", async () => {
+  assert.ok(session.extensionRunner.getRegisteredCommands().some((command) => command.name === "agent-tree"), "Missing /agent-tree");
+  // Số liệu thật của fixture: advisor.json và subagents.json của bản cài, vai với model giả; Jev tắt; chưa có subagent.
+  const advisor = readJson(path.join(agentDir, "advisor.json"));
+  const calls = advisor.advisorMaxCallsPerSession === undefined ? "\\d+" : `\\d+/${advisor.advisorMaxCallsPerSession}`;
+  const concurrent = readJson(path.join(agentDir, "subagents.json")).maxConcurrent ?? 10;
+  const footer = new RegExp(`^\\w+(?:/\\w+)? · agents 0/${concurrent} · ${advisor.alwaysOn ? `advisor ${calls}` : "advisor off"}$`, "u");
+  await run("agent-tree", [[tool("bash", { command: "printf tree-ok", timeout: 10 })]]);
+  assert.match(statuses.get("agent-tree") ?? "", footer);
+  const seen = control.seen.length;
+  await session.prompt("/agent-tree");
+  const lines = widgets.get("agent-tree");
+  assert.ok(Array.isArray(lines) && lines.length <= 10, JSON.stringify(lines));
+  assert.match(lines[0], /^main {6}parent · /u);
+  assert.ok(lines.some((line) => /^agents {4}0\/\d+ đang chạy · worker(?:\/\w+)?: worker ○/u.test(line)), lines.join("\n"));
+  assert.ok(lines.some((line) => /^jev {7}tắt \(autoMode\.jev false\)/u.test(line)), lines.join("\n"));
+  await session.prompt("/agent-tree off");
+  assert.equal(widgets.has("agent-tree"), false);
+  assert.equal(control.seen.length, seen, "/agent-tree không gọi model");
 });
 await check("headless auto mode never prompts and fails closed without a verdict", async () => {
   session.extensionRunner.setUIContext(undefined, "print");

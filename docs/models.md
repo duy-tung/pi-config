@@ -7,34 +7,61 @@ Model và mức thinking của mọi vai đặt ở một chỗ: `<agent-dir>/mo
 | Vai | Dùng ở | File gốc installer sinh ra |
 |---|---|---|
 | `main` | Phiên chính (parent) | `settings.json` (`defaultProvider`, `defaultModel`, `defaultThinkingLevel`) và `executor` trong `advisor.json` |
-| `researcher`, `worker`, `debugger`, `reviewer`, `verifier` | Agent của pi-subagents | dòng `model:`/`thinking:` trong `agents/<vai>.md` |
-| `advisor` | pi-advisor-flow | `advisor`, `advisorEffort` trong `advisor.json` |
+| `researcher`, `explorer`, `worker`, `debugger`, `reviewer`, `verifier` | Agent của pi-subagents | dòng `model:`/`thinking:` trong `agents/<vai>.md` |
+| `advisor` | pi-advisor-flow | `advisor`, `advisorEffort`, gate (`advisorPlanGate`, `advisorFailureGate`, `advisorCompletionGate`) và `advisorMaxCallsPerSession` trong `advisor.json` |
 | `auditor`, `oracle` | Goal auditor và Oracle của pi-goal-x | `provider`/`model`/`thinkingLevel` và khối `oracle` trong `pi-goal-x-settings.json` |
 | `autoMode` | Bộ phân loại LLM của auto mode | `autoMode.model`, `autoMode.stage2Reasoning` trong `settings.json` |
 
 `enabledModels` (danh sách của Ctrl+P và `scopeModels` của pi-subagents) và `modelThinkingLevels` (mức thinking khi đổi sang một model) được suy ra từ các vai: model của `main` đứng đầu, model của auto mode không vào danh sách.
 
-Vai `main` ghi cả `executor` của advisor: khi advisor luôn bật, mỗi lần mở phiên nó đặt model của phiên chính thành `executor`. Từ pi-advisor-flow 0.9.0, advisor không được gọi khi `advisor` trùng model với phiên chính (hỏi chính mình không thêm góc nhìn), nên hai preset luôn đặt advisor khác `main`; ảnh trong hội thoại cũng được gửi kèm cho advisor khi model advisor nhận ảnh.
+Vai `main` ghi cả `executor` của advisor: khi advisor luôn bật, mỗi lần mở phiên nó đặt model của phiên chính thành `executor`. Từ pi-advisor-flow 0.9.0, advisor không được gọi khi `advisor` trùng model với phiên chính (hỏi chính mình không thêm góc nhìn), nên mọi preset luôn đặt advisor khác `main`; ảnh trong hội thoại cũng được gửi kèm cho advisor khi model advisor nhận ảnh.
+
+## Advisor: gate và số lượt
+
+Ngoài `model` và `thinking`, vai `advisor` có hai trường quyết định khi nào advisor được hỏi:
+
+- **`gates`:** các thời điểm system prompt dặn phiên chính gọi `ask_advisor`. Advisor im lặng ở các lượt còn lại.
+
+  | Gate | Khi nào |
+  |---|---|
+  | `plan` | Trước khi chốt một kế hoạch có hệ quả, sau khi phiên chính đã tự khảo sát và có hướng riêng |
+  | `failure` | Sau hai lần thử giống nhau đều thất bại, khi bản sửa tái tạo lỗi cũ, hoặc hai bước liền không tiến triển |
+  | `completion` | Trước khi báo xong việc không nhỏ, kèm bản nháp: đã đổi gì, kiểm thử gì, rủi ro còn lại |
+
+  `[]` nghĩa là advisor chỉ được hỏi khi phiên chính tự gọi hoặc bạn dùng `/advisor-manual`.
+- **`calls`:** số lần gọi advisor tối đa mỗi phiên (1 đến 100).
+
+Advisor không viết code: nó đọc hội thoại (lời gọi tool và kết quả), trả ý kiến kèm rủi ro và cách kiểm chứng; phiên chính quyết định áp dụng gì.
+
+```sh
+pi-models set advisor gates=plan,failure,completion calls=7
+pi-models set advisor gates=none          # chỉ khi được gọi
+```
+
+Trong `/models`, chọn vai `advisor` để bật/tắt từng gate và đổi số lượt. Đổi trong `/advisor-settings` thì `pi-models` báo lệch như khi đổi model qua `/model`; `pi-models adopt advisor` giữ giá trị đó.
 
 ## Preset
 
 Preset có sẵn nằm ở `assets/configs/model-presets.json` và cập nhật theo bản phát hành.
 
-| Vai | `default` | `claude` |
-|---|---|---|
-| `main` | Claude Opus 5.5 / high | Claude Opus 5.5 / high |
-| `researcher` | GLM-5.3-Flash / max | Claude Sonnet 5 / high |
-| `worker`, `debugger` | GPT-6 Sol / max | Claude Opus 5.5 / high |
-| `reviewer`, `verifier` | GPT-6 Astra / high | Claude Fable 5.1 / high |
-| `advisor` | GPT-6 Astra / high | Claude Fable 5.1 / high |
-| `auditor` | GPT-6 Astra / high | Claude Sonnet 5 / high |
-| `oracle` | GPT-6 Astra / high | Claude Fable 5.1 / high |
-| `autoMode` | Claude Sonnet 5 / low | Claude Sonnet 5 / low |
+| Vai | `default` | `claude` | `tree` |
+|---|---|---|---|
+| `main` | Claude Opus 5.5 / high | Claude Opus 5.5 / high | Claude Opus 5.5 / high |
+| `researcher` | GLM-5.3-Flash / max | Claude Sonnet 5 / high | Claude Opus 5.5 / medium |
+| `explorer` | GLM-5.3-Flash / high | Claude Sonnet 5 / medium | Claude Opus 5.5 / medium |
+| `worker`, `debugger` | GPT-6 Sol / max | Claude Opus 5.5 / high | Claude Opus 5.5 / medium |
+| `reviewer`, `verifier` | GPT-6 Astra / high | Claude Fable 5.1 / high | Claude Fable 5.1 / high |
+| `advisor` | GPT-6 Astra / high | Claude Fable 5.1 / high | Claude Fable 5.1 / high |
+| gate advisor, số lượt | lỗi lặp, trước khi xong; 5 | lỗi lặp, trước khi xong; 5 | trước plan, lỗi lặp, trước khi xong; 7 |
+| `auditor` | GPT-6 Astra / high | Claude Sonnet 5 / high | Claude Fable 5.1 / high |
+| `oracle` | GPT-6 Astra / high | Claude Fable 5.1 / high | Claude Fable 5.1 / high |
+| `autoMode` | Claude Sonnet 5 / low | Claude Sonnet 5 / low | Claude Opus 5.5 / low |
 
 - **`default`:** cần đăng nhập Claude, Codex và OpenCode Go.
 - **`claude`:** chỉ cần Claude. Reviewer, advisor và Oracle dùng một model khác với model viết code.
+- **`tree`:** chỉ cần Claude; quy trình "agent tree" mô tả trong [workflow.md](workflow.md#agent-tree). Opus 5.5 lập kế hoạch và quyết định ở high, subagent (worker, explorer, researcher, debugger) làm ở medium, Fable 5.1 trực advisor ở cả ba gate và làm reviewer, verifier, auditor, Oracle. Lệnh bị Jev gắn cờ do Opus 5.5 xét. Tốn quota Claude nhiều hơn `claude`: mọi subagent chạy Opus.
 
-Chọn preset: `pi-models preset claude`, hoặc thêm `--models claude` vào lệnh cài (`curl … | bash -s -- --models claude`; Windows: thêm `--models claude` sau `& ([scriptblock]::Create(…))`).
+Chọn preset: `pi-models preset claude` (hoặc `tree`), hoặc thêm `--models claude` vào lệnh cài (`curl … | bash -s -- --models claude`; Windows: thêm `--models claude` sau `& ([scriptblock]::Create(…))`).
 
 ## pi-models
 
@@ -44,6 +71,7 @@ Chọn preset: `pi-models preset claude`, hoặc thêm `--models claude` vào l�
 | `pi-models list [provider]` | Provider trong catalog của Pi: đã đăng nhập chưa, số model, vai đang dùng. Kèm tên provider thì in từng model và mức thinking model hỗ trợ |
 | `pi-models preset <tên>` | Chọn preset có sẵn hoặc preset riêng |
 | `pi-models set <vai> [provider/id] [thinking]` | Ghi đè model và/hoặc thinking của một vai, vd `pi-models set worker anthropic/claude-opus-5-5 high` |
+| `pi-models set advisor gates=<...> calls=<N>` | Gate và số lượt của advisor ([xem trên](#advisor-gate-và-số-lượt)) |
 | `pi-models reset <vai>...` hoặc `--all` | Bỏ ghi đè; vai dùng lại giá trị của preset |
 | `pi-models adopt [vai...]` | Chép giá trị đang chạy của các vai lệch (đổi qua `/model`, `/agents`...) vào `model-roles.json` |
 | `pi-models apply [--reset]` | Áp `model-roles.json` vào file gốc sau khi bạn sửa tay file này; `--reset` ép cả vai đang lệch |
@@ -62,6 +90,7 @@ Trong Pi, `/models` làm đúng việc của `pi-models`: cùng lệnh con (`/mo
 - **Menu.** `/models` không tham số mở bảng các vai: giá trị theo `model-roles.json`, kèm giá trị đang chạy khi lệch. Chọn một vai để:
   - đổi model: ô tìm trên cả catalog, model của provider đã đăng nhập xếp trước;
   - đổi thinking: chỉ các mức model đó hỗ trợ;
+  - với `advisor`: bật/tắt từng gate, đổi số lượt;
   - bỏ ghi đè.
 
   Menu còn có mục chọn preset, và giữ hoặc bỏ giá trị lệch (`adopt`, `apply --reset`). Mọi thay đổi được xem trước, và chỉ ghi khi bạn xác nhận.
@@ -73,7 +102,7 @@ Trong Pi, `/models` làm đúng việc của `pi-models`: cùng lệnh con (`/mo
   |---|---|
   | `main` | Ngay: phiên này chuyển sang model và thinking mới. Nếu provider chưa đăng nhập thì phiên giữ model cũ và lệnh báo lại |
   | `autoMode` | Từ lần phân loại kế tiếp của auto mode |
-  | `researcher`, `worker`, `debugger`, `reviewer`, `verifier` | Từ lần gọi `Agent` kế tiếp |
+  | `researcher`, `explorer`, `worker`, `debugger`, `reviewer`, `verifier` | Từ lần gọi `Agent` kế tiếp |
   | `advisor` | Từ lần hỏi advisor kế tiếp |
   | `auditor`, `oracle` | Từ phiên mới (`/new`, `/resume`) hoặc phiên Pi mở sau |
 
@@ -88,7 +117,8 @@ Installer tạo file này ở lần cài đầu với `{"preset": "default", "ro
   "preset": "claude",
   "roles": {
     "worker": { "thinking": "max" },
-    "researcher": { "model": "openai-codex/gpt-6-sol", "thinking": "low" }
+    "researcher": { "model": "openai-codex/gpt-6-sol", "thinking": "low" },
+    "advisor": { "gates": ["plan", "failure", "completion"], "calls": 7 }
   },
   "presets": {
     "claude-sonnet": { "description": "Claude, worker rẻ hơn", "extends": "claude", "roles": { "worker": { "model": "anthropic/claude-sonnet-5" } } }
@@ -97,7 +127,7 @@ Installer tạo file này ở lần cài đầu với `{"preset": "default", "ro
 ```
 
 - **`preset`:** tên preset có sẵn, hoặc preset riêng trong `presets`.
-- **`roles.<vai>`:** `model` dạng `provider/id` (xem `/model` hoặc `pi --list-models`), `thinking` là một trong `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Có thể đặt riêng từng trường.
+- **`roles.<vai>`:** `model` dạng `provider/id` (xem `/model` hoặc `pi --list-models`), `thinking` là một trong `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Riêng `advisor` có thêm `gates` và `calls`. Có thể đặt riêng từng trường.
 - **`presets.<tên>`:** chỉ đặt những vai khác với preset nó kế thừa (`extends`, mặc định `default`). `extends` phải là preset có sẵn, và tên preset riêng không được trùng tên preset có sẵn.
 
 Sửa tay file này xong thì chạy `pi-models apply`, `/models apply` hoặc chạy lại installer. Thời điểm có hiệu lực như ở trên.

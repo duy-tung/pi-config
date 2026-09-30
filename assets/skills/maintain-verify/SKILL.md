@@ -27,13 +27,13 @@ Edit only the verify skill's own directory: its SKILL.md, `features/`, and the s
 
 1. **Index hygiene.** Read the feature map README and glob its sibling files. Fix missing, extra, duplicate, or dead entries. Keep it lightweight: no generated inventory.
 
-2. **Source wave.** Spawn one `researcher` agent per feature file, all in one response (parallel Agent calls; at most 4 run at once and the rest queue). Collect each with `get_subagent_result`. Children never drive the app and never edit files. Each brief stands alone:
+2. **Source wave.** Spawn one `explorer` agent per feature file, all in one response (parallel Agent calls; at most 4 run at once and the rest queue). Collect each with `get_subagent_result`. Children never drive the app and never edit files. Each brief stands alone:
    - The feature file's absolute path, and the question: "How does this user-facing feature work, from source?"
    - Read the feature file first. Then find its source entry points (routes, commands, handlers, screens) and read each one in full.
    - Return exactly four parts: a feature summary; the source entry points with `file:line`; likely drift between the map and the source, each item with a citation, or "none"; one concise live-verification recipe (steps and the observable end state).
    - "Do not run the app. Do not modify files. Do not spawn agents or run user-invoked skills."
 
-3. **Reconcile.** Every feature file has a returned summary. Merge overlapping recipes into as few app states as practical. Spot-check cited drift in the source yourself; researcher agents read excerpts, so treat their drift claims as leads. Don't re-prove clean claims. Sweep recent churn (`git log --since` over the app's source) for user-facing surfaces missing from the map, but require a concrete source path before calling one missing.
+3. **Reconcile.** Every feature file has a returned summary. Merge overlapping recipes into as few app states as practical. Spot-check cited drift in the source yourself; explorer agents read excerpts, so treat their drift claims as leads. Don't re-prove clean claims. Sweep recent churn (`git log --since` over the app's source) for user-facing surfaces missing from the map, but require a concrete source path before calling one missing.
 
 4. **Live pass.** Required even when source looks clean. You own all driving: a child never drives. Follow the verify skill's own launch model: one long-lived instance driven serially for servers and UIs, or a fresh isolated session per drive for short-lived CLIs. The skill's Launch section decides, not this one. Exercise every feature at least once, and hold three invariants the whole pass, whatever the failure:
    1. **Never drive an instance you haven't health-checked since it last did something surprising.** Run doctor before the first drive, on each fresh session where sessions are the unit, and again after any failed drive. Where doctor can't see the failure (a wedged UI on a healthy process), reset to a known state or relaunch rather than hoping.
