@@ -53,8 +53,14 @@ for name, spec in manifest['piPlatform']['localPackages'].items():
                         target.addfile(info, source)
                 else:
                     target.addfile(info)
-        if hashlib.sha256(output.read_bytes()).hexdigest() != spec['sha256']:
-            raise RuntimeError(f'Tarball tái tạo khác checksum manifest: {name}')
+        digest = hashlib.sha256(output.read_bytes()).hexdigest()
+        if digest != spec['sha256']:
+            # Khi nâng phiên bản (docs/upgrade.md): ghi tarball mới và in checksum để cập nhật manifest.
+            if not args.write:
+                raise RuntimeError(f'Tarball tái tạo khác checksum manifest: {name}; sha256 {digest}')
+            shutil.copyfile(output, repo / 'vendor' / Path(spec['source']).name)
+            print(f'NEW: {name}@{spec["version"]}: ghi vendor/{Path(spec["source"]).name}; đặt sha256 = {digest} trong manifests/current/package.json')
+            continue
         if args.write:
             shutil.copyfile(output, repo / 'vendor' / Path(spec['source']).name)
         print(f'PASS: {name}@{spec["version"]}: upstream integrity, metadata, tarball SHA256')
