@@ -57,7 +57,8 @@ settings.autoMode = { ...settings.autoMode, model: "config-test/parent", stateDi
 Object.assign(settings, {
   defaultProvider: "config-test", defaultModel: "parent", defaultThinkingLevel: "off",
   // Model của phiên chính (đứng đầu danh sách) thay bằng model giả của parent.
-  enabledModels: ["config-test/parent", ...defaults.settings.enabledModels.slice(1)], modelThinkingLevels: defaults.settings.modelThinkingLevels,
+  // GPT-6.1 Sol không thuộc preset nào; thêm để kiểm Codex fast với một vai tự đặt model này.
+  enabledModels: ["config-test/parent", ...defaults.settings.enabledModels.slice(1), "openai-codex/gpt-6.1-sol"], modelThinkingLevels: defaults.settings.modelThinkingLevels,
   // Cổng permission của bản cài nạp sau provider giả.
   extensions: [fileURLToPath(new URL("./agent-provider.ts", import.meta.url)),
     ...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && entry.replaceAll("\\", "/").endsWith("/pi-auto-mode"))],
@@ -208,14 +209,20 @@ await check('researcher gets pi-web-access tools from its role; explorer reads c
   for(const name of ['web_search','fetch_content','write','edit'])assert.ok(!explorer[0].tools.includes(name),JSON.stringify(explorer[0].tools));
   assert.ok(explorer.at(-1).messages.some(m=>m.role==='toolResult'&&!m.isError&&JSON.stringify(m.content).includes('SAFE_CONTENT')),'explorer đọc được code');
 });
-await check('Codex fast mode reaches Sol and Astra role requests; other providers are untouched',async()=>{
-  for(const [role,tier] of [['worker','priority'],['debugger','priority'],['reviewer','priority'],['verifier','priority'],['researcher',undefined]]){
-    const id='fast-'+role;
-    const out=await run(id,invocation(id,{subagent_type:role}));
-    assert.equal(out[0]?.isError,false,JSON.stringify(out));
-    const seen=control.seen.filter(x=>x.key==='child_'+id);assert.ok(seen.length>0);
-    assert.ok(seen.every(x=>x.payload?.service_tier===tier),`${role}: ${JSON.stringify(seen.map(x=>x.payload))}`);
-  }
+await check('Codex fast mode reaches Sol, Astra and GPT-6.1 Sol role requests; other providers are untouched',async()=>{
+  // Vai tạm dùng GPT-6.1 Sol (như khi người dùng đặt worker sang model này): pi-subagents đọc lại file role mỗi lần gọi.
+  const sol61=path.join(agentDir,'agents','sol61.md');
+  fs.writeFileSync(sol61,fs.readFileSync(path.join(agentDir,'agents','worker.md'),'utf8').replace(/^name: .*$/mu,'name: sol61').replace(/^model: .*$/mu,'model: openai-codex/gpt-6.1-sol'));
+  try{
+    for(const [role,tier,model] of [['worker','priority'],['debugger','priority'],['reviewer','priority'],['verifier','priority'],['researcher',undefined],['sol61','priority','gpt-6.1-sol']]){
+      const id='fast-'+role;
+      const out=await run(id,invocation(id,{subagent_type:role}));
+      assert.equal(out[0]?.isError,false,JSON.stringify(out));
+      const seen=control.seen.filter(x=>x.key==='child_'+id);assert.ok(seen.length>0);
+      if(model)assert.ok(seen.every(x=>x.model===model),`${role}: ${JSON.stringify(seen.map(x=>x.model))}`);
+      assert.ok(seen.every(x=>x.payload?.service_tier===tier),`${role}: ${JSON.stringify(seen.map(x=>x.payload))}`);
+    }
+  }finally{fs.rmSync(sol61,{force:true});}
 });
 await check('worker has no turn limit',async()=>{
   const steps=Array.from({length:16},()=>[tool('read',{path:'safe.txt'})]);
