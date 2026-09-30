@@ -20,10 +20,26 @@ export function resolveToolPath(input: unknown, cwd: string, home = os.homedir()
   return path.resolve(cwd, value);
 }
 
-/** Đối số của lệnh shell thành đường dẫn tuyệt đối (chỉ ~ và đường dẫn tương đối; shell không hiểu @). */
+function currentUser(): string | undefined {
+  try { return os.userInfo().username; } catch { return undefined; }
+}
+
+/**
+ * Đối số của lệnh shell thành đường dẫn tuyệt đối (~, ~user và đường dẫn tương đối; shell không hiểu @).
+ * ~user của chính người dùng là home; user khác đoán theo thư mục cha của home (root: /root, macOS /var/root),
+ * đủ để coi là ngoài workspace.
+ */
 export function resolveShellPath(word: string, cwd: string, home = os.homedir()): string {
   if (word === "~") return home;
   if (word.startsWith("~/")) return path.join(home, word.slice(2));
+  const tilde = /^~([A-Za-z0-9._][A-Za-z0-9._-]*)(?:\/(.*))?$/u.exec(word);
+  if (tilde) {
+    const name = tilde[1];
+    const base = name === currentUser() ? home
+      : name === "root" && process.platform !== "win32" ? (process.platform === "darwin" ? "/var/root" : "/root")
+      : path.join(path.dirname(home), name);
+    return tilde[2] ? path.join(base, tilde[2]) : base;
+  }
   return path.resolve(cwd, word);
 }
 
