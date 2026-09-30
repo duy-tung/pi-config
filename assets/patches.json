@@ -4,7 +4,7 @@
     {
       "package": "pi-open-tui",
       "versions": {
-        "current": "0.3.8"
+        "current": "0.3.10"
       },
       "file": "extensions/open-tui/footer.ts",
       "originalSha256": "bc25b0a4aa6560ab6a27eb6e364600087595b0d00cf5cef27cc14e8765809ded",
@@ -223,11 +223,11 @@
     {
       "package": "pi-advisor-flow",
       "versions": {
-        "current": "0.8.1"
+        "current": "0.9.0"
       },
       "file": "dist/index.js",
-      "originalSha256": "44a20e7858d8809aeb5f27d7259b093b5e30ad6a2eca259ec67a66db62eb9c61",
-      "patchedSha256": "899fc60fea95aca6b04a8d927a9c46334d3326596abf0de0738a5d5d0b68b532",
+      "originalSha256": "d5df0d6dcf635c0134ee0ddf2edad8c1c9a6578e89060d10219865d24a0a62a3",
+      "patchedSha256": "68d4c226e733d27dd2fd6da1e6b69711eba22ae4e6133f09f4c30f2e87cb7396",
       "edits": [
         {
           "before": "    ref\n  };\n};\nvar ADVISOR_STREAM_UPDATE_INTERVAL_MS",
@@ -245,8 +245,8 @@
           "count": 1
         },
         {
-          "before": "      loadConfig(ctx);\n      if (alwaysOnRef) {\n        await activateAdvisor(\"\", ctx, false);\n      }\n",
-          "after": "      loadConfig(ctx);\n      // Local integration: Pi activates every extension tool when a session starts. Start with the flow off so\n      // it is on only after a successful alwaysOn activation (or /advisor), as documented upstream; /advisor-off\n      // then lasts across sessions.\n      if (runtime.flowEnabled()) {\n        runtime.pi.setActiveTools(runtime.pi.getActiveTools().filter((name) => name !== \"ask_advisor\" && name !== \"record_advisor_outcome\"));\n      }\n      if (alwaysOnRef) {\n        await activateAdvisor(\"\", ctx, false);\n      }\n",
+          "before": "      loadConfig(ctx);\n      if (alwaysOnRef) {\n        await activateAdvisor(\"\", ctx, false);\n      } else {\n        runtime.updateSameModelNotice(ctx);\n      }\n",
+          "after": "      loadConfig(ctx);\n      // Local integration: Pi activates every extension tool when a session starts. Start with the flow off so\n      // it is on only after a successful alwaysOn activation (or /advisor), as documented upstream; /advisor-off\n      // then lasts across sessions.\n      if (runtime.flowEnabled()) {\n        runtime.pi.setActiveTools(runtime.pi.getActiveTools().filter((name) => name !== \"ask_advisor\" && name !== \"record_advisor_outcome\"));\n      }\n      if (alwaysOnRef) {\n        await activateAdvisor(\"\", ctx, false);\n      } else {\n        runtime.updateSameModelNotice(ctx);\n      }\n",
           "count": 1
         }
       ]
@@ -254,7 +254,7 @@
     {
       "package": "pi-goal-x",
       "versions": {
-        "current": "0.31.8"
+        "current": "0.31.9"
       },
       "file": "extensions/goal-auditor.ts",
       "originalSha256": "498ad6b3273b575c86ba28a6a155e9f73b343b99b5f8d601fcd311095c45881a",
@@ -295,7 +295,7 @@
     {
       "package": "pi-background-tasks",
       "versions": {
-        "current": "2.6.5"
+        "current": "2.6.8"
       },
       "file": "dist/src/extension.js",
       "originalSha256": "255f3684c00a7f9d36df2741a279ca9840ed138cb1581e32dfa64885d7b211e9",
@@ -332,11 +332,11 @@
     {
       "package": "pi-web-access",
       "versions": {
-        "current": "0.31.0"
+        "current": "0.33.0"
       },
       "file": "dist/index.js",
-      "originalSha256": "3873517746b118e05431177c1a387eeeda8068110463537123c4a628b667af81",
-      "patchedSha256": "506a8e52df3c3dd8528ac5c24d991377ed4410f84d6019fef1fbe249c9b672f8",
+      "originalSha256": "1cb8f90df3f83b8d4acd8e6f1896b72a2459d61d014f150296f9411d701078ba",
+      "patchedSha256": "aa05cdbe59d9fc414c41bd0d2f835abb504aabf2069d8acac97503ebb55c32e5",
       "edits": [
         {
           "before": "var RESOLVED_SEARCH_PROVIDERS = [\"openai\", \"brave\", ",
@@ -372,29 +372,13 @@
       ]
     },
     {
-      "package": "@gotgenes/pi-anthropic-auth",
-      "versions": {
-        "current": "3.2.2"
-      },
-      "file": "src/request-shaping.ts",
-      "originalSha256": "efed50553ff7d3cf0f2edc9d77fe9a4404414e1e69fc6408788ccf102046d028",
-      "patchedSha256": "229fc532f541fec5851dd5a6a7973aae03e91dcf84a834d3183be83ab2a81065",
-      "edits": [
-        {
-          "before": "  return {\n    ...payload,\n    messages: normalizedMessages,\n    system: finalSystem,\n  };\n",
-          "after": "  // Local integration: Pi sends the per-turn effort of Opus 5.5 / Fable 5.1 as an effort-only\n  // system message with empty content, which shapeSystemRoleMessages drops. Keep the active\n  // (last) effort by lifting it into the request's output_config.\n  const effort = messages\n    .filter((message) => message.role === \"system\" && Array.isArray(message.content) && message.content.length === 0)\n    .map((message) => (message as { output_config?: { effort?: unknown } }).output_config?.effort)\n    .filter((value): value is string => typeof value === \"string\")\n    .at(-1);\n  return {\n    ...payload,\n    ...(effort === undefined ? {} : {\n      output_config: { ...(isRecord(payload.output_config) ? payload.output_config : {}), effort },\n    }),\n    messages: normalizedMessages,\n    system: finalSystem,\n  };\n",
-          "count": 1
-        }
-      ]
-    },
-    {
       "package": "@narumitw/pi-usage",
       "versions": {
-        "current": "0.61.0"
+        "current": "0.61.1"
       },
       "file": "dist/index.ts",
-      "originalSha256": "b918360268861bbc95d7991c16bf09775597874433e67f3d1a0848134c472482",
-      "patchedSha256": "2add653dc6990e26168dcec6ef2f8f0995c14830af86742b9767f846c96a9026",
+      "originalSha256": "2d00301c9c17e57ca60d53fec4352e1af8e7a2579f1cbd1761d1b2ae1e3223ba",
+      "patchedSha256": "647ed5fab00ca3523c9b7e7ae009a45be0ce9752ad4254948db7322367f9d61a",
       "edits": [
         {
           "before": "  const startStatusRefresh = (ctx, model, force) => {\n",
@@ -417,6 +401,48 @@
           "count": 1
         }
       ]
+    },
+    {
+      "package": "@juicesharp/rpiv-ask-user-question",
+      "versions": {
+        "current": "2.11.0"
+      },
+      "file": "package.json",
+      "originalSha256": "df9ed35aedf07e038736186722cca76c0cc6ebf43d62d5d1a05bf48b002f087c",
+      "edits": [
+        {
+          "before": "\t\"peerDependencies\": {\n\t\t\"@juicesharp/rpiv-i18n\": \"*\",\n",
+          "after": "\t\"peerDependencies\": {\n\t\t\"@juicesharp/rpiv-i18n\": \"*\",\n\t\t\"typebox\": \"*\",\n",
+          "count": 1
+        },
+        {
+          "before": "\t\t\"@juicesharp/rpiv-config\": \"^2.11.0\",\n\t\t\"typebox\": \"^1.1.24\"\n",
+          "after": "\t\t\"@juicesharp/rpiv-config\": \"^2.11.0\"\n",
+          "count": 1
+        }
+      ],
+      "patchedSha256": "fd657a42db03a9b9d1df98bf3b3b8e08a9338db7cf115ebab55a284ddaa272a8"
+    },
+    {
+      "package": "@juicesharp/rpiv-todo",
+      "versions": {
+        "current": "2.11.0"
+      },
+      "file": "package.json",
+      "originalSha256": "2c7c1dd12a9935fff4c21f43faaf7d705c72c42f9b7891517c5ea0073e480f7f",
+      "edits": [
+        {
+          "before": "\t\"peerDependencies\": {\n\t\t\"@juicesharp/rpiv-i18n\": \"*\",\n",
+          "after": "\t\"peerDependencies\": {\n\t\t\"@juicesharp/rpiv-i18n\": \"*\",\n\t\t\"typebox\": \"*\",\n",
+          "count": 1
+        },
+        {
+          "before": "\t\t\"@juicesharp/rpiv-config\": \"^2.11.0\",\n\t\t\"typebox\": \"^1.1.24\"\n",
+          "after": "\t\t\"@juicesharp/rpiv-config\": \"^2.11.0\"\n",
+          "count": 1
+        }
+      ],
+      "patchedSha256": "cb5bcd6e31277713ce05e274b1d9555efebd39bce6ad8a6795b56577a0953820"
     }
   ]
 }

@@ -22,7 +22,7 @@
 
 Mỗi tool call đi qua các bước sau, dừng ở bước đầu tiên có kết quả (thứ tự của Claude Code):
 
-1. **Luật `deny`** → chặn, ở cả hai mode. Áp dụng cho tool file, đối số đường dẫn của lệnh shell (kể cả `$()`, `bash -c`, `sudo`, `xargs`) và tham số đường dẫn của MCP. Khi có deny đường dẫn áp dụng mà không kiểm được tập file, chặn trước `ask`, `allow`, bypass và bộ phân loại; xem giới hạn đọc bên dưới.
+1. **Luật `deny`** → chặn, ở cả hai mode. Áp dụng cho tool file, đối số đường dẫn của lệnh shell (kể cả `$()`, `bash -c`, `sudo`, `xargs`) và tham số đường dẫn của MCP. Khi có deny đường dẫn áp dụng mà không kiểm được tập file, chặn trước `ask`, `allow`, bypass và bộ phân loại; xem giới hạn đọc bên dưới. Ngay sau luật deny là **git guard** (bash, `bg_run`): cũng chặn ở cả hai mode, xem [Git guard](#git-guard).
 2. **Luật `ask`** → hỏi người dùng (không có UI thì chặn).
 3. **`rm`/`rmdir`/`find -delete` vào `/`, thư mục cấp đầu, `~`, thư mục con trực tiếp của `~`, thư mục làm việc hoặc thư mục cha của nó** → auto: gửi bộ phân loại kèm ghi chú; bypass: hỏi người dùng.
 4. **Bypass, lệnh xoá đệ quy** (riêng pi-config) → hỏi người dùng. Nhận ra `rm -r`/`-R`/`--recursive` với mọi thứ tự cờ (`rm -fr`, `rm -r -f`, `/bin/rm`, `rm x -rf`), `find -delete` hoặc `-exec rm`, `git clean` (trừ `-n`/`--dry-run`), `rimraf`, `cmd /c rd /s`, `Remove-Item -Recurse`, kể cả trong `bash -c`, `$()`, `xargs` và qua `bg_run`. Không hỏi khi:
@@ -56,6 +56,30 @@ Mỗi tool call đi qua các bước sau, dừng ở bước đầu tiên có k�
    - `mkdir`/`touch`/`cp`/`mv` với mọi đích trong workspace (không có `cd` trong chuỗi lệnh);
    - luật `allow` hẹp. Khi ở auto mode, luật allow cho phép chạy code tùy ý bị bỏ qua (`Bash(*)`, `python *`, `node *`, `npm run *`, `bash`, `sudo`, `Agent`, `SubagentWorkflow`…), như Claude Code.
 9. **Bộ phân loại** cho mọi thứ khác: đọc ngoài workspace (vd `grep` token trong `~/` — tool `grep` của Pi tìm cả file ẩn), lệnh shell còn lại, `bg_run`, `fetch_content` (trừ domain trong allow), spawn `Agent`, `SubagentWorkflow`, cài server MCP (bản cài đặt `allowInstall: false` nên pi-mcp-adapter vẫn từ chối sau đó), từng lời gọi MCP (qua sự kiện duyệt của pi-mcp-adapter, gồm cả lời gọi trong `mcpScript`), sửa file ngoài workspace hoặc vào đường dẫn được bảo vệ, tool lạ.
+
+### Git guard
+
+Lớp chặn tất định cho lệnh git và `rm` phá huỷ (`lib/git-guard.ts`, chuyển từ `guard_git.py` của tstack, cùng quyết định trên hơn 5.000 lệnh so với bản gốc). Khác bộ phân loại, nó không đoán: luôn chặn cùng một tập lệnh, ở cả auto lẫn bypass, ở phiên chính, agent con và goal auditor, trước luật `ask`/`allow` và bộ phân loại. Chặn:
+
+- `git push --force`/`-f` (cho phép `--force-with-lease`), `--all`, `--mirror`, `--delete`, refspec `+x` hoặc `:x`;
+- push thẳng lên nhánh được bảo vệ, kể cả `git push origin HEAD`, tên nhánh tính lúc chạy (`$(git branch --show-current)`, `"$BRANCH"`) hay `git push` trơn khi đang đứng trên nhánh đó. Mặc định: `main`, `master`, `trunk`, `develop`, `production`, `prod`, `release`, `release/*`;
+- bỏ qua hook: `--no-verify`, `commit -n`, `HUSKY=0`, `SKIP=...`, `-c core.hooksPath=...`, đặt `core.hooksPath` ra ngoài repo hoặc vào thư mục không có file hook;
+- vứt việc: `reset --hard`, `clean -f`, `branch -D`, `checkout -f`, `switch --discard-changes`, `checkout .`/`restore .`/`rm -f .`, `stash drop/clear`, `worktree remove --force`;
+- viết lại hoặc xoá lịch sử: `filter-branch`/`filter-repo`, `update-ref -d`, `reflog expire`, `gc --prune=now`;
+- `rm -r` trên `/`, `~`, `$HOME`, `.`, `..`, `*`, `.git`.
+
+Guard đọc lệnh như shell: chữ trong nháy, trong heredoc có delimiter trong nháy hoặc trong comment là dữ liệu (commit message nhắc tới `git reset --hard` vẫn qua); `$(...)`, backtick, heredoc hay `echo ... |` đưa vào `bash`/`sh` thì được kiểm như lệnh, cùng `sudo`, `env`, `timeout`, `xargs`, `flock`, `bash -c`, `eval`, hàm, vòng lặp và subshell. Lỗi của bộ phân tích luôn cho qua. PowerShell không qua guard (cú pháp khác). Đây là dây an toàn chống tai nạn, không phải hàng rào chống người cố tình lách.
+
+Khi bị chặn, agent nhận lý do kèm cách an toàn hơn; bạn tự chạy lệnh bằng `!<lệnh>` trong editor của Pi (lệnh `!` của người dùng không qua cổng). Lần chặn hiện trong `/permissions` với luật `git guard` và không tính vào giới hạn chặn của bộ phân loại.
+
+Cấu hình:
+
+| Cách | Tác dụng |
+|---|---|
+| `autoMode.gitGuard` trong `settings.json` | `false` hoặc `{"enabled": false}` tắt; `{"protectedBranches": ["main", "staging"]}` thay danh sách mặc định |
+| `PI_GIT_GUARD=off pi` | Tắt cho một lần chạy Pi (phép gán ngay trong lệnh của agent bị bỏ qua) |
+| `PI_GIT_PROTECTED_BRANCHES="main,staging" pi` | Thay danh sách nhánh cho một lần chạy, thắng settings |
+| `git config --add pi.protectedBranches staging` | Thêm nhánh cho một repo (bạn tự chạy; git config chỉ thêm, và agent không được sửa khoá `pi.*`) |
 
 ### Giới hạn đọc khi có deny đường dẫn
 

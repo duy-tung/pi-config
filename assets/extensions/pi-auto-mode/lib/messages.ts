@@ -1,6 +1,15 @@
 import type { PermissionMode } from "./config.ts";
+import type { GitGuardBlock } from "./git-guard.ts";
 
 /** Câu chữ gửi cho model và hiển thị cho người dùng (tiếng Anh, như Claude Code/Codex). */
+
+/** Lệnh bị git guard chặn: lý do, cách an toàn hơn, và cách người dùng tự chạy (`!` trong ô nhập của Pi). */
+export function gitGuardDenial(block: GitGuardBlock): string {
+  const note = block.substitution
+    ? " Note: that command sits inside backticks or $(...), which the shell runs. For literal text use single quotes, or write it to a file (for example gh pr create --body-file)."
+    : "";
+  return `BLOCKED by git guard: ${block.reason}. ${block.alternative} If the user really wants this, they can run it themselves in Pi's editor with !<command>.${note}`;
+}
 
 export function classifierDenial(rule: string | undefined, reason: string): string {
   const label = rule ? `[${rule}] ` : "";

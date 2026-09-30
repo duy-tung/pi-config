@@ -31,11 +31,11 @@ const fixture = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `pi-config
 const agentDir = path.join(fixture, "fixture agent");
 const cwd = path.join(fixture, "fixture workspace");
 for (const dir of [agentDir, cwd]) fs.mkdirSync(dir, { recursive: true });
-for (const name of ["settings.json", "keybindings.json", "models.json", "advisor.json", "subagents.json", "mcp.json", "open-tui.json", "pi-goal-x-settings.json"]) {
+for (const name of ["settings.json", "keybindings.json", "models.json", "advisor.json", "subagents.json", "mcp-adapter.json", "open-tui.json", "pi-goal-x-settings.json"]) {
   if (fs.existsSync(path.join(configuration.agentDir, name))) fs.copyFileSync(path.join(configuration.agentDir, name), path.join(agentDir, name));
 }
 fs.mkdirSync(path.join(agentDir, "agents"));
-for (const name of ["researcher", "worker", "debugger", "reviewer"]) {
+for (const name of ["researcher", "worker", "debugger", "reviewer", "verifier"]) {
   const role = fs.readFileSync(path.join(configuration.agentDir, "agents", `${name}.md`), "utf8")
     .replace(/^model: .+$/m, "model: config-test/worker")
     .replace('"pi-auto-mode"', '"pi-auto-mode", "scripted-provider"');
@@ -50,11 +50,13 @@ settings.autoMode = { ...settings.autoMode, model: "config-test/worker", stateDi
 Object.assign(settings, {
   defaultProvider: "config-test", defaultModel: "parent", defaultThinkingLevel: "off",
   enabledModels: ["config-test/parent", "config-test/worker"],
-  // Giữ pi-rewind, claude-usage, model-roles và pi-auto-mode (nạp sau cùng) của bản cài;
+  // Giữ pi-rewind, claude-usage, model-roles, smart-zone và pi-auto-mode (nạp sau cùng) của bản cài;
   // các extension giao diện khác không cần trong RPC.
-  extensions: [...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && /\/(?:pi-rewind|claude-usage|model-roles)$/u.test(entry.replaceAll("\\", "/"))),
+  extensions: [...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && /\/(?:pi-rewind|claude-usage|model-roles|smart-zone)$/u.test(entry.replaceAll("\\", "/"))),
     fileURLToPath(new URL("./scripted-provider.ts", import.meta.url)),
-    ...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && entry.replaceAll("\\", "/").endsWith("/pi-auto-mode"))],
+    ...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && entry.replaceAll("\\", "/").endsWith("/pi-auto-mode")),
+    // Giữ các loại trừ extension dựng sẵn (-builtin:mcp...) của bản cài.
+    ...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && entry.startsWith("-builtin:"))],
   compaction: { enabled: false }, retry: { enabled: false }, skills: [], cacheWarming: "off",
 });
 // Máy CI Windows có lúc chạy git lần đầu chậm hơn 2 giây; pi-rewind khi đó tự tắt theo dõi bash
@@ -153,7 +155,9 @@ const rewindAnswers = [];
 // Chạy một lần khi màn hình xác nhận của Rewind mở (vd. người dùng sửa file trong lúc hộp thoại mở).
 let onRewindConfirm;
 let imageDraft = "";
-const loader = new sdk.DefaultResourceLoader({ cwd, agentDir });
+// Như CLI (main.js): extension dựng sẵn của Pi 0.99 (builtin:mcp, codemode, tool-search, llama.cpp); SDK không tự nạp.
+const { builtInExtensions } = await import(pathToFileURL(path.join(modules, "@earendil-works", "pi-coding-agent", "dist", "extensions", "index.js")).href);
+const loader = new sdk.DefaultResourceLoader({ cwd, agentDir, extensionFactories: builtInExtensions });
 await loader.reload();
 assert.deepEqual(loader.getExtensions().errors, []);
 const runtime = await sdk.ModelRuntime.create({ authPath: path.join(agentDir, "auth.json"), refreshOnCreate: false });
@@ -215,7 +219,7 @@ async function check(name, fn) {
 }
 await check("single session exposes slash commands and only one model delegation system", async () => {
   const commands = session.extensionRunner.getRegisteredCommands().map(command => command.name);
-  for (const name of ["goal", "goal-pause", "goal-resume", "bg", "jobs", "logs", "kill", "advisor", "advisor-off", "rewind", "checkpoint", "undo", "redo", "clear", "permissions", "auto-mode", "claude-usage", "models"])
+  for (const name of ["goal", "goal-pause", "goal-resume", "bg", "jobs", "logs", "kill", "advisor", "advisor-off", "rewind", "checkpoint", "undo", "redo", "clear", "permissions", "auto-mode", "claude-usage", "models", "context-budget"])
     assert.ok(commands.includes(name), `Missing /${name}`);
   assert.equal(new Set(commands).size, commands.length);
   const tools = session.getAllTools().map(tool => tool.name);
@@ -223,7 +227,25 @@ await check("single session exposes slash commands and only one model delegation
   for (const name of ["bg_delegate", "bg_run_pi_attested", "fusion_reason", "fusion_investigate", "fusion_research", "fusion_validate"])
     assert.ok(!tools.includes(name), `Duplicate model workflow: ${name}`);
   assert.ok(!loader.getExtensions().extensions.some(extension => extension.path?.includes("anthropic-attribution")));
+  // pi-mcp-adapter lo MCP; MCP, codemode và tool_search dựng sẵn bị tắt, /mcp chỉ có một.
+  const loaded = loader.getExtensions().extensions.map(extension => extension.path);
+  for (const name of ["builtin:mcp", "builtin:codemode", "builtin:tool-search"]) assert.ok(!loaded.includes(name), `${name} must be disabled`);
+  assert.deepEqual(session.extensionRunner.getRegisteredCommands().filter(command => command.name === "mcp").map(command => command.invocationName), ["mcp"]);
+  assert.ok(!session.getActiveToolNames().includes("codemode"));
   assert.equal(control.seen.length, 0, "Startup must not call any model");
+});
+await check("workflow skills (tstack) load in Pi without warnings; flows are user-invoked only", async () => {
+  const { skills, diagnostics } = sdk.loadSkillsFromDir({ dir: path.join(installRoot, "assets", "skills"), source: "path" });
+  assert.deepEqual(diagnostics, []);
+  assert.equal(skills.length, 38);
+  assert.deepEqual(skills.filter((skill) => skill.disableModelInvocation).map((skill) => skill.name).sort(), [
+    "afk", "context-audit", "create-verify", "grill-me", "grill-with-docs", "handoff", "implement", "improve-architecture",
+    "maintain-verify", "reflect", "setup", "ship", "to-spec", "to-tickets", "triage", "wait-what", "wayfinder", "work",
+  ]);
+  // Skill kỷ luật vào danh sách của model; skill luồng chỉ gọi bằng /skill:<tên>.
+  const listed = sdk.formatSkillsForPrompt(skills);
+  for (const name of ["grilling", "interrogate", "prove", "tdd"]) assert.match(listed, new RegExp(`<name>${name}</name>`, "u"));
+  for (const name of ["afk", "work", "ship"]) assert.doesNotMatch(listed, new RegExp(`<name>${name}</name>`, "u"));
 });
 await check("Claude: web_search provider anthropic, quota footer from headers and /claude-usage", async () => {
   const claude = runtime.getModel("anthropic", "claude-sonnet-5");

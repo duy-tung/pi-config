@@ -107,6 +107,8 @@ test("web_search dùng native search theo model hiện tại, GLM dùng Exa rồ
     await search("anthropic", "claude-opus-5-5");
     assert.equal(requests[0].body.thinking.type, "adaptive");
     assert.equal(requests[0].body.output_config.effort, "low");
+    // pi-anthropic-auth >= 3.3.2 giữ system message effort theo lượt; Pi đặt nó theo reasoning "low" của request phụ.
+    assert.deepEqual(requests[0].body.messages.at(-1), { role: "system", content: [], output_config: { effort: "low" } });
     // Tổ chức tắt web search (400): bộ phân loại coi là unsupported và chuyển sang Exa.
     anthropicStatus = 400;
     text = await search("anthropic", "claude-sonnet-5");

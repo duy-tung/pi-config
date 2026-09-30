@@ -19,6 +19,13 @@ export interface JevConfig {
   probeAt: number;
 }
 
+/** Git guard tất định (lib/git-guard.ts): áp dụng ở cả auto và bypass, trước bộ phân loại. */
+export interface GitGuardConfig {
+  enabled: boolean;
+  /** Thay danh sách nhánh được bảo vệ mặc định; undefined = mặc định. */
+  protectedBranches?: string[];
+}
+
 export interface AutoModeConfig {
   enabled: boolean;
   defaultMode: PermissionMode;
@@ -43,6 +50,7 @@ export interface AutoModeConfig {
   /** Ghi chú thêm về môi trường; nối vào slot environment. */
   source: string;
   jev: JevConfig;
+  gitGuard: GitGuardConfig;
 }
 
 const DEFAULTS = {
@@ -78,6 +86,14 @@ export function parseJev(value: unknown, env: NodeJS.ProcessEnv = process.env): 
     probeTools: strings(raw.probeTools) ?? JEV_DEFAULTS.probeTools,
     probeAt: fraction(raw.probeAt, JEV_DEFAULTS.probeAt),
   };
+}
+
+/** `autoMode.gitGuard`: false tắt; object {enabled, protectedBranches}; giá trị sai dùng mặc định (bật). */
+export function parseGitGuard(value: unknown): GitGuardConfig {
+  if (value === false) return { enabled: false };
+  const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const branches = strings(raw.protectedBranches)?.map((branch) => branch.trim());
+  return { enabled: raw.enabled !== false, protectedBranches: branches?.length ? branches : undefined };
 }
 
 function strings(value: unknown): string[] | undefined {
@@ -136,6 +152,7 @@ export function loadConfig(agentDir: string, env: NodeJS.ProcessEnv = process.en
     log: auto.log === true || env.PI_AUTO_MODE_LOG === "1",
     source: path.join(agentDir, "settings.json"),
     jev: parseJev(auto.jev, env),
+    gitGuard: parseGitGuard(auto.gitGuard),
   };
 }
 

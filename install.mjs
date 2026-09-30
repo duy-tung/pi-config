@@ -139,6 +139,19 @@ async function installSource(source){
   fs.renameSync(stage,dest);state.sources[source.name]=source.sha256;writeJson(statePath,state);
   fs.unlinkSync(archive);
 }
+// Nguồn đã cài nhưng không còn trong sources.lock.json (vd mattpocock-skills, nay thay bằng assets/skills): chuyển
+// thư mục vào backups và bỏ khỏi state, để doctor và lần cài sau không còn coi là nguồn đang dùng.
+function retireSources(names){
+  for(const name of Object.keys(state.sources)){
+    if(names.has(name))continue;
+    const dest=path.join(root,'sources',name);
+    if(fs.existsSync(dest)){
+      const backup=path.join(root,'backups',`source-${name}-${Date.now()}`);fs.mkdirSync(path.dirname(backup),{recursive:true});fs.renameSync(dest,backup);
+      console.log(`Nguồn ${name} không còn dùng: đã chuyển vào ${backup}`);
+    }
+    delete state.sources[name];writeJson(statePath,state);
+  }
+}
 function launcher(name,action){
   const target=path.join(root,'bin/launch.mjs');
   if(process.platform==='win32'){
@@ -167,7 +180,9 @@ try{
   await installRuntime('current','runtimes/current');
   await installRuntime('firecrawl','tools/firecrawl');
   await applyPatches({root});
-  for(const source of readJson(path.join(repoDir,'sources.lock.json')))await installSource(source);
+  const sources=readJson(path.join(repoDir,'sources.lock.json'));
+  for(const source of sources)await installSource(source);
+  retireSources(new Set(sources.map(source=>source.name)));
   for(const filename of fs.readdirSync(path.join(repoDir,'runtime'))){
     const source=path.join(repoDir,'runtime',filename);if(fs.statSync(source).isFile())managed(path.join(root,'bin',filename),fs.readFileSync(source));
   }

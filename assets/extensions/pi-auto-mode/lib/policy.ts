@@ -1,6 +1,8 @@
 import os from "node:os";
 import path from "node:path";
-import type { PermissionMode } from "./config.ts";
+import type { GitGuardConfig, PermissionMode } from "./config.ts";
+import { checkGitGuard, type GitGuardBlock, type GitRunner } from "./git-guard.ts";
+import { gitGuardDenial } from "./messages.ts";
 import {
   criticalPathReason, insideAny, insideTemporary, isSelfProtected, protectedReason, resolveShellPath, resolveToolPath, temporaryRoots,
 } from "./paths.ts";
@@ -18,7 +20,7 @@ import {
  */
 export type Decision =
   | { kind: "allow"; via: string }
-  | { kind: "deny"; reason: string; rule?: string }
+  | { kind: "deny"; reason: string; rule?: string; message?: string }
   | { kind: "ask"; reason: string }
   | { kind: "classify"; notes: string[] };
 
@@ -37,6 +39,12 @@ export interface PolicyContext {
   agentIsUngated?: (input: Record<string, unknown>) => boolean;
   /** Thư mục tạm: xoá đệ quy bên trong không cần hỏi khi bypass; mặc định temporaryRoots(). */
   tempRoots?: string[];
+  /** Git guard tất định; undefined = bật với danh sách nhánh mặc định. */
+  gitGuard?: GitGuardConfig;
+  /** Môi trường của tiến trình Pi cho git guard (PI_GIT_GUARD, PI_GIT_PROTECTED_BRANCHES); mặc định process.env. */
+  env?: Record<string, string | undefined>;
+  /** Chạy git cho git guard (test); mặc định git thật. */
+  git?: GitRunner;
 }
 
 export interface ToolCall {
@@ -54,6 +62,8 @@ export const SAFE_TOOLS = new Set([
   "pi_lens_activate_tools",
   "get_goal", "create_goal", "update_goal", "set_goal_tasks", "update_goal_task", "submit_goal_oracle_advice",
   "ask_advisor", "record_advisor_outcome",
+  // Pi 0.99 (builtin:tool-search): chỉ khai báo tool đã đăng ký cho lượt sau; mỗi lời gọi tool đó vẫn qua cổng.
+  "tool_search",
 ]);
 const READ_TOOLS = new Set(["read", "grep", "find", "ls"]);
 const WRITE_TOOLS = new Set(["edit", "write"]);
@@ -420,12 +430,25 @@ export function escalates(call: ToolCall, facts: CallFacts, pc: PolicyContext): 
     (WRITE_TOOLS.has(call.toolName) && facts.paths.some((file) => !!protectedReason(file, pc.roots)));
 }
 
+/** Lệnh shell của bash/bg_run bị git guard chặn; PowerShell có cú pháp khác nên không qua bộ phân tích kiểu sh. */
+export function gitGuardBlock(call: ToolCall, pc: PolicyContext): GitGuardBlock | undefined {
+  if (pc.gitGuard?.enabled === false) return undefined;
+  if (call.toolName !== "bash" && call.toolName !== "bg_run") return undefined;
+  const command = call.input.command;
+  if (typeof command !== "string") return undefined;
+  return checkGitGuard(command, { cwd: pc.cwd, env: pc.env, protectedBranches: pc.gitGuard?.protectedBranches, git: pc.git });
+}
+
 export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(call, pc)): Decision {
   const home = pc.home ?? os.homedir();
   const notes: string[] = [];
 
   const deny = firstMatch(pc.rules.deny, facts.target, pc.cwd, home);
   if (deny) return { kind: "deny", rule: deny.raw, reason: `Permission to use ${call.toolName} has been denied by the rule ${deny.raw}.` };
+
+  // Git guard: tất định như luật deny, ở cả auto và bypass; không giao cho bộ phân loại hay bypass quyết định lại.
+  const guard = gitGuardBlock(call, pc);
+  if (guard) return { kind: "deny", rule: "git guard", reason: guard.reason, message: gitGuardDenial(guard) };
 
   // Không giao luật deny tất định cho classifier, ask, allow hoặc bypass quyết định lại.
   // Ngoại lệ !Path chỉ miễn từng file đã biết, không miễn cả tập đích chưa kiểm được.
