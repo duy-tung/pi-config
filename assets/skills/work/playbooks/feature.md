@@ -7,7 +7,7 @@
 3. **Ground.** Load the `how` skill and run it over each subsystem you will touch. Naming a file is not grounding.
 4. **Throughput checkpoint.** Write four todos. One that does not apply stays as `n/a: <reason>`:
    - Blocking first steps: what must land before anything can run in parallel.
-   - Independent workstreams: disjoint files or layers that can run in parallel: `worker` agents build, `researcher` agents read.
+   - Independent workstreams: disjoint files or layers that can run in parallel: `worker` agents build, `explorer` agents read code, `researcher` agents read docs and the web.
    - Shared mutable state: split it first; serialize only for a real invariant.
    - Smallest safe decomposition: if one owner is best, say why.
 5. **Build** by following [build.md](build.md).

@@ -54,7 +54,7 @@ Save a fetched spec to a temp file and pass its path. With no spec, skip the spe
 
 Standards always. Spec when step 3 found one. Adversarial when the user asked for adversarial review, or the diff is risky: it touches auth, permissions, secrets or payments; data migrations, storage or wire formats; concurrency, retries or caching; a public API or config surface; it changes more than about 400 lines; or it fixes a bug without a regression test.
 
-**Model families.** Read the `reviewer` role's model and your own from the role list in the global AGENTS.md. In the default preset they are different families, so the reviewers' blind spots are decorrelated from yours. When they share a family (the `claude` preset, for example), say in the report that the blind spots are correlated.
+**Model families.** Read the `reviewer` role's model and your own from the role list in the global AGENTS.md. In the default preset they are different families, so the reviewers' blind spots are decorrelated from yours. When they share a family (the `claude` and `tree` presets, for example), say in the report that the blind spots are correlated.
 
 ## 6. Spawn the reviewers
 

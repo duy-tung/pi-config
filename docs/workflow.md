@@ -10,8 +10,8 @@ Skill nằm trong `assets/skills/` của repo và được cài vào `<root>/ass
 
 | Trụ cột | Trên Pi |
 |---|---|
-| **Căn chỉnh trước khi build** | `/skill:grill-with-docs` hỏi từng vòng, mỗi câu có đáp án đề xuất. Sự thật do agent tự tra (giao `researcher`), quyết định là của người. Câu "cách nào tốt hơn" mà chạy thử trả lời được thì agent tự làm prototype. |
-| **Ở trong smart zone** | Footer báo vùng context theo mép 150k: xanh, vàng khi gần mép, đỏ khi quá mép. `/context-budget` đo phần luôn-bật. Việc đọc rộng giao `researcher`. Hết một pha thì chọn: tiếp tục, `/clear`, handoff, subagent hoặc `/compact`. |
+| **Căn chỉnh trước khi build** | `/skill:grill-with-docs` hỏi từng vòng, mỗi câu có đáp án đề xuất. Sự thật do agent tự tra (code giao `explorer`, docs/web giao `researcher`), quyết định là của người. Câu "cách nào tốt hơn" mà chạy thử trả lời được thì agent tự làm prototype. |
+| **Ở trong smart zone** | Footer báo vùng context theo mép 150k: xanh, vàng khi gần mép, đỏ khi quá mép. `/context-budget` đo phần luôn-bật. Việc đọc code rộng giao `explorer`, tra docs/web giao `researcher`. Hết một pha thì chọn: tiếp tục, `/clear`, handoff, subagent hoặc `/compact`. |
 | **Chứng minh trên sản phẩm thật** | Mỗi app có verify skill kèm feature map (`/skill:create-verify`). Vai `verifier`, context sạch và không sửa code, trả VERIFIED, NOT VERIFIED hoặc INCONCLUSIVE kèm bằng chứng. Người viết không tự chấm. |
 | **Mã hoá bài học vào cấu trúc** | Thang ưu tiên, từ mạnh nhất: type và kiến trúc; lint, hook, CI và luật pi-lens; `CODING_STANDARDS.md`; skill; một dòng trong AGENTS.md. `/skill:reflect` đưa mỗi bài học lên nấc cao nhất có thể. |
 | **Tự chủ có hợp đồng** | Việc đảo ngược được thì cứ làm. `/skill:afk` chạy theo hợp đồng viết, **như một goal** (xem dưới). Git guard trong auto mode chặn tất định các lệnh git phá huỷ. |
@@ -90,7 +90,7 @@ Skill không ghi tên model; chúng gọi **vai**, và `model-roles.json` quyế
 | Tái hiện và sửa một bug đã khoanh | `debugger` | GPT-6 Sol/max | Test đỏ trước, sửa tận gốc |
 | Ba trục review của `interrogate`, soát decision log, giám khảo eval | `reviewer` | GPT-6 Astra/high | Khác họ model với parent nên điểm mù không trùng; chỉ đọc |
 | Chứng minh trên sản phẩm thật | `verifier` | GPT-6 Astra/high | Context sạch, khác model với worker, không sửa code |
-| Design it twice | `researcher`, `reviewer`, parent (+ `worker` khi cần chạy code) | GLM, Astra, Opus, Sol | Nhiều họ model cho các phương án thật sự khác nhau, không cần CLI ngoài |
+| Design it twice | `researcher`, `reviewer`, parent (+ `worker` khi cần chạy code) | GLM, Astra, Opus, Sol | Nhiều model cho các phương án thật sự khác nhau, không cần CLI ngoài; preset `tree` chỉ reviewer khác model với parent |
 
 Preset `claude` dùng toàn Claude: reviewer và verifier chạy Fable 5.1, khác model với worker Opus. Preset `tree` là quy trình agent tree ở mục dưới. Khi reviewer cùng họ với parent, báo cáo `interrogate` nói rõ điểm mù có tương quan. Đổi vai bằng `/models` hoặc `pi-models`.
 
@@ -112,6 +112,16 @@ pi-models preset tree        # hoặc /models → Chọn preset… → tree; cà
 | Session log, dòng trạng thái | Extension `agent-tree`: footer và `/agent-tree` | Xem dưới |
 
 Mọi giá trị ở trên là preset; ghi đè từng vai trong `<agent-dir>/model-roles.json`, hoặc tạo preset riêng kế thừa `tree` (`"presets": {"tree-lite": {"extends": "tree", "roles": {...}}}`). Chi tiết: [models.md](models.md).
+
+### Với các skill quy trình
+
+Skill quy trình (từ tstack) chạy nguyên trên agent tree. Chỗ hai bên gặp nhau:
+- Gate `plan`: trong build playbook (`/skill:implement`, playbook feature), plan là data shape, seam và các lát cắt chốt ở bước 2 đến 4; parent gửi advisor trước khi viết code.
+- Gate `completion`: gọi sau `prove` và `interrogate`, để bản nháp mang verdict và bằng chứng thật chứ không phải lời khẳng định; `/skill:afk` gửi báo cáo cho advisor trước `update_goal` complete.
+- Gate `failure` trùng luật "hai lần sửa cùng tiền đề thất bại" của `diagnose`.
+- Số lượt `calls` tính theo phiên. `/skill:afk` làm nhiều unit trong một phiên nên chỉ gọi advisor khi pivot và nghiệm thu cuối. Advisor tắt, hết lượt hoặc đang ở subagent (worker, debugger không có `ask_advisor`) thì skill bỏ bước advisor và ghi rõ; subagent báo parent.
+- Đọc code giao `explorer`, tra docs/web/lịch sử git giao `researcher`.
+- Preset `tree` cho researcher, explorer, worker, debugger chạy cùng model với phiên chính; chỉ reviewer, verifier, advisor (Fable 5.1) khác model. `interrogate`, `decision-log`, eval của `writing-for-agents` và design it twice nói rõ khi hai seat cùng model.
 
 ### Footer và `/agent-tree`
 
