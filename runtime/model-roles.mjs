@@ -10,8 +10,8 @@ import {pathToFileURL} from 'node:url';
  * pi-models và pi-doctor so kết quả đó với giá trị đang có hiệu lực trong các file gốc.
  */
 
-export const ROLES = ['main', 'researcher', 'worker', 'debugger', 'reviewer', 'advisor', 'auditor', 'oracle', 'autoMode'];
-export const SUBAGENT_ROLES = ['researcher', 'worker', 'debugger', 'reviewer'];
+export const ROLES = ['main', 'researcher', 'worker', 'debugger', 'reviewer', 'verifier', 'advisor', 'auditor', 'oracle', 'autoMode'];
+export const SUBAGENT_ROLES = ['researcher', 'worker', 'debugger', 'reviewer', 'verifier'];
 export const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 export const DEFAULT_PRESET = 'default';
 export const MODEL_ROLES_FILE = 'model-roles.json';
@@ -19,7 +19,7 @@ export const defaultModelRoles = () => ({preset: DEFAULT_PRESET, roles: {}});
 
 // Thứ tự suy ra enabledModels (Ctrl+P, scopeModels của pi-subagents) và thinking mặc định theo model:
 // model của phiên chính đứng đầu; model của auto mode không vào danh sách chọn model.
-const MODEL_ORDER = ['main', 'worker', 'debugger', 'reviewer', 'researcher', 'advisor', 'auditor', 'oracle'];
+const MODEL_ORDER = ['main', 'worker', 'debugger', 'reviewer', 'verifier', 'researcher', 'advisor', 'auditor', 'oracle'];
 // pi-goal-x 0.31.8 chỉ nhận tới xhigh; giá trị lạ bị bỏ và auditor chạy ở medium.
 const goalThinking = level => level === 'max' ? 'xhigh' : level;
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);

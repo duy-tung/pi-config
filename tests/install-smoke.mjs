@@ -97,7 +97,7 @@ const debuggerPath=path.join(agentDir,'agents','debugger.md');
 fs.writeFileSync(debuggerPath,fs.readFileSync(debuggerPath,'utf8').replace(/^tools: .*$/mu,'tools: "read, grep, find, ls, bash"'));
 const switched=install();
 const frontmatter=role=>fs.readFileSync(path.join(agentDir,'agents',`${role}.md`),'utf8').split('\n---\n')[0];
-for(const [role,model,thinking] of [['worker','claude-opus-5-5','high'],['debugger','claude-opus-5-5','high'],['researcher','claude-sonnet-5','max'],['reviewer','claude-fable-5-1','high']]){
+for(const [role,model,thinking] of [['worker','claude-opus-5-5','high'],['debugger','claude-opus-5-5','high'],['researcher','claude-sonnet-5','max'],['reviewer','claude-fable-5-1','high'],['verifier','claude-fable-5-1','high']]){
   assert.match(frontmatter(role),new RegExp(`^model: anthropic/${model}\\nthinking: ${thinking}$`,'mu'),role);
 }
 assert.match(frontmatter('debugger'),/^tools: "read, grep, find, ls, bash"$/mu);
@@ -110,7 +110,7 @@ const models=spawnSync(process.execPath,[path.join(root,'bin/launch.mjs'),'model
 assert.equal(models.status,0,models.stdout+models.stderr);
 assert.match(models.stdout,/^main: preset claude /u);
 // auth.json của bản cài thử rỗng: chỉ có cảnh báo chưa đăng nhập, không vai nào lệch.
-assert.equal(models.stderr,'cảnh báo: provider anthropic (main, researcher, worker, debugger, reviewer, advisor, auditor, oracle, autoMode) chưa đăng nhập: chạy pi-login rồi /login.\n');
+assert.equal(models.stderr,'cảnh báo: provider anthropic (main, researcher, worker, debugger, reviewer, verifier, advisor, auditor, oracle, autoMode) chưa đăng nhập: chạy pi-login rồi /login.\n');
 // Model sai tên (pi-subagents sẽ lặng lẽ dùng model của parent): installer dừng trước khi ghi cấu hình.
 writeJson(modelRolesPath,{preset:'claude',roles:{researcher:{thinking:'max'},worker:{model:'anthropic/claude-opus-5-6'}}});
 const beforeFailure=snapshot();
@@ -151,11 +151,23 @@ function snapshot(){
   for(const dir of [agentDir,path.join(root,'config'),path.join(root,'state','defaults'),path.join(root,'backups')])walk(dir);
   return files;
 }
+// Nguồn không còn trong sources.lock.json (mattpocock-skills của bản cài cũ, nay thay bằng assets/skills): lần cài
+// sau chuyển thư mục vào backups và bỏ khỏi state.
+const retiredSource=path.join(root,'sources','mattpocock-skills'),installState=path.join(root,'install-state.json');
+fs.mkdirSync(path.join(retiredSource,'skills','engineering','tdd'),{recursive:true});
+fs.writeFileSync(path.join(retiredSource,'skills','engineering','tdd','SKILL.md'),'---\nname: tdd\ndescription: old\n---\n');
+writeJson(installState,{...readJson(installState),sources:{...readJson(installState).sources,'mattpocock-skills':'0'.repeat(64)}});
+const retiring=install();
+assert.match(retiring,/Nguồn mattpocock-skills không còn dùng: đã chuyển vào /u);
+assert.equal(fs.existsSync(retiredSource),false);
+assert.ok(!Object.hasOwn(readJson(installState).sources,'mattpocock-skills'));
 const beforeThird=snapshot();
 const third=install();
 assert.deepEqual(snapshot(),beforeThird);
 assert.doesNotMatch(third,/Đã gộp|Chưa có mặc định|xung đột|Giữ phần bạn đã sửa|Giữ nguyên các file/u);
-const state=readJson(path.join(root,'install-state.json'));assert.equal(Object.keys(state.sources).length,3);
+const state=readJson(path.join(root,'install-state.json'));assert.deepEqual(Object.keys(state.sources).sort(),['firecrawl-cli-source','firecrawl-workflows']);
+// Skills quy trình nằm trong assets của bản cài; Pi nạp chúng qua settings.skills.
+assert.ok(fs.existsSync(path.join(root,'assets','skills','work','SKILL.md')));
 assert.equal(fs.existsSync(path.join(root,'.install.lock')),false);
 console.log('PASS: cài sạch, một runtime Pi, slash workflows, auth/permission, type của bản vá; cài lại gộp mặc định mới, giữ tùy chỉnh và secret giả; model-roles.json: chuyển từ bản cũ, đổi preset, chặn model sai tên, --models, pi-models; lần cuối không đổi gì.');
 console.log(`Fixture: ${root}`);

@@ -170,11 +170,11 @@ async function check(name,fn) {
   activePhase=name;console.log(`Agent ${profile}: ${name}`);
   try {await fn();results.push({name,status:'PASS'});}catch(error){results.push({name,status:'FAIL',error:error.stack});}
 }
-await check('native delegation tools and four task roles are available',async()=>{
+await check('native delegation tools and five task roles are available',async()=>{
   const names=session.getAllTools().map(tool=>tool.name);
   assert.ok(names.includes('Agent'));
   for(const name of ['get_subagent_result','steer_subagent'])assert.ok(names.includes(name));
-  assert.deepEqual(fs.readdirSync(path.join(agentDir,'agents')).sort(),['debugger.md','researcher.md','reviewer.md','worker.md']);
+  assert.deepEqual(fs.readdirSync(path.join(agentDir,'agents')).sort(),['debugger.md','researcher.md','reviewer.md','verifier.md','worker.md']);
 });
 await check('researcher uses GLM/max and separate context',async()=>{
   const out=await run('sol',invocation('sol'),[[tool('read',{path:'safe.txt'})],final('CHILD_OK')]);
@@ -185,7 +185,7 @@ await check('researcher uses GLM/max and separate context',async()=>{
   assert.match(JSON.stringify(child.at(-1).messages),/SAFE_CONTENT/);
 });
 const configured=Object.fromEntries(modelRoles.SUBAGENT_ROLES.map(role=>[role,[modelId(defaults.subagents[role].model),defaults.subagents[role].thinking]]));
-for(const role of ['researcher','worker','debugger','reviewer']) {
+for(const role of ['researcher','worker','debugger','reviewer','verifier']) {
   await check(`native ${role} keeps its configured model/effort despite conflicting tool parameters`,async()=>{
     const id='configured-'+role;
     const [expectedModel,expectedEffort]=configured[role];
@@ -203,7 +203,7 @@ await check('researcher gets pi-web-access tools from its role',async()=>{
   for(const name of ['web_search','fetch_content'])assert.ok(child[0].tools.includes(name),JSON.stringify(child[0].tools));
 });
 await check('Codex fast mode reaches Sol and Astra role requests; other providers are untouched',async()=>{
-  for(const [role,tier] of [['worker','priority'],['debugger','priority'],['reviewer','priority'],['researcher',undefined]]){
+  for(const [role,tier] of [['worker','priority'],['debugger','priority'],['reviewer','priority'],['verifier','priority'],['researcher',undefined]]){
     const id='fast-'+role;
     const out=await run(id,invocation(id,{subagent_type:role}));
     assert.equal(out[0]?.isError,false,JSON.stringify(out));
@@ -221,6 +221,21 @@ await check('GLM researcher remains read-only',async()=>{
   const out=await run('readonly',invocation('readonly',{subagent_type:'researcher'}),[[tool('write',{path:'forbidden.txt',content:'should-not-exist'})],final('BLOCKED')]);
   assert.equal(out[0]?.isError,false,JSON.stringify(out));assert.equal(fs.existsSync(path.join(cwd,'forbidden.txt')),false);
   assert.ok(control.seen.filter(x=>x.key==='child_readonly').at(-1).messages.some(m=>m.role==='toolResult'&&m.isError));
+});
+await check('researcher runs read-only shell commands (git archaeology, rg) without a write tool',async()=>{
+  const out=await run('shell',invocation('shell',{subagent_type:'researcher'}),[[tool('bash',{command:'cat safe.txt',timeout:10})],final('SHELL_OK')]);
+  assert.equal(out[0]?.isError,false,JSON.stringify(out));
+  const messages=control.seen.filter(x=>x.key==='child_shell').at(-1).messages;
+  assert.ok(messages.some(m=>m.role==='toolResult'&&!m.isError&&JSON.stringify(m.content).includes('SAFE_CONTENT')),JSON.stringify(messages));
+  assert.ok(!control.seen.filter(x=>x.key==='child_shell')[0].tools.includes('write'));
+});
+await check('verifier and reviewer cannot write files',async()=>{
+  for(const role of ['verifier','reviewer']){
+    const id='nowrite-'+role;
+    const out=await run(id,invocation(id,{subagent_type:role}),[[tool('write',{path:`${id}.txt`,content:'should-not-exist'})],final('BLOCKED')]);
+    assert.equal(out[0]?.isError,false,JSON.stringify(out));assert.equal(fs.existsSync(path.join(cwd,`${id}.txt`)),false,role);
+    assert.ok(!control.seen.filter(x=>x.key==='child_'+id)[0].tools.includes('write'),role);
+  }
 });
 await check('Sol worker retains permission gate even when isolated=true was requested',async()=>{
   const out=await run('permission',invocation('permission',{subagent_type:'worker',isolated:true}),

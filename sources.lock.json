@@ -1,12 +1,5 @@
 [
   {
-    "name": "mattpocock-skills",
-    "repo": "mattpocock/skills",
-    "commit": "c55ee46073ed923f86ce59a5eb3b6d895095d1b7",
-    "url": "https://codeload.github.com/mattpocock/skills/tar.gz/c55ee46073ed923f86ce59a5eb3b6d895095d1b7",
-    "sha256": "7938c67820cd259ebca03efa78679455c1db5156f7404a50b6c53a45fe69345a"
-  },
-  {
     "name": "firecrawl-cli-source",
     "repo": "firecrawl/cli",
     "commit": "8f954f6e9f12721bc29135b115dd9bc085d29d2d",

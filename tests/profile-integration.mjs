@@ -35,7 +35,7 @@ for (const name of ["settings.json", "keybindings.json", "models.json", "advisor
   if (fs.existsSync(path.join(configuration.agentDir, name))) fs.copyFileSync(path.join(configuration.agentDir, name), path.join(agentDir, name));
 }
 fs.mkdirSync(path.join(agentDir, "agents"));
-for (const name of ["researcher", "worker", "debugger", "reviewer"]) {
+for (const name of ["researcher", "worker", "debugger", "reviewer", "verifier"]) {
   const role = fs.readFileSync(path.join(configuration.agentDir, "agents", `${name}.md`), "utf8")
     .replace(/^model: .+$/m, "model: config-test/worker")
     .replace('"pi-auto-mode"', '"pi-auto-mode", "scripted-provider"');
@@ -50,9 +50,9 @@ settings.autoMode = { ...settings.autoMode, model: "config-test/worker", stateDi
 Object.assign(settings, {
   defaultProvider: "config-test", defaultModel: "parent", defaultThinkingLevel: "off",
   enabledModels: ["config-test/parent", "config-test/worker"],
-  // Giữ pi-rewind, claude-usage, model-roles và pi-auto-mode (nạp sau cùng) của bản cài;
+  // Giữ pi-rewind, claude-usage, model-roles, smart-zone và pi-auto-mode (nạp sau cùng) của bản cài;
   // các extension giao diện khác không cần trong RPC.
-  extensions: [...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && /\/(?:pi-rewind|claude-usage|model-roles)$/u.test(entry.replaceAll("\\", "/"))),
+  extensions: [...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && /\/(?:pi-rewind|claude-usage|model-roles|smart-zone)$/u.test(entry.replaceAll("\\", "/"))),
     fileURLToPath(new URL("./scripted-provider.ts", import.meta.url)),
     ...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && entry.replaceAll("\\", "/").endsWith("/pi-auto-mode"))],
   compaction: { enabled: false }, retry: { enabled: false }, skills: [], cacheWarming: "off",
@@ -215,7 +215,7 @@ async function check(name, fn) {
 }
 await check("single session exposes slash commands and only one model delegation system", async () => {
   const commands = session.extensionRunner.getRegisteredCommands().map(command => command.name);
-  for (const name of ["goal", "goal-pause", "goal-resume", "bg", "jobs", "logs", "kill", "advisor", "advisor-off", "rewind", "checkpoint", "undo", "redo", "clear", "permissions", "auto-mode", "claude-usage", "models"])
+  for (const name of ["goal", "goal-pause", "goal-resume", "bg", "jobs", "logs", "kill", "advisor", "advisor-off", "rewind", "checkpoint", "undo", "redo", "clear", "permissions", "auto-mode", "claude-usage", "models", "context-budget"])
     assert.ok(commands.includes(name), `Missing /${name}`);
   assert.equal(new Set(commands).size, commands.length);
   const tools = session.getAllTools().map(tool => tool.name);
@@ -224,6 +224,19 @@ await check("single session exposes slash commands and only one model delegation
     assert.ok(!tools.includes(name), `Duplicate model workflow: ${name}`);
   assert.ok(!loader.getExtensions().extensions.some(extension => extension.path?.includes("anthropic-attribution")));
   assert.equal(control.seen.length, 0, "Startup must not call any model");
+});
+await check("workflow skills (tstack) load in Pi without warnings; flows are user-invoked only", async () => {
+  const { skills, diagnostics } = sdk.loadSkillsFromDir({ dir: path.join(installRoot, "assets", "skills"), source: "path" });
+  assert.deepEqual(diagnostics, []);
+  assert.equal(skills.length, 38);
+  assert.deepEqual(skills.filter((skill) => skill.disableModelInvocation).map((skill) => skill.name).sort(), [
+    "afk", "context-audit", "create-verify", "grill-me", "grill-with-docs", "handoff", "implement", "improve-architecture",
+    "maintain-verify", "reflect", "setup", "ship", "to-spec", "to-tickets", "triage", "wait-what", "wayfinder", "work",
+  ]);
+  // Skill kỷ luật vào danh sách của model; skill luồng chỉ gọi bằng /skill:<tên>.
+  const listed = sdk.formatSkillsForPrompt(skills);
+  for (const name of ["grilling", "interrogate", "prove", "tdd"]) assert.match(listed, new RegExp(`<name>${name}</name>`, "u"));
+  for (const name of ["afk", "work", "ship"]) assert.doesNotMatch(listed, new RegExp(`<name>${name}</name>`, "u"));
 });
 await check("Claude: web_search provider anthropic, quota footer from headers and /claude-usage", async () => {
   const claude = runtime.getModel("anthropic", "claude-sonnet-5");

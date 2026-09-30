@@ -238,7 +238,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
   function policyContext(ctx: ExtensionContext): PolicyContext {
     return {
       mode: currentMode(), cwd: ctx.cwd, roots: roots(ctx.cwd), readRoots: readRoots(ctx.cwd), rules: rules(), selfPaths: selfPaths(),
-      agentIsUngated: (input) => agentIsUngated(ctx.cwd, input), tempRoots: temporaryRoots(),
+      agentIsUngated: (input) => agentIsUngated(ctx.cwd, input), tempRoots: temporaryRoots(), gitGuard: config.gitGuard,
     };
   }
 
@@ -531,7 +531,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
       state.recordDenied({ toolName: call.toolName, summary: facts.summary, reason: decision.reason, rule: decision.rule, key }, false);
       notify(ctx, `${call.toolName} denied by rule ${decision.rule ?? ""}`.trim(), "warning");
       log({ event: "deny", tool: call.toolName, rule: decision.rule });
-      return { block: true, reason: text.ruleDenial(decision.reason) };
+      return { block: true, reason: decision.message ?? text.ruleDenial(decision.reason) };
     }
     if (decision.kind === "ask") {
       const approved = await askUser(ctx, `Allow ${call.toolName}: ${facts.summary}?\n\n${decision.reason}`);

@@ -20,13 +20,14 @@ test('preset có sẵn đặt đủ model và thinking cho mọi vai; default l�
   assert.deepEqual(table(resolveModelRoles(presets).roles), {
     main: 'anthropic/claude-opus-5-5 high', researcher: 'opencode-go/glm-5.3-flash max',
     worker: 'openai-codex/gpt-6-sol max', debugger: 'openai-codex/gpt-6-sol max', reviewer: 'openai-codex/gpt-6-astra high',
-    advisor: 'openai-codex/gpt-6-astra high', auditor: 'openai-codex/gpt-6-astra high', oracle: 'openai-codex/gpt-6-astra high',
+    verifier: 'openai-codex/gpt-6-astra high', advisor: 'openai-codex/gpt-6-astra high', auditor: 'openai-codex/gpt-6-astra high', oracle: 'openai-codex/gpt-6-astra high',
     autoMode: 'anthropic/claude-sonnet-5 low',
   });
-  // Preset claude chỉ cần đăng nhập Claude; reviewer khác model với worker.
+  // Preset claude chỉ cần đăng nhập Claude; reviewer và verifier khác model với worker.
   const claude = resolveModelRoles(presets, {preset: 'claude'}).roles;
   assert.ok(ROLES.every(name => claude[name].model.startsWith('anthropic/')));
   assert.notEqual(claude.reviewer.model, claude.worker.model);
+  assert.notEqual(claude.verifier.model, claude.worker.model);
 });
 
 test('ghi đè theo vai và từng trường; preset riêng kế thừa preset có sẵn', () => {
@@ -57,7 +58,7 @@ test('cấu hình sai: báo từng lỗi, vẫn trả đủ vai theo preset mặ
     'roles.worker.model phải có dạng "provider/id" (vd "anthropic/claude-opus-5-5"), đang là "opus"',
     'roles.worker.thinking phải là một trong off, minimal, low, medium, high, xhigh, max, đang là "ultra"',
     'roles.worker: không có khóa "effort" (chỉ có model, thinking)',
-    'roles: không có vai "coder" (có main, researcher, worker, debugger, reviewer, advisor, auditor, oracle, autoMode)',
+    'roles: không có vai "coder" (có main, researcher, worker, debugger, reviewer, verifier, advisor, auditor, oracle, autoMode)',
     'preset "claud" không có (có default, claude)',
   ]);
   assert.equal(resolved.roles.worker.model, 'openai-codex/gpt-6-sol');
@@ -229,7 +230,7 @@ test('catalog: provider chưa đăng nhập và danh sách model, không đọc 
   process.env.OPENCODE_API_KEY = 'fixture-key';
   const {roles} = resolveModelRoles(presets);
   const result = await checkCatalog({modules, agentDir, roles, logins: true});
-  assert.deepEqual(result.loggedOut, [{provider: 'openai-codex', roles: ['worker', 'debugger', 'reviewer', 'advisor', 'auditor', 'oracle']}]);
+  assert.deepEqual(result.loggedOut, [{provider: 'openai-codex', roles: ['worker', 'debugger', 'reviewer', 'verifier', 'advisor', 'auditor', 'oracle']}]);
   delete process.env.OPENCODE_API_KEY;
   assert.deepEqual((await checkCatalog({modules, agentDir, roles, logins: true})).loggedOut.map(entry => entry.provider), ['opencode-go', 'openai-codex']);
   const providers = await listCatalog({modules, agentDir});
