@@ -3,17 +3,17 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { type ExtensionAPI, type ExtensionContext, getAgentDir, getPackageDir } from "@earendil-works/pi-coding-agent";
+import { type ExtensionAPI, type ExtensionContext, getAgentDir, getPackageDir, type ToolResultEventResult } from "@earendil-works/pi-coding-agent";
 import { classifyWithFallback, type ClassifierResult, type Complete, type ScreenOutcome } from "./lib/classifier.ts";
 import { loadConfig, parseMode, type PermissionMode, readState, writeState } from "./lib/config.ts";
 import { classifierDecision, DECISION_EVENT, type DecisionEvent, type ScreenTrace } from "./lib/decision-event.ts";
 import { evaluate, JEV_DEFAULT_ENDPOINT, JEV_PRICE_PER_MTOK, type JevAccess, JevError, loadKeyStore, resolveAccess } from "./lib/jev.ts";
 import * as text from "./lib/messages.ts";
-import { type CallFacts, decide, describeCall, escalates, type PolicyContext, SAFE_TOOLS, type ToolCall } from "./lib/policy.ts";
+import { type CallFacts, decide, describeCall, escalates, filterDeniedGrep, type PolicyContext, SAFE_TOOLS, type ToolCall } from "./lib/policy.ts";
 import { resolveToolPath, temporaryRoots } from "./lib/paths.ts";
 import { judgeProbe, PROBE_QUESTIONS, PROBE_WARNING, probeChunks, probeState, resultText, shouldProbe } from "./lib/probe.ts";
 import { buildSystemPrompt, DEFAULT_ALLOW, DEFAULT_ENVIRONMENT, DEFAULT_HARD_DENY, DEFAULT_SOFT_DENY, resolveSlots } from "./lib/prompt.ts";
-import { buildRuleSet, firstMatch } from "./lib/rules.ts";
+import { buildRuleSet, firstMatch, isPathRule } from "./lib/rules.ts";
 import {
   describeVerdict, executedScripts, judgeScreen, localPackageFacts, packageScripts, type ScreenAction, type ScreenEnvironment,
   screenable, screenQuestions, screenState, type ScreenVerdict,
@@ -575,7 +575,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
       return allowed(call, "user approval");
     }
     const trace: ScreenTrace = {};
-    const result = await runClassifier(ctx, call, toolCallId, decision.notes, escalates(call, facts, pc), trace);
+    const result = await runClassifier(ctx, call, toolCallId, decision.notes, decision.escalate || escalates(call, facts, pc), trace);
     emitDecision(classifierDecision(tool, result, trace));
     if (result.kind === "allow") return allowed(call, result.screen === "jev" ? "jev" : `classifier stage ${result.stage}`);
     if (result.kind === "unavailable") {
@@ -608,14 +608,36 @@ export default function piAutoMode(pi: ExtensionAPI) {
     return gate(ctx, { toolName: event.toolName, input: event.input as Record<string, unknown> }, event.toolCallId);
   });
 
+  // Luật deny đường dẫn: tool grep của Pi được tìm cả thư mục, dòng thuộc file bị deny bị bỏ khỏi kết quả (cả auto và bypass).
+  type ToolResultContent = NonNullable<ToolResultEventResult["content"]>[number];
+  function denyFilteredContent(event: { toolName: string; input: unknown; content: ToolResultContent[] }, ctx: ExtensionContext): ToolResultContent[] {
+    if (event.toolName !== "grep") return event.content;
+    const pc = policyContext(ctx);
+    if (!pc.rules.deny.some((rule) => !rule.negate && isPathRule(rule))) return event.content;
+    const input = event.input as Record<string, unknown>;
+    const searchPath = resolveToolPath(input.path, ctx.cwd, pc.home ?? os.homedir()) ?? ctx.cwd;
+    let removed = 0;
+    const content = event.content.map((part) => {
+      if (part.type !== "text") return part;
+      const filtered = filterDeniedGrep(part.text, searchPath, pc);
+      removed += filtered.removed;
+      return { ...part, text: filtered.text };
+    });
+    if (!removed) return event.content;
+    log({ event: "filter", tool: "grep", removed });
+    return [...content, { type: "text" as const, text: `[pi-auto-mode] ${removed} line(s) from files denied by path rules were left out.` }];
+  }
+
   // Lớp đầu vào: kết quả mang nội dung bên ngoài trông như lệnh cho AI thì kèm cảnh báo cho agent (không chặn).
   pi.on("tool_result", async (event, ctx) => {
-    if (currentMode() !== "auto" || !config.jev.probe || !jevReady()) return undefined;
-    if (!shouldProbe(event.toolName, event.input as Record<string, unknown>, config.jev.probeTools)) return undefined;
-    const body = resultText(event.content);
-    if (body.trim().length < 100) return undefined;
+    const content = denyFilteredContent(event, ctx);
+    const changed = content !== event.content ? { content } : undefined;
+    if (currentMode() !== "auto" || !config.jev.probe || !jevReady()) return changed;
+    if (!shouldProbe(event.toolName, event.input as Record<string, unknown>, config.jev.probeTools)) return changed;
+    const body = resultText(content);
+    if (body.trim().length < 100) return changed;
     const access = await jevAccess;
-    if (access?.status !== "ready") return undefined;
+    if (access?.status !== "ready") return changed;
     const chunks = probeChunks(body);
     const started = Date.now();
     try {
@@ -629,14 +651,14 @@ export default function piAutoMode(pi: ExtensionAPI) {
         event: "probe", tool: event.toolName, ms: Date.now() - started, flagged: verdict.flagged, chunks: chunks.length,
         directed: Number(verdict.directed.toFixed(3)), hijack: Number(verdict.hijack.toFixed(3)),
       });
-      if (!verdict.flagged) return undefined;
+      if (!verdict.flagged) return changed;
       jevStats.injections++;
       injectionSuspect = event.toolName;
       notify(ctx, `Auto mode: the ${event.toolName} result may contain a prompt injection; Pi was told to treat it as data.`, "warning");
-      return { content: [...event.content, { type: "text" as const, text: PROBE_WARNING }] };
+      return { content: [...content, { type: "text" as const, text: PROBE_WARNING }] };
     } catch (error) {
       jevFailure(ctx, error, "probe");
-      return undefined;
+      return changed;
     }
   });
 
@@ -933,7 +955,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
           return;
         }
         notify(ctx, "Asking the classifier…", "info");
-        const result = await runClassifier(ctx, call, undefined, decision.notes, escalates(call, facts, pc));
+        const result = await runClassifier(ctx, call, undefined, decision.notes, decision.escalate || escalates(call, facts, pc));
         const summary = result.kind === "allow" ? `allow (${result.screen === "jev" ? "Jev" : `stage ${result.stage}`})`
           : result.kind === "block" ? `block (stage ${result.stage}) — ${result.rule ? `[${result.rule}] ` : ""}${result.reason}`
             : `unavailable — ${result.reason}`;

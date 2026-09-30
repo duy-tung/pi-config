@@ -759,12 +759,19 @@ function protectedPatterns(ctx: Context, cwd: string): string[] {
 
 const VARIABLE = /\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))/gu;
 
-/** Mở rộng $NAME và ${NAME} theo phép gán thấy trong lệnh này. */
+const DEFAULTED = /\$\{([A-Za-z_][A-Za-z0-9_]*)(:?)-([^}$`]*)\}/gu;
+
+/** Mở rộng $NAME, ${NAME} và ${NAME:-mặc định} theo phép gán thấy trong lệnh này. */
 function expand(word: string, env: Map<string, string>): string {
-  return word.replace(VARIABLE, (match: string, braced: string | undefined, bare: string | undefined) => {
-    const name = braced ?? bare ?? "";
-    return env.has(name) ? env.get(name) as string : match;
-  });
+  return word
+    .replace(DEFAULTED, (_match: string, name: string, colon: string, fallback: string) => {
+      const value = env.get(name);
+      return value === undefined || (colon && value === "") ? fallback : value;
+    })
+    .replace(VARIABLE, (match: string, braced: string | undefined, bare: string | undefined) => {
+      const name = braced ?? bare ?? "";
+      return env.has(name) ? env.get(name) as string : match;
+    });
 }
 
 const unknown = (word: string) => word.includes(SUB) || word.includes("$");
@@ -1020,10 +1027,18 @@ function checkRm(ctx: Context, words: string[]): void {
   }
 }
 
-function check(ctx: Context, words: string[], sessionEnv: Map<string, string>, cwd: string): void {
+function check(ctx: Context, words: string[], sessionEnv: Map<string, string>, cwd: string, depth = 0): void {
   const unwrapped = unwrap(words);
   if (!unwrapped || !unwrapped.words.length) return;
   const { env, words: rest } = unwrapped;
+  // Tên lệnh lấy từ biến đã gán trong lệnh (GIT=git; $GIT reset --hard): mở rộng rồi tách từ như shell.
+  if (depth < 2 && rest[0].includes("$")) {
+    const head = expand(rest[0], new Map([...sessionEnv, ...env]));
+    if (head !== rest[0] && !head.includes("$")) {
+      check(ctx, [...head.split(/\s+/u).filter(Boolean), ...rest.slice(1)], sessionEnv, cwd, depth + 1);
+      return;
+    }
+  }
   const name = basename(rest[0]);
   if (SHELLS.has(name)) {
     const { letters, positional } = parseOpts(rest.slice(1), "oO");
@@ -1060,7 +1075,6 @@ export function checkGitGuard(command: string, opts: GitGuardOptions): GitGuardB
   try {
     const env = opts.env ?? process.env;
     if (gitGuardOff(env) || typeof command !== "string") return undefined;
-    if (!command.includes("git") && !command.includes("rm")) return undefined;
     const ctx: Context = { env, git: opts.git ?? runGit, protectedBranches: opts.protectedBranches };
     const cwd = opts.cwd || process.cwd();
     const commands = parseCommands(command);
