@@ -1,6 +1,6 @@
 # Quy trình làm việc: skills trên Pi
 
-pi-config cài sẵn bộ skill quy trình **tstack**, chuyển từ Claude Code sang Pi và gắn với các thành phần của pi-config: vai model, goal, auto mode, pi-lens và rewind. tstack gộp phần tốt nhất của hai bộ skill mã nguồn mở:
+pi-config cài sẵn bộ skill quy trình **tstack**, chuyển từ Claude Code sang Pi và gắn với các thành phần của pi-config: vai model, goal, auto mode và rewind. tstack gộp phần tốt nhất của hai bộ skill mã nguồn mở:
 - **`skills` của Matt Pocock**: căn chỉnh trước khi build, ở trong smart zone, spec → tickets → TDD, review tách trục, ngôn ngữ domain.
 - **`pstack` của Lauren Tan**: chứng minh trên sản phẩm thật, kỷ luật bằng chứng, mã hoá bài học vào cấu trúc, chạy không giám sát có hợp đồng, review đối kháng.
 
@@ -11,9 +11,9 @@ Skill nằm trong `assets/skills/` của repo và được cài vào `<root>/ass
 | Trụ cột | Trên Pi |
 |---|---|
 | **Căn chỉnh trước khi build** | `/skill:grill-with-docs` hỏi từng vòng, mỗi câu có đáp án đề xuất. Sự thật do agent tự tra (code giao `explorer`, docs/web giao `researcher`), quyết định là của người. Câu "cách nào tốt hơn" mà chạy thử trả lời được thì agent tự làm prototype. |
-| **Ở trong smart zone** | Footer báo vùng context theo mép 150k: xanh, vàng khi gần mép, đỏ khi quá mép. `/context-budget` đo phần luôn-bật. Việc đọc code rộng giao `explorer`, tra docs/web giao `researcher`. Hết một pha thì chọn: tiếp tục, `/clear`, handoff, subagent hoặc `/compact`. |
+| **Ở trong smart zone** | Vùng context theo mép 150k: xanh, vàng khi gần mép, đỏ khi quá mép; agent được nhắc khi vượt lên vàng hoặc đỏ. `/context-budget` đo phần luôn-bật. Việc đọc code rộng giao `explorer`, tra docs/web giao `researcher`. Hết một pha thì chọn: tiếp tục, `/clear`, handoff, subagent hoặc `/compact`. |
 | **Chứng minh trên sản phẩm thật** | Mỗi app có verify skill kèm feature map (`/skill:create-verify`). Vai `verifier`, context sạch và không sửa code, trả VERIFIED, NOT VERIFIED hoặc INCONCLUSIVE kèm bằng chứng. Người viết không tự chấm. |
-| **Mã hoá bài học vào cấu trúc** | Thang ưu tiên, từ mạnh nhất: type và kiến trúc; lint, hook, CI và luật pi-lens; `CODING_STANDARDS.md`; skill; một dòng trong AGENTS.md. `/skill:reflect` đưa mỗi bài học lên nấc cao nhất có thể. |
+| **Mã hoá bài học vào cấu trúc** | Thang ưu tiên, từ mạnh nhất: type và kiến trúc; lint, hook và CI; `CODING_STANDARDS.md`; skill; một dòng trong AGENTS.md. `/skill:reflect` đưa mỗi bài học lên nấc cao nhất có thể. |
 | **Tự chủ có hợp đồng** | Việc đảo ngược được thì cứ làm. `/skill:afk` chạy theo hợp đồng viết, **như một goal** (xem dưới). Git guard trong auto mode chặn tất định các lệnh git phá huỷ. |
 
 ## Bắt đầu
@@ -52,7 +52,7 @@ Skill kỷ luật (grilling, tdd, diagnose, prove, interrogate…) được mode
 | Không biết bắt đầu từ đâu | `/skill:work <mô tả>` (tự chọn playbook) hoặc `/skill:work ?` |
 | Có bug | `/skill:work <triệu chứng>`: tái hiện đỏ trước, sửa tận gốc, chứng minh hai lần trước và hai lần sau |
 | Chậm một lần / tối ưu một chỉ số qua nhiều lần thử | `/skill:work`: playbook perf / hillclimb |
-| Refactor, đổi hàng loạt, migration | `/skill:work`: playbook refactor / wide-change (codemod bằng `ast_grep_replace` của pi-lens) |
+| Refactor, đổi hàng loạt, migration | `/skill:work`: playbook refactor / wide-change (codemod bằng script hoặc `ast-grep` của repo) |
 | Đi ngủ, để agent tự chạy | `/skill:afk <mục tiêu hoặc tickets> done: <điều kiện kiểm được>` |
 | Việc lớn, còn mù mờ | `/skill:wayfinder` |
 | Issue và PR người khác gửi | `/skill:triage` |
@@ -64,7 +64,7 @@ Skill kỷ luật (grilling, tdd, diagnose, prove, interrogate…) được mode
 
 ## Ranh giới pha và smart zone
 
-Footer hiện `zone 42k/150k` (xanh), `gần mép` (vàng) hoặc `dumb zone` (đỏ). Cửa sổ 1M của Opus làm auto-compaction chạy rất muộn, nên màu này mới là tín hiệu hết pha. Model không thấy footer, nên lần đầu context vượt lên vàng hoặc đỏ, agent nhận thêm một nhắc ngắn ở lượt kế tiếp để tự đề xuất ranh giới. Hết một pha thì chọn theo cây quyết định trong `/skill:work`:
+Extension `smart-zone` theo dõi context theo mép 150k: xanh, vàng khi gần mép, đỏ khi quá mép (footer không hiện nhãn này). Cửa sổ 1M của Opus làm auto-compaction chạy rất muộn, nên vùng này mới là tín hiệu hết pha: lần đầu context vượt lên vàng hoặc đỏ, agent nhận một nhắc ngắn ở lượt kế tiếp để đề xuất ranh giới với bạn. Hết một pha thì chọn theo cây quyết định trong `/skill:work`:
 - **tiếp tục** khi pha sau cần pha này làm nguồn gốc (grill sang implement);
 - **`/clear`** khi mọi thứ đã nằm trong spec, ticket hoặc commit. Phiên cũ vẫn mở lại được qua `/resume` hoặc menu của phiên mới;
 - **`/skill:handoff`** khi đổi harness, repo hoặc người;
@@ -109,7 +109,6 @@ pi-models preset tree        # hoặc /models → Chọn preset… → tree; cà
 | Jev: `sharp` chạy thẳng, `split` lên Opus | Giai đoạn 1 của auto mode (Jev, cần key TypeSafe); lệnh bị gắn cờ do vai `autoMode` (Opus 5.5/low trong preset `tree`) xét | Ngưỡng `autoMode.jev.flagAt`/`riskAt` trong `settings.json` ([auto-mode.md](auto-mode.md)); model: `pi-models set autoMode …` |
 | Subagent effort medium: worker (sửa, chạy test), explorer (đọc code), researcher (tra docs) | Vai `worker`, `explorer`, `researcher` (và `debugger`) của pi-subagents; explorer và researcher chạy nền song song | `pi-models set worker … medium`; số agent chạy cùng lúc: `/agents` → Settings |
 | Quay về main · review + verify | Phiên chính nghiệm thu; `reviewer` và `verifier` (Fable 5.1) kiểm độc lập khi cần | Vai `reviewer`, `verifier` |
-| Session log, dòng trạng thái | Extension `agent-tree`: footer và `/agent-tree` | Xem dưới |
 
 Mọi giá trị ở trên là preset; ghi đè từng vai trong `<agent-dir>/model-roles.json`, hoặc tạo preset riêng kế thừa `tree` (`"presets": {"tree-lite": {"extends": "tree", "roles": {...}}}`). Chi tiết: [models.md](models.md).
 
@@ -122,35 +121,6 @@ Skill quy trình (từ tstack) chạy nguyên trên agent tree. Chỗ hai bên g
 - Số lượt `calls` tính theo phiên. `/skill:afk` làm nhiều unit trong một phiên nên chỉ gọi advisor khi pivot và nghiệm thu cuối. Advisor tắt, hết lượt hoặc đang ở subagent (worker, debugger không có `ask_advisor`) thì skill bỏ bước advisor và ghi rõ; subagent báo parent.
 - Đọc code giao `explorer`, tra docs/web/lịch sử git giao `researcher`.
 - Preset `tree` cho researcher, explorer, worker, debugger chạy cùng model với phiên chính; chỉ reviewer, verifier, advisor (Fable 5.1) khác model. `interrogate`, `decision-log`, eval của `writing-for-agents` và design it twice nói rõ khi hai seat cùng model.
-
-### Footer và `/agent-tree`
-
-Extension `agent-tree` cho thấy cây agent của phiên, chỉ từ cấu hình và sự kiện thật. Footer luôn có một dòng ngắn, ví dụ `high/medium · agents 1/4 · advisor 2/7 · jev 41↑5`:
-- `high/medium`: thinking của phiên chính / thinking phổ biến nhất trong các file vai (`agents/*.md`);
-- `agents 1/4`: subagent đang chạy (sự kiện của pi-subagents) / `maxConcurrent` trong `subagents.json` (project ghi đè, không đặt thì 10 như pi-subagents);
-- `advisor 2/7`: số lần `ask_advisor` trả về lời khuyên trong phiên / `advisorMaxCallsPerSession` (không giới hạn thì chỉ hiện số lần); `advisor off` khi `alwaysOn` tắt;
-- `jev 41↑5`: số lệnh đã qua lớp Jev của auto mode, trong đó 5 bị gắn cờ và đẩy lên model xét kỹ. Chưa có lệnh nào qua Jev (chưa lưu key TypeSafe hoặc `autoMode.jev: false`) thì phần này không hiện.
-
-`/agent-tree` bật hoặc tắt widget đầy đủ phía trên ô nhập (`/agent-tree on`, `/agent-tree off`):
-
-```
-main      claude-opus-5-5 · high · 1M · lập kế hoạch, quyết định
-advisor   claude-fable-5-1 · high · 2/7 lần · trước plan, lỗi lặp, trước khi xong
-          gần nhất: Chạy lại test tích hợp rồi mới báo xong.
-jev       41 sàng lọc · 36 sharp → chạy · 5 split → claude-opus-5-5 (low)
-agents    1/4 đang chạy · opus-5-5/medium: worker ◐ explorer ○ researcher ○ debugger ○
-          fable-5-1/high: reviewer ○ verifier ○
-log       23:49:28 explorer xong (12s) · Tìm chỗ gọi API
-          23:49:30 jev sharp → chạy bash · ×3
-          23:49:31 advisor: Chạy lại test tích hợp rồi mới báo xong.
-```
-
-- **advisor**: model, effort, gate và giới hạn lấy từ `advisor.json`; "gần nhất" là dòng đầu của lời khuyên cuối.
-- **jev**: `sharp` là lệnh Jev cho chạy thẳng; `split` là lệnh bị gắn cờ (bởi Jev, hoặc bởi chính sách khi thấy rủi ro) và được model trong `autoMode.stage2Model` (thiếu thì `autoMode.model`) xét ở mức `stage2Reasoning`. `N LLM xét` đếm lệnh bộ phân loại LLM xét khi không có Jev.
-- **agents**: vai gom theo model/thinking; ◐ đang chạy, ○ rảnh.
-- **log**: tối đa 5 sự kiện gần nhất có giờ: subagent bắt đầu, xong, lỗi; lời khuyên hoặc lỗi của advisor; jev split; lệnh bị chặn; compaction. `jev sharp` liền nhau gộp một dòng.
-
-Số liệu tính cho phiên hiện tại và về 0 khi mở phiên mới. Agent con và chế độ print không có footer hay widget. pi-auto-mode phát sự kiện `pi-config:auto-mode-decision` (`{tool, stage, allowed, via?, classifierStage?, flaggedBy?, score?, child}`; `stage` là `policy`, `user`, `sharp`, `split` hoặc `classifier`) cho extension khác đọc; sự kiện không đổi quyết định.
 
 ## afk chạy như một goal
 
@@ -197,7 +167,7 @@ Khi thật sự cần, bạn tự chạy lệnh bằng `!<lệnh>` trong editor 
 | `afk` | Chạy không giám sát theo hợp đồng, như một goal. |
 | `ship` | Mở PR (deslop, commit có thứ tự, body briefing), babysit, land khi được yêu cầu. |
 | `reflect` | Bài học lặp lại → nấc mạnh nhất của thang; chỉ áp dụng dòng bạn duyệt. |
-| `setup` | Cấu hình repo: tracker, domain docs, AGENTS.md gọn, `CODING_STANDARDS.md`, skill theo stack, `.pi-lens.json`, hook commit. |
+| `setup` | Cấu hình repo: tracker, domain docs, AGENTS.md gọn, `CODING_STANDARDS.md`, skill theo stack, hook commit. |
 | `create-verify`, `maintain-verify` | Tạo và giữ verify skill kèm feature map cho từng app (web, CLI, API, mobile). |
 | `context-audit` | Đo context luôn-bật và cắt tỉa với ba phép thử. |
 | `improve-architecture` | Khảo sát cơ hội "làm sâu module", báo cáo HTML, rồi grill phương án bạn chọn. |
@@ -223,14 +193,13 @@ grilling, domain-modeling, codebase-design, principles, tdd, diagnose, prove, in
 | `docs/agents/*.md` | Tracker (GitHub, GitLab hoặc markdown cục bộ), cấu trúc domain, nhãn triage. |
 | `CONTEXT.md`, `docs/adr/` | Từ điển domain và quyết định kiến trúc. |
 | `.agents/skills/verify-<app>/` | Verify skill kèm `features/` của từng app. Pi nạp sau khi project được trust; `prove` và `verifier` đọc theo đường dẫn. |
-| `.pi-lens.json` | `format.enabled: true` để pi-lens format file vừa sửa bằng formatter của repo. |
 | `.tstack/<slug>/` | Trạng thái việc dài hoặc không giám sát: `contract.md`, `ledger.tsv`, `decisions.tsv`, `evidence/`, `report.md`; được gitignore. |
 
 ## Tuỳ biến
 
 - **Sửa skill.** Sửa file trong `<root>/assets/skills/<tên>/`, rồi `/reload`. Installer giữ file bạn đã sửa và báo lại khi cài lại. Muốn góp vào bộ chuẩn thì sửa `assets/skills/` trong repo này; test `tests/skills.test.mjs` kiểm tham chiếu.
 - **Skill riêng của project.** Đặt trong `.agents/skills/<tên>/`. Viết theo skill `writing-for-agents`.
-- **Luật review mới.** Thêm một dòng vào `CODING_STANDARDS.md`. Luật mà regex hoặc type ép được thì làm lint, hook, luật pi-lens (`rules/ast-grep-rules/`) hoặc type.
+- **Luật review mới.** Thêm một dòng vào `CODING_STANDARDS.md`. Luật mà regex hoặc type ép được thì làm lint, hook hoặc type.
 - **Mép smart zone.** `TSTACK_SMART_ZONE=200k`.
 - **Git guard.** Xem [auto-mode.md](auto-mode.md#git-guard).
 
@@ -243,8 +212,8 @@ grilling, domain-modeling, codebase-design, principles, tdd, diagnose, prove, in
 | `Explore`, `general-purpose`, `ticket-worker`, ba agent review | `researcher`, `worker`, `reviewer` + file trục trong `interrogate/axes/`, `verifier` |
 | Seat review ngoài qua `codex`/`gemini` CLI | Vai khác họ model trong preset |
 | `effort: high` theo skill | Parent đã chạy Opus/high; skill không đổi thinking giữa phiên (giữ prompt cache) |
-| Hook `guard_git.py`, PreCompact, status line | Git guard trong auto mode, extension `smart-zone` (footer, nhắc compaction, `/context-budget`), extension `agent-tree` (footer cây agent, `/agent-tree`) |
-| `.claude/skills/verify-<app>/`, hook format trong `.claude/settings.json` | `.agents/skills/verify-<app>/`, `.pi-lens.json` kèm hook commit |
+| Hook `guard_git.py`, PreCompact, status line | Git guard trong auto mode, extension `smart-zone` (nhắc vùng context và compaction, `/context-budget`) |
+| `.claude/skills/verify-<app>/`, hook format trong `.claude/settings.json` | `.agents/skills/verify-<app>/`, hook commit |
 | Background Bash, `/loop` | `bg_run` (phiên tự thức khi job xong) |
 | afk tự vòng lặp | afk chạy như goal: tự tiếp tục, Oracle khi kẹt, auditor độc lập khi xong |
 

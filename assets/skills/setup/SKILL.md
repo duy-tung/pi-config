@@ -11,7 +11,7 @@ Write the per-repo files the tstack skills read. Explore first, ask one section 
 In every step:
 
 - Never overwrite an existing file without showing the diff and getting approval.
-- Re-runs update in place: one `## Agent skills` block, one `.tstack/` ignore line, one `format` setting in `.pi-lens.json`, one copy per stack skill, no duplicate hook entries. A file that already matches its draft is reported as unchanged.
+- Re-runs update in place: one `## Agent skills` block, one `.tstack/` ignore line, one copy per stack skill, no duplicate hook entries. A file that already matches its draft is reported as unchanged.
 
 ## 1. Explore
 
@@ -19,7 +19,7 @@ Read what exists. Ask nothing yet.
 
 - **Remote**: `git remote -v`. Run `gh auth status` for a GitHub remote, `glab auth status` for a GitLab one.
 - **Instruction files**: `AGENTS.md`, `CLAUDE.md`. Note whether `CLAUDE.md` holds only `@AGENTS.md`, whether an `## Agent skills` block exists, and which paths it points to.
-- **Prior setup**: `docs/agents/`, `CODING_STANDARDS.md`, `.pi-lens.json`, `.agents/skills/verify-*/`, and stack skills in `.agents/skills/typescript/`, `python/` or `mobile/`.
+- **Prior setup**: `docs/agents/`, `CODING_STANDARDS.md`, `.agents/skills/verify-*/`, and stack skills in `.agents/skills/typescript/`, `python/` or `mobile/`.
 - **Domain docs**: `CONTEXT.md`, `CONTEXT-MAP.md`, `docs/adr/`, `src/*/docs/adr/`. A `.scratch/` folder hints at a local tracker.
 - **Stack**: `package.json` and its lockfile, `tsconfig.json`, `pyproject.toml`, `requirements*.txt`, `uv.lock`, `poetry.lock`, `Podfile`, `*.xcodeproj`, `Package.swift`, `build.gradle` or `build.gradle.kts`, `pubspec.yaml`.
 - **Monorepo signals**: `pnpm-workspace.yaml`, `workspaces` in `package.json`, `turbo.json`, `nx.json`, several `packages/*` with their own `src/`.
@@ -62,11 +62,10 @@ Draft every file below, show the drafts, let the user edit, then write.
 
 ## 4. Stack hooks
 
-Follow [STACK-HOOKS.md](STACK-HOOKS.md). Say its ladder line, then propose the three items in one message, each with what it adds and a recommendation, and ask which to add (one multi-select `ask_user_question`):
+Follow [STACK-HOOKS.md](STACK-HOOKS.md). Say its ladder line, then propose the two items in one message, each with what it adds and a recommendation, and ask which to add (one multi-select `ask_user_question`):
 
-1. Editor-time formatting: `.pi-lens.json` with `{"format": {"enabled": true}}`, so pi-lens formats each file the agent edits with the repo's formatter (pi-config's global default is off). Recommended when the repo has a formatter config.
-2. A pre-commit gate for the stack. Recommended when the repo has no pre-commit hook and no CI job running its checks.
-3. Module-boundary enforcement. Opt-in.
+1. A pre-commit gate for the stack. Recommended when the repo has no pre-commit hook and no CI job running its checks.
+2. Module-boundary enforcement. Opt-in.
 
 Draft the approved items, show the diffs, write, then run each proof STACK-HOOKS.md gives.
 
@@ -76,4 +75,4 @@ When the repo has a runnable surface and no `.agents/skills/verify-*/`, tell the
 
 ## 6. Report
 
-List every file as created, updated, unchanged or skipped (with the reason), the labels created, the stack skills copied, the `.pi-lens.json` and hook entries added, and each proof with its result. Leave the changes uncommitted for the user to review. Tell the user they can edit `docs/agents/*.md` directly, and re-run `/skill:setup` to switch trackers or after upgrading pi-config. Name the next step: `/skill:create-verify` when step 5 applies, and `/skill:context-audit` when the instruction file runs past about 100 lines.
+List every file as created, updated, unchanged or skipped (with the reason), the labels created, the stack skills copied, the hook entries added, and each proof with its result. Leave the changes uncommitted for the user to review. Tell the user they can edit `docs/agents/*.md` directly, and re-run `/skill:setup` to switch trackers or after upgrading pi-config. Name the next step: `/skill:create-verify` when step 5 applies, and `/skill:context-audit` when the instruction file runs past about 100 lines.

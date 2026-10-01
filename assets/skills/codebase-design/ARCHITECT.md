@@ -6,7 +6,7 @@ Uses the vocabulary in [SKILL.md](SKILL.md). Track the phases with the `todo` to
 
 ## 1. Ground
 
-Build a real mental model of every system the new code touches: load the `how` skill and run it on each touched subsystem. Naming a file isn't grounding. `symbol_search` and `module_report` (pi-lens, main session only) show a module's surface before you read its files. If the design redefines ownership or layering, also run the `why` skill on the existing shape, so its rationale becomes a constraint, not a guess.
+Build a real mental model of every system the new code touches: load the `how` skill and run it on each touched subsystem. Naming a file isn't grounding. `rg` for a module's exports and call sites shows its surface before you read its files. If the design redefines ownership or layering, also run the `why` skill on the existing shape, so its rationale becomes a constraint, not a guess.
 
 Skip this phase only for greenfield work with no surrounding system to integrate.
 

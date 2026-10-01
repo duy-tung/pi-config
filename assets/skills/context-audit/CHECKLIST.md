@@ -3,7 +3,7 @@
 ## Reading the numbers
 
 - `/context-budget` estimates tokens as characters divided by 4. Use it to compare parts, and before with after; it is not a bill.
-- Every part it lists loads on every request. Skill bodies, user-invoked skills (`disable-model-invocation: true`) and inactive tools cost nothing until used: pi-lens situational tools (`lsp_navigation`, `ast_grep_*`) stay inactive until `pi_lens_activate_tools`, and an MCP server is lazy and sits behind the one `mcp` proxy tool unless it sets `directTools`.
+- Every part it lists loads on every request. Skill bodies, user-invoked skills (`disable-model-invocation: true`) cost nothing until used, and an MCP server is lazy and sits behind the one `mcp` proxy tool unless it sets `directTools`.
 - Pricing is arithmetic, not a probe: a change saves the rows it removes. The re-measure in step 4 confirms it.
 
 ## Levers

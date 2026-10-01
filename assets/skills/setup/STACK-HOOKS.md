@@ -4,29 +4,7 @@ Say this once, before proposing: a mistake the agent repeats becomes a type, a l
 
 Destructive git commands and hook bypasses such as `--no-verify` are already blocked by pi-config's git guard. Do not add a per-repo copy. There is no allow-rule step: Pi has no project allow rules, and auto mode already runs read-only and test commands.
 
-## 1. Editor-time formatting (.pi-lens.json)
-
-pi-lens formats each file the agent edits with the repo's own formatter, when each agent run ends. pi-config ships it off; a repo turns it on with `.pi-lens.json` at the root:
-
-```json
-{"format": {"enabled": true}}
-```
-
-Write it only when the repo has a formatter config. Without one, pi-lens falls back to its own defaults (Biome for JS/TS, Ruff for Python) and restyles files the repo never formatted.
-
-| Files | Formatter config that counts |
-|---|---|
-| JS/TS, CSS, JSON, Markdown | `biome.json`, or a prettier config (`.prettierrc*`, `prettier.config.*`, a `"prettier"` key in `package.json`) |
-| `.py`, `.pyi` | a ruff config (`ruff.toml`, `.ruff.toml`, `[tool.ruff]`) or a black config |
-| `.swift` | `.swiftformat` |
-| `.kt`, `.kts` | ktlint named in `.editorconfig` or the root Gradle files |
-| `.dart` | `pubspec.yaml` |
-
-An existing `.pi-lens.json` keeps every other key: set only `format.enabled`, then validate it with `node -e 'JSON.parse(require("fs").readFileSync(".pi-lens.json", "utf8"))'`. It formats only inside Pi sessions; section 2 is the layer that holds for everyone.
-
-Prove the formatter it will call: write a badly formatted scratch file with the repo's main extension, run the repo's formatter on it by hand (for example `npx prettier --write <file>` or `uv run ruff format <file>`), show the result, delete the file.
-
-## 2. Commit-time hooks
+## 1. Commit-time hooks
 
 Commit-time hooks (husky with lint-staged, the pre-commit framework, a versioned `.githooks/`) remain the enforced layer for everyone: they run for every contributor and every harness, whatever the editor did.
 
@@ -115,7 +93,7 @@ make test
 
 Simulator and emulator suites are too slow for pre-commit: put them in `.githooks/pre-push`.
 
-## 3. Module boundaries (opt-in)
+## 2. Module boundaries (opt-in)
 
 Offer; do not recommend by default. On yes:
 

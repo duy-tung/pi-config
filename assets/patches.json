@@ -8,7 +8,7 @@
       },
       "file": "extensions/open-tui/footer.ts",
       "originalSha256": "bc25b0a4aa6560ab6a27eb6e364600087595b0d00cf5cef27cc14e8765809ded",
-      "patchedSha256": "89487dd7bd2aa58d3cba01d9a18706fdf89605a267f6ac96beadf50581de9935",
+      "patchedSha256": "fbad6e483c4ded5f42f1fde29125f935ae24c8dd8ce7ce862b540850cb76e505",
       "edits": [
         {
           "before": "stats.push(theme.fg(\"warning\", `${glyphs.cost} $${totals.cost.toFixed(3)}`));",
@@ -48,11 +48,6 @@
         {
           "before": ".map(([, text]) => sanitizeStatus(text))",
           "after": ".filter(([key, text]) => key !== \"mcp\" || !/^(?:🔌\\s*)?MCP:\\s*\\d+ servers? enabled$/u.test(sanitizeStatus(text)))\n\t\t.map(([, text]) => sanitizeStatus(text))",
-          "count": 1
-        },
-        {
-          "before": ".map(([, text]) => sanitizeStatus(text))",
-          "after": ".filter(([key, text]) => key !== \"pi-lens-lsp\" || sanitizeStatus(text) !== \"LSP Inactive\")\n\t\t.map(([, text]) => sanitizeStatus(text))",
           "count": 1
         },
         {
@@ -219,6 +214,22 @@
           "count": 1
         }
       ]
+    },
+    {
+      "package": "@tintinweb/pi-subagents",
+      "versions": {
+        "current": "0.19.0"
+      },
+      "file": "package.json",
+      "originalSha256": "200babd811ba6b8d1d46e36fa599869fff0a62ba584469cabdc5b9d8bbb98071",
+      "edits": [
+        {
+          "before": "    \"@earendil-works/pi-tui\": \">=0.84.0\"\n  },\n  \"dependencies\": {\n    \"@sinclair/typebox\": \"^0.34.49\",\n    \"croner\": \"^10.0.1\",\n    \"nanoid\": \"^5.1.16\",\n    \"typebox\": \"^1.3.7\"\n  },",
+          "after": "    \"@earendil-works/pi-tui\": \">=0.84.0\",\n    \"@sinclair/typebox\": \"*\",\n    \"typebox\": \"*\"\n  },\n  \"dependencies\": {\n    \"croner\": \"^10.0.1\",\n    \"nanoid\": \"^5.1.16\"\n  },",
+          "count": 1
+        }
+      ],
+      "patchedSha256": "15ff519b25202f3bcb6dfdded6155def1c5634e41796d1a810dee06f873e37c9"
     },
     {
       "package": "pi-advisor-flow",

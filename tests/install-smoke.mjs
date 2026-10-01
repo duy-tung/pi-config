@@ -44,12 +44,12 @@ fs.writeFileSync(webSearchPath,webSearchBytes);
 assert.equal(doctor.status,1,doctor.stdout+doctor.stderr);
 assert.match(doctor.stderr,/parallel-mcp có trong searchRouting\.providers nhưng không có trong webSearch\.allowedProviders/u);
 // Thiếu package trong runtime: doctor báo từng package bằng một dòng, không ném ENOENT.
-const lensDir=path.join(root,'runtimes','current','node_modules','pi-lens'),lensAside=`${lensDir}.aside`;
-fs.renameSync(lensDir,lensAside);
+const goalDir=path.join(root,'runtimes','current','node_modules','pi-goal-x'),goalAside=`${goalDir}.aside`;
+fs.renameSync(goalDir,goalAside);
 const missing=spawnSync(process.execPath,[path.join(root,'bin/launch.mjs'),'doctor'],{encoding:'utf8'});
-fs.renameSync(lensAside,lensDir);
+fs.renameSync(goalAside,goalDir);
 assert.equal(missing.status,1,missing.stdout+missing.stderr);
-assert.match(missing.stderr,/^current\/pi-lens: chưa cài \(thiếu /mu);
+assert.match(missing.stderr,/^current\/pi-goal-x: chưa cài \(thiếu /mu);
 assert.doesNotMatch(missing.stderr,/ENOENT|at file:/u);
 await run(process.execPath,['--test',...['patches','extensions-typecheck','models','glm-wire','native-search-wire','claude-effort-wire','rewind-session','subagent-markdown','patched-typecheck','model-roles','model-commands','models-command'].map(name=>path.join(repo,`tests/${name}.test.mjs`))],{env:{...process.env,PI_CONFIG_TEST_ROOT:root}});
 for(const profile of ['main'])await run(process.execPath,[path.join(repo,'tests/profile-integration.mjs'),root,profile]);

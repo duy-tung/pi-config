@@ -50,10 +50,10 @@ test("insertFile chỉ đọc file trong assets/patches", async () => {
   }
 });
 
-test("metadata ghim mười hai bản vá cho một runtime", async () => {
+test("metadata ghim mười ba bản vá cho một runtime", async () => {
   const data = await loadPatchData();
   assert.equal(data.schemaVersion, 1);
-  assert.equal(data.patches.length, 12);
+  assert.equal(data.patches.length, 13);
   // pi-anthropic-auth >= 3.3.2 tự giữ effort theo lượt (upstream PR #79): không còn vá.
   assert.ok(!data.patches.some((spec) => spec.package === "@gotgenes/pi-anthropic-auth"));
   for (const spec of data.patches) {

@@ -23,7 +23,7 @@ Explore with the method in [EXPLORER.md](EXPLORER.md) yourself, starting from `s
 
 ## 3. Complex: explore in parallel
 
-Split the question into 2 to 4 exploration angles, each a distinct slice of the subsystem (for example: the entry points and request flow, the data model and its storage, the seam with service Y). Before spawning, find each angle's entry points and call sites with `symbol_search`, or `lsp_navigation` references and incomingCalls (after `pi_lens_activate_tools`). Spawn one `explorer` agent per angle, all in one response (parallel Agent calls). Each prompt is everything below the divider in [EXPLORER.md](EXPLORER.md), with the question and that agent's angle filled in.
+Split the question into 2 to 4 exploration angles, each a distinct slice of the subsystem (for example: the entry points and request flow, the data model and its storage, the seam with service Y). Before spawning, find each angle's entry points and call sites with `rg`. Spawn one `explorer` agent per angle, all in one response (parallel Agent calls). Each prompt is everything below the divider in [EXPLORER.md](EXPLORER.md), with the question and that agent's angle filled in.
 
 Explorers do not see this conversation; they read AGENTS.md themselves. Put every pointer an explorer needs into its angle: paths, symbols, and the user's own words for the feature.
 

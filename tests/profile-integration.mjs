@@ -50,9 +50,9 @@ settings.autoMode = { ...settings.autoMode, model: "config-test/worker", stateDi
 Object.assign(settings, {
   defaultProvider: "config-test", defaultModel: "parent", defaultThinkingLevel: "off",
   enabledModels: ["config-test/parent", "config-test/worker"],
-  // Giữ pi-rewind, claude-usage, model-roles, smart-zone, agent-tree và pi-auto-mode (nạp sau cùng) của bản cài;
+  // Giữ pi-rewind, claude-usage, model-roles, smart-zone và pi-auto-mode (nạp sau cùng) của bản cài;
   // các extension giao diện khác không cần trong RPC.
-  extensions: [...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && /\/(?:pi-rewind|claude-usage|model-roles|smart-zone|agent-tree)$/u.test(entry.replaceAll("\\", "/"))),
+  extensions: [...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && /\/(?:pi-rewind|claude-usage|model-roles|smart-zone)$/u.test(entry.replaceAll("\\", "/"))),
     fileURLToPath(new URL("./scripted-provider.ts", import.meta.url)),
     ...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && entry.replaceAll("\\", "/").endsWith("/pi-auto-mode")),
     // Giữ các loại trừ extension dựng sẵn (-builtin:mcp...) của bản cài.
@@ -87,9 +87,9 @@ try { fs.symlinkSync(path.join(cwd, ".env"), path.join(cwd, "secret-alias.txt"))
 catch (error) { if (process.platform !== "win32") throw error; symlinkAvailable = false; }
 const modules = path.join(installRoot, "runtimes", configuration.runtime, "node_modules");
 Object.assign(process.env, {
-  PI_CODING_AGENT_DIR: agentDir, PI_WORKSPACE_DIR: cwd, PI_LENS_HOME: path.join(fixture, "lens-state"),
-  PI_CONFIG_AUTH_PATH: path.join(agentDir, "auth.json"), PI_LENS_CONFIG_PATH: path.join(installRoot, "config", "pi-lens.json"),
-  PI_LENS_DISABLE_LSP_INSTALL: "1", PI_LENS_DISABLE_TOOL_INSTALL: "1", PI_BG_DISABLE_UPDATE_CHECK: "1",
+  PI_CODING_AGENT_DIR: agentDir,
+  PI_CONFIG_AUTH_PATH: path.join(agentDir, "auth.json"),
+  PI_BG_DISABLE_UPDATE_CHECK: "1",
   FIRECRAWL_NO_SEARCH_FEEDBACK: "1", FIRECRAWL_NO_ENDPOINT_FEEDBACK: "1",
 });
 for (const key of Object.keys(process.env)) {
@@ -160,6 +160,8 @@ const { builtInExtensions } = await import(pathToFileURL(path.join(modules, "@ea
 const loader = new sdk.DefaultResourceLoader({ cwd, agentDir, extensionFactories: builtInExtensions });
 await loader.reload();
 assert.deepEqual(loader.getExtensions().errors, []);
+// Cảnh báo package của Pi (vd. extension tự cài typebox thay vì dùng bản Pi cấp) hiện lúc khởi động như lỗi extension.
+assert.deepEqual(loader.getExtensions().warnings ?? [], []);
 const runtime = await sdk.ModelRuntime.create({ authPath: path.join(agentDir, "auth.json"), refreshOnCreate: false });
 const sessionManager = sdk.SessionManager.create(cwd, path.join(fixture, "sessions"));
 const { session } = await sdk.createAgentSession({ cwd, agentDir, resourceLoader: loader, modelRuntime: runtime, sessionManager });
@@ -390,20 +392,6 @@ await check("ask_user_question RPC round trip", async () => {
   assert.ok(prompts.length > before); assert.equal(result.length, 1); assert.ok(!result[0].isError, JSON.stringify(result));
   assert.match(JSON.stringify(result), /Local/u);
 });
-await check("MCP stdio connects, reads safe file, denies secrets", async () => {
-  let result = await run("mcp-connect", [[tool("mcp", { connect: "workspace" })]]);
-  assert.ok(!result[0]?.isError, JSON.stringify(result));
-  result = await run("mcp-read", [[tool("mcp", { tool: "workspace_read_text_file", args: { path: path.join(cwd, "safe.txt") } })]]);
-  assert.ok(!result[0]?.isError, JSON.stringify(result)); assert.match(JSON.stringify(result), /SAFE_CONTENT/u);
-  result = await run("mcp-secret", [[tool("mcp", { tool: "workspace_read_text_file", args: { path: path.join(cwd, ".env") } })]]);
-  assert.equal(result[0]?.isError, true, JSON.stringify(result));
-  assert.ok(!JSON.stringify(result).includes("must-not-be-read"));
-  if (symlinkAvailable) {
-    result = await run("mcp-alias", [[tool("mcp", { tool: "workspace_read_text_file", args: JSON.stringify({ path: path.join(cwd, "secret-alias.txt") }) })]]);
-    assert.equal(result[0]?.isError, true, JSON.stringify(result));
-    assert.ok(!JSON.stringify(result).includes("must-not-be-read"));
-  }
-});
 if (configuration.packages.includes("pi-goal-x")) {
   await check("goal creates, reports state, and honors explicit pause", async () => {
     const result = await run("goal", [
@@ -513,12 +501,6 @@ await check("rewind: a restore interrupted by a crash can be finished from the m
   assert.equal(fs.readFileSync(file, "utf8"), "X-target\n");
   assert.equal(fs.existsSync(journal), false);
 });
-await check("pi-lens: the TypeScript server starts without automatic typings downloads", async () => {
-  // tsserver mặc định tự npm install @types vào cache của máy khi mở file JS/TS; cấu hình của bản cài tắt việc này.
-  const lsp = await import(pathToFileURL(path.join(modules, "pi-lens", "dist", "clients", "lsp", "config.js")).href);
-  await lsp.initLSPConfig(cwd);
-  assert.deepEqual(lsp.getServerInitOverride("typescript", path.join(cwd, "app.js"))?.initializationOptions, { disableAutomaticTypingAcquisition: true });
-});
 await check("rewind: Redo keeps the work done after the rewind; Undo redo in the menu brings it back", async () => {
   const file = path.join(cwd, "redo-c.txt");
   const edit = (from, to) => tool("edit", { path: "redo-c.txt", edits: [{ oldText: from, newText: to }] });
@@ -618,26 +600,6 @@ await check("clipboard image shortcut, attachment, deleted marker and size guard
     Module._load=originalLoad;childProcess.spawnSync=originalSpawn;syncBuiltinESMExports();
     if(display===undefined)delete process.env.DISPLAY;else process.env.DISPLAY=display;
   }
-});
-await check("agent-tree: footer from real config and session events, /agent-tree toggles the tree widget", async () => {
-  assert.ok(session.extensionRunner.getRegisteredCommands().some((command) => command.name === "agent-tree"), "Missing /agent-tree");
-  // Số liệu thật của fixture: advisor.json và subagents.json của bản cài, vai với model giả; Jev tắt; chưa có subagent.
-  const advisor = readJson(path.join(agentDir, "advisor.json"));
-  const calls = advisor.advisorMaxCallsPerSession === undefined ? "\\d+" : `\\d+/${advisor.advisorMaxCallsPerSession}`;
-  const concurrent = readJson(path.join(agentDir, "subagents.json")).maxConcurrent ?? 10;
-  const footer = new RegExp(`^\\w+(?:/\\w+)? · agents 0/${concurrent} · ${advisor.alwaysOn ? `advisor ${calls}` : "advisor off"}$`, "u");
-  await run("agent-tree", [[tool("bash", { command: "printf tree-ok", timeout: 10 })]]);
-  assert.match(statuses.get("agent-tree") ?? "", footer);
-  const seen = control.seen.length;
-  await session.prompt("/agent-tree");
-  const lines = widgets.get("agent-tree");
-  assert.ok(Array.isArray(lines) && lines.length <= 10, JSON.stringify(lines));
-  assert.match(lines[0], /^main {6}parent · /u);
-  assert.ok(lines.some((line) => /^agents {4}0\/\d+ đang chạy · worker(?:\/\w+)?: worker ○/u.test(line)), lines.join("\n"));
-  assert.ok(lines.some((line) => /^jev {7}tắt \(autoMode\.jev false\)/u.test(line)), lines.join("\n"));
-  await session.prompt("/agent-tree off");
-  assert.equal(widgets.has("agent-tree"), false);
-  assert.equal(control.seen.length, seen, "/agent-tree không gọi model");
 });
 await check("headless auto mode never prompts and fails closed without a verdict", async () => {
   session.extensionRunner.setUIContext(undefined, "print");

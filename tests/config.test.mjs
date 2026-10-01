@@ -48,7 +48,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       // Skills quy trình đi cùng repo (assets/skills), không tải từ nguồn ngoài.
       assert.equal(settings.skills[0], p.join(options.root, "assets", "skills"));
       assert.ok(!settings.skills.some((entry) => entry.includes("mattpocock")));
-      assert.deepEqual(settings.extensions, [...["rose-pine-palette.ts", "pi-rewind", "claude-usage", "model-roles", "smart-zone", "agent-tree", "pi-auto-mode"]
+      assert.deepEqual(settings.extensions, [...["rose-pine-palette.ts", "pi-rewind", "claude-usage", "model-roles", "smart-zone", "pi-auto-mode"]
         .map((entry) => p.join(options.root, "assets", "extensions", entry)), "-builtin:mcp", "-builtin:codemode", "-builtin:tool-search"]);
       assert.equal(settings.doubleEscapeAction, "none");
       assert.deepEqual(settings.rewind, { storageDir: p.join(options.root, "state", "rewind"), retentionDays: 30 });
@@ -104,13 +104,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.ok(!files.some((file) => file.path === p.join(profile.agentDir, "mcp.json")), "mcp.json thuộc MCP dựng sẵn của Pi");
       const mcp = json(p.join(profile.agentDir, "mcp-adapter.json"));
       assert.deepEqual(mcp.settings, { hostConfigDiscovery: "off", allowInstall: false, scriptMode: false });
-      const server = mcp.mcpServers.workspace;
-      assert.equal(server.command, options.nodePath);
-      assert.deepEqual(server.args, [p.join(options.root, "bin", "workspace-mcp.mjs")]);
-      assert.equal(server.inheritEnv, false);
-      assert.equal(server.cwd, "${PI_WORKSPACE_DIR}");
-      assert.equal(server.lifecycle, "lazy");
-      assert.deepEqual(server.includeTools, ["read_text_file", "list_directory", "get_file_info", "list_allowed_directories"]);
+      assert.equal(mcp.mcpServers, undefined, "không cài sẵn server MCP");
       const settings = json(p.join(profile.agentDir, "settings.json"));
       const deny = settings.permissions.deny;
       for (const file of [p.join(options.agentDir, "auth.json"), p.join(options.root, "profiles", "*", "auth.json"), p.join(options.root, "secrets", "*.env"), p.join(options.home, ".codex", "auth.json")]) {
@@ -205,11 +199,6 @@ for (const platform of ["darwin", "linux", "win32"]) {
       if (profile.packages.includes("@tintinweb/pi-subagents")) assert.equal(json(p.join(profile.agentDir, "subagents.json")).fallbackSubagent, "none");
       else assert.ok(!files.some(file => file.path === p.join(profile.agentDir,"subagents.json")));
     }
-    const lens = json(p.join(options.root, "config", "pi-lens.json"));
-    assert.equal(lens.format.enabled, false);
-    // tsserver không tự npm install @types vào cache của máy khi mở file JS/TS.
-    assert.equal(lens.lsp.serverOverrides.typescript.initializationOptions.disableAutomaticTypingAcquisition, true);
-    assert.ok(files.every(({ path: file }) => file !== p.join(options.home, ".pi-lens", "config.json")));
   });
 }
 

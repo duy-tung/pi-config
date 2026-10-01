@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 import { type ExtensionAPI, type ExtensionContext, getAgentDir, getPackageDir, type ToolResultEventResult } from "@earendil-works/pi-coding-agent";
 import { classifyWithFallback, type ClassifierResult, type Complete, type ScreenOutcome } from "./lib/classifier.ts";
 import { loadConfig, parseMode, type PermissionMode, readState, writeState } from "./lib/config.ts";
-import { classifierDecision, DECISION_EVENT, type DecisionEvent, type ScreenTrace } from "./lib/decision-event.ts";
 import { evaluate, JEV_DEFAULT_ENDPOINT, JEV_PRICE_PER_MTOK, type JevAccess, JevError, loadKeyStore, resolveAccess } from "./lib/jev.ts";
 import * as text from "./lib/messages.ts";
 import { type CallFacts, decide, describeCall, escalates, filterDeniedGrep, type PolicyContext, SAFE_TOOLS, type ToolCall } from "./lib/policy.ts";
@@ -181,15 +180,6 @@ export default function piAutoMode(pi: ExtensionAPI) {
       fs.appendFileSync(path.join(config.stateDir, "decisions.jsonl"), `${JSON.stringify({ at: new Date().toISOString(), session: sessionId, ...entry })}\n`, { mode: 0o600 });
     } catch {
       /* nhật ký là tùy chọn */
-    }
-  }
-
-  /** Báo quyết định cho extension khác (agent-tree); chỉ để quan sát, lỗi của người nghe không ảnh hưởng cổng. */
-  function emitDecision(event: Omit<DecisionEvent, "child">): void {
-    try {
-      pi.events.emit(DECISION_EVENT, { ...event, child });
-    } catch {
-      /* người nghe lỗi */
     }
   }
 
@@ -396,7 +386,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
     return { kind: "unavailable", reason: failure.message };
   }
 
-  async function runScreen(ctx: ExtensionContext, call: ToolCall, notes: string[], trace: ScreenTrace): Promise<ScreenOutcome> {
+  async function runScreen(ctx: ExtensionContext, call: ToolCall, notes: string[]): Promise<ScreenOutcome> {
     const access = await jevAccess;
     if (access?.status !== "ready") return { kind: "unavailable", reason: access?.status === "unavailable" ? access.message : "no Jev API key" };
     const command = typeof call.input.command === "string" ? call.input.command : "";
@@ -411,8 +401,6 @@ export default function piAutoMode(pi: ExtensionAPI) {
       recordUsage(result.inputTokens);
       const verdict = judgeScreen(result.answers, config.jev);
       lastScreen = verdict;
-      trace.jev = true;
-      trace.score = verdict.riskTail;
       if (verdict.flagged) jevStats.flagged++;
       else jevStats.cleared++;
       log({
@@ -428,21 +416,13 @@ export default function piAutoMode(pi: ExtensionAPI) {
   /**
    * Giai đoạn 1 bằng Jev cho hành động thuộc phạm vi của Jev. Lớp chính sách đã thấy rủi ro (xoá vào đường dẫn
    * quan trọng, ghi file được bảo vệ) hoặc vừa đọc nội dung nghi prompt injection (tới tin nhắn tiếp theo của
-   * người dùng) thì coi như bị gắn cờ: thẳng tới giai đoạn 2. trace ghi kết quả lớp này cho sự kiện quyết định.
+   * người dùng) thì coi như bị gắn cờ: thẳng tới giai đoạn 2.
    */
-  function makeScreen(ctx: ExtensionContext, call: ToolCall, notes: string[], escalate: boolean, trace: ScreenTrace): (() => Promise<ScreenOutcome>) | undefined {
+  function makeScreen(ctx: ExtensionContext, call: ToolCall, notes: string[], escalate: boolean): (() => Promise<ScreenOutcome>) | undefined {
     if (!jevReady() || !screenable(call.toolName)) return undefined;
-    if (escalate || injectionSuspect) {
-      return async () => {
-        trace.outcome = "flag";
-        return { kind: "flag" };
-      };
-    }
+    if (escalate || injectionSuspect) return async () => ({ kind: "flag" });
     let memo: Promise<ScreenOutcome> | undefined;
-    return () => (memo ??= runScreen(ctx, call, notes, trace).then((outcome) => {
-      trace.outcome = outcome.kind;
-      return outcome;
-    }));
+    return () => (memo ??= runScreen(ctx, call, notes));
   }
 
   function jevLabel(): string {
@@ -463,7 +443,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
   }
 
   async function runClassifier(
-    ctx: ExtensionContext, call: ToolCall, toolCallId: string | undefined, notes: string[], escalate = false, trace: ScreenTrace = {},
+    ctx: ExtensionContext, call: ToolCall, toolCallId: string | undefined, notes: string[], escalate = false,
   ): Promise<ClassifierResult> {
     const session = ctx.model;
     const model = demoted ? session : resolveModel(ctx, config.model);
@@ -500,7 +480,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
     try {
       const { result, fellBack, primaryReason } = await classifyWithFallback({
         systemPrompt: promptText(), blocks, complete, timeoutMs: config.timeoutMs,
-        stage2Reasoning: config.stage2Reasoning, signal: ctx.signal, screen: makeScreen(ctx, call, notes, escalate, trace),
+        stage2Reasoning: config.stage2Reasoning, signal: ctx.signal, screen: makeScreen(ctx, call, notes, escalate),
       }, fallback);
       if (fellBack && result.kind !== "unavailable" && session) {
         demoted = true;
@@ -550,13 +530,10 @@ export default function piAutoMode(pi: ExtensionAPI) {
     const facts: CallFacts = describeCall(call, pc);
     const decision = decide(call, pc, facts);
     const key = callKey(call.toolName, call.input);
-    const tool = call.toolName;
     if (decision.kind === "allow") {
-      emitDecision({ tool, stage: "policy", allowed: true, via: decision.via });
       return allowed(call, decision.via);
     }
     if (decision.kind === "deny") {
-      emitDecision({ tool, stage: "policy", allowed: false, via: decision.rule ?? "deny" });
       state.recordDenied({ toolName: call.toolName, summary: facts.summary, reason: decision.reason, rule: decision.rule, key }, false);
       notify(ctx, `${call.toolName} denied by rule ${decision.rule ?? ""}`.trim(), "warning");
       log({ event: "deny", tool: call.toolName, rule: decision.rule });
@@ -565,18 +542,14 @@ export default function piAutoMode(pi: ExtensionAPI) {
     if (decision.kind === "ask") {
       const approved = await askUser(ctx, `Allow ${call.toolName}: ${facts.summary}?\n\n${decision.reason}`);
       log({ event: "ask", tool: call.toolName, approved });
-      emitDecision({ tool, stage: "user", allowed: approved === true, via: "ask" });
       if (approved) return allowed(call, "user");
       return { block: true, reason: approved === false ? text.USER_DENIED : text.NO_APPROVER };
     }
     // Duyệt một lần từ /permissions: bỏ qua bộ phân loại, luật deny vẫn đã áp dụng ở trên.
     if (state.consumeApproval(key)) {
-      emitDecision({ tool, stage: "user", allowed: true, via: "approval" });
       return allowed(call, "user approval");
     }
-    const trace: ScreenTrace = {};
-    const result = await runClassifier(ctx, call, toolCallId, decision.notes, decision.escalate || escalates(call, facts, pc), trace);
-    emitDecision(classifierDecision(tool, result, trace));
+    const result = await runClassifier(ctx, call, toolCallId, decision.notes, decision.escalate || escalates(call, facts, pc));
     if (result.kind === "allow") return allowed(call, result.screen === "jev" ? "jev" : `classifier stage ${result.stage}`);
     if (result.kind === "unavailable") {
       log({ event: "unavailable", tool: call.toolName, reason: result.reason });
@@ -593,7 +566,6 @@ export default function piAutoMode(pi: ExtensionAPI) {
       const approved = await askUser(ctx, `${text.limitReason(limit, count, label)}\n\nAllow ${call.toolName}: ${facts.summary}?`);
       state.resetLimit(limit);
       if (approved) {
-        emitDecision({ tool, stage: "user", allowed: true, via: "denial limit" });
         return allowed(call, "user after denial limit");
       }
     }
