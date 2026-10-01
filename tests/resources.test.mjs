@@ -169,7 +169,7 @@ test('managed JSON that is invalid or was never written by the installer is kept
 test('only JSON files in the agent directory and <root>/config, and role files, are merged',t=>{
   const f=fixture(t),options={root:f.root,agentDir:f.agentDir};
   assert.equal(mergesConfig(path.join(f.agentDir,'settings.json'),options),true);
-  assert.equal(mergesConfig(path.join(f.root,'config','pi-lens.json'),options),true);
+  assert.equal(mergesConfig(path.join(f.root,'config','example.json'),options),true);
   assert.equal(mergesConfig(path.join(f.agentDir,'agents','worker.md'),options),true);
   assert.equal(mergesConfig(path.join(f.agentDir,'agents','nested','worker.md'),options),false);
   assert.equal(mergesConfig(path.join(f.agentDir,'AGENTS.md'),options),false);

@@ -30,7 +30,7 @@ Each finding comes back as: Principle, Evidence (a short quote with its location
 Agents copy whatever the code already does, and prose is the weakest control. Pick the highest rung that works:
 
 1. **Make it impossible.** A type, a data structure, an architecture boundary.
-2. **Static analysis.** A lint rule, a typecheck setting, a pre-commit hook, a CI check, a test: enforced for everyone. For an agent-only ban, an auto-mode deny rule in `<agent-dir>/settings.json` `permissions.deny`. A pi-lens project rule (`rules/ast-grep-rules/rules/<id>.yml`) shows as a diagnostic while the agent edits, but CI does not enforce it.
+2. **Static analysis.** A lint rule, a typecheck setting, a pre-commit hook, a CI check, a test: enforced for everyone. For an agent-only ban, an auto-mode deny rule in `<agent-dir>/settings.json` `permissions.deny`.
 3. **Review-time standard.** A line in `CODING_STANDARDS.md`. The review agents read it; the implementer does not pay for it on every request.
 4. **A skill or a pointer doc.** A procedure with a predictable trigger.
 5. **A line in AGENTS.md.** Only navigation pointers and "When something breaks" rows.

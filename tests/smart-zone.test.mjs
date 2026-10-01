@@ -64,7 +64,7 @@ test("đọc context file và danh sách skill từ system prompt", () => {
 
 test("nguồn tool: package trong node_modules, thư mục extension, built-in", () => {
   assert.equal(toolSource({ name: "Agent", sourceInfo: { path: "/r/node_modules/@tintinweb/pi-subagents/dist/index.js" } }), "@tintinweb/pi-subagents");
-  assert.equal(toolSource({ name: "lens_diagnostics", sourceInfo: { path: "C:\\r\\node_modules\\pi-lens\\index.ts" } }), "pi-lens");
+  assert.equal(toolSource({ name: "web_search", sourceInfo: { path: "C:\\r\\node_modules\\pi-web-access\\index.ts" } }), "pi-web-access");
   assert.equal(toolSource({ name: "x", sourceInfo: { path: "/r/assets/extensions/pi-rewind/index.ts" } }), "pi-rewind");
   assert.equal(toolSource({ name: "y", sourceInfo: { path: "/r/assets/extensions/rose-pine-palette.ts" } }), "rose-pine-palette");
   assert.equal(toolSource({ name: "read", sourceInfo: { source: "builtin" } }), "builtin");
@@ -76,7 +76,7 @@ test("báo cáo /context-budget: từng phần, nhóm theo nguồn, chỉ tool �
   const tools = [
     { name: "read", description: "Read a file", parameters: { type: "object" }, sourceInfo: { source: "builtin" } },
     { name: "Agent", description: "d".repeat(4000), parameters: { type: "object" }, sourceInfo: { path: "/r/node_modules/@tintinweb/pi-subagents/dist/index.js" } },
-    { name: "ast_grep_replace", description: "inactive", parameters: {}, sourceInfo: { path: "/r/node_modules/pi-lens/index.ts" } },
+    { name: "fetch_content", description: "inactive", parameters: {}, sourceInfo: { path: "/r/node_modules/pi-web-access/index.ts" } },
   ];
   const report = budgetReport({
     systemPrompt: prompt, activeTools: ["read", "Agent"], tools, edge: 150_000,
@@ -90,7 +90,7 @@ test("báo cáo /context-budget: từng phần, nhóm theo nguồn, chỉ tool �
   assert.match(report, /^ {4}\/opt\/pi\/assets\/skills ≈ \d+ \(2\)$/mu);
   assert.match(report, /^Định nghĩa tool đang bật \(2\) ≈ 1k token$/mu);
   assert.match(report, /^ {2}@tintinweb\/pi-subagents ≈ 1k \(1\): Agent$/mu);
-  assert.doesNotMatch(report, /ast_grep_replace/u);
+  assert.doesNotMatch(report, /fetch_content/u);
   assert.match(report, /mép smart zone 150k · context hiện tại 42k\/1M$/mu);
 });
 

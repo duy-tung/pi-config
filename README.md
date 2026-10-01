@@ -47,7 +47,7 @@ Chạy `pi` để mở Claude Opus 5.5/high với toàn bộ công cụ. Các wo
 | Rewind code/hội thoại | `Esc Esc`, `/rewind` (`/checkpoint`, `/undo`), `/redo`; `/clear` mở phiên mới |
 | Permission | `Shift+Tab` (auto ⇄ bypass), `/permissions`, `/auto-mode` |
 | Model và reasoning | `/model`, `/thinking`, `Alt+T` đổi mức thinking |
-| Công cụ và giao diện | `/agents`, `/usage`, `/claude-usage`, `/context-budget`, `/mcp`, `/lens-health`, `/open-tui` |
+| Công cụ và giao diện | `/agents`, `/usage`, `/claude-usage`, `/context-budget`, `/mcp`, `/open-tui` |
 
 Advisor (pi-advisor-flow) luôn bật khi mở phiên: executor là Opus/high của phiên, advisor là GPT-6 Astra/high.
 - System prompt dặn Opus gọi `ask_advisor` sau hai lần thử tương đương cùng thất bại và trước khi báo xong việc không nhỏ. Tối đa 5 lần mỗi phiên; không có gate cứng chặn phiên.
@@ -108,7 +108,6 @@ Agent có context riêng và không giới hạn số lượt; dừng agent bằ
 
 - Web: `web_search` dùng native search của model hiện tại: provider `openai` cho Codex/OpenAI (Astra, Sol), `anthropic` cho Claude (bản vá pi-web-access); model khác (GLM) dùng Exa (endpoint MCP miễn phí, không cần key) rồi Firecrawl; lỗi mạng, quota, phản hồi hỏng chuyển sang provider kế tiếp. `fetch_content`, `get_search_content` dùng Firecrawl và kho kết quả. Phiên mới hiện `web_enable` để model bật web tools. CLI và skills hỗ trợ workflow bổ sung. Chi tiết: [docs/claude-setup.md](docs/claude-setup.md).
 - MCP filesystem: công cụ đọc trong workspace, kết nối khi cần. MCP do pi-mcp-adapter quản lý qua `mcp-adapter.json` (đặt `allowInstall: false`: agent không tự cài thêm server MCP). MCP, codemode và `tool_search` dựng sẵn của Pi 0.99 được tắt trong `extensions` của settings (`-builtin:mcp`, `-builtin:codemode`, `-builtin:tool-search`) để không có hai `/mcp` và để mọi lời gọi tool đi qua cổng permission như trước; bật lại trong `pi config` nếu cần.
-- Code intelligence: pi-lens, TypeScript language server cài sẵn (không tự `npm install` `@types` vào cache của máy); Go/Rust/Python dùng language server của máy hoặc project.
 - Native compaction bật: reserve 16.384, giữ gần nhất 20.000 token. Với cửa sổ 1M, auto-compaction chạy rất muộn; extension `smart-zone` nhắc agent khi context vượt lên vàng (gần mép 150k) hoặc đỏ để chọn ranh giới pha, và `/context-budget` đo phần context luôn-bật (extension `smart-zone`).
 - Cache warming tắt. Advisor, goal auditor và Oracle bật như mô tả ở trên. Jev của auto mode chỉ chạy khi bạn đã lưu key TypeSafe (tính theo token đầu vào, khoảng $0,0001 mỗi lần sàng lọc). Goal và background follow-up chỉ chạy theo thao tác/cấu hình đã chọn.
 - Codex fast mode bật mặc định (`codexFastMode:true`): mọi request tới GPT-6 Sol (worker, debugger) và GPT-6 Astra (reviewer, advisor, goal auditor, Oracle) đi hàng `priority`; GPT-6.1 Sol cũng vậy khi bạn đặt một vai sang model này. Theo catalog của Codex, Sol nhanh khoảng 1,5 lần, Astra khoảng 2 lần; đổi lại tốn quota Codex nhiều hơn (Pi tính chi phí gấp đôi). Tắt bằng `/fast` khi phiên đang dùng model Codex, hoặc `/usage` → Settings → Codex Fast mode khi đang dùng Opus. Footer hiện `fast` khi phiên đang dùng model Codex có fast.
@@ -133,7 +132,6 @@ Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều
 | `pi-web-access` | 0.33.0 |
 | `@juicesharp/rpiv-ask-user-question`, `rpiv-todo` | 2.11.0 |
 | `@narumitw/pi-usage` | 0.61.1 |
-| `pi-lens` | 4.3.0 |
 | `pi-background-tasks` | 2.6.8 |
 | `pi-goal-x` | 0.31.9 |
 | `pi-advisor-flow` | 0.9.0 |
@@ -144,7 +142,7 @@ Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều
 | Skills quy trình (tstack) | Trong repo: [assets/skills](assets/skills); skill theo stack (typescript, python, mobile) trong [assets/stack-skills](assets/stack-skills), `/skill:setup` chép vào repo dùng stack đó |
 | Firecrawl skills | Commit trong [sources.lock.json](sources.lock.json) |
 
-Các manifest và lockfile nằm trong [manifests](manifests). Năm package có peer range chưa gồm Pi 0.99.1 (pi-lens, pi-background-tasks, pi-goal-x, pi-advisor-flow, pi-mcp-adapter) được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json). Quy trình nâng phiên bản (vendor, lockfile, tính lại checksum bản vá): [docs/upgrade.md](docs/upgrade.md).
+Các manifest và lockfile nằm trong [manifests](manifests). Bốn package có peer range chưa gồm Pi 0.99.1 (pi-background-tasks, pi-goal-x, pi-advisor-flow, pi-mcp-adapter) được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json). Quy trình nâng phiên bản (vendor, lockfile, tính lại checksum bản vá): [docs/upgrade.md](docs/upgrade.md).
 
 ## Quản lý cấu hình
 

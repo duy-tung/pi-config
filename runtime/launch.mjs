@@ -27,8 +27,6 @@ if(action==='doctor'){
   const env={...process.env,
     PI_CODING_AGENT_DIR:profile?.agentDir ?? state.agentDir,
     PI_WORKSPACE_DIR:process.cwd(),
-    PI_LENS_CONFIG_PATH:path.join(root,'config/pi-lens.json'),
-    PI_LENS_DISABLE_LSP_INSTALL:'1', PI_LENS_DISABLE_TOOL_INSTALL:'1',
     PI_BG_DISABLE_UPDATE_CHECK:'1',
     FIRECRAWL_NO_SEARCH_FEEDBACK:'1', FIRECRAWL_NO_ENDPOINT_FEEDBACK:'1',
   };

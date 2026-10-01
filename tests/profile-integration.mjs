@@ -87,9 +87,9 @@ try { fs.symlinkSync(path.join(cwd, ".env"), path.join(cwd, "secret-alias.txt"))
 catch (error) { if (process.platform !== "win32") throw error; symlinkAvailable = false; }
 const modules = path.join(installRoot, "runtimes", configuration.runtime, "node_modules");
 Object.assign(process.env, {
-  PI_CODING_AGENT_DIR: agentDir, PI_WORKSPACE_DIR: cwd, PI_LENS_HOME: path.join(fixture, "lens-state"),
-  PI_CONFIG_AUTH_PATH: path.join(agentDir, "auth.json"), PI_LENS_CONFIG_PATH: path.join(installRoot, "config", "pi-lens.json"),
-  PI_LENS_DISABLE_LSP_INSTALL: "1", PI_LENS_DISABLE_TOOL_INSTALL: "1", PI_BG_DISABLE_UPDATE_CHECK: "1",
+  PI_CODING_AGENT_DIR: agentDir, PI_WORKSPACE_DIR: cwd,
+  PI_CONFIG_AUTH_PATH: path.join(agentDir, "auth.json"),
+  PI_BG_DISABLE_UPDATE_CHECK: "1",
   FIRECRAWL_NO_SEARCH_FEEDBACK: "1", FIRECRAWL_NO_ENDPOINT_FEEDBACK: "1",
 });
 for (const key of Object.keys(process.env)) {
@@ -514,12 +514,6 @@ await check("rewind: a restore interrupted by a crash can be finished from the m
   assert.deepEqual(rewindAnswers, [], "Menu phải có mục Interrupted code restore");
   assert.equal(fs.readFileSync(file, "utf8"), "X-target\n");
   assert.equal(fs.existsSync(journal), false);
-});
-await check("pi-lens: the TypeScript server starts without automatic typings downloads", async () => {
-  // tsserver mặc định tự npm install @types vào cache của máy khi mở file JS/TS; cấu hình của bản cài tắt việc này.
-  const lsp = await import(pathToFileURL(path.join(modules, "pi-lens", "dist", "clients", "lsp", "config.js")).href);
-  await lsp.initLSPConfig(cwd);
-  assert.deepEqual(lsp.getServerInitOverride("typescript", path.join(cwd, "app.js"))?.initializationOptions, { disableAutomaticTypingAcquisition: true });
 });
 await check("rewind: Redo keeps the work done after the rewind; Undo redo in the menu brings it back", async () => {
   const file = path.join(cwd, "redo-c.txt");

@@ -50,7 +50,7 @@ The fix: call the subject in the test body with one concrete input and assert th
 1. **Name the behavior.** Intended versus current behavior, and for a bug the smallest observable repro.
 2. **Red.** Write the smallest test that encodes the intended behavior at an agreed seam.
 3. **Confirm it fails for the intended reason:** the behavior assertion, not an import error, a typo or a missing fixture. If it passes, or fails for another reason, fix the test before touching production code.
-4. **Green.** Write only enough code to pass it. No anticipated tests, no speculative features. `lens_diagnostics` gives a fast type or lint signal between red and green, but it is not proof: only the test run is.
+4. **Green.** Write only enough code to pass it. No anticipated tests, no speculative features. The repo's typecheck or lint gives a fast signal between red and green, but it is not proof: only the test run is.
 5. **Rerun** it and its neighbors (the test file or module), then start the next slice.
 
 Rules:

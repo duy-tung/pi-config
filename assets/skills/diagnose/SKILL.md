@@ -73,7 +73,7 @@ Write **3 to 5 ranked hypotheses** before testing any. Each must be falsifiable:
 
 > If <X> is the cause, then <changing Y> will make the bug disappear / <changing Z> will make it worse.
 
-A hypothesis without a prediction is a vibe: sharpen it or drop it. When the cause is not local, seed the list from the code and its history: load the `how` skill for the affected subsystem, and the `why` skill for regression history. To trace who reaches the failing code, use `lsp_navigation` references and incomingCalls (activate the tool with `pi_lens_activate_tools`; it is available from the next turn) and `lens_diagnostics` on the files along the path. A bug that appears after a restart points at stale persistent state first: config files, caches, lock files, serialized state.
+A hypothesis without a prediction is a vibe: sharpen it or drop it. When the cause is not local, seed the list from the code and its history: load the `how` skill for the affected subsystem, and the `why` skill for regression history. To trace who reaches the failing code, search its call sites with `rg` and run the repo's typecheck on the files along the path. A bug that appears after a restart points at stale persistent state first: config files, caches, lock files, serialized state.
 
 Show the ranked list to the user before testing; they often re-rank it at once. Do not wait if they are away.
 
@@ -103,7 +103,7 @@ With a correct seam, follow the test rules in the `tdd` skill (load it if it is 
 
 1. Turn the minimised repro into a failing test at that seam and watch it fail.
 2. When the work gets committed, commit this red test before the fix (with the `tdd` skill's expected-failure marker if hooks reject a red commit).
-3. Apply the fix and watch the test pass. `lens_diagnostics` on the touched files is a faster first signal, not proof.
+3. Apply the fix and watch the test pass. The repo's typecheck or lint on the touched files is a faster first signal, not proof.
 4. Rerun the Phase 1 loop on the original, un-minimised scenario.
 
 **Verify on the surface the user saw the bug:** load the `prove` skill. Unit tests show branch behavior, not bug absence. Inconclusive or wrong-surface is not a pass.

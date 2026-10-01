@@ -8,7 +8,7 @@
       },
       "file": "extensions/open-tui/footer.ts",
       "originalSha256": "bc25b0a4aa6560ab6a27eb6e364600087595b0d00cf5cef27cc14e8765809ded",
-      "patchedSha256": "89487dd7bd2aa58d3cba01d9a18706fdf89605a267f6ac96beadf50581de9935",
+      "patchedSha256": "fbad6e483c4ded5f42f1fde29125f935ae24c8dd8ce7ce862b540850cb76e505",
       "edits": [
         {
           "before": "stats.push(theme.fg(\"warning\", `${glyphs.cost} $${totals.cost.toFixed(3)}`));",
@@ -48,11 +48,6 @@
         {
           "before": ".map(([, text]) => sanitizeStatus(text))",
           "after": ".filter(([key, text]) => key !== \"mcp\" || !/^(?:🔌\\s*)?MCP:\\s*\\d+ servers? enabled$/u.test(sanitizeStatus(text)))\n\t\t.map(([, text]) => sanitizeStatus(text))",
-          "count": 1
-        },
-        {
-          "before": ".map(([, text]) => sanitizeStatus(text))",
-          "after": ".filter(([key, text]) => key !== \"pi-lens-lsp\" || sanitizeStatus(text) !== \"LSP Inactive\")\n\t\t.map(([, text]) => sanitizeStatus(text))",
           "count": 1
         },
         {

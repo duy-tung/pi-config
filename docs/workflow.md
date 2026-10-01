@@ -1,6 +1,6 @@
 # Quy trình làm việc: skills trên Pi
 
-pi-config cài sẵn bộ skill quy trình **tstack**, chuyển từ Claude Code sang Pi và gắn với các thành phần của pi-config: vai model, goal, auto mode, pi-lens và rewind. tstack gộp phần tốt nhất của hai bộ skill mã nguồn mở:
+pi-config cài sẵn bộ skill quy trình **tstack**, chuyển từ Claude Code sang Pi và gắn với các thành phần của pi-config: vai model, goal, auto mode và rewind. tstack gộp phần tốt nhất của hai bộ skill mã nguồn mở:
 - **`skills` của Matt Pocock**: căn chỉnh trước khi build, ở trong smart zone, spec → tickets → TDD, review tách trục, ngôn ngữ domain.
 - **`pstack` của Lauren Tan**: chứng minh trên sản phẩm thật, kỷ luật bằng chứng, mã hoá bài học vào cấu trúc, chạy không giám sát có hợp đồng, review đối kháng.
 
@@ -13,7 +13,7 @@ Skill nằm trong `assets/skills/` của repo và được cài vào `<root>/ass
 | **Căn chỉnh trước khi build** | `/skill:grill-with-docs` hỏi từng vòng, mỗi câu có đáp án đề xuất. Sự thật do agent tự tra (code giao `explorer`, docs/web giao `researcher`), quyết định là của người. Câu "cách nào tốt hơn" mà chạy thử trả lời được thì agent tự làm prototype. |
 | **Ở trong smart zone** | Vùng context theo mép 150k: xanh, vàng khi gần mép, đỏ khi quá mép; agent được nhắc khi vượt lên vàng hoặc đỏ. `/context-budget` đo phần luôn-bật. Việc đọc code rộng giao `explorer`, tra docs/web giao `researcher`. Hết một pha thì chọn: tiếp tục, `/clear`, handoff, subagent hoặc `/compact`. |
 | **Chứng minh trên sản phẩm thật** | Mỗi app có verify skill kèm feature map (`/skill:create-verify`). Vai `verifier`, context sạch và không sửa code, trả VERIFIED, NOT VERIFIED hoặc INCONCLUSIVE kèm bằng chứng. Người viết không tự chấm. |
-| **Mã hoá bài học vào cấu trúc** | Thang ưu tiên, từ mạnh nhất: type và kiến trúc; lint, hook, CI và luật pi-lens; `CODING_STANDARDS.md`; skill; một dòng trong AGENTS.md. `/skill:reflect` đưa mỗi bài học lên nấc cao nhất có thể. |
+| **Mã hoá bài học vào cấu trúc** | Thang ưu tiên, từ mạnh nhất: type và kiến trúc; lint, hook và CI; `CODING_STANDARDS.md`; skill; một dòng trong AGENTS.md. `/skill:reflect` đưa mỗi bài học lên nấc cao nhất có thể. |
 | **Tự chủ có hợp đồng** | Việc đảo ngược được thì cứ làm. `/skill:afk` chạy theo hợp đồng viết, **như một goal** (xem dưới). Git guard trong auto mode chặn tất định các lệnh git phá huỷ. |
 
 ## Bắt đầu
@@ -52,7 +52,7 @@ Skill kỷ luật (grilling, tdd, diagnose, prove, interrogate…) được mode
 | Không biết bắt đầu từ đâu | `/skill:work <mô tả>` (tự chọn playbook) hoặc `/skill:work ?` |
 | Có bug | `/skill:work <triệu chứng>`: tái hiện đỏ trước, sửa tận gốc, chứng minh hai lần trước và hai lần sau |
 | Chậm một lần / tối ưu một chỉ số qua nhiều lần thử | `/skill:work`: playbook perf / hillclimb |
-| Refactor, đổi hàng loạt, migration | `/skill:work`: playbook refactor / wide-change (codemod bằng `ast_grep_replace` của pi-lens) |
+| Refactor, đổi hàng loạt, migration | `/skill:work`: playbook refactor / wide-change (codemod bằng script hoặc `ast-grep` của repo) |
 | Đi ngủ, để agent tự chạy | `/skill:afk <mục tiêu hoặc tickets> done: <điều kiện kiểm được>` |
 | Việc lớn, còn mù mờ | `/skill:wayfinder` |
 | Issue và PR người khác gửi | `/skill:triage` |
@@ -167,7 +167,7 @@ Khi thật sự cần, bạn tự chạy lệnh bằng `!<lệnh>` trong editor 
 | `afk` | Chạy không giám sát theo hợp đồng, như một goal. |
 | `ship` | Mở PR (deslop, commit có thứ tự, body briefing), babysit, land khi được yêu cầu. |
 | `reflect` | Bài học lặp lại → nấc mạnh nhất của thang; chỉ áp dụng dòng bạn duyệt. |
-| `setup` | Cấu hình repo: tracker, domain docs, AGENTS.md gọn, `CODING_STANDARDS.md`, skill theo stack, `.pi-lens.json`, hook commit. |
+| `setup` | Cấu hình repo: tracker, domain docs, AGENTS.md gọn, `CODING_STANDARDS.md`, skill theo stack, hook commit. |
 | `create-verify`, `maintain-verify` | Tạo và giữ verify skill kèm feature map cho từng app (web, CLI, API, mobile). |
 | `context-audit` | Đo context luôn-bật và cắt tỉa với ba phép thử. |
 | `improve-architecture` | Khảo sát cơ hội "làm sâu module", báo cáo HTML, rồi grill phương án bạn chọn. |
@@ -193,14 +193,13 @@ grilling, domain-modeling, codebase-design, principles, tdd, diagnose, prove, in
 | `docs/agents/*.md` | Tracker (GitHub, GitLab hoặc markdown cục bộ), cấu trúc domain, nhãn triage. |
 | `CONTEXT.md`, `docs/adr/` | Từ điển domain và quyết định kiến trúc. |
 | `.agents/skills/verify-<app>/` | Verify skill kèm `features/` của từng app. Pi nạp sau khi project được trust; `prove` và `verifier` đọc theo đường dẫn. |
-| `.pi-lens.json` | `format.enabled: true` để pi-lens format file vừa sửa bằng formatter của repo. |
 | `.tstack/<slug>/` | Trạng thái việc dài hoặc không giám sát: `contract.md`, `ledger.tsv`, `decisions.tsv`, `evidence/`, `report.md`; được gitignore. |
 
 ## Tuỳ biến
 
 - **Sửa skill.** Sửa file trong `<root>/assets/skills/<tên>/`, rồi `/reload`. Installer giữ file bạn đã sửa và báo lại khi cài lại. Muốn góp vào bộ chuẩn thì sửa `assets/skills/` trong repo này; test `tests/skills.test.mjs` kiểm tham chiếu.
 - **Skill riêng của project.** Đặt trong `.agents/skills/<tên>/`. Viết theo skill `writing-for-agents`.
-- **Luật review mới.** Thêm một dòng vào `CODING_STANDARDS.md`. Luật mà regex hoặc type ép được thì làm lint, hook, luật pi-lens (`rules/ast-grep-rules/`) hoặc type.
+- **Luật review mới.** Thêm một dòng vào `CODING_STANDARDS.md`. Luật mà regex hoặc type ép được thì làm lint, hook hoặc type.
 - **Mép smart zone.** `TSTACK_SMART_ZONE=200k`.
 - **Git guard.** Xem [auto-mode.md](auto-mode.md#git-guard).
 
@@ -214,7 +213,7 @@ grilling, domain-modeling, codebase-design, principles, tdd, diagnose, prove, in
 | Seat review ngoài qua `codex`/`gemini` CLI | Vai khác họ model trong preset |
 | `effort: high` theo skill | Parent đã chạy Opus/high; skill không đổi thinking giữa phiên (giữ prompt cache) |
 | Hook `guard_git.py`, PreCompact, status line | Git guard trong auto mode, extension `smart-zone` (nhắc vùng context và compaction, `/context-budget`) |
-| `.claude/skills/verify-<app>/`, hook format trong `.claude/settings.json` | `.agents/skills/verify-<app>/`, `.pi-lens.json` kèm hook commit |
+| `.claude/skills/verify-<app>/`, hook format trong `.claude/settings.json` | `.agents/skills/verify-<app>/`, hook commit |
 | Background Bash, `/loop` | `bg_run` (phiên tự thức khi job xong) |
 | afk tự vòng lặp | afk chạy như goal: tự tiếp tục, Oracle khi kẹt, auditor độc lập khi xong |
 

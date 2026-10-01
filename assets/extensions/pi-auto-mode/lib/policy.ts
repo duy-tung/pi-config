@@ -54,13 +54,10 @@ export interface ToolCall {
 }
 
 // Tool không đổi trạng thái bên ngoài phiên: đọc, tìm kiếm, todo, hỏi người dùng, xem subagent,
-// công cụ đọc của pi-lens, bật web tools, trạng thái goal và advisor. Tương tự danh sách safe-tool của Claude Code.
+// bật web tools, trạng thái goal và advisor. Tương tự danh sách safe-tool của Claude Code.
 export const SAFE_TOOLS = new Set([
   "read", "grep", "find", "ls", "todo", "ask_user_question", "get_subagent_result", "steer_subagent",
   "bg_status", "bg_logs", "bg_kill", "get_search_content", "web_enable",
-  "lens_diagnostics", "project_report", "module_report", "lsp_navigation", "symbol_search", "read_symbol",
-  "read_enclosing", "ast_grep_search", "ast_grep_outline", "effective_config", "lens_diagnostic_mark",
-  "pi_lens_activate_tools",
   "get_goal", "create_goal", "update_goal", "set_goal_tasks", "update_goal_task", "submit_goal_oracle_advice",
   "ask_advisor", "record_advisor_outcome",
   // Pi 0.99 (builtin:tool-search): chỉ khai báo tool đã đăng ký cho lượt sau; mỗi lời gọi tool đó vẫn qua cổng.
@@ -349,8 +346,6 @@ export function describeCall(call: ToolCall, pc: PolicyContext): CallFacts {
     return { kind: "mcp", paths, summary, writesSelf: paths.some((file) => isSelfProtected(file, pc.selfPaths)), target: { toolName, paths } };
   }
   if (SAFE_TOOLS.has(toolName)) return { kind: "safe", paths: [], summary, target: { toolName } };
-  // pi-lens: chỉ xem trước khi apply khác true.
-  if (toolName === "ast_grep_replace" && input.apply !== true) return { kind: "safe", paths: [], summary, target: { toolName } };
   // Tool khác (MCP, extension): luật đường dẫn áp dụng cho tham số giống đường dẫn.
   const paths = inputPaths(input, pc.cwd, home);
   return { kind: "other", paths, summary, writesSelf: paths.some((file) => isSelfProtected(file, pc.selfPaths)), target: { toolName, paths } };
