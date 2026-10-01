@@ -26,7 +26,6 @@ if(action==='doctor'){
   const modules=path.join(root,'runtimes',runtime,'node_modules');
   const env={...process.env,
     PI_CODING_AGENT_DIR:profile?.agentDir ?? state.agentDir,
-    PI_WORKSPACE_DIR:process.cwd(),
     PI_BG_DISABLE_UPDATE_CHECK:'1',
     FIRECRAWL_NO_SEARCH_FEEDBACK:'1', FIRECRAWL_NO_ENDPOINT_FEEDBACK:'1',
   };

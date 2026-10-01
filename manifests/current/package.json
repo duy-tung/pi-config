@@ -11,7 +11,6 @@
     "@gotgenes/pi-anthropic-auth": "3.3.3",
     "@juicesharp/rpiv-ask-user-question": "2.11.0",
     "@juicesharp/rpiv-todo": "2.11.0",
-    "@modelcontextprotocol/server-filesystem": "2026.8.31",
     "@narumitw/pi-usage": "0.61.1",
     "@tintinweb/pi-subagents": "0.19.0",
     "pi-advisor-flow": "file:../../vendor/pi-advisor-flow-0.9.0-pi0991.tgz",

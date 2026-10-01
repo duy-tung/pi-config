@@ -87,7 +87,7 @@ try { fs.symlinkSync(path.join(cwd, ".env"), path.join(cwd, "secret-alias.txt"))
 catch (error) { if (process.platform !== "win32") throw error; symlinkAvailable = false; }
 const modules = path.join(installRoot, "runtimes", configuration.runtime, "node_modules");
 Object.assign(process.env, {
-  PI_CODING_AGENT_DIR: agentDir, PI_WORKSPACE_DIR: cwd,
+  PI_CODING_AGENT_DIR: agentDir,
   PI_CONFIG_AUTH_PATH: path.join(agentDir, "auth.json"),
   PI_BG_DISABLE_UPDATE_CHECK: "1",
   FIRECRAWL_NO_SEARCH_FEEDBACK: "1", FIRECRAWL_NO_ENDPOINT_FEEDBACK: "1",
@@ -391,20 +391,6 @@ await check("ask_user_question RPC round trip", async () => {
   ] }] })]]);
   assert.ok(prompts.length > before); assert.equal(result.length, 1); assert.ok(!result[0].isError, JSON.stringify(result));
   assert.match(JSON.stringify(result), /Local/u);
-});
-await check("MCP stdio connects, reads safe file, denies secrets", async () => {
-  let result = await run("mcp-connect", [[tool("mcp", { connect: "workspace" })]]);
-  assert.ok(!result[0]?.isError, JSON.stringify(result));
-  result = await run("mcp-read", [[tool("mcp", { tool: "workspace_read_text_file", args: { path: path.join(cwd, "safe.txt") } })]]);
-  assert.ok(!result[0]?.isError, JSON.stringify(result)); assert.match(JSON.stringify(result), /SAFE_CONTENT/u);
-  result = await run("mcp-secret", [[tool("mcp", { tool: "workspace_read_text_file", args: { path: path.join(cwd, ".env") } })]]);
-  assert.equal(result[0]?.isError, true, JSON.stringify(result));
-  assert.ok(!JSON.stringify(result).includes("must-not-be-read"));
-  if (symlinkAvailable) {
-    result = await run("mcp-alias", [[tool("mcp", { tool: "workspace_read_text_file", args: JSON.stringify({ path: path.join(cwd, "secret-alias.txt") }) })]]);
-    assert.equal(result[0]?.isError, true, JSON.stringify(result));
-    assert.ok(!JSON.stringify(result).includes("must-not-be-read"));
-  }
 });
 if (configuration.packages.includes("pi-goal-x")) {
   await check("goal creates, reports state, and honors explicit pause", async () => {

@@ -104,13 +104,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.ok(!files.some((file) => file.path === p.join(profile.agentDir, "mcp.json")), "mcp.json thuộc MCP dựng sẵn của Pi");
       const mcp = json(p.join(profile.agentDir, "mcp-adapter.json"));
       assert.deepEqual(mcp.settings, { hostConfigDiscovery: "off", allowInstall: false, scriptMode: false });
-      const server = mcp.mcpServers.workspace;
-      assert.equal(server.command, options.nodePath);
-      assert.deepEqual(server.args, [p.join(options.root, "bin", "workspace-mcp.mjs")]);
-      assert.equal(server.inheritEnv, false);
-      assert.equal(server.cwd, "${PI_WORKSPACE_DIR}");
-      assert.equal(server.lifecycle, "lazy");
-      assert.deepEqual(server.includeTools, ["read_text_file", "list_directory", "get_file_info", "list_allowed_directories"]);
+      assert.equal(mcp.mcpServers, undefined, "không cài sẵn server MCP");
       const settings = json(p.join(profile.agentDir, "settings.json"));
       const deny = settings.permissions.deny;
       for (const file of [p.join(options.agentDir, "auth.json"), p.join(options.root, "profiles", "*", "auth.json"), p.join(options.root, "secrets", "*.env"), p.join(options.home, ".codex", "auth.json")]) {
