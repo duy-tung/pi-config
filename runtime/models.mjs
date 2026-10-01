@@ -1,13 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import {
   ADVISOR_GATES, MAX_ADVISOR_CALLS, MODEL_ROLES_FILE, ROLES, SUBAGENT_ROLES, THINKING_LEVELS, adoptRoles, changedRoles, driftWarning, driftedRoles,
   effectiveModelRoles, fillRoleNames, forceNativeModels, loadPresets, loginWarning, modelRolesReport, nativeValues,
   nextModelDefault, normalizeGates, offlineCatalog, parseModelRef, readModelRoles, resolveModelRoles, withPreset, withRole, withoutRoles,
   workflowLabel, writeModelRoles,
 } from './model-roles.mjs';
-import {backupFile, defaultsFile, describeMerge, planConfigFile, writeAtomic, writeConfigPlan} from './merge.mjs';
+import {backupFile, defaultsFile, describeMerge, planConfigFile, sha256, writeAtomic, writeConfigPlan} from './merge.mjs';
 import {acquireInstallLock} from './install-lock.mjs';
 
 /**
@@ -40,7 +39,6 @@ export function usage(command = 'pi-models') {
 
 export const USAGE = usage();
 
-const sha256 = data => crypto.createHash('sha256').update(data).digest('hex');
 const label = role => `${role.model ?? '?'} (${role.thinking ?? '?'}${workflowLabel(role) ? `; ${workflowLabel(role)}` : ''})`;
 const relative = (agentDir, file) => path.relative(agentDir, file).split(path.sep).join('/');
 

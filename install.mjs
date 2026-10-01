@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {buildConfiguration} from './lib/config.mjs';
 import {applyPatches} from './lib/patches.mjs';
 import {pruneBackups} from './lib/backups.mjs';
-import {backupFile,describeMerge,reconcileConfigFile} from './runtime/merge.mjs';
+import {backupFile,describeMerge,reconcileConfigFile,writeAtomic} from './runtime/merge.mjs';
 import {acquireInstallLock} from './runtime/install-lock.mjs';
 import {localDefaults,mergesConfig,reconcileResources} from './lib/resources.mjs';
 import {SUBAGENT_ROLES,changedRoles,checkCatalog,forceNativeModels,legacyOverrides,loadPresets,nativeKind,nativeValues,readModelRoles,resolveModelRoles,withPreset,writeModelRoles} from './runtime/model-roles.mjs';
@@ -54,9 +54,7 @@ function managed(file,content,mode=0o600){
     if(!previous?.files[file] || actual!==previous.files[file]){preserved.push(file);return;}
     backup(file);
   }
-  fs.mkdirSync(path.dirname(file),{recursive:true,mode:0o700});
-  const temporary=file+`.${process.pid}.install-tmp`;fs.writeFileSync(temporary,bytes,{mode});fs.renameSync(temporary,file);
-  if(process.platform!=='win32')fs.chmodSync(file,mode);
+  writeAtomic(file,bytes,mode);
   state.files[file]=hash;
   // Ghi state ngay sau mỗi file: cài bị ngắt giữa chừng thì lần sau vẫn nhận ra file này là của installer.
   writeJson(statePath,state);
@@ -122,11 +120,15 @@ async function installRuntime(name,relative){
       cwd:stage,timeout:npmTimeout(),
       timeoutHint:'Tải package từ registry npm quá chậm. Chạy lại installer (gói đã tải nằm trong cache của npm), hoặc tăng giới hạn bằng PI_CONFIG_NPM_TIMEOUT_MINUTES (mặc định 30).',
     });
-    if(fs.existsSync(dest)){
-      const backup=path.join(root,'backups',`runtime-${name}-${Date.now()}`);fs.mkdirSync(path.dirname(backup),{recursive:true});fs.renameSync(dest,backup);
-    }
+    if(fs.existsSync(dest))moveToBackups(dest,`runtime-${name}`);
     fs.renameSync(stage,dest);state.runtimes[name]=manifestHash;writeJson(statePath,state);
   }catch(error){fs.rmSync(stage,{recursive:true,force:true});throw error;}
+}
+// Chuyển thư mục runtime/nguồn cũ vào backups/<label>-<thời điểm> (pruneBackups giữ bản gần nhất).
+function moveToBackups(dest,label){
+  const backup=path.join(root,'backups',`${label}-${Date.now()}`);
+  fs.mkdirSync(path.dirname(backup),{recursive:true});fs.renameSync(dest,backup);
+  return backup;
 }
 async function installSource(source){
   const dest=path.join(root,'sources',source.name);
@@ -138,9 +140,7 @@ async function installSource(source){
   const stage=dest+'.stage';fs.rmSync(stage,{recursive:true,force:true});fs.mkdirSync(stage,{recursive:true});
   try{await run(process.platform==='win32'?'tar.exe':'tar',['-xzf',archive,'--strip-components=1','-C',stage]);}
   catch(error){fs.rmSync(stage,{recursive:true,force:true});throw error;}
-  if(fs.existsSync(dest)){
-    const backup=path.join(root,'backups',`source-${source.name}-${Date.now()}`);fs.mkdirSync(path.dirname(backup),{recursive:true});fs.renameSync(dest,backup);
-  }
+  if(fs.existsSync(dest))moveToBackups(dest,`source-${source.name}`);
   fs.renameSync(stage,dest);state.sources[source.name]=source.sha256;writeJson(statePath,state);
   fs.unlinkSync(archive);
 }
@@ -150,10 +150,7 @@ function retireSources(names){
   for(const name of Object.keys(state.sources)){
     if(names.has(name))continue;
     const dest=path.join(root,'sources',name);
-    if(fs.existsSync(dest)){
-      const backup=path.join(root,'backups',`source-${name}-${Date.now()}`);fs.mkdirSync(path.dirname(backup),{recursive:true});fs.renameSync(dest,backup);
-      console.log(`Nguồn ${name} không còn dùng: đã chuyển vào ${backup}`);
-    }
+    if(fs.existsSync(dest))console.log(`Nguồn ${name} không còn dùng: đã chuyển vào ${moveToBackups(dest,`source-${name}`)}`);
     delete state.sources[name];writeJson(statePath,state);
   }
 }
