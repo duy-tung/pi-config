@@ -50,10 +50,10 @@ test("insertFile chỉ đọc file trong assets/patches", async () => {
   }
 });
 
-test("metadata ghim mười ba bản vá cho một runtime", async () => {
+test("metadata ghim mười một bản vá cho một runtime", async () => {
   const data = await loadPatchData();
   assert.equal(data.schemaVersion, 1);
-  assert.equal(data.patches.length, 13);
+  assert.equal(data.patches.length, 11);
   // pi-anthropic-auth >= 3.3.2 tự giữ effort theo lượt (upstream PR #79): không còn vá.
   assert.ok(!data.patches.some((spec) => spec.package === "@gotgenes/pi-anthropic-auth"));
   for (const spec of data.patches) {
@@ -94,9 +94,9 @@ test("metadata ghim mười ba bản vá cho một runtime", async () => {
   assert.deepEqual(background.map((spec) => spec.file), ["dist/src/extension.js"]);
   assert.ok(!background[0].edits.some((edit) => edit.before.includes("triggerOnCompletion ?? true")));
   assert.ok(background[0].edits.some((edit) => edit.after.includes("completion notification wakes you")));
-  // rpiv: typebox thành peer để Pi 0.99 không cảnh báo dependency lúc khởi động; loader của Pi cấp bản typebox của nó.
-  const rpiv = data.patches.filter((spec) => spec.package.startsWith("@juicesharp/rpiv-"));
-  assert.deepEqual(rpiv.map((spec) => spec.file), ["package.json", "package.json"]);
-  for (const spec of rpiv) assert.ok(spec.edits.some((edit) => edit.after.includes('"typebox": "*"')));
+  // rpiv từ 2.12 tự khai báo typebox là peer: không còn vá. pi-subagents vẫn khai báo nó trong dependencies.
+  assert.ok(!data.patches.some((spec) => spec.package.startsWith("@juicesharp/rpiv-")));
+  const subagentsManifest = data.patches.find((spec) => spec.package === "@tintinweb/pi-subagents" && spec.file === "package.json");
+  assert.ok(subagentsManifest.edits.some((edit) => edit.after.includes('"typebox": "*"')));
   await assert.rejects(applyPatches({ root: os.tmpdir(), runtimes: ["../escape"] }), /Runtime phải/);
 });

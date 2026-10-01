@@ -234,11 +234,11 @@
     {
       "package": "pi-advisor-flow",
       "versions": {
-        "current": "0.9.0"
+        "current": "0.9.1"
       },
       "file": "dist/index.js",
-      "originalSha256": "d5df0d6dcf635c0134ee0ddf2edad8c1c9a6578e89060d10219865d24a0a62a3",
-      "patchedSha256": "68d4c226e733d27dd2fd6da1e6b69711eba22ae4e6133f09f4c30f2e87cb7396",
+      "originalSha256": "a05aaed4d5c0ba33cd586124685a707bef7feb01fad4af0a2b129d1b8c427f2b",
+      "patchedSha256": "7c4e6b0eca9cca19e641f3ea3107e57dbf2ff2a8d3d3a2a59cce1b26687e360b",
       "edits": [
         {
           "before": "    ref\n  };\n};\nvar ADVISOR_STREAM_UPDATE_INTERVAL_MS",
@@ -306,7 +306,7 @@
     {
       "package": "pi-background-tasks",
       "versions": {
-        "current": "2.6.8"
+        "current": "2.6.9"
       },
       "file": "dist/src/extension.js",
       "originalSha256": "255f3684c00a7f9d36df2741a279ca9840ed138cb1581e32dfa64885d7b211e9",
@@ -343,11 +343,11 @@
     {
       "package": "pi-web-access",
       "versions": {
-        "current": "0.33.0"
+        "current": "0.35.0"
       },
       "file": "dist/index.js",
-      "originalSha256": "1cb8f90df3f83b8d4acd8e6f1896b72a2459d61d014f150296f9411d701078ba",
-      "patchedSha256": "aa05cdbe59d9fc414c41bd0d2f835abb504aabf2069d8acac97503ebb55c32e5",
+      "originalSha256": "c20043738d2e0ff744b0417b32c1de4cdbea3c40ad417da3ca8729bcbae149e3",
+      "patchedSha256": "c32e3674072381c351425c1b5dfe0f38a266529e97e26317f4379ccd77cb09cb",
       "edits": [
         {
           "before": "var RESOLVED_SEARCH_PROVIDERS = [\"openai\", \"brave\", ",
@@ -412,48 +412,6 @@
           "count": 1
         }
       ]
-    },
-    {
-      "package": "@juicesharp/rpiv-ask-user-question",
-      "versions": {
-        "current": "2.11.0"
-      },
-      "file": "package.json",
-      "originalSha256": "df9ed35aedf07e038736186722cca76c0cc6ebf43d62d5d1a05bf48b002f087c",
-      "edits": [
-        {
-          "before": "\t\"peerDependencies\": {\n\t\t\"@juicesharp/rpiv-i18n\": \"*\",\n",
-          "after": "\t\"peerDependencies\": {\n\t\t\"@juicesharp/rpiv-i18n\": \"*\",\n\t\t\"typebox\": \"*\",\n",
-          "count": 1
-        },
-        {
-          "before": "\t\t\"@juicesharp/rpiv-config\": \"^2.11.0\",\n\t\t\"typebox\": \"^1.1.24\"\n",
-          "after": "\t\t\"@juicesharp/rpiv-config\": \"^2.11.0\"\n",
-          "count": 1
-        }
-      ],
-      "patchedSha256": "fd657a42db03a9b9d1df98bf3b3b8e08a9338db7cf115ebab55a284ddaa272a8"
-    },
-    {
-      "package": "@juicesharp/rpiv-todo",
-      "versions": {
-        "current": "2.11.0"
-      },
-      "file": "package.json",
-      "originalSha256": "2c7c1dd12a9935fff4c21f43faaf7d705c72c42f9b7891517c5ea0073e480f7f",
-      "edits": [
-        {
-          "before": "\t\"peerDependencies\": {\n\t\t\"@juicesharp/rpiv-i18n\": \"*\",\n",
-          "after": "\t\"peerDependencies\": {\n\t\t\"@juicesharp/rpiv-i18n\": \"*\",\n\t\t\"typebox\": \"*\",\n",
-          "count": 1
-        },
-        {
-          "before": "\t\t\"@juicesharp/rpiv-config\": \"^2.11.0\",\n\t\t\"typebox\": \"^1.1.24\"\n",
-          "after": "\t\t\"@juicesharp/rpiv-config\": \"^2.11.0\"\n",
-          "count": 1
-        }
-      ],
-      "patchedSha256": "cb5bcd6e31277713ce05e274b1d9555efebd39bce6ad8a6795b56577a0953820"
     }
   ]
 }
