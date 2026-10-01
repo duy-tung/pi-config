@@ -2,7 +2,7 @@
 
 [![Kiểm thử cài đặt](https://github.com/duy-tung/pi-config/actions/workflows/test.yml/badge.svg)](https://github.com/duy-tung/pi-config/actions/workflows/test.yml)
 
-Bộ cài **Pi 0.99.1** cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, native web search theo model (Codex, Claude) với Exa và Firecrawl dự phòng, quota Claude trong footer, permission kiểu Claude Code (auto mode và bypass, kèm git guard) và giao diện Rosé Pine. Đi kèm bộ skill quy trình **tstack** (grill → spec → tickets → implement → prove → review → ship, chạy không giám sát bằng goal) đã chuyển sang Pi: [docs/workflow.md](docs/workflow.md). Dependency, nguồn skills và bản vá được ghim để tái lập cấu hình.
+Bộ cài **Pi 0.99.2** cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, native web search theo model (Codex, Claude) với Exa và Firecrawl dự phòng, quota Claude trong footer, permission kiểu Claude Code (auto mode và bypass, kèm git guard) và giao diện Rosé Pine. Đi kèm bộ skill quy trình **tstack** (grill → spec → tickets → implement → prove → review → ship, chạy không giám sát bằng goal) đã chuyển sang Pi: [docs/workflow.md](docs/workflow.md). Dependency, nguồn skills và bản vá được ghim để tái lập cấu hình.
 
 ## Cài đặt
 
@@ -125,24 +125,24 @@ Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều
 
 | Thành phần | Phiên bản |
 |---|---|
-| Pi (`@earendil-works/pi-coding-agent`, `pi-ai`, `pi-agent-core`, `pi-tui`) | 0.99.1 |
+| Pi (`@earendil-works/pi-coding-agent`, `pi-ai`, `pi-agent-core`, `pi-tui`) | 0.99.2 |
 | `@tintinweb/pi-subagents` | 0.19.0 |
-| `@gotgenes/pi-anthropic-auth` | 3.3.3 |
-| `pi-mcp-adapter` | 3.3.0 |
-| `pi-web-access` | 0.33.0 |
-| `@juicesharp/rpiv-ask-user-question`, `rpiv-todo` | 2.11.0 |
+| `@gotgenes/pi-anthropic-auth` | 3.4.1 |
+| `pi-mcp-adapter` | 4.0.0 |
+| `pi-web-access` | 0.35.0 |
+| `@juicesharp/rpiv-ask-user-question`, `rpiv-todo` | 2.12.0 |
 | `@narumitw/pi-usage` | 0.61.1 |
-| `pi-background-tasks` | 2.6.8 |
+| `pi-background-tasks` | 2.6.9 |
 | `pi-goal-x` | 0.31.9 |
-| `pi-advisor-flow` | 0.9.0 |
+| `pi-advisor-flow` | 0.9.1 |
 | `pi-open-tui` | 0.3.10 |
 | `@pi-archimedes/image-paste` | 2.8.0 |
 | `@mariozechner/clipboard` | 0.3.9 |
-| Firecrawl CLI | 1.24.6 |
+| Firecrawl CLI | 1.25.1 |
 | Skills quy trình (tstack) | Trong repo: [assets/skills](assets/skills); skill theo stack (typescript, python, mobile) trong [assets/stack-skills](assets/stack-skills), `/skill:setup` chép vào repo dùng stack đó |
 | Firecrawl skills | Commit trong [sources.lock.json](sources.lock.json) |
 
-Các manifest và lockfile nằm trong [manifests](manifests). Bốn package có peer range chưa gồm Pi 0.99.1 (pi-background-tasks, pi-goal-x, pi-advisor-flow, pi-mcp-adapter) được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json). Quy trình nâng phiên bản (vendor, lockfile, tính lại checksum bản vá): [docs/upgrade.md](docs/upgrade.md).
+Các manifest và lockfile nằm trong [manifests](manifests). Hai package có peer range chưa gồm Pi 0.99.2 (pi-background-tasks, pi-goal-x) được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json). Quy trình nâng phiên bản (vendor, lockfile, tính lại checksum bản vá): [docs/upgrade.md](docs/upgrade.md).
 
 ## Quản lý cấu hình
 
