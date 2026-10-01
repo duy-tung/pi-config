@@ -140,7 +140,7 @@ const models=spawnSync(process.execPath,[path.join(root,'bin/launch.mjs'),'model
 assert.equal(models.status,0,models.stdout+models.stderr);
 assert.match(models.stdout,/^main: preset claude /u);
 // auth.json của bản cài thử rỗng: chỉ có cảnh báo chưa đăng nhập, không vai nào lệch.
-assert.equal(models.stderr,'cảnh báo: provider anthropic (main, researcher, explorer, worker, debugger, reviewer, verifier, advisor, auditor, oracle, autoMode) chưa đăng nhập: chạy pi-login rồi /login.\n');
+assert.equal(models.stderr,'cảnh báo: provider anthropic (main, researcher, explorer, worker, debugger, reviewer, verifier, advisor, auditor, oracle, autoMode) chưa đăng nhập: chạy pi rồi /login.\n');
 // Model sai tên (pi-subagents sẽ lặng lẽ dùng model của parent): installer dừng trước khi ghi cấu hình.
 writeJson(modelRolesPath,{preset:'claude',roles:{researcher:{thinking:'max'},worker:{model:'anthropic/claude-opus-5-6'}}});
 const beforeFailure=snapshot();

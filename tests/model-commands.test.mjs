@@ -235,7 +235,7 @@ async function commands(f) {
   assert.match(preview.text, /worker: openai-codex\/gpt-6-sol \(max\) → anthropic\/claude-opus-5-5 \(high\)/u);
   assert.match(preview.text, /Sẽ cập nhật: settings\.json, advisor\.json, pi-goal-x-settings\.json, agents\/researcher\.md, agents\/explorer\.md, agents\/worker\.md, agents\/debugger\.md, agents\/reviewer\.md, agents\/verifier\.md, AGENTS\.md/u);
   // Bản cài giả không có auth.json: provider của mọi vai chưa đăng nhập.
-  assert.match(preview.text, /provider anthropic \(main, researcher, explorer, worker, debugger, reviewer, verifier, advisor, auditor, oracle, autoMode\) chưa đăng nhập: chạy pi-login rồi \/login/u);
+  assert.match(preview.text, /provider anthropic \(main, researcher, explorer, worker, debugger, reviewer, verifier, advisor, auditor, oracle, autoMode\) chưa đăng nhập: chạy pi rồi \/login/u);
   assert.deepEqual(snapshot(f.root, f.agentDir), before);
   const switched = await run('preset', 'claude');
   assert.equal(switched.status, 0, switched.text);

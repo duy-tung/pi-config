@@ -26,7 +26,7 @@ Chi tiết kiến trúc CPU, công cụ hệ thống và tùy chọn đường d
 
 ## Đăng nhập dịch vụ
 
-1. Chạy `pi-login`, dùng `/login` và chọn **Anthropic** cho parent Claude Opus 5.5 (gói Pro/Max) và bộ phân loại của auto mode (Claude Sonnet 5), hoặc đặt `ANTHROPIC_API_KEY`. Xem [docs/claude-setup.md](docs/claude-setup.md).
+1. Chạy `pi`, dùng `/login` và chọn **Anthropic** cho parent Claude Opus 5.5 (gói Pro/Max) và bộ phân loại của auto mode (Claude Sonnet 5), hoặc đặt `ANTHROPIC_API_KEY`. Xem [docs/claude-setup.md](docs/claude-setup.md).
 2. Trong `/login`, chọn **OpenAI Codex (legacy)** cho worker/debugger (GPT-6 Sol) và reviewer (GPT-6 Astra). Pi 0.99 đổi tên hiển thị; provider vẫn là `openai-codex`. "Sign in with ChatGPT" của provider **OpenAI** là provider khác (`openai`), preset không dùng.
 3. Trong `/login`, chọn **OpenCode Go** và nhập API key cho GLM. Pi cũng nhận biến môi trường `OPENCODE_API_KEY`.
 4. Chạy `firecrawl login --browser` để đăng nhập dịch vụ web.

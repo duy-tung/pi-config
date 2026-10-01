@@ -95,7 +95,7 @@ for(const [name,p] of Object.entries(profiles)){
   console.log(`  auto mode: bước 1 ${jev?`Jev ${jev.model??'jev-1.13.0'} (${jevKey})`:'LLM của vai autoMode (Jev tắt)'}; bước 2 LLM của vai autoMode`);
 }
 for(const source of Object.keys(state.sources))if(!fs.existsSync(path.join(root,'sources',source)))errors.push(`Thiếu skills source: ${source}`);
-console.log('Một cấu hình Pi; đăng nhập bằng /login hoặc pi-login. Không kiểm tra token bằng mạng.');
+console.log('Một cấu hình Pi; đăng nhập bằng /login trong pi. Không kiểm tra token bằng mạng.');
 if(process.platform==='win32' && state.shellPath&&!fs.existsSync(state.shellPath))errors.push('Không tìm thấy Git Bash đã cấu hình');
 if(warnings.length)console.warn(warnings.join('\n'));
 if(errors.length){console.error(errors.join('\n'));process.exitCode=1;}else console.log('Pi-config: OK (kiểm tra cục bộ, không gọi API tính phí).');

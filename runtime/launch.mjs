@@ -18,8 +18,7 @@ if(action==='doctor'){
   const {runModels}=await import('./models.mjs');
   process.exitCode=await runModels({root,profiles,args});
 }else{
-  const name=action==='login'?'main':action;
-  const profile=profiles[name];
+  const profile=profiles[action];
   // mcp-adapter: CLI của pi-mcp-adapter (vd `pi-mcp-adapter key set systemone` lưu key Jev vào keyring).
   if(action!=='firecrawl'&&action!=='mcp-adapter'&&!profile)throw new Error('Profile không hợp lệ');
   const runtime=profile?.runtime ?? 'current';
