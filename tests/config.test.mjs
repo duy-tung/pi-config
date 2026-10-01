@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { buildConfiguration } from "../lib/config.mjs";
+import { buildConfiguration, PACKAGES } from "../lib/config.mjs";
 import { changedRoles, fillRoleNames, forceNativeModels, loadPresets, nativeKind, nativeValues, nextModelDefault, resolveModelRoles } from "../runtime/model-roles.mjs";
 
 const repoDir = fileURLToPath(new URL("../", import.meta.url));
@@ -25,18 +25,19 @@ function fixture(platform) {
     return found.content;
   };
   const json = (file) => JSON.parse(read(file));
-  const profiles = json(p.join(root, "profiles.json"));
-  return { p, options, files, read, json, profiles };
+  const profile = { agentDir, runtime: "current", packages: PACKAGES };
+  return { p, options, files, read, json, profile };
 }
 
 for (const platform of ["darwin", "linux", "win32"]) {
   test(`${platform}: một cấu hình Pi, model, thinking và phạm vi extension`, () => {
-    const { p, options, json, profiles, read, files } = fixture(platform);
+    const { p, options, json, profile, read, files } = fixture(platform);
+    const name = "main";
     const expected = {
       main: ["current", "anthropic", "claude-opus-5-5", "high", "rose-pine-moon"],
     };
-    assert.deepEqual(Object.keys(profiles), ["main"]);
-    for (const [name, profile] of Object.entries(profiles)) {
+    assert.ok(!files.some((file) => p.basename(file.path) === "profiles.json"));
+    {
       const settings = json(p.join(profile.agentDir, "settings.json"));
       assert.deepEqual([profile.runtime, settings.defaultProvider, settings.defaultModel, settings.defaultThinkingLevel, settings.theme], expected[name]);
       assert.deepEqual(settings.modelThinkingLevels, {
@@ -98,16 +99,16 @@ for (const platform of ["darwin", "linux", "win32"]) {
   });
 
   test(`${platform}: MCP không qua shell, đường dẫn có khoảng trắng và credential được chặn`, () => {
-    const { p, options, json, profiles, files } = fixture(platform);
+    const { p, options, json, profile, files } = fixture(platform);
     const forward = (value) => value.replaceAll("\\", "/");
-    for (const profile of Object.values(profiles)) {
+    {
       assert.ok(!files.some((file) => file.path === p.join(profile.agentDir, "mcp.json")), "mcp.json thuộc MCP dựng sẵn của Pi");
       const mcp = json(p.join(profile.agentDir, "mcp-adapter.json"));
       assert.deepEqual(mcp.settings, { hostConfigDiscovery: "off", allowInstall: false, scriptMode: false });
       assert.equal(mcp.mcpServers, undefined, "không cài sẵn server MCP");
       const settings = json(p.join(profile.agentDir, "settings.json"));
       const deny = settings.permissions.deny;
-      for (const file of [p.join(options.agentDir, "auth.json"), p.join(options.root, "profiles", "*", "auth.json"), p.join(options.root, "secrets", "*.env"), p.join(options.home, ".codex", "auth.json")]) {
+      for (const file of [p.join(options.agentDir, "auth.json"), p.join(options.root, "secrets", "*.env"), p.join(options.home, ".codex", "auth.json")]) {
         assert.ok(deny.includes(`Path(${forward(file)})`), file);
       }
       assert.ok(deny.includes("mcpScript"));
@@ -157,7 +158,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
   });
 
   test(`${platform}: không xuất credential; advisor, goal auditor và Oracle đúng cấu hình đã chọn`, () => {
-    const { p, options, files, json, profiles } = fixture(platform);
+    const { p, options, files, json, profile } = fixture(platform);
     assert.equal(new Set(files.map(({ path: file }) => file)).size, files.length);
     for (const file of files) {
       assert.equal(file.mode, 0o600);
@@ -165,7 +166,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.doesNotMatch(file.path, /sessions|mcp-cache|models-store/u);
       assert.doesNotMatch(file.content, /\/Users\/tung|apikey_[a-z0-9]|fc-[a-f0-9]{20}|[A-Z_]*(?:API_KEY|ACCESS_TOKEN|REFRESH_TOKEN)=/u);
     }
-    for (const profile of Object.values(profiles)) {
+    {
       if (profile.packages.includes("pi-advisor-flow")) {
       const advisor = json(p.join(profile.agentDir, "advisor.json"));
       const settings = json(p.join(profile.agentDir, "settings.json"));

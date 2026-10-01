@@ -80,11 +80,10 @@ test('AGENTS.md hay bản mẫu đã sửa thì giữ; thiếu base thì báo c�
 
 test('pi-models: tham số sai và khóa của installer báo lỗi, không ghi gì', async t => {
   const f = install(t);
-  const profiles = {main: {agentDir: f.agentDir, runtime: 'current'}};
   const run = async (...args) => {
     const lines = [];
     const out = {log: line => lines.push(line), warn: line => lines.push(line), error: line => lines.push(line)};
-    return {status: await runModels({root: f.root, profiles, args, out}), text: lines.join('\n')};
+    return {status: await runModels({root: f.root, agentDir: f.agentDir, args, out}), text: lines.join('\n')};
   };
   const before = snapshot(f.root, f.agentDir);
   for (const [args, message] of [
@@ -136,7 +135,6 @@ test('whenApplied gom các vai theo thời điểm có hiệu lực; thời đi�
 test('catalog và effects truyền vào (như /models trong phiên): kiểm model, xem, liệt kê bằng catalog đó; effects nhận vai có giá trị mới', async t => {
   // Bản cài giả không có runtime: mọi bước phải dùng catalog truyền vào.
   const f = install(t);
-  const profiles = {main: {agentDir: f.agentDir, runtime: 'current'}};
   const known = new Set(['anthropic/claude-opus-5-5', 'anthropic/claude-sonnet-5', 'anthropic/claude-fable-5-1', 'openai-codex/gpt-6-sol', 'openai-codex/gpt-6-astra', 'opencode-go/glm-5.3-flash']);
   const catalog = {
     check: async (roles, {logins = false} = {}) => ({
@@ -153,7 +151,7 @@ test('catalog và effects truyền vào (như /models trong phiên): kiểm mode
   const run = async (...args) => {
     const lines = [];
     const out = {log: line => lines.push(line), warn: line => lines.push(line), error: line => lines.push(line)};
-    return {status: await runModels({root: f.root, profiles, args, out, command: '/models', catalog, effects}), text: lines.join('\n')};
+    return {status: await runModels({root: f.root, agentDir: f.agentDir, args, out, command: '/models', catalog, effects}), text: lines.join('\n')};
   };
   const before = snapshot(f.root, f.agentDir);
   const wrong = await run('set', 'worker', 'anthropic/claude-sonnet-9');
@@ -219,11 +217,10 @@ test('pi-models trên runtime thật: xem trước, preset, model sai tên, lệ
 });
 
 async function commands(f) {
-  const profiles = {main: {agentDir: f.agentDir, runtime: 'current'}};
   const run = async (...args) => {
     const lines = [];
     const out = {log: line => lines.push(line), warn: line => lines.push(line), error: line => lines.push(line)};
-    return {status: await runModels({root: f.root, profiles, args, out}), text: lines.join('\n')};
+    return {status: await runModels({root: f.root, agentDir: f.agentDir, args, out}), text: lines.join('\n')};
   };
   const modelRoles = f.file('model-roles.json');
   const frontmatter = role => fs.readFileSync(f.file(`agents/${role}.md`), 'utf8').split('\n---\n')[0];

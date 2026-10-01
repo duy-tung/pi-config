@@ -8,24 +8,24 @@ import { syncBuiltinESMExports } from "node:module";
 import assert from "node:assert/strict";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-// CLI: node tests/agent-integration.mjs <installRoot> <profile>
+// CLI: node tests/agent-integration.mjs <installRoot>
 // Only installed configuration on the explicit root is used. The test copies
 // a fixed whitelist into a disposable agent, never auth/history/cache/secrets.
-const [installArg, profile] = process.argv.slice(2);
-if (!installArg || !["main"].includes(profile)) {
-  throw new Error("Cách dùng: node tests/agent-integration.mjs <installRoot> <main>");
+const [installArg] = process.argv.slice(2);
+if (!installArg) {
+  throw new Error("Cách dùng: node tests/agent-integration.mjs <installRoot>");
 }
 let activePhase = "khởi tạo runtime";
 const watchdog = setTimeout(() => {
-  console.error(`TIMEOUT: ${profile}: ${activePhase}; giữ fixture để chẩn đoán.`);
+  console.error(`TIMEOUT: ${activePhase}; giữ fixture để chẩn đoán.`);
   process.exit(124);
 }, 120000);
 const installRoot = path.resolve(installArg);
 const readJson = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
 const writeJson = (file, value) => fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
-const configuration = readJson(path.join(installRoot, "profiles.json"))[profile];
-assert.ok(configuration?.agentDir && configuration.runtime === "current");
-const fixture = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `pi-config ${profile} integration `)));
+const configuration = { agentDir: readJson(path.join(installRoot, "install-state.json")).agentDir, runtime: "current" };
+assert.ok(configuration.agentDir);
+const fixture = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `pi-config integration `)));
 const agentDir = path.join(fixture, "fixture agent");
 const cwd = path.join(fixture, "fixture workspace");
 for (const dir of [agentDir, cwd]) fs.mkdirSync(dir, { recursive: true });
@@ -168,7 +168,7 @@ async function run(id, args, childSteps=[final('CHILD_OK')]) {
   return session.messages.slice(before).filter(m=>m.role==='toolResult');
 }
 async function check(name,fn) {
-  activePhase=name;console.log(`Agent ${profile}: ${name}`);
+  activePhase=name;console.log(`Agent: ${name}`);
   try {await fn();results.push({name,status:'PASS'});}catch(error){results.push({name,status:'FAIL',error:error.stack});}
 }
 await check('native delegation tools and six task roles are available',async()=>{
@@ -530,6 +530,6 @@ await check('without an environment key, auto mode asks the pi-mcp-adapter key s
 });
 await session.extensionRunner.emit({type:'session_shutdown',reason:'quit'});session.dispose();
 const failed=results.some(r=>r.status==='FAIL')||errors.length>0||networkAttempts.length>0;
-console.log(JSON.stringify({profile,results,extensionErrors:errors,realNetworkAttempts:networkAttempts.length,fixture:failed?fixture:undefined},null,2));
+console.log(JSON.stringify({results,extensionErrors:errors,realNetworkAttempts:networkAttempts.length,fixture:failed?fixture:undefined},null,2));
 if(!failed)await fs.promises.rm(fixture,{recursive:true,force:true,maxRetries:20,retryDelay:50});
 clearTimeout(watchdog);process.exit(failed?1:0);

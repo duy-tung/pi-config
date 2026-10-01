@@ -10,24 +10,24 @@ import assert from "node:assert/strict";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { anthropicSearchEvents, sse, unifiedHeaders } from "./search-fixtures.mjs";
 
-// CLI: node tests/profile-integration.mjs <installRoot> <profile>
+// CLI: node tests/profile-integration.mjs <installRoot>
 // Only installed configuration on the explicit root is used. The test copies
 // a fixed whitelist into a disposable agent, never auth/history/cache/secrets.
-const [installArg, profile] = process.argv.slice(2);
-if (!installArg || !["main"].includes(profile)) {
-  throw new Error("Cách dùng: node tests/profile-integration.mjs <installRoot> <main>");
+const [installArg] = process.argv.slice(2);
+if (!installArg) {
+  throw new Error("Cách dùng: node tests/profile-integration.mjs <installRoot>");
 }
 let activePhase = "khởi tạo runtime";
 const watchdog = setTimeout(() => {
-  console.error(`TIMEOUT: ${profile}: ${activePhase}; giữ fixture để chẩn đoán.`);
+  console.error(`TIMEOUT: ${activePhase}; giữ fixture để chẩn đoán.`);
   process.exit(124);
 }, 120000);
 const installRoot = path.resolve(installArg);
 const readJson = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
 const writeJson = (file, value) => fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
-const configuration = readJson(path.join(installRoot, "profiles.json"))[profile];
-assert.ok(configuration?.agentDir && configuration.runtime === "current");
-const fixture = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `pi-config ${profile} integration `)));
+const configuration = { agentDir: readJson(path.join(installRoot, "install-state.json")).agentDir, runtime: "current" };
+assert.ok(configuration.agentDir);
+const fixture = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `pi-config integration `)));
 const agentDir = path.join(fixture, "fixture agent");
 const cwd = path.join(fixture, "fixture workspace");
 for (const dir of [agentDir, cwd]) fs.mkdirSync(dir, { recursive: true });
@@ -65,13 +65,11 @@ if (settings.rewind) Object.assign(settings.rewind, { storageDir: path.join(fixt
 writeJson(path.join(agentDir, "settings.json"), settings);
 writeJson(credentialFile, {"fixture-secret": {type: "api_key", key: "synthetic-private-credential"},
   anthropic: {type: "oauth", access: "sk-ant-oat01-synthetic-fixture", refresh: "synthetic-refresh", expires: Date.now() + 3600000}});
-if (configuration.packages.includes("pi-advisor-flow")) {
-  const advisorFile = path.join(agentDir, "advisor.json");
-  const advisor = readJson(advisorFile);
-  // Giữ alwaysOn và gate của bản cài; chỉ thay model bằng model giả.
-  Object.assign(advisor, { executor: "config-test/parent", advisor: "config-test/worker" });
-  writeJson(advisorFile, advisor);
-}
+const advisorFile = path.join(agentDir, "advisor.json");
+const advisor = readJson(advisorFile);
+// Giữ alwaysOn và gate của bản cài; chỉ thay model bằng model giả.
+Object.assign(advisor, { executor: "config-test/parent", advisor: "config-test/worker" });
+writeJson(advisorFile, advisor);
 // Dùng routing web của bản cài nhưng thay credential command bằng giá trị giả; bật thêm tuỳ chọn tìm bằng
 // Claude cho model khác Claude để kiểm cả hai nhánh của provider anthropic.
 const webConfig = readJson(path.join(configuration.agentDir, "web-search.json"));
@@ -216,7 +214,7 @@ async function run(name, steps, extra = "") {
 }
 async function check(name, fn) {
   activePhase = name;
-  console.log(`Kiểm thử ${profile}: ${name}`);
+  console.log(`Kiểm thử: ${name}`);
   try { await fn(); results.push({ name, status: "PASS" }); }
   catch (error) { results.push({ name, status: "FAIL", error: error.stack }); }
 }
@@ -351,32 +349,30 @@ await check("auto mode: read-only shell runs directly, other commands go through
   assert.equal(classifierRequests().length, before + 2);
   assert.ok(notices.some((item) => /denied by auto mode/u.test(item.message)));
 });
-if (configuration.packages.includes("@tintinweb/pi-subagents")) {
-  await check("Agent spawn is classified; the child keeps the gate and the root user intent", async () => {
-    control.plans.child = [[tool("bash", { command: "printf child-permission-ok > child-proof.txt", timeout: 10 })], final("CHILD_DONE")];
-    const before = classifierRequests().length;
-    const result = await run("parent", [[tool("Agent", { subagent_type: "worker", prompt: "CASE:child Execute fixture command.", description: "fixture worker", run_in_background: false })]], "PARENT_PRIVATE_MARKER");
-    const child = control.seen.filter((entry) => entry.key === "child");
-    assert.ok(child.length > 0, JSON.stringify(result)); assert.ok(child.every((entry) => entry.model === "worker"));
-    assert.ok(child.every((entry) => !JSON.stringify(entry.messages).includes("PARENT_PRIVATE_MARKER")));
-    assert.match(JSON.stringify(result), /CHILD_DONE/u);
-    assert.equal(fs.readFileSync(path.join(cwd, "child-proof.txt"), "utf8"), "child-permission-ok");
-    const requests = classifierRequests().slice(before).map((entry) => JSON.stringify(entry.messages));
-    assert.ok(requests.some((text) => text.includes('\\"Agent\\"') || text.includes("(worker)")), "Agent spawn phải qua bộ phân loại");
-    const fromChild = requests.find((text) => text.includes("child-proof.txt"));
-    assert.ok(fromChild, "Child phải có cổng permission");
-    assert.match(fromChild, /root_user_messages/u); assert.match(fromChild, /PARENT_PRIVATE_MARKER/u);
-    assert.match(fromChild, /delegated_task/u);
-  });
-  await check("reviewer cannot write", async () => {
-    control.plans.reviewchild = [[tool("write", { path: "reviewer-illegal.txt", content: "bad" })], final("REVIEW_DONE")];
-    await run("reviewparent", [[tool("Agent", { subagent_type: "reviewer", prompt: "CASE:reviewchild", description: "fixture reviewer", run_in_background: false })]]);
-    assert.ok(!fs.existsSync(path.join(cwd, "reviewer-illegal.txt")));
-    const child = control.seen.filter((entry) => entry.key === "reviewchild");
-    assert.ok(child.length > 0);
-    assert.ok(child.some((entry) => entry.messages.some((message) => message.role === "toolResult" && message.isError)));
-  });
-}
+await check("Agent spawn is classified; the child keeps the gate and the root user intent", async () => {
+  control.plans.child = [[tool("bash", { command: "printf child-permission-ok > child-proof.txt", timeout: 10 })], final("CHILD_DONE")];
+  const before = classifierRequests().length;
+  const result = await run("parent", [[tool("Agent", { subagent_type: "worker", prompt: "CASE:child Execute fixture command.", description: "fixture worker", run_in_background: false })]], "PARENT_PRIVATE_MARKER");
+  const child = control.seen.filter((entry) => entry.key === "child");
+  assert.ok(child.length > 0, JSON.stringify(result)); assert.ok(child.every((entry) => entry.model === "worker"));
+  assert.ok(child.every((entry) => !JSON.stringify(entry.messages).includes("PARENT_PRIVATE_MARKER")));
+  assert.match(JSON.stringify(result), /CHILD_DONE/u);
+  assert.equal(fs.readFileSync(path.join(cwd, "child-proof.txt"), "utf8"), "child-permission-ok");
+  const requests = classifierRequests().slice(before).map((entry) => JSON.stringify(entry.messages));
+  assert.ok(requests.some((text) => text.includes('\\"Agent\\"') || text.includes("(worker)")), "Agent spawn phải qua bộ phân loại");
+  const fromChild = requests.find((text) => text.includes("child-proof.txt"));
+  assert.ok(fromChild, "Child phải có cổng permission");
+  assert.match(fromChild, /root_user_messages/u); assert.match(fromChild, /PARENT_PRIVATE_MARKER/u);
+  assert.match(fromChild, /delegated_task/u);
+});
+await check("reviewer cannot write", async () => {
+  control.plans.reviewchild = [[tool("write", { path: "reviewer-illegal.txt", content: "bad" })], final("REVIEW_DONE")];
+  await run("reviewparent", [[tool("Agent", { subagent_type: "reviewer", prompt: "CASE:reviewchild", description: "fixture reviewer", run_in_background: false })]]);
+  assert.ok(!fs.existsSync(path.join(cwd, "reviewer-illegal.txt")));
+  const child = control.seen.filter((entry) => entry.key === "reviewchild");
+  assert.ok(child.length > 0);
+  assert.ok(child.some((entry) => entry.messages.some((message) => message.role === "toolResult" && message.isError)));
+});
 await check("todo persists create and completion", async () => {
   const result = await run("todo", [[tool("todo", { action: "create", subject: "Fixture local" })],
     [tool("todo", { action: "update", id: 1, status: "completed" })], [tool("todo", { action: "get", id: 1 })]]);
@@ -392,70 +388,64 @@ await check("ask_user_question RPC round trip", async () => {
   assert.ok(prompts.length > before); assert.equal(result.length, 1); assert.ok(!result[0].isError, JSON.stringify(result));
   assert.match(JSON.stringify(result), /Local/u);
 });
-if (configuration.packages.includes("pi-goal-x")) {
-  await check("goal creates, reports state, and honors explicit pause", async () => {
-    const result = await run("goal", [
-      [tool("create_goal", { objective: "Kiểm thử goal trong fixture cục bộ." })],
-      [tool("get_goal", {})],
-      [tool("update_goal", { status: "paused", reason: "Người dùng fixture yêu cầu tạm dừng sau kiểm tra trạng thái." })],
-    ], "Người dùng fixture yêu cầu tạo goal rồi tạm dừng.");
-    assert.equal(result.length, 3); assert.ok(result.every((message) => !message.isError), JSON.stringify(result));
-    assert.match(JSON.stringify(result), /paused/u);
-  });
-}
-if (configuration.packages.includes("pi-background-tasks")) {
-  await check("background shell job wakes the main session when it ends; triggerOnCompletion:false only notifies", async () => {
-    // Windows shell startup is not bounded by an arbitrary sleep: wait on the observable state instead.
-    const waitFor = async (probe, what) => {
-      const deadline = Date.now() + 15000;
-      for (;;) {
-        const value = probe();
-        if (value) return value;
-        assert.ok(Date.now() < deadline, `${what} within 15 seconds`);
-        await delay(100);
-      }
-    };
-    const settled = () => !session.isStreaming && session.pendingMessageCount === 0;
-    const notifies = (message, taskId) => JSON.stringify(message ?? {}).includes(`<task-id>${taskId}</task-id>`);
-    assert.match(session.getToolDefinition("bg_run").promptGuidelines.join("\n"), /completion notification wakes you/u);
-    let seen = control.seen.length;
-    let result = await run("bg-start", [[tool("bg_run", { name: "Local fixture output", command: "printf BACKGROUND_OK",
-      isAgent: false, timeoutSeconds: 10 })]]);
-    assert.ok(!result[0]?.isError, JSON.stringify(result));
-    const taskId = result[0].details?.task?.id; assert.ok(taskId, JSON.stringify(result));
-    assert.equal(result[0].details.task.triggerOnCompletion, true, "bg_run wakes the model by default");
-    assert.match(JSON.stringify(result[0].content), /Automatic follow-up turn: enabled/u);
-    // The terminal notification starts a model turn by itself: nobody sends a message.
-    const wake = await waitFor(() => control.seen.slice(seen).find((request) => notifies(request.messages.at(-1), taskId)),
-      "Completion notification starts a turn");
-    assert.match(JSON.stringify(wake.messages.at(-1)), /<status>completed<\/status>/u);
-    await waitFor(settled, "Woken turn finishes");
-    result = await run("bg-output", [[tool("bg_logs", { taskId })]]);
-    assert.ok(!result[0]?.isError, JSON.stringify(result));
-    assert.match(JSON.stringify(result), /BACKGROUND_OK/u);
-    // Opt-out: the notification still lands in the conversation but starts no turn.
-    result = await run("bg-quiet", [[tool("bg_run", { name: "Quiet fixture job", command: "printf QUIET_OK",
-      isAgent: false, timeoutSeconds: 10, triggerOnCompletion: false })]]);
-    const quietId = result[0].details?.task?.id; assert.ok(quietId, JSON.stringify(result));
-    seen = control.seen.length;
-    await waitFor(() => session.messages.some((message) => message.role === "custom" && notifies(message, quietId)),
-      "Quiet job notification is recorded");
-    await delay(300);
-    assert.equal(control.seen.length, seen, "triggerOnCompletion:false must not start a turn");
-  });
-}
-if (configuration.packages.includes("pi-advisor-flow")) {
-  await check("advisor is on from startup and uses second fixture model through patched ModelRuntime", async () => {
-    assert.ok(session.getActiveToolNames().includes("ask_advisor"), "alwaysOn phải bật advisor khi mở phiên");
-    await session.prompt("/advisor");
-    control.plans.advice = [final("ADVISOR_APPROVED_FIXTURE")];
-    const result = await run("advisor", [[tool("ask_advisor", { question: "CASE:advice Review local fixture.", gitContext: "none" })]]);
-    assert.equal(result.length, 1); assert.ok(!result[0].isError, JSON.stringify(result));
-    assert.match(JSON.stringify(result), /ADVISOR_APPROVED_FIXTURE/u);
-    assert.ok(control.seen.some((entry) => entry.key === "advice" && entry.model === "worker"));
-    await session.prompt("/advisor-off");
-  });
-}
+await check("goal creates, reports state, and honors explicit pause", async () => {
+  const result = await run("goal", [
+    [tool("create_goal", { objective: "Kiểm thử goal trong fixture cục bộ." })],
+    [tool("get_goal", {})],
+    [tool("update_goal", { status: "paused", reason: "Người dùng fixture yêu cầu tạm dừng sau kiểm tra trạng thái." })],
+  ], "Người dùng fixture yêu cầu tạo goal rồi tạm dừng.");
+  assert.equal(result.length, 3); assert.ok(result.every((message) => !message.isError), JSON.stringify(result));
+  assert.match(JSON.stringify(result), /paused/u);
+});
+await check("background shell job wakes the main session when it ends; triggerOnCompletion:false only notifies", async () => {
+  // Windows shell startup is not bounded by an arbitrary sleep: wait on the observable state instead.
+  const waitFor = async (probe, what) => {
+    const deadline = Date.now() + 15000;
+    for (;;) {
+      const value = probe();
+      if (value) return value;
+      assert.ok(Date.now() < deadline, `${what} within 15 seconds`);
+      await delay(100);
+    }
+  };
+  const settled = () => !session.isStreaming && session.pendingMessageCount === 0;
+  const notifies = (message, taskId) => JSON.stringify(message ?? {}).includes(`<task-id>${taskId}</task-id>`);
+  assert.match(session.getToolDefinition("bg_run").promptGuidelines.join("\n"), /completion notification wakes you/u);
+  let seen = control.seen.length;
+  let result = await run("bg-start", [[tool("bg_run", { name: "Local fixture output", command: "printf BACKGROUND_OK",
+    isAgent: false, timeoutSeconds: 10 })]]);
+  assert.ok(!result[0]?.isError, JSON.stringify(result));
+  const taskId = result[0].details?.task?.id; assert.ok(taskId, JSON.stringify(result));
+  assert.equal(result[0].details.task.triggerOnCompletion, true, "bg_run wakes the model by default");
+  assert.match(JSON.stringify(result[0].content), /Automatic follow-up turn: enabled/u);
+  // The terminal notification starts a model turn by itself: nobody sends a message.
+  const wake = await waitFor(() => control.seen.slice(seen).find((request) => notifies(request.messages.at(-1), taskId)),
+    "Completion notification starts a turn");
+  assert.match(JSON.stringify(wake.messages.at(-1)), /<status>completed<\/status>/u);
+  await waitFor(settled, "Woken turn finishes");
+  result = await run("bg-output", [[tool("bg_logs", { taskId })]]);
+  assert.ok(!result[0]?.isError, JSON.stringify(result));
+  assert.match(JSON.stringify(result), /BACKGROUND_OK/u);
+  // Opt-out: the notification still lands in the conversation but starts no turn.
+  result = await run("bg-quiet", [[tool("bg_run", { name: "Quiet fixture job", command: "printf QUIET_OK",
+    isAgent: false, timeoutSeconds: 10, triggerOnCompletion: false })]]);
+  const quietId = result[0].details?.task?.id; assert.ok(quietId, JSON.stringify(result));
+  seen = control.seen.length;
+  await waitFor(() => session.messages.some((message) => message.role === "custom" && notifies(message, quietId)),
+    "Quiet job notification is recorded");
+  await delay(300);
+  assert.equal(control.seen.length, seen, "triggerOnCompletion:false must not start a turn");
+});
+await check("advisor is on from startup and uses second fixture model through patched ModelRuntime", async () => {
+  assert.ok(session.getActiveToolNames().includes("ask_advisor"), "alwaysOn phải bật advisor khi mở phiên");
+  await session.prompt("/advisor");
+  control.plans.advice = [final("ADVISOR_APPROVED_FIXTURE")];
+  const result = await run("advisor", [[tool("ask_advisor", { question: "CASE:advice Review local fixture.", gitContext: "none" })]]);
+  assert.equal(result.length, 1); assert.ok(!result[0].isError, JSON.stringify(result));
+  assert.match(JSON.stringify(result), /ADVISOR_APPROVED_FIXTURE/u);
+  assert.ok(control.seen.some((entry) => entry.key === "advice" && entry.model === "worker"));
+  await session.prompt("/advisor-off");
+});
 await check("rewind restores code and conversation like Claude Code; Redo in the menu and /redo bring them back", async () => {
   const fileA = path.join(cwd, "rewind-a.txt"), fileB = path.join(cwd, "rewind-b.txt");
   const read = (file) => fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
@@ -618,7 +608,7 @@ await check("headless auto mode never prompts and fails closed without a verdict
 await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
 session.dispose();
 const failed = results.some((result) => result.status === "FAIL") || errors.length > 0;
-console.log(JSON.stringify({ profile, runtime: configuration.runtime, platform: process.platform, results,
+console.log(JSON.stringify({ runtime: configuration.runtime, platform: process.platform, results,
   extensionErrors: errors, symlinkTest: symlinkAvailable ? "tested" : "SKIP: Windows symlink permission unavailable",
   blockedNetworkRequests: networkAttempts.length, fixture: failed ? fixture : undefined }, null, 2));
 if (!failed) await fs.promises.rm(fixture, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });

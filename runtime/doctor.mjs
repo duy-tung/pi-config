@@ -10,7 +10,6 @@ const read=file=>{
   catch(error){if(error.code==='ENOENT')throw new Error(`Thiếu ${file}. Chạy lại installer (install.sh hoặc install.ps1).`);throw error;}
   try{return JSON.parse(text);}catch(error){throw new Error(`JSON hỏng: ${file}: ${error.message}`);}
 };
-const profiles=read(path.join(root,'profiles.json'));
 const state=read(path.join(root,'install-state.json'));
 const errors=[],warnings=[];
 for(const [label,relative] of Object.entries({current:'runtimes/current',firecrawl:'tools/firecrawl'})){
@@ -43,51 +42,52 @@ try{
       :credential.status==='missing'?'chưa có key: đặt TYPESAFE_API_KEY hoặc pi-mcp-adapter key set systemone':`không đọc được key: ${credential.message}`;
   }
 }catch{}
-for(const [name,p] of Object.entries(profiles)){
+{
+  const p={agentDir:state.agentDir,runtime:'current'};
   const s=read(path.join(p.agentDir,'settings.json'));
   // Model/thinking của mọi vai theo model-roles.json, giá trị đang có hiệu lực khi khác, và kiểm catalog của Pi.
   const models=await modelRolesReport({root,agentDir:p.agentDir,modules:path.join(root,'runtimes',p.runtime,'node_modules')});
-  console.log(`${name}: ${models.lines.join('\n') || 'không đọc được cấu hình model'}`);
-  errors.push(...models.errors.map(item=>`${name}: ${item}`));warnings.push(...models.warnings.map(item=>`${name}: ${item}`));
-  for(const pkg of s.packages)if(!fs.existsSync(typeof pkg==='string'?pkg:pkg.source))errors.push(`Thiếu package: ${name}`);
-  for(const entry of s.extensions??[])if(typeof entry==='string'&&!entry.startsWith('-')&&path.isAbsolute(entry)&&!fs.existsSync(entry))errors.push(`Thiếu extension: ${name}: ${entry}`);
+  console.log(models.lines.join('\n') || 'không đọc được cấu hình model');
+  errors.push(...models.errors);warnings.push(...models.warnings);
+  for(const pkg of s.packages)if(!fs.existsSync(typeof pkg==='string'?pkg:pkg.source))errors.push(`Thiếu package: ${typeof pkg==='string'?pkg:pkg.source}`);
+  for(const entry of s.extensions??[])if(typeof entry==='string'&&!entry.startsWith('-')&&path.isAbsolute(entry)&&!fs.existsSync(entry))errors.push(`Thiếu extension: ${entry}`);
   // Lần gộp đầu của bản cài chưa lưu mặc định giữ mục cũ trong file đã sửa; search Claude nay là provider anthropic của pi-web-access.
   if((s.extensions??[]).some(entry=>typeof entry==='string'&&/[\\/]native-web-search[\\/]?$/u.test(entry)))
-    warnings.push(`${name}: settings.json còn extension native-web-search đã bỏ; xoá dòng này`);
+    warnings.push(`settings.json còn extension native-web-search đã bỏ; xoá dòng này`);
   const webSearch=path.join(p.agentDir,'web-search.json');
-  if(p.packages.includes('pi-web-access')&&fs.existsSync(webSearch)){
+  if(fs.existsSync(webSearch)){
     const config=read(webSearch),providers=config.searchRouting?.providers,allowed=config.webSearch?.allowedProviders;
     if(Array.isArray(providers)&&!providers.includes('anthropic'))
-      warnings.push(`${name}: web-search.json thiếu "anthropic" trong searchRouting.providers và webSearch.allowedProviders; phiên Claude sẽ tìm bằng provider kế tiếp`);
+      warnings.push(`web-search.json thiếu "anthropic" trong searchRouting.providers và webSearch.allowedProviders; phiên Claude sẽ tìm bằng provider kế tiếp`);
     // pi-web-access không nạp (mất mọi web tool) khi searchRouting.providers có provider ngoài webSearch.allowedProviders.
     const outside=Array.isArray(providers)&&Array.isArray(allowed)?providers.filter(item=>!allowed.includes(item)):[];
-    if(outside.length)errors.push(`${name}: web-search.json: ${outside.join(', ')} có trong searchRouting.providers nhưng không có trong webSearch.allowedProviders; pi-web-access sẽ không nạp web tools. Thêm vào cả hai danh sách hoặc bỏ khỏi cả hai`);
+    if(outside.length)errors.push(`web-search.json: ${outside.join(', ')} có trong searchRouting.providers nhưng không có trong webSearch.allowedProviders; pi-web-access sẽ không nạp web tools. Thêm vào cả hai danh sách hoặc bỏ khỏi cả hai`);
   }
-  if(p.packages.includes('@tintinweb/pi-subagents')){
+  {
     // Role ngoài enabledModels vẫn chạy nhưng pi-subagents (scopeModels) sẽ cảnh báo.
     const enabled=new Set(s.enabledModels??[]),edited=[];
     for(const role of SUBAGENT_ROLES){
       const file=path.join(p.agentDir,'agents',role+'.md');
-      if(!fs.existsSync(file)){errors.push(`${name}: thiếu role ${role}`);continue;}
+      if(!fs.existsSync(file)){errors.push(`thiếu role ${role}`);continue;}
       const bytes=fs.readFileSync(file),text=bytes.toString('utf8');
       const model=text.match(/^model:\s*(\S+)\s*$/m)?.[1],thinking=text.match(/^thinking:\s*(\S+)\s*$/m)?.[1];
       if(state.files[file]&&sha256(bytes)!==state.files[file])edited.push(role);
-      if(!model||!thinking)errors.push(`${name}: role ${role} thiếu model hoặc thinking`);
-      else if(enabled.size&&!enabled.has(model))warnings.push(`${name}: role ${role} dùng ${model} ngoài enabledModels`);
+      if(!model||!thinking)errors.push(`role ${role} thiếu model hoặc thinking`);
+      else if(enabled.size&&!enabled.has(model))warnings.push(`role ${role} dùng ${model} ngoài enabledModels`);
     }
     if(edited.length)console.log(`  file role đã sửa so với bản cài: ${edited.join(', ')}`);
   }
   const advisorFile=path.join(p.agentDir,'advisor.json');
-  if(p.packages.includes('pi-advisor-flow')&&fs.existsSync(advisorFile)){
+  if(fs.existsSync(advisorFile)){
     const advisor=read(advisorFile),main=`${s.defaultProvider}/${s.defaultModel}`;
     const gates=[['advisorPlanGate','trước plan'],['advisorFailureGate','lỗi lặp'],['advisorCompletionGate','trước khi xong']].filter(([key])=>advisor[key]!==false).map(([,text])=>text);
     console.log(`  advisor ${advisor.alwaysOn===true?`luôn bật, gate: ${gates.join(', ')||'không (chỉ khi được gọi)'}; tối đa ${advisor.advisorMaxCallsPerSession??'∞'} lần/phiên`:'tắt'}`);
     // alwaysOn đặt model của phiên thành executor mỗi lần mở phiên.
     if(advisor.alwaysOn===true&&advisor.executor&&advisor.executor!==main)
-      warnings.push(`${name}: advisor.json bật alwaysOn với executor ${advisor.executor}; mỗi phiên sẽ chuyển từ ${main} sang model này`);
+      warnings.push(`advisor.json bật alwaysOn với executor ${advisor.executor}; mỗi phiên sẽ chuyển từ ${main} sang model này`);
   }
   const goalFile=path.join(p.agentDir,'pi-goal-x-settings.json');
-  if(p.packages.includes('pi-goal-x')&&fs.existsSync(goalFile)){
+  if(fs.existsSync(goalFile)){
     const goal=read(goalFile);
     console.log(`  goal auditor ${goal.disabled===true?'tắt':'bật'}; Oracle ${goal.oracle?.enabled===true?'bật':'tắt'}`);
   }

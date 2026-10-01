@@ -15,14 +15,14 @@ test('Pi: Opus 5.5/high 1M mặc định, Codex Sol/Astra 872K và advisor paylo
   globalThis.fetch = () => { throw new Error('Unexpected network in offline model test'); };
   try {
     const generated = buildConfiguration({root: temp, agentDir: path.join(temp, 'main'), binDir: path.join(temp, 'bin'), nodePath: process.execPath, home: temp});
-    for (const profile of ['main']) {
+    {
       const runtimeName = 'current';
       const modules = path.join(root, `runtimes/${runtimeName}/node_modules`);
       const load = (relative) => import(pathToFileURL(path.join(modules, relative)).href);
       const {ModelRuntime, SettingsManager, createAgentSession, SessionManager, DefaultResourceLoader} = await load('@earendil-works/pi-coding-agent/dist/index.js');
       const {getSupportedThinkingLevels} = await load('@earendil-works/pi-ai/dist/models.js');
       const {streamSimple} = await load('@earendil-works/pi-ai/dist/api/openai-codex-responses.js');
-      const agentDir = profile === 'main' ? path.join(temp, 'main') : path.join(temp, 'profiles', profile);
+      const agentDir = path.join(temp, 'main');
       fs.mkdirSync(agentDir, {recursive: true});
       const get = (name) => JSON.parse(generated.find(x => x.path === path.join(agentDir, name)).content);
       const settings = get('settings.json');

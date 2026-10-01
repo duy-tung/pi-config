@@ -4,31 +4,28 @@ import {fileURLToPath} from 'node:url';
 import {spawn} from 'node:child_process';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const state=JSON.parse(fs.readFileSync(path.join(root,'install-state.json'),'utf8'));
-const profiles=JSON.parse(fs.readFileSync(path.join(root,'profiles.json'),'utf8'));
 const [action='main',...args]=process.argv.slice(2);
 if(action==='doctor'){
   process.env.PI_CONFIG_ROOT=root;await import('./doctor.mjs');
 }else if(action==='test'){
   const {spawnSync}=await import('node:child_process');
   for(const script of ['profile-integration.mjs','agent-integration.mjs']){
-    const result=spawnSync(state.nodePath,[path.join(root,'tests',script),root,'main'],{stdio:'inherit',env:process.env});
+    const result=spawnSync(state.nodePath,[path.join(root,'tests',script),root],{stdio:'inherit',env:process.env});
     if(result.status!==0){process.exitCode=result.status??1;break;}
   }
 }else if(action==='models'){
   const {runModels}=await import('./models.mjs');
-  process.exitCode=await runModels({root,profiles,args});
+  process.exitCode=await runModels({root,agentDir:state.agentDir,args});
 }else{
-  const profile=profiles[action];
   // mcp-adapter: CLI của pi-mcp-adapter (vd `pi-mcp-adapter key set systemone` lưu key Jev vào keyring).
-  if(action!=='firecrawl'&&action!=='mcp-adapter'&&!profile)throw new Error('Profile không hợp lệ');
-  const runtime=profile?.runtime ?? 'current';
-  const modules=path.join(root,'runtimes',runtime,'node_modules');
+  if(!['main','firecrawl','mcp-adapter'].includes(action))throw new Error(`Lệnh không hợp lệ: ${action}`);
+  const modules=path.join(root,'runtimes','current','node_modules');
   const env={...process.env,
-    PI_CODING_AGENT_DIR:profile?.agentDir ?? state.agentDir,
+    PI_CODING_AGENT_DIR:state.agentDir,
     PI_BG_DISABLE_UPDATE_CHECK:'1',
     FIRECRAWL_NO_SEARCH_FEEDBACK:'1', FIRECRAWL_NO_ENDPOINT_FEEDBACK:'1',
   };
-  const parts=[path.dirname(state.nodePath),path.join(modules,'.bin'),path.join(root,'runtimes/current/node_modules/.bin')];
+  const parts=[path.dirname(state.nodePath),path.join(modules,'.bin')];
   if(state.shellPath){parts.push(path.dirname(state.shellPath),path.resolve(path.dirname(state.shellPath),'../cmd'));}
   const oldPath=env.PATH ?? env.Path ?? '';
   if(process.platform==='win32')for(const key of Object.keys(env))if(key.toLowerCase()==='path')delete env[key];

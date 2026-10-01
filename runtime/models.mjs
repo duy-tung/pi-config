@@ -254,7 +254,7 @@ async function list({catalog, command, provider, roles, out}) {
  * command: tên lệnh trong hướng dẫn và lỗi. catalog: catalog của phiên Pi (dạng offlineCatalog) thay cho runtime đã cài
  * ở chế độ offline. effects(vai): các dòng báo khi nào vai có giá trị hiệu lực mới (phiên Pi áp ngay phần áp được).
  */
-export async function runModels({root, profiles, args, out = console, command = 'pi-models', catalog, effects = whenApplied}) {
+export async function runModels({root, agentDir, args, out = console, command = 'pi-models', catalog, effects = whenApplied}) {
   try {
     const flags = args.filter(arg => arg.startsWith('--'));
     const [name = 'show', ...rest] = args.filter(arg => !arg.startsWith('--'));
@@ -266,23 +266,17 @@ export async function runModels({root, profiles, args, out = console, command = 
     if (!Object.hasOwn(accepted, name)) throw new Error(`không có lệnh "${name}"\n${usage(command)}`);
     for (const flag of flags) if (!accepted[name].includes(flag)) throw new Error(`${command} ${name} không nhận ${flag}`);
     const dryRun = flags.includes('--dry-run');
-    const catalogOf = profile => (profile === profiles.main && catalog) ||
-      offlineCatalog({modules: path.join(root, 'runtimes', profile.runtime, 'node_modules'), agentDir: profile.agentDir});
-    const agentDir = profiles.main.agentDir;
+    const modules = path.join(root, 'runtimes', 'current', 'node_modules');
+    const sessionCatalog = catalog ?? offlineCatalog({modules, agentDir});
     if (name === 'show') {
       if (rest.length) throw new Error(`không có lệnh "${rest[0]}"\n${usage(command)}`);
       let status = 0;
-      for (const [profileName, entry] of Object.entries(profiles)) {
-        const report = await modelRolesReport({
-          root, agentDir: entry.agentDir, modules: path.join(root, 'runtimes', entry.runtime, 'node_modules'), logins: true,
-          catalog: catalogOf(entry), command,
-        });
-        out.log(`${profileName}: ${report.lines.join('\n') || 'không đọc được cấu hình model'}`);
-        for (const warning of report.warnings) out.warn(`cảnh báo: ${warning}`);
-        for (const error of report.errors) {
-          out.error(`lỗi: ${error}`);
-          status = 1;
-        }
+      const report = await modelRolesReport({root, agentDir, modules, logins: true, catalog: sessionCatalog, command});
+      out.log(report.lines.join('\n') || 'không đọc được cấu hình model');
+      for (const warning of report.warnings) out.warn(`cảnh báo: ${warning}`);
+      for (const error of report.errors) {
+        out.error(`lỗi: ${error}`);
+        status = 1;
       }
       return status;
     }
@@ -290,9 +284,9 @@ export async function runModels({root, profiles, args, out = console, command = 
       if (rest.length > 1) throw new Error(`${command} list [provider]`);
       const current = readModelRoles(agentDir);
       const roles = current.error ? undefined : resolveModelRoles(loadPresets(path.join(root, 'assets', 'configs', 'model-presets.json')), current.config).roles;
-      return await list({catalog: catalogOf(profiles.main), command, provider: rest[0], roles, out});
+      return await list({catalog: sessionCatalog, command, provider: rest[0], roles, out});
     }
-    const context = {root, agentDir, catalog: catalogOf(profiles.main), effects, command, out, dryRun};
+    const context = {root, agentDir, catalog: sessionCatalog, effects, command, out, dryRun};
     if (name === 'preset') {
       if (rest.length !== 1) throw new Error(`${command} preset <tên>`);
       return await change({...context, edit: ({config}) => ({config: withPreset(config, rest[0]), force: changedRoles})});
