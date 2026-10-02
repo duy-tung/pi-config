@@ -22,7 +22,7 @@ GLM dùng provider `opencode-go` trực tiếp trong Pi. Opus 5.5 và GLM dùng 
 
 Parent có thể gọi `Agent` với `subagent_type` tương ứng. Mỗi prompt giao việc cần mục tiêu, phạm vi file, ràng buộc và tiêu chí nghiệm thu. Researcher chuyển quyết định kiến trúc hoặc yêu cầu chưa rõ về parent.
 
-Model/thinking ghim trong file role được ưu tiên hơn tham số tool. Model trong file role không dùng được thì pi-subagents lặng lẽ chạy role đó bằng model của parent; installer, `pi-models` và `pi-doctor` kiểm model trong catalog của Pi để bắt lỗi này. Chọn role theo công việc và kiểm model thực trong kết quả khi tùy chỉnh cấu hình.
+Model/thinking ghim trong file role được ưu tiên hơn tham số tool. Model trong file role không dùng được thì pi-subagents lặng lẽ chạy role đó bằng model của parent; installer, `/models` và `pi-doctor` kiểm model trong catalog của Pi để bắt lỗi này. Chọn role theo công việc và kiểm model thực trong kết quả khi tùy chỉnh cấu hình.
 
 `/agents` quản lý agent; `get_subagent_result` lấy kết quả; `steer_subagent` gửi bổ sung theo ID. Khi mở rộng (`Ctrl+O`), kết quả của `Agent`, thông báo completion và `get_subagent_result` hiện dạng Markdown (tiêu đề, danh sách, code, bảng); dạng thu gọn, lỗi và agent đang chạy giữ văn bản thô như trước. Đây là bản vá `src/index.ts` của pi-subagents, chỉ đổi phần hiển thị, không đổi nội dung trả cho model.
 

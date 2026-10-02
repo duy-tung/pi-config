@@ -167,7 +167,7 @@ test('/models trong phiên Pi thật: menu đổi thinking, model, preset, bỏ 
     // debugger lệch qua /agents: menu có mục đưa vai lệch về model-roles.json.
     fs.writeFileSync(f.file('agents/debugger.md'), fs.readFileSync(f.file('agents/debugger.md'), 'utf8').replace('thinking: max', 'thinking: low'));
     await menu(/^Đưa .*debugger.* về model-roles\.json$/u);
-    assert.match(confirms.at(-1), /^Ghi đè giá trị đổi ngoài model-roles\.json: debugger \(agents\/debugger\.md: openai-codex\/gpt-6-sol \(low\)\)$/mu);
+    assert.match(confirms.at(-1), /^Sẽ ghi đè giá trị đổi ngoài model-roles\.json: debugger \(agents\/debugger\.md: openai-codex\/gpt-6-sol \(low\)\)$/mu);
     assert.match(frontmatter('debugger'), /^thinking: max$/mu);
     assert.equal(fs.existsSync(path.join(f.root, '.install.lock')), false);
     assert.deepEqual(errors, []);
