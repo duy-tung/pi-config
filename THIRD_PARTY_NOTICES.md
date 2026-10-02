@@ -39,6 +39,6 @@ Git guard của pi-auto-mode (`lib/git-guard.ts`) chuyển từ `hooks/guard_git
 
 ## Màu giao diện
 
-Ba theme Pi và extension đồng bộ màu terminal là cấu hình local dựa trên bảng màu [Rosé Pine](https://rosepinetheme.com/palette/). Nguồn tham khảo về màu và độ tương phản gồm [zed-rose-pine-recast](https://github.com/ng-hai/zed-rose-pine-recast), [rose-pine-blinksh](https://github.com/ng-hai/rose-pine-blinksh), [hyper-rose-pine-next](https://github.com/ng-hai/hyper-rose-pine-next), [rose-pine-doom-emacs](https://github.com/tamnd/rose-pine-doom-emacs) và [typora](https://github.com/tamnd/typora). Các ứng dụng/theme repository đó không được đóng gói trong installer.
+Theme Pi và extension đồng bộ màu terminal là cấu hình local dựa trên bảng màu [Rosé Pine](https://rosepinetheme.com/palette/). Nguồn tham khảo về màu và độ tương phản gồm [zed-rose-pine-recast](https://github.com/ng-hai/zed-rose-pine-recast), [rose-pine-blinksh](https://github.com/ng-hai/rose-pine-blinksh), [hyper-rose-pine-next](https://github.com/ng-hai/hyper-rose-pine-next), [rose-pine-doom-emacs](https://github.com/tamnd/rose-pine-doom-emacs) và [typora](https://github.com/tamnd/typora). Các ứng dụng/theme repository đó không được đóng gói trong installer.
 
 Các JSON theme, extension palette, role prompt, AGENTS và mã installer tự xây dựng thuộc giấy phép [MIT của pi-config](LICENSE). Chúng không sao chép implementation theme từ các repository tham khảo.

@@ -69,8 +69,7 @@ function managedJson(file,content,mode=0o600,force){
   if(state.files[file]!==result.recorded){state.files[file]=result.recorded;writeJson(statePath,state);}
 }
 /**
- * Model/thinking của mọi vai từ <agent-dir>/model-roles.json (chưa có thì preset mặc định). Bản cài trước khi có
- * file này: model/thinking người dùng đã sửa trong agents/*.md được chuyển thành ghi đè. --models chọn preset (ghi vào
+ * Model/thinking của mọi vai từ <agent-dir>/model-roles.json (chưa có thì preset mặc định). --models chọn preset (ghi vào
  * file); vai mà preset mới đổi được ép trong file gốc như pi-models preset. Lỗi thì dừng trước khi ghi.
  */
 function modelRolesPlan(){
@@ -184,7 +183,7 @@ try{
   for(const filename of fs.readdirSync(path.join(repoDir,'runtime'))){
     const source=path.join(repoDir,'runtime',filename);if(fs.statSync(source).isFile())managed(path.join(root,'bin',filename),fs.readFileSync(source));
   }
-  for(const filename of ['profile-integration.mjs','agent-integration.mjs','scripted-provider.ts','agent-provider.ts','search-fixtures.mjs'])
+  for(const filename of ['config-integration.mjs','agent-integration.mjs','scripted-provider.ts','agent-provider.ts','search-fixtures.mjs'])
     managed(path.join(root,'tests',filename),fs.readFileSync(path.join(repoDir,'tests',filename)));
   // Model sai tên thì pi-subagents lặng lẽ dùng model của parent: kiểm trong catalog của runtime trước khi ghi cấu hình.
   const catalog=await checkCatalog({modules:path.join(root,'runtimes','current','node_modules'),agentDir,roles:models.roles});

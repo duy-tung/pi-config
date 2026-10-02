@@ -52,7 +52,7 @@ assert.equal(missing.status,1,missing.stdout+missing.stderr);
 assert.match(missing.stderr,/^current\/pi-goal-x: chưa cài \(thiếu /mu);
 assert.doesNotMatch(missing.stderr,/ENOENT|at file:/u);
 await run(process.execPath,['--test',...['patches','extensions-typecheck','models','glm-wire','native-search-wire','claude-effort-wire','rewind-session','subagent-markdown','patched-typecheck','model-roles','model-commands','models-command'].map(name=>path.join(repo,`tests/${name}.test.mjs`))],{env:{...process.env,PI_CONFIG_TEST_ROOT:root}});
-await run(process.execPath,[path.join(repo,'tests/profile-integration.mjs'),root]);
+await run(process.execPath,[path.join(repo,'tests/config-integration.mjs'),root]);
 await run(process.execPath,[path.join(repo,'tests/agent-integration.mjs'),root]);
 // Cài lại gộp ba chiều file JSON cấu hình: base là mặc định lần cài trước, lưu riêng trong <root>/state/defaults.
 const defaultsOf=file=>path.join(root,'state','defaults',`${sha256(file).slice(0,24)}${path.extname(file)}`);

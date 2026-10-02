@@ -1,6 +1,6 @@
 # Rewind
 
-`pi-rewind` là extension riêng của pi-config (`assets/extensions/pi-rewind`), thay cho `pi-workspace-history`. Giao diện và hành vi theo `/rewind` của Claude Code: mỗi prompt có một checkpoint, chọn prompt để khôi phục code, hội thoại hoặc cả hai.
+`pi-rewind` là extension riêng của pi-config (`assets/extensions/pi-rewind`). Giao diện và hành vi theo `/rewind` của Claude Code: mỗi prompt có một checkpoint, chọn prompt để khôi phục code, hội thoại hoặc cả hai.
 
 ## Dùng
 
@@ -40,22 +40,3 @@ File có tên nhạy cảm bị loại kể cả khi đã track trong Git hoặc
 ## Cấu hình
 
 Khối `rewind` trong `settings.json` của agent: `enabled`, `storageDir`, `retentionDays`, `maxFileBytes`, `maxStorageBytes`, `watchTools`, `watchSlowMs`, `watchMaxDirty`, `watchMaxBytes`, `doubleEscape`. `PI_REWIND_DISABLE=1` tắt trong một lần chạy. Settings của project không đổi được các giá trị này.
-
-## Nguồn tham khảo và so sánh
-
-Bố cục, nhãn và thông báo lấy theo Claude Code 2.1.x (component Rewind trong bản cài `claude`). Trước khi viết đã khảo sát khoảng 60 package npm và 40 repo GitHub cùng loại cho Pi, bản thử `pi-tree-rewind` và ví dụ `git-checkpoint.ts` của Pi. Các lỗi lặp lại ở hệ sinh thái mà pi-rewind tránh:
-
-| Lỗi thường gặp | pi-rewind |
-|---|---|
-| Gắn checkpoint vào entry trước prompt (user entry chỉ có sau `message_end`) | Chụp ở `message_end` của user, ghi khi user entry đã tồn tại, khớp theo `timestamp` |
-| Rewind hội thoại mất sau khi mở lại phiên (`navigateTree` không tóm tắt chỉ đổi leaf trong bộ nhớ) | Luôn ghi entry `pi-rewind` sau khi điều hướng |
-| Khôi phục file rồi điều hướng lỗi, để lại trạng thái nửa vời | Hoàn tác file nếu hội thoại không đổi |
-| "Chỉ code" qua `/fork` với `skipConversationRestore` (Pi không đọc trường này) | Không dùng fork; code và hội thoại tách biệt |
-| Esc Esc bắt byte thô, bị sự kiện nhả phím của kitty protocol kích hoạt, không biết focus | Lọc nhả/lặp phím, chỉ tính khi editor chính giữ focus, trống và agent rảnh |
-| Ghi vào `.git` của người dùng hoặc kho không giới hạn | Chỉ đọc git (`--no-optional-locks`); kho riêng theo SHA-256, dọn theo hạn và giới hạn dung lượng |
-
-Redo trong menu, `/clear` kèm Resume previous session và khôi phục sau khi Pi thoát giữa chừng lấy ý tưởng từ `pi-simple-rewind` 0.7.0 (bản riêng, chưa phát hành), viết lại cho pi-rewind.
-
-Chưa làm (có thể bổ sung):
-- snapshot toàn bộ worktree bằng shadow git như `pi-tree-rewind` cho file bị ignore hoặc ngoài git;
-- mang checkpoint sang phiên tạo bằng `/fork`, hỏi khôi phục code khi điều hướng bằng `/tree`.

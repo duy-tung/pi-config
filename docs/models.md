@@ -160,10 +160,6 @@ Installer gộp file `agents/*.md` theo từng khóa của frontmatter. Phần p
 - Sửa dòng `model`, `thinking` hay `tools` không còn làm installer giữ nguyên cả file. Prompt mới của bản phát hành vẫn được cập nhật.
 - Nếu bạn sửa phần prompt và bản mới cũng đổi phần đó, installer giữ bản của bạn và báo lại. Muốn nhận prompt mới: đổi tên file rồi cài lại.
 
-## Nâng cấp từ bản cài trước
-
-Giá trị bạn đã đổi trong `settings.json`, `advisor.json` và `pi-goal-x-settings.json` được giữ theo cách gộp ở trên.
-
 ## Giới hạn
 
 - Role của project (`.pi/agents/*.md`) và `.pi/settings.json` của project không theo `model-roles.json`.

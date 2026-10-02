@@ -4,9 +4,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 // This zero-height widget synchronizes only this Pi terminal session, including
 // theme previews, and restores the terminal's configured defaults on exit/reload.
 const palettes: Record<string, [string, string, string]> = {
-	"rose-pine": ["#e0def4", "#191724", "#ebbcba"],
 	"rose-pine-moon": ["#e0def4", "#232136", "#ea9a97"],
-	"rose-pine-dawn": ["#575279", "#faf4ed", "#b4637a"],
 };
 const reset = "\x1b]110\x07\x1b]111\x07\x1b]112\x07";
 

@@ -74,7 +74,7 @@ Permission (`pi-auto-mode`, extension của repo) có hai mode như Claude Code.
 
 **Git guard** chặn tất định (không qua bộ phân loại, ở cả hai mode, cả agent con và goal auditor): force-push (trừ `--force-with-lease`), push thẳng lên nhánh bảo vệ (`main`, `master`, `release/*`…), `reset --hard`, `clean -f`, `branch -D`, bỏ qua hook (`--no-verify`, `HUSKY=0`…), viết lại lịch sử và `rm -r` trên `/`, `~`, `.`, `.git`. Cần thật thì bạn tự chạy bằng `!<lệnh>` trong editor. Cấu hình: [docs/auto-mode.md](docs/auto-mode.md#git-guard).
 
-Opus 5.5 và GLM dùng context **1M** của catalog; Astra/Sol nâng lên **872K**. Theme mặc định Rosé Pine Moon, có thêm Rosé Pine và Dawn.
+Opus 5.5 và GLM dùng context **1M** của catalog; Astra/Sol nâng lên **872K**. Theme Rosé Pine Moon.
 
 ## Agent
 
@@ -155,7 +155,7 @@ Khi chạy lại, installer dùng lockfile và checksum để kiểm tính nhấ
 
 File JSON cấu hình trong agent directory và `<root>/config`, kể cả `settings.json` mà Pi ghi lại khi đổi model hay thinking, được gộp ba chiều với mặc định của lần cài trước (lưu ở `<root>/state/defaults`):
 - Giá trị bạn chưa đổi nhận mặc định mới; giá trị bạn đã đổi được giữ. Nếu mặc định mới cũng đổi chính giá trị đó, installer giữ của bạn và báo xung đột kèm mặc định mới.
-- Danh sách của `settings.json` (`permissions.allow/ask/deny`, `enabledModels`, `skills`, `themes`, `prompts`, `extensions`, `packages`) gộp theo từng mục: mục bạn thêm hoặc bỏ và loại trừ extension `-` được giữ, mục mặc định mới được thêm, `pi-auto-mode` luôn nạp sau cùng; luật deny của pi-permission-system cũ được chuyển sang.
+- Danh sách của `settings.json` (`permissions.allow/ask/deny`, `enabledModels`, `skills`, `themes`, `prompts`, `extensions`, `packages`) gộp theo từng mục: mục bạn thêm hoặc bỏ và loại trừ extension `-` được giữ, mục mặc định mới được thêm, `pi-auto-mode` luôn nạp sau cùng.
 - Bản cài chưa lưu mặc định (trước khi có cơ chế này): file chưa sửa nhận mặc định mới như trước; file đã sửa lần đầu chỉ được thêm khóa và mục còn thiếu, mọi giá trị hiện có được giữ và giá trị khác mặc định mới được báo.
 - File role `agents/*.md` cũng được gộp: mỗi khóa frontmatter (`model`, `thinking`, `tools`...) là một giá trị, phần prompt là một giá trị. Sửa một dòng không làm file đứng yên; prompt mới vẫn vào được.
 - Installer in phần đã gộp và từng xung đột, backup file trước khi ghi lại; lần chạy không có gì mới thì không ghi gì.

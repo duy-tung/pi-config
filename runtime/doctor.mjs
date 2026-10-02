@@ -32,57 +32,53 @@ for(const patch of read(path.join(root,'patches/manifest.json'))){
 // Key Jev cho auto mode: biến môi trường như pi-auto-mode; chỉ báo nguồn, không in key.
 const jevVariable=['SYSTEMONE_API_KEY','TYPESAFE_API_KEY'].find((name)=>process.env[name]?.trim());
 const jevKey=jevVariable?`key từ ${jevVariable}`:'chưa có key: đặt TYPESAFE_API_KEY';
-{
-  const p={agentDir:state.agentDir,runtime:'current'};
-  const s=read(path.join(p.agentDir,'settings.json'));
-  // Model/thinking của mọi vai theo model-roles.json, giá trị đang có hiệu lực khi khác, và kiểm catalog của Pi.
-  const models=await modelRolesReport({root,agentDir:p.agentDir,modules:path.join(root,'runtimes',p.runtime,'node_modules')});
-  console.log(models.lines.join('\n') || 'không đọc được cấu hình model');
-  errors.push(...models.errors);warnings.push(...models.warnings);
-  for(const pkg of s.packages)if(!fs.existsSync(typeof pkg==='string'?pkg:pkg.source))errors.push(`Thiếu package: ${typeof pkg==='string'?pkg:pkg.source}`);
-  for(const entry of s.extensions??[])if(typeof entry==='string'&&!entry.startsWith('-')&&path.isAbsolute(entry)&&!fs.existsSync(entry))errors.push(`Thiếu extension: ${entry}`);
-  const webSearch=path.join(p.agentDir,'web-search.json');
-  if(fs.existsSync(webSearch)){
-    const config=read(webSearch),providers=config.searchRouting?.providers,allowed=config.webSearch?.allowedProviders;
-    if(Array.isArray(providers)&&!providers.includes('anthropic'))
-      warnings.push(`web-search.json thiếu "anthropic" trong searchRouting.providers và webSearch.allowedProviders; phiên Claude sẽ tìm bằng provider kế tiếp`);
-    // pi-web-access không nạp (mất mọi web tool) khi searchRouting.providers có provider ngoài webSearch.allowedProviders.
-    const outside=Array.isArray(providers)&&Array.isArray(allowed)?providers.filter(item=>!allowed.includes(item)):[];
-    if(outside.length)errors.push(`web-search.json: ${outside.join(', ')} có trong searchRouting.providers nhưng không có trong webSearch.allowedProviders; pi-web-access sẽ không nạp web tools. Thêm vào cả hai danh sách hoặc bỏ khỏi cả hai`);
-  }
-  {
-    // Role ngoài enabledModels vẫn chạy nhưng pi-subagents (scopeModels) sẽ cảnh báo.
-    const enabled=new Set(s.enabledModels??[]),edited=[];
-    for(const role of SUBAGENT_ROLES){
-      const file=path.join(p.agentDir,'agents',role+'.md');
-      if(!fs.existsSync(file)){errors.push(`thiếu role ${role}`);continue;}
-      const bytes=fs.readFileSync(file),text=bytes.toString('utf8');
-      const model=text.match(/^model:\s*(\S+)\s*$/m)?.[1],thinking=text.match(/^thinking:\s*(\S+)\s*$/m)?.[1];
-      if(state.files[file]&&sha256(bytes)!==state.files[file])edited.push(role);
-      if(!model||!thinking)errors.push(`role ${role} thiếu model hoặc thinking`);
-      else if(enabled.size&&!enabled.has(model))warnings.push(`role ${role} dùng ${model} ngoài enabledModels`);
-    }
-    if(edited.length)console.log(`  file role đã sửa so với bản cài: ${edited.join(', ')}`);
-  }
-  const advisorFile=path.join(p.agentDir,'advisor.json');
-  if(fs.existsSync(advisorFile)){
-    const advisor=read(advisorFile),main=`${s.defaultProvider}/${s.defaultModel}`;
-    const gates=[['advisorPlanGate','trước plan'],['advisorFailureGate','lỗi lặp'],['advisorCompletionGate','trước khi xong']].filter(([key])=>advisor[key]!==false).map(([,text])=>text);
-    console.log(`  advisor ${advisor.alwaysOn===true?`luôn bật, gate: ${gates.join(', ')||'không (chỉ khi được gọi)'}; tối đa ${advisor.advisorMaxCallsPerSession??'∞'} lần/phiên`:'tắt'}`);
-    // alwaysOn đặt model của phiên thành executor mỗi lần mở phiên.
-    if(advisor.alwaysOn===true&&advisor.executor&&advisor.executor!==main)
-      warnings.push(`advisor.json bật alwaysOn với executor ${advisor.executor}; mỗi phiên sẽ chuyển từ ${main} sang model này`);
-  }
-  const goalFile=path.join(p.agentDir,'pi-goal-x-settings.json');
-  if(fs.existsSync(goalFile)){
-    const goal=read(goalFile);
-    console.log(`  goal auditor ${goal.disabled===true?'tắt':'bật'}; Oracle ${goal.oracle?.enabled===true?'bật':'tắt'}`);
-  }
-  const auto=s.autoMode??{},jev=auto.jev===false||auto.jev?.enabled===false?undefined:auto.jev??{};
-  console.log(`  auto mode: bước 1 ${jev?`Jev ${jev.model??'jev-1.13.0'} (${jevKey})`:'LLM của vai autoMode (Jev tắt)'}; bước 2 LLM của vai autoMode`);
+const s=read(path.join(state.agentDir,'settings.json'));
+// Model/thinking của mọi vai theo model-roles.json, giá trị đang có hiệu lực khi khác, và kiểm catalog của Pi.
+const models=await modelRolesReport({root,agentDir:state.agentDir,modules:path.join(root,'runtimes','current','node_modules')});
+console.log(models.lines.join('\n') || 'không đọc được cấu hình model');
+errors.push(...models.errors);warnings.push(...models.warnings);
+for(const pkg of s.packages)if(!fs.existsSync(typeof pkg==='string'?pkg:pkg.source))errors.push(`Thiếu package: ${typeof pkg==='string'?pkg:pkg.source}`);
+for(const entry of s.extensions??[])if(typeof entry==='string'&&!entry.startsWith('-')&&path.isAbsolute(entry)&&!fs.existsSync(entry))errors.push(`Thiếu extension: ${entry}`);
+const webSearch=path.join(state.agentDir,'web-search.json');
+if(fs.existsSync(webSearch)){
+  const config=read(webSearch),providers=config.searchRouting?.providers,allowed=config.webSearch?.allowedProviders;
+  if(Array.isArray(providers)&&!providers.includes('anthropic'))
+    warnings.push(`web-search.json thiếu "anthropic" trong searchRouting.providers và webSearch.allowedProviders; phiên Claude sẽ tìm bằng provider kế tiếp`);
+  // pi-web-access không nạp (mất mọi web tool) khi searchRouting.providers có provider ngoài webSearch.allowedProviders.
+  const outside=Array.isArray(providers)&&Array.isArray(allowed)?providers.filter(item=>!allowed.includes(item)):[];
+  if(outside.length)errors.push(`web-search.json: ${outside.join(', ')} có trong searchRouting.providers nhưng không có trong webSearch.allowedProviders; pi-web-access sẽ không nạp web tools. Thêm vào cả hai danh sách hoặc bỏ khỏi cả hai`);
 }
-for(const source of Object.keys(state.sources))if(!fs.existsSync(path.join(root,'sources',source)))errors.push(`Thiếu skills source: ${source}`);
-console.log('Một cấu hình Pi; đăng nhập bằng /login trong pi. Không kiểm tra token bằng mạng.');
+{
+  // Role ngoài enabledModels vẫn chạy nhưng pi-subagents (scopeModels) sẽ cảnh báo.
+  const enabled=new Set(s.enabledModels??[]),edited=[];
+  for(const role of SUBAGENT_ROLES){
+    const file=path.join(state.agentDir,'agents',role+'.md');
+    if(!fs.existsSync(file)){errors.push(`thiếu role ${role}`);continue;}
+    const bytes=fs.readFileSync(file),text=bytes.toString('utf8');
+    const model=text.match(/^model:\s*(\S+)\s*$/m)?.[1],thinking=text.match(/^thinking:\s*(\S+)\s*$/m)?.[1];
+    if(state.files[file]&&sha256(bytes)!==state.files[file])edited.push(role);
+    if(!model||!thinking)errors.push(`role ${role} thiếu model hoặc thinking`);
+    else if(enabled.size&&!enabled.has(model))warnings.push(`role ${role} dùng ${model} ngoài enabledModels`);
+  }
+  if(edited.length)console.log(`  file role đã sửa so với bản cài: ${edited.join(', ')}`);
+}
+const advisorFile=path.join(state.agentDir,'advisor.json');
+if(fs.existsSync(advisorFile)){
+  const advisor=read(advisorFile),main=`${s.defaultProvider}/${s.defaultModel}`;
+  const gates=[['advisorPlanGate','trước plan'],['advisorFailureGate','lỗi lặp'],['advisorCompletionGate','trước khi xong']].filter(([key])=>advisor[key]!==false).map(([,text])=>text);
+  console.log(`  advisor ${advisor.alwaysOn===true?`luôn bật, gate: ${gates.join(', ')||'không (chỉ khi được gọi)'}; tối đa ${advisor.advisorMaxCallsPerSession??'∞'} lần/phiên`:'tắt'}`);
+  // alwaysOn đặt model của phiên thành executor mỗi lần mở phiên.
+  if(advisor.alwaysOn===true&&advisor.executor&&advisor.executor!==main)
+    warnings.push(`advisor.json bật alwaysOn với executor ${advisor.executor}; mỗi phiên sẽ chuyển từ ${main} sang model này`);
+}
+const goalFile=path.join(state.agentDir,'pi-goal-x-settings.json');
+if(fs.existsSync(goalFile)){
+  const goal=read(goalFile);
+  console.log(`  goal auditor ${goal.disabled===true?'tắt':'bật'}; Oracle ${goal.oracle?.enabled===true?'bật':'tắt'}`);
+}
+const auto=s.autoMode??{},jev=auto.jev===false||auto.jev?.enabled===false?undefined:auto.jev??{};
+console.log(`  auto mode: bước 1 ${jev?`Jev ${jev.model??'jev-1.13.0'} (${jevKey})`:'LLM của vai autoMode (Jev tắt)'}; bước 2 LLM của vai autoMode`);for(const source of Object.keys(state.sources))if(!fs.existsSync(path.join(root,'sources',source)))errors.push(`Thiếu skills source: ${source}`);
+console.log('Đăng nhập bằng /login trong pi. Không kiểm tra token bằng mạng.');
 if(process.platform==='win32' && state.shellPath&&!fs.existsSync(state.shellPath))errors.push('Không tìm thấy Git Bash đã cấu hình');
 if(warnings.length)console.warn(warnings.join('\n'));
 if(errors.length){console.error(errors.join('\n'));process.exitCode=1;}else console.log('Pi-config: OK (kiểm tra cục bộ, không gọi API tính phí).');
