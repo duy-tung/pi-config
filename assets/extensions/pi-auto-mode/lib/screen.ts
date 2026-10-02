@@ -2,8 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { type Answer, JEV_TUNING, type JsonValue, type NoulQuestion, type Question, redactJson, type ScoreQuestion } from "./jev.ts";
 import { isInside } from "./paths.ts";
-import { analyzeShell, commandName } from "./shell.ts";
-import { clip } from "./transcript.ts";
+import { commandName, type SimpleCommand } from "./shell.ts";
+import { READ_TOOLS, SHELL_TOOLS, WRITE_TOOLS } from "./tools.ts";
+import { clip, editChanges, editList, str } from "./transcript.ts";
 
 /**
  * Giai đoạn 1 bằng Jev (System One): mỗi hành động là một state nhỏ (môi trường + đúng hành động đó) và một
@@ -181,12 +182,9 @@ export function screenQuestions(): Record<string, Question> {
 // State
 // ---------------------------------------------------------------------------
 
-const SHELL_TOOLS = new Set(["bash", "bg_run", "powershell"]);
-const FILE_TOOLS = new Set(["read", "grep", "find", "ls", "write", "edit"]);
-
 /** Hành động Jev chấm được. Agent, SubagentWorkflow và tool lạ đi thẳng tới bộ phân loại LLM. */
 export function screenable(toolName: string): boolean {
-  return SHELL_TOOLS.has(toolName) || FILE_TOOLS.has(toolName) || toolName === "fetch_content" || toolName.startsWith("mcp__");
+  return SHELL_TOOLS.has(toolName) || READ_TOOLS.has(toolName) || WRITE_TOOLS.has(toolName) || toolName === "fetch_content" || toolName.startsWith("mcp__");
 }
 
 export interface ScreenEnvironment {
@@ -210,8 +208,6 @@ export interface ScreenAction {
   packageScripts?: { name: string; command: string }[];
 }
 
-const str = (value: unknown) => (typeof value === "string" ? value : value === undefined ? "" : JSON.stringify(value) ?? "");
-
 function actionJson(action: ScreenAction): Record<string, JsonValue> {
   const { toolName, input } = action;
   const result: Record<string, JsonValue> = { tool: toolName.startsWith("mcp__") ? "mcp" : toolName };
@@ -223,11 +219,7 @@ function actionJson(action: ScreenAction): Record<string, JsonValue> {
     result.content = clip(str(input.content), 3_000);
   } else if (toolName === "edit") {
     result.path = str(input.path);
-    const edits = Array.isArray(input.edits) ? input.edits : [];
-    result.changes = edits.slice(0, 8).map((edit) => {
-      const item = (edit ?? {}) as { oldText?: unknown; newText?: unknown };
-      return { removes: clip(str(item.oldText), 400), adds: clip(str(item.newText), 1_200) };
-    });
+    result.changes = editChanges(editList(input).slice(0, 8), 1_200);
   } else if (toolName.startsWith("mcp__")) {
     // Tool MCP dựng sẵn của Pi: tên mcp__<server>__<tool>, tham số là cả input.
     const [, server, ...name] = toolName.split("__");
@@ -278,14 +270,8 @@ export function readScript(file: string): string | undefined {
  * File mà lệnh chạy: `python3 x.py`, `node x.js`, `bash x.sh`, `./x.sh`. Lấy nội dung hiện tại (chỉ trong `roots`)
  * để Jev chấm đúng thứ sẽ chạy, như Claude Code chấm payload agent vừa ghi.
  */
-export function executedScripts(command: string, cwd: string, roots: string[]): { path: string; content: string }[] {
+export function executedScripts(commands: SimpleCommand[], cwd: string, roots: string[]): { path: string; content: string }[] {
   const found = new Map<string, string>();
-  let commands;
-  try {
-    commands = analyzeShell(command).commands;
-  } catch {
-    return [];
-  }
   for (const item of commands) {
     const name = commandName(item);
     let target: string | undefined;
@@ -312,15 +298,9 @@ function readPackageScripts(cwd: string): Record<string, unknown> {
 }
 
 /** `npm run build`, `npm test`, `pnpm lint`, `yarn dev` → lệnh trong package.json của thư mục làm việc. */
-export function packageScripts(command: string, cwd: string): { name: string; command: string }[] {
+export function packageScripts(commands: SimpleCommand[], cwd: string): { name: string; command: string }[] {
   let scripts: Record<string, unknown> | undefined;
   const result: { name: string; command: string }[] = [];
-  let commands;
-  try {
-    commands = analyzeShell(command).commands;
-  } catch {
-    return [];
-  }
   for (const item of commands) {
     if (!RUNNERS.has(commandName(item))) continue;
     const words = item.words.slice(1).filter((word) => !word.startsWith("-"));
@@ -342,14 +322,8 @@ export function packageScripts(command: string, cwd: string): { name: string; co
  * Jev thật: có ghi chú này thì xác suất "chạy code tải về" giảm từ khoảng 0,9 xuống khoảng 0,15; package chưa cài hoặc
  * có ghim phiên bản (`pkg@1.2`) thì không ghi chú, nên vẫn bị gắn cờ.
  */
-export function localPackageFacts(command: string, cwd: string): string[] {
+export function localPackageFacts(commands: SimpleCommand[], cwd: string): string[] {
   const facts: string[] = [];
-  let commands;
-  try {
-    commands = analyzeShell(command).commands;
-  } catch {
-    return facts;
-  }
   for (const item of commands) {
     const name = commandName(item);
     if (name !== "npx" && name !== "bunx") continue;

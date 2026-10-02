@@ -13,14 +13,10 @@ const NETWORK_PROGRAMS = new Set(["curl", "wget", "http", "https", "xh", "aria2c
 const GH_READS = new Set(["api", "issue", "pr", "release", "gist", "search", "run", "discussion"]);
 
 function readsNetwork(command: string): boolean {
-  try {
-    return analyzeShell(command).commands.some((item) => {
-      const name = commandName(item);
-      return NETWORK_PROGRAMS.has(name) || (name === "gh" && GH_READS.has(item.words[1] ?? ""));
-    });
-  } catch {
-    return false;
-  }
+  return analyzeShell(command).commands.some((item) => {
+    const name = commandName(item);
+    return NETWORK_PROGRAMS.has(name) || (name === "gh" && GH_READS.has(item.words[1] ?? ""));
+  });
 }
 
 export function shouldProbe(toolName: string, input: Record<string, unknown>): boolean {
@@ -30,10 +26,6 @@ export function shouldProbe(toolName: string, input: Record<string, unknown>): b
   return false;
 }
 
-export function resultText(content: unknown): string {
-  if (!Array.isArray(content)) return "";
-  return content.map((part) => (part && typeof part === "object" && (part as { type?: string }).type === "text" ? String((part as { text?: unknown }).text ?? "") : "")).filter(Boolean).join("\n");
-}
 
 const CHUNK = 3_000;
 const MAX_CHUNKS = 8;

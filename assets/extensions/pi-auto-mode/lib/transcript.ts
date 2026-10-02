@@ -49,19 +49,30 @@ export function clip(text: string, limit: number): string {
   return `${text.slice(0, head)} …[${text.length - limit} chars omitted]… ${text.slice(text.length - tail)}`;
 }
 
-function textOf(content: unknown): string {
+/** Văn bản của tin nhắn hoặc kết quả tool (chuỗi hoặc mảng phần); phần ảnh thay bằng `image` (mặc định bỏ). */
+export function textOf(content: unknown, image = ""): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content.map((part) => {
     if (!part || typeof part !== "object") return "";
-    const item = part as { type?: string; text?: string };
+    const item = part as { type?: string; text?: unknown };
     if (item.type === "text" && typeof item.text === "string") return item.text;
-    if (item.type === "image") return "[image]";
-    return "";
+    return item.type === "image" ? image : "";
   }).filter(Boolean).join("\n");
 }
 
-const str = (value: unknown) => (typeof value === "string" ? value : value === undefined ? "" : JSON.stringify(value));
+export const str = (value: unknown) => (typeof value === "string" ? value : value === undefined ? "" : JSON.stringify(value) ?? "");
+
+/** Danh sách sửa của tool edit. */
+export const editList = (input: Record<string, unknown>): unknown[] => (Array.isArray(input.edits) ? input.edits : []);
+
+/** Từng sửa của tool edit: phần bị thay cắt ở share/3 ký tự, phần thêm ở share ký tự. */
+export function editChanges(edits: unknown[], share: number): { removes: string; adds: string }[] {
+  return edits.map((edit) => {
+    const item = (edit ?? {}) as { oldText?: unknown; newText?: unknown };
+    return { removes: clip(str(item.oldText), Math.floor(share / 3)), adds: clip(str(item.newText), share) };
+  });
+}
 
 /** Dạng rút gọn của input tool cho bộ phân loại. `limit` áp cho phần nội dung dài. */
 export function serializeInput(toolName: string, input: Record<string, unknown>, limit: number): unknown {
@@ -73,15 +84,8 @@ export function serializeInput(toolName: string, input: Record<string, unknown>,
     case "write":
       return `${str(input.path)}: ${clip(str(input.content), limit)}`;
     case "edit": {
-      const edits = Array.isArray(input.edits) ? input.edits : [];
-      const share = Math.max(200, Math.floor(limit / Math.max(1, edits.length)));
-      return {
-        path: str(input.path),
-        edits: edits.map((edit) => {
-          const item = (edit ?? {}) as { oldText?: unknown; newText?: unknown };
-          return { removes: clip(str(item.oldText), Math.floor(share / 3)), adds: clip(str(item.newText), share) };
-        }),
-      };
+      const edits = editList(input);
+      return { path: str(input.path), edits: editChanges(edits, Math.max(200, Math.floor(limit / Math.max(1, edits.length)))) };
     }
     case "Agent":
       return `(${str(input.subagent_type) || "agent"}${input.isolated === true ? ", isolated" : ""}): ${clip(str(input.prompt), limit)}`;
@@ -135,7 +139,7 @@ export function humanMessages(entries: SessionEntryLike[], limit = 12_000): stri
     const message = entries[index].message;
     if (entries[index].type !== "message" || message?.role !== "user") continue;
     if (typeof message.timestamp === "number" && relayed.has(message.timestamp)) continue;
-    const text = clip(textOf(message.content), 3_000);
+    const text = clip(textOf(message.content, "[image]"), 3_000);
     if (!text.trim()) continue;
     if (used + text.length > limit) break;
     used += text.length;
@@ -164,7 +168,7 @@ export function buildTranscript(entries: SessionEntryLike[], options: Transcript
     if (entry.type !== "message" || !entry.message) continue;
     const message = entry.message;
     if (message.role === "user") {
-      const text = clip(textOf(message.content), 6_000);
+      const text = clip(textOf(message.content, "[image]"), 6_000);
       if (!text.trim()) continue;
       // Trong subagent, mọi tin nhắn "user" đều do agent cha viết (nhiệm vụ, steer_subagent).
       let key = "user";

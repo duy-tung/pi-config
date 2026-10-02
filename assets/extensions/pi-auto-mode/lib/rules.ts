@@ -1,6 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import { realPath } from "./paths.ts";
+import { READ_TOOLS, SHELL_TOOLS, WRITE_TOOLS } from "./tools.ts";
 
 /**
  * Luật permission theo cú pháp Claude Code: `Tool` hoặc `Tool(specifier)`.
@@ -15,8 +16,6 @@ export interface Rule {
   spec?: string;
   negate: boolean;
 }
-
-export type RuleKind = "allow" | "ask" | "deny";
 
 export interface RuleSet {
   allow: Rule[];
@@ -38,10 +37,6 @@ export function parseRule(raw: string): Rule | undefined {
   if (!match) return undefined;
   return { raw, tool: match[1], spec: match[2]?.trim() || undefined, negate };
 }
-
-const READ_TOOLS = new Set(["read", "grep", "find", "ls"]);
-const WRITE_TOOLS = new Set(["edit", "write"]);
-const SHELL_TOOLS = new Set(["bash", "bg_run", "powershell"]);
 
 /** Luật có áp dụng cho tool này không (tên Claude Code được ánh xạ sang tool Pi). */
 export function ruleAppliesTo(rule: Rule, toolName: string): boolean {
