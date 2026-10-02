@@ -2,8 +2,8 @@
 
 ## Reading the numbers
 
-- `/context-budget` estimates tokens as characters divided by 4. Use it to compare parts, and before with after; it is not a bill.
-- Every part it lists loads on every request. Skill bodies, user-invoked skills (`disable-model-invocation: true`) cost nothing until used, and an MCP server is lazy and sits behind the one `mcp` proxy tool unless it sets `directTools`.
+- Estimates use characters divided by 4. Use them to compare parts, and before with after; they are not a bill.
+- Every always-on part loads on every request. Skill bodies, user-invoked skills (`disable-model-invocation: true`) cost nothing until used, and an MCP server is lazy and sits behind the one `mcp` proxy tool unless it sets `directTools`.
 - Pricing is arithmetic, not a probe: a change saves the rows it removes. The re-measure in step 4 confirms it.
 
 ## Levers

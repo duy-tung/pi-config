@@ -12,18 +12,19 @@ Read [CHECKLIST.md](CHECKLIST.md) before step 2. It holds the levers, the line t
 
 ## 1. Measure
 
-- Ask the user to run `/context-budget`, or use its report if it is already in the conversation: the report lands in the conversation as a message you can read, without starting a turn. The pi-config command prints the always-on parts by size: the base prompt, each AGENTS.md file, the skill list by folder, and the active tool definitions by extension, with a total.
+- Ask the user for the context figure in Pi's footer on a fresh session (after `/new`, before the first prompt): that is the always-on total.
+- Estimate the parts yourself as characters divided by 4: each AGENTS.md file in scope, the name and description of every model-invoked skill in the folders `settings.json` lists, and the tools each extension and MCP server adds.
 - Note the baseline total, each part and the five largest items.
 
 ## 2. Settings
 
-Read `~/.pi/agent/settings.json` (its `packages`, `extensions` and `skills` entries), the project's `.pi/settings.json` when present, the MCP configs (`~/.pi/agent/mcp-adapter.json`, `.mcp.json`, `.pi/mcp-adapter.json`, `~/.config/mcp/mcp.json`) and the role files in `~/.pi/agent/agents/`. Build the candidates from CHECKLIST.md "Levers", skipping anything already off. Price each one by the `/context-budget` rows it removes; an item the output does not list on its own (one skill in a folder, one tool) costs its characters divided by 4, the command's own estimate. Price the chosen set together before applying it.
+Read `~/.pi/agent/settings.json` (its `packages`, `extensions` and `skills` entries), the project's `.pi/settings.json` when present, the MCP configs (`~/.pi/agent/mcp-adapter.json`, `.mcp.json`, `.pi/mcp-adapter.json`, `~/.config/mcp/mcp.json`) and the role files in `~/.pi/agent/agents/`. Build the candidates from CHECKLIST.md "Levers", skipping anything already off. Price each one by its characters divided by 4. Price the chosen set together before applying it.
 
 Show one table (Change, Saves, You lose) and ask which rows to apply, as one multi-select `ask_user_question`. Apply only the rows the user picked, by editing the file (the user may run `pi config` instead: it is interactive). Copy the file to `<file>.bak-<timestamp>` first, merge the entries (append exclusions to the `skills` or `extensions` array, never replace it), then validate it as JSON with `node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' <file>`.
 
 ## 3. Steering files
 
-Read in full every context file `/context-budget` lists: the global `~/.pi/agent/AGENTS.md` (installer-managed by pi-config, which preserves user edits), the project's `AGENTS.md` and any in parent directories. Also read `APPEND_SYSTEM.md` in `~/.pi/agent/` or `.pi/` when present, and a `CLAUDE.md` that sits beside an `AGENTS.md` (CHECKLIST.md "Also flag").
+Read in full every context file Pi loads: the global `~/.pi/agent/AGENTS.md` (installer-managed by pi-config, which preserves user edits), the project's `AGENTS.md` and any in parent directories. Also read `APPEND_SYSTEM.md` in `~/.pi/agent/` or `.pi/` when present, and a `CLAUDE.md` that sits beside an `AGENTS.md` (CHECKLIST.md "Also flag").
 
 Run every line through CHECKLIST.md "Line tests", route it with "Verdicts", and check "Also flag". Output one table:
 
@@ -42,6 +43,6 @@ Apply the approved rows only:
 - **move to CODING_STANDARDS.md**: append the rule, creating the file from [the template](../setup/templates/project/CODING_STANDARDS.md) when absent.
 - **encode as lint/hook**: build it when it is a config change (a banned import, a restricted pattern, a hook). Otherwise list it as a follow-up and leave the line until the check exists.
 
-Check that every pointer you left resolves. Re-measure: ask the user to run `/reload`, then `/context-budget` again, and compare with the baseline in one table (Part, Before, After, Change).
+Check that every pointer you left resolves. Re-measure: ask the user to run `/reload` and `/new` and read the footer's context figure again, redo your estimates, and compare with the baseline in one table (Part, Before, After, Change).
 
 Report that table, then the rows applied, the rows declined and the follow-ups.
