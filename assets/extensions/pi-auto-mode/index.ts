@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { type ExtensionAPI, type ExtensionContext, getAgentDir, getPackageDir, type ToolResultEventResult } from "@earendil-works/pi-coding-agent";
+import { type ExtensionAPI, type ExtensionContext, getAgentDir, getPackageDir, parseFrontmatter, type ToolResultEventResult } from "@earendil-works/pi-coding-agent";
 import { classifyWithFallback, type ClassifierResult, type Complete, type ScreenOutcome } from "./lib/classifier.ts";
 import { loadConfig, parseMode, type PermissionMode, readState, writeState } from "./lib/config.ts";
 import { evaluate, JEV_PRICE_PER_MTOK, JEV_TUNING, type JevAccess, JevError, resolveAccess } from "./lib/jev.ts";
@@ -18,7 +18,7 @@ import {
   screenable, screenQuestions, screenState, type ScreenVerdict,
 } from "./lib/screen.ts";
 import { callKey, LIMITS, PermissionState } from "./lib/state.ts";
-import { isChild, linkChild, registerRoot, rootFor, type RootHandle, unlinkChild, unregisterRoot } from "./lib/subagents.ts";
+import { agentIsUngated, isChild, linkChild, registerRoot, rootFor, type RootHandle, unlinkChild, unregisterRoot } from "./lib/subagents.ts";
 import { buildTranscript, ENTRY_TYPE, humanMessages, type SessionEntryLike } from "./lib/transcript.ts";
 
 const WIDGET = "pi-auto-mode";
@@ -38,30 +38,6 @@ function run(command: string, args: string[], cwd: string, timeout = 2_000): Pro
   return new Promise((resolve) => {
     execFile(command, args, { cwd, timeout, maxBuffer: 256 * 1024 }, (error, stdout) => resolve(error ? "" : String(stdout)));
   });
-}
-
-/** Frontmatter của agent tintinweb (đủ để biết agent có tải cổng permission hay không). */
-function agentFrontmatter(file: string): Record<string, string> | undefined {
-  let source: string;
-  try {
-    source = fs.readFileSync(file, "utf8");
-  } catch {
-    return undefined;
-  }
-  const match = /^---\r?\n([\s\S]*?)\r?\n---/u.exec(source);
-  if (!match) return {};
-  const result: Record<string, string> = {};
-  for (const line of match[1].split(/\r?\n/u)) {
-    const pair = /^([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$/u.exec(line);
-    if (pair) result[pair[1]] = pair[2].trim();
-  }
-  return result;
-}
-
-function listField(value: string | undefined): string[] | boolean | undefined {
-  if (value === undefined || value === "") return undefined;
-  if (value === "true" || value === "false") return value === "true";
-  return value.replace(/^\[|\]$/gu, "").split(",").map((item) => item.trim().replace(/^["']|["']$/gu, "").toLowerCase()).filter(Boolean);
 }
 
 export default function piAutoMode(pi: ExtensionAPI) {
@@ -191,20 +167,6 @@ export default function piAutoMode(pi: ExtensionAPI) {
     return [...new Set([path.resolve(cwd), ...extra, ...temporaryRoots()])];
   }
 
-  /** Subagent sẽ chạy không có cổng này (isolated, extensions:false hoặc danh sách extension thiếu pi-auto-mode). */
-  function agentIsUngated(cwd: string, input: Record<string, unknown>): boolean {
-    const type = typeof input.subagent_type === "string" ? input.subagent_type : "";
-    const file = [path.join(cwd, ".pi", "agents", `${type}.md`), path.join(agentDir, "agents", `${type}.md`)].find((item) => fs.existsSync(item));
-    const front = file ? agentFrontmatter(file) : undefined;
-    const isolated = front?.isolated !== undefined ? front.isolated === "true" : input.isolated === true;
-    if (isolated) return true;
-    const extensions = listField(front?.extensions ?? front?.inherit_extensions);
-    if (extensions === false) return true;
-    if (Array.isArray(extensions) && !extensions.includes("*") && !extensions.includes("pi-auto-mode")) return true;
-    const excluded = listField(front?.exclude_extensions);
-    return Array.isArray(excluded) && excluded.includes("pi-auto-mode");
-  }
-
   /** Nơi đọc không cần bộ phân loại: workspace, skill đã cấu hình, tài liệu Pi, agent dir. */
   function readRoots(cwd: string): string[] {
     let skills: string[] = [];
@@ -226,7 +188,8 @@ export default function piAutoMode(pi: ExtensionAPI) {
   function policyContext(ctx: ExtensionContext): PolicyContext {
     return {
       mode: currentMode(), cwd: ctx.cwd, roots: roots(ctx.cwd), readRoots: readRoots(ctx.cwd), rules: rules(), selfPaths: selfPaths(),
-      agentIsUngated: (input) => agentIsUngated(ctx.cwd, input), tempRoots: temporaryRoots(), gitGuard: config.gitGuard,
+      agentIsUngated: (input) => agentIsUngated(input, { cwd: ctx.cwd, agentDir, parse: (source) => parseFrontmatter(source).frontmatter }),
+      tempRoots: temporaryRoots(), gitGuard: config.gitGuard,
     };
   }
 

@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 import { classify, classifyWithFallback } from "../assets/extensions/pi-auto-mode/lib/classifier.ts";
 import { loadConfig, parseGitGuard, spliceDefaults } from "../assets/extensions/pi-auto-mode/lib/config.ts";
 import { criticalPathReason, protectedReason, resolveShellPath } from "../assets/extensions/pi-auto-mode/lib/paths.ts";
@@ -12,7 +13,7 @@ import { buildSystemPrompt, DEFAULT_SOFT_DENY, parseVerdict, resolveSlots } from
 import { allowCoversShell, bashPattern, buildRuleSet, firstMatch, isDangerousAllow, matchPath, parseRule } from "../assets/extensions/pi-auto-mode/lib/rules.ts";
 import { analyzeShell, isReadOnlyShell } from "../assets/extensions/pi-auto-mode/lib/shell.ts";
 import { callKey, PermissionState } from "../assets/extensions/pi-auto-mode/lib/state.ts";
-import { isChild, linkChild, registerRoot, rootFor, unregisterRoot } from "../assets/extensions/pi-auto-mode/lib/subagents.ts";
+import { agentIsUngated, isChild, linkChild, registerRoot, rootFor, unregisterRoot } from "../assets/extensions/pi-auto-mode/lib/subagents.ts";
 import { buildTranscript, ENTRY_TYPE, humanMessages } from "../assets/extensions/pi-auto-mode/lib/transcript.ts";
 import { buildConfiguration } from "../lib/config.mjs";
 import { defaultRoles } from "./install-fixture.mjs";
@@ -129,6 +130,76 @@ test("đường dẫn được bảo vệ và đường dẫn quan trọng cho r
   }
 });
 
+// parseFrontmatter thật của Pi khi có runtime đã cài (smoke); không có thì đọc frontmatter JSON (cũng là YAML hợp lệ).
+const piRoot = process.env.PI_CONFIG_TEST_ROOT;
+const piFrontmatter = piRoot
+  ? (await import(pathToFileURL(path.join(piRoot, "runtimes", "current", "node_modules", "@earendil-works", "pi-coding-agent", "dist", "utils", "frontmatter.js")).href)).parseFrontmatter
+  : undefined;
+const parseAgent = (source) => (piFrontmatter ? piFrontmatter(source).frontmatter : JSON.parse(/^---\n([\s\S]*?)\n---/u.exec(source)?.[1] ?? "{}"));
+
+test("subagent: định nghĩa agent đọc từ mọi thư mục pi-subagents nạp, đúng thứ tự ưu tiên và kiểu YAML", () => {
+  const ws = workspace();
+  try {
+    const agentDir = path.join(ws.home, ".pi", "agent");
+    const dirs = { global: path.join(agentDir, "agents"), workspace: path.join(ws.cwd, ".agents", "agents"), project: path.join(ws.cwd, ".pi", "agents") };
+    const agent = (dir, file, front) => {
+      fs.mkdirSync(dirs[dir], { recursive: true });
+      fs.writeFileSync(path.join(dirs[dir], `${file}.md`), typeof front === "string" ? front : `---\n${JSON.stringify(front)}\n---\nPrompt\n`);
+    };
+    const ungated = (type, extra = {}) => agentIsUngated({ subagent_type: type, prompt: "x", ...extra }, { cwd: ws.cwd, agentDir, parse: parseAgent });
+    // .agents/agents (workspace dùng chung) trước đây bị bỏ sót.
+    agent("workspace", "sneaky", { isolated: true });
+    assert.equal(ungated("sneaky"), true);
+    agent("global", "global-iso", { isolated: true });
+    assert.equal(ungated("global-iso"), true);
+    // Ưu tiên: .pi/agents > .agents/agents > agent dir.
+    agent("workspace", "shadowed", { isolated: true });
+    agent("project", "shadowed", { isolated: false });
+    assert.equal(ungated("shadowed"), false);
+    agent("global", "override", { isolated: false });
+    agent("workspace", "override", { isolated: true });
+    assert.equal(ungated("override"), true);
+    // Tên agent là name: của frontmatter (không phân biệt hoa thường), không phải tên file.
+    agent("workspace", "file-name", { name: "renamed", isolated: true });
+    assert.equal(ungated("renamed"), true);
+    assert.equal(ungated("RENAMED"), true);
+    // isolated của frontmatter thắng tham số; chỉ boolean true mới là isolated.
+    agent("project", "pinned", { isolated: false });
+    assert.equal(ungated("pinned", { isolated: true }), false);
+    agent("project", "quoted", { isolated: "true" });
+    assert.equal(ungated("quoted"), false);
+    assert.equal(ungated("unknown", { isolated: true }), true);
+    assert.equal(ungated("unknown"), false);
+    // extensions/inherit_extensions/exclude_extensions như pi-subagents.
+    agent("project", "no-ext", { extensions: false });
+    agent("project", "none-ext", { extensions: "none" });
+    agent("project", "other-ext", { extensions: ["pi-web-access"] });
+    agent("project", "with-gate", { extensions: ["pi-web-access", "pi-auto-mode"] });
+    agent("project", "csv-gate", { inherit_extensions: "pi-web-access, Pi-Auto-Mode" });
+    agent("project", "wildcard", { extensions: "*" });
+    agent("project", "excluded", { exclude_extensions: "pi-auto-mode" });
+    for (const type of ["no-ext", "none-ext", "other-ext", "excluded"]) assert.equal(ungated(type), true, type);
+    for (const type of ["with-gate", "csv-gate", "wildcard"]) assert.equal(ungated(type), false, type);
+    // File hỏng bị pi-subagents bỏ qua: agent cùng tên ở thư mục ưu tiên thấp hơn được dùng.
+    agent("workspace", "broken", { isolated: true });
+    agent("project", "broken", "---\n{isolated: [\n---\n");
+    assert.equal(ungated("broken"), true);
+    // Nối vào chính sách: auto chặn spawn.
+    const pc = context(ws, { agentIsUngated: (input) => agentIsUngated(input, { cwd: ws.cwd, agentDir, parse: parseAgent }) });
+    assert.equal(decide({ toolName: "Agent", input: { subagent_type: "sneaky", prompt: "x" } }, pc).kind, "deny");
+    assert.equal(decide({ toolName: "Agent", input: { subagent_type: "with-gate", prompt: "x" } }, pc).kind, "classify");
+    if (piFrontmatter) {
+      // Frontmatter YAML thường (không phải JSON) qua parser thật.
+      agent("workspace", "yaml", "---\nname: yaml-agent\nisolated: true\n---\nPrompt\n");
+      agent("project", "yaml-list", "---\nextensions:\n  - pi-web-access\n---\nPrompt\n");
+      assert.equal(ungated("yaml-agent"), true);
+      assert.equal(ungated("yaml-list"), true);
+    }
+  } finally {
+    ws.cleanup();
+  }
+});
+
 test("chính sách: lối đi nhanh, luật, bypass và tự bảo vệ", () => {
   const ws = workspace();
   try {
@@ -136,6 +207,11 @@ test("chính sách: lối đi nhanh, luật, bypass và tự bảo vệ", () => 
     assert.deepEqual(decide({ toolName: "read", input: { path: "src/a.ts" } }, auto), { kind: "allow", via: "safe tool" });
     // web_enable (pi-web-access 0.31) chỉ bật web tools trong phiên.
     assert.deepEqual(decide({ toolName: "web_enable", input: {} }, auto), { kind: "allow", via: "safe tool" });
+    // Xem tiến trình nền là an toàn; bg_kill dừng tiến trình nên qua bộ phân loại.
+    assert.deepEqual(decide({ toolName: "bg_status", input: {} }, auto), { kind: "allow", via: "safe tool" });
+    assert.deepEqual(decide({ toolName: "bg_logs", input: { id: "x" } }, auto), { kind: "allow", via: "safe tool" });
+    assert.equal(decide({ toolName: "bg_kill", input: { id: "x" } }, auto).kind, "classify");
+    assert.equal(decide({ toolName: "bg_kill", input: { id: "x" } }, { ...auto, rules: buildRuleSet(["bg_kill"], [], []) }).kind, "allow");
     assert.equal(decide({ toolName: "write", input: { path: "src/a.ts", content: "x" } }, auto).kind, "allow");
     assert.equal(decide({ toolName: "edit", input: { path: "../other/a.ts", edits: [] } }, auto).kind, "classify");
     assert.equal(decide({ toolName: "write", input: { path: ".git/hooks/pre-commit", content: "x" } }, auto).kind, "classify");
