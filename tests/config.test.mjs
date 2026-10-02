@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { buildConfiguration, PACKAGES } from "../lib/config.mjs";
-import { SUBAGENT_ROLES, changedRoles, fillRoleNames, forceNativeModels, loadPresets, nativeValues, nextModelDefault, resolveModelRoles } from "../runtime/model-roles.mjs";
+import { SUBAGENT_ROLES, changedRoles, forceNativeModels, loadPresets, nativeValues, nextModelDefault, resolveModelRoles } from "../runtime/model-roles.mjs";
 
 const repoDir = fileURLToPath(new URL("../", import.meta.url));
 const presets = loadPresets(path.join(repoDir, "assets", "configs", "model-presets.json"));
@@ -265,13 +265,6 @@ test("model-roles: preset và ghi đè đi tới mọi file gốc (settings, fil
   const goal = JSON.parse(read("pi-goal-x-settings.json"));
   assert.deepEqual([goal.provider, goal.model, goal.thinkingLevel, goal.maxAutonomousRuns], ["anthropic", "claude-sonnet-5", "high", 10]);
   assert.deepEqual(goal.oracle, { enabled: true, provider: "anthropic", model: "claude-fable-5-1", thinkingLevel: "xhigh" });
-  // Hướng dẫn cho parent nêu đúng model/thinking của từng vai.
-  const guide = read("AGENTS.md");
-  assert.match(guide, /researcher dùng claude-sonnet-5\/high .*worker dùng claude-opus-5-5\/max; debugger dùng claude-opus-5-5\/high; reviewer dùng claude-fable-5-1\/high, chỉ đọc\./u);
-  assert.match(guide, /Parent claude-opus-5-5\/high giữ thiết kế/u);
-  assert.match(guide, /Advisor claude-fable-5-1\/high: gọi ask_advisor theo system prompt của advisor/u);
-  assert.match(guide, /auditor claude-sonnet-5\/high kiểm tra độc lập/u);
-  assert.doesNotMatch(guide, /\{\{/u);
 });
 
 test("/models dựng mặc định mới từ base của preset khác: giống hệt file installer sinh cho preset đó", () => {
@@ -291,16 +284,14 @@ test("/models dựng mặc định mới từ base của preset khác: giống h
     for (const entry of old) {
       const kind = kindOf.get(entry.path);
       if (!kind) {
-        // File không chứa model thì không đổi theo preset (trừ AGENTS.md, sinh lại từ bản mẫu).
-        if (p.basename(entry.path) !== "AGENTS.md") assert.equal(fresh.get(entry.path), entry.content, entry.path);
+        // File không chứa model thì không đổi theo preset.
+        assert.equal(fresh.get(entry.path), entry.content, entry.path);
         continue;
       }
       kinds.push(kind);
       assert.equal(nextModelDefault(kind, entry.content, nativeValues(after)), fresh.get(entry.path), entry.path);
     }
     assert.deepEqual(kinds.sort(), ["advisor", "debugger", "goal", "researcher", "reviewer", "settings", "worker"]);
-    const template = fs.readFileSync(path.join(repoDir, "assets", "AGENTS.md"), "utf8");
-    assert.equal(fillRoleNames(template, after), fresh.get(p.join(options.agentDir, "AGENTS.md")));
     assert.deepEqual(changedRoles(before, after), ["researcher", "worker", "debugger", "reviewer", "advisor", "auditor", "oracle", "autoMode"]);
   }
 });

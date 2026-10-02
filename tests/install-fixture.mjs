@@ -17,7 +17,7 @@ export const sha256 = data => crypto.createHash('sha256').update(data).digest('h
 export const readJson = file => JSON.parse(fs.readFileSync(file, 'utf8'));
 
 /**
- * File cấu hình, base và checksum như installer ghi, cùng bản mẫu AGENTS.md và preset trong <root>/assets.
+ * File cấu hình, base và checksum như installer ghi, cùng preset trong <root>/assets.
  * full: chép cả assets và runtime/*.mjs (vào <root>/bin) như installer, để nạp extension của bản cài.
  */
 export function simulatedInstall(t, {roles = defaultRoles, full = false} = {}) {
@@ -40,7 +40,7 @@ export function simulatedInstall(t, {roles = defaultRoles, full = false} = {}) {
       state.files[file] = sha256(content);
     }
   }
-  for (const name of ['AGENTS.md', path.join('configs', 'model-presets.json')]) {
+  for (const name of [path.join('configs', 'model-presets.json')]) {
     const copy = path.join(root, 'assets', name);
     fs.mkdirSync(path.dirname(copy), {recursive: true});
     fs.copyFileSync(path.join(repoDir, 'assets', name), copy);

@@ -244,14 +244,6 @@ export function roleModel(text) {
   return {model: fields?.model || undefined, thinking: fields?.thinking || undefined};
 }
 
-/** Điền {{vai}} trong văn bản (AGENTS.md của agent dir) bằng id model/thinking của vai đó, vd claude-opus-5-5/high. */
-export function fillRoleNames(text, roles) {
-  return text.replace(/\{\{(\w+)\}\}/gu, (match, name) => {
-    if (!ROLES.includes(name)) throw new Error(`Không có vai ${name} cho ${match}`);
-    return `${parseModelRef(roles[name].model).id}/${roles[name].thinking}`;
-  });
-}
-
 export function loadPresets(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }

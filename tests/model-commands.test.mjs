@@ -7,7 +7,7 @@ import {mergesConfig} from '../lib/resources.mjs';
 import {defaultsFile, planConfigFile} from '../runtime/merge.mjs';
 import {ROLES, changedRoles, resolveModelRoles} from '../runtime/model-roles.mjs';
 import {planModelFiles, runModels, whenApplied, writeModelFiles} from '../runtime/models.mjs';
-import {presets, readJson, sha256, simulatedInstall as install, snapshot} from './install-fixture.mjs';
+import {presets, readJson, simulatedInstall as install, snapshot} from './install-fixture.mjs';
 
 test('áp preset mới vào bản cài: giữ phần người dùng sửa, vai không đổi giữ giá trị đổi qua /model; cài lại sau đó không đổi gì', t => {
   const f = install(t);
@@ -34,16 +34,12 @@ test('áp preset mới vào bản cài: giữ phần người dùng sửa, vai k
   assert.equal(readJson(f.file('settings.json')).theme, 'rose-pine-dawn');
   const advisorNow = readJson(f.file('advisor.json'));
   assert.deepEqual([advisorNow.executor, advisorNow.advisor], ['anthropic/claude-sonnet-5', 'anthropic/claude-fable-5-1']);
-  assert.match(fs.readFileSync(f.file('AGENTS.md'), 'utf8'), /reviewer dùng claude-fable-5-1\/high/u);
   assert.ok(fs.readdirSync(path.join(f.root, 'backups')).length, 'file bị ghi đè có backup');
   // Installer chạy lại với cùng cấu hình: không file, base hay checksum nào cần ghi.
   for (const {path: file, content} of buildConfiguration({...f.options, modelRoles: after})) {
     if (mergesConfig(file, f.options)) {
       const plan = planConfigFile({root: f.root, file, content, recorded: state.files[file]});
       assert.deepEqual([plan.content, plan.base, plan.recorded], [undefined, undefined, state.files[file]], file);
-    } else if (path.basename(file) === 'AGENTS.md') {
-      assert.equal(fs.readFileSync(file, 'utf8'), content);
-      assert.equal(state.files[file], sha256(content));
     }
   }
 });
@@ -65,15 +61,9 @@ test('ép mọi vai (apply --reset): giá trị đổi ngoài model-roles.json t
   assert.deepEqual([goalNow.thinkingLevel, goalNow.thinking_level, goalNow.maxAutonomousRuns], ['high', undefined, 3]);
 });
 
-test('AGENTS.md hay bản mẫu đã sửa thì giữ; thiếu base thì báo cần chạy lại installer', t => {
+test('thiếu base thì báo cần chạy lại installer', t => {
   const f = install(t);
-  fs.appendFileSync(f.file('AGENTS.md'), '\nGhi chú của tôi.\n');
   const roles = resolveModelRoles(presets, {preset: 'claude'}).roles;
-  let {plans} = planModelFiles({root: f.root, agentDir: f.agentDir, state: f.state(), roles});
-  assert.equal(plans.find(plan => plan.file === f.file('AGENTS.md')).preserved, 'edited');
-  fs.appendFileSync(path.join(f.root, 'assets', 'AGENTS.md'), 'sửa\n');
-  ({plans} = planModelFiles({root: f.root, agentDir: f.agentDir, state: f.state(), roles}));
-  assert.equal(plans.find(plan => plan.file === f.file('AGENTS.md')).preserved, 'template');
   fs.rmSync(defaultsFile(f.root, f.file('agents/reviewer.md')));
   assert.deepEqual(planModelFiles({root: f.root, agentDir: f.agentDir, state: f.state(), roles}).missing, [f.file('agents/reviewer.md')]);
 });
@@ -150,7 +140,7 @@ test('catalog và effects của phiên: kiểm model, xem trước, ghi đè, pr
   assert.equal(preview.status, 0, preview.text);
   assert.match(preview.text, /^worker: openai-codex\/gpt-6-sol \(max\) → anthropic\/claude-sonnet-5 \(max\)$/mu);
   assert.match(preview.text, /^Sẽ tạo .*model-roles\.json\.$/mu);
-  assert.match(preview.text, /^Sẽ cập nhật: settings\.json, agents\/worker\.md, AGENTS\.md$/mu);
+  assert.match(preview.text, /^Sẽ cập nhật: settings\.json, agents\/worker\.md$/mu);
   assert.match(preview.text, /^cảnh báo: provider openai-codex \(worker\) chưa đăng nhập: dùng \/login\.$/mu);
   assert.deepEqual([applied, snapshot(f.root, f.agentDir)], [[], before], 'lỗi và xem trước không ghi, không gọi effects');
   const set = await run({role: 'worker', model: 'anthropic/claude-sonnet-5'});
