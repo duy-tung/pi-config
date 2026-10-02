@@ -16,7 +16,7 @@ const role = (model, thinking) => `---\nname: worker\ndescription: Viết code.\
 
 test('preset có sẵn đặt đủ model và thinking cho mọi vai; default là bảng phân vai chuẩn', () => {
   assert.deepEqual(presetErrors(presets), []);
-  assert.deepEqual(Object.keys(presets), ['default', 'claude', 'tree']);
+  assert.deepEqual(Object.keys(presets), ['default', 'claude']);
   assert.deepEqual(table(resolveModelRoles(presets).roles), {
     main: 'anthropic/claude-opus-5-5 high', researcher: 'opencode-go/glm-5.3-flash max', explorer: 'opencode-go/glm-5.3-flash high',
     worker: 'openai-codex/gpt-6-sol max', debugger: 'openai-codex/gpt-6-sol max', reviewer: 'openai-codex/gpt-6-astra high',
@@ -33,19 +33,10 @@ test('preset có sẵn đặt đủ model và thinking cho mọi vai; default l�
     const {advisor} = resolveModelRoles(presets, {preset}).roles;
     assert.deepEqual([advisor.gates, advisor.calls], [['failure', 'completion'], 5], preset);
   }
-  // Preset tree (agent tree): Opus 5.5 lập kế hoạch ở high, subagent làm ở medium; Fable 5.1 trực ở cả ba gate;
-  // lệnh bị Jev gắn cờ do Opus xét.
-  const tree = resolveModelRoles(presets, {preset: 'tree'}).roles;
-  assert.ok(ROLES.every(name => tree[name].model.startsWith('anthropic/')));
-  assert.equal(table(tree).main, 'anthropic/claude-opus-5-5 high');
-  for (const name of ['worker', 'explorer', 'researcher', 'debugger']) assert.equal(table(tree)[name], 'anthropic/claude-opus-5-5 medium', name);
-  for (const name of ['advisor', 'reviewer', 'verifier', 'oracle']) assert.equal(tree[name].model, 'anthropic/claude-fable-5-1', name);
-  assert.deepEqual([tree.advisor.gates, tree.advisor.calls], [['plan', 'failure', 'completion'], 7]);
-  assert.equal(tree.autoMode.model, 'anthropic/claude-opus-5-5');
   // Preset thiếu gate/số lượt của advisor là lỗi.
   const broken = structuredClone(presets);
-  delete broken.tree.roles.advisor.gates;
-  assert.deepEqual(presetErrors(broken), ['tree: vai advisor thiếu gates']);
+  delete broken.claude.roles.advisor.gates;
+  assert.deepEqual(presetErrors(broken), ['claude: vai advisor thiếu gates']);
 });
 
 test('gate và số lượt của advisor: ghi đè, kiểm giá trị, đi vào advisor.json, lệch và adopt', () => {
@@ -63,7 +54,7 @@ test('gate và số lượt của advisor: ghi đè, kiểm giá trị, đi vào
   ]);
   const before = resolveModelRoles(presets).roles;
   assert.deepEqual(changedRoles(before, resolved.roles), ['advisor']);
-  assert.deepEqual(changedRoles(before, resolveModelRoles(presets, {preset: 'tree'}).roles).includes('advisor'), true);
+  assert.deepEqual(changedRoles(before, resolveModelRoles(presets, {preset: 'claude'}).roles).includes('advisor'), true);
   // advisor.json đổi gate ngoài model-roles.json (/advisor-settings): lệch; adopt ghi gate và số lượt đang chạy.
   const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'model-roles-gates-'));
   try {
@@ -106,13 +97,13 @@ test('cấu hình sai: báo từng lỗi, vẫn trả đủ vai theo preset mặ
   assert.deepEqual(resolved.errors, [
     'không có khóa "extra" (chỉ có preset, roles, presets)',
     'presets.claude: trùng tên preset có sẵn, hãy đặt tên khác',
-    'presets.mine.extends phải là preset có sẵn (default, claude, tree), đang là "nope"',
+    'presets.mine.extends phải là preset có sẵn (default, claude), đang là "nope"',
     'presets.other phải là object dạng {"extends": "claude", "roles": {...}}',
     'roles.worker.model phải có dạng "provider/id" (vd "anthropic/claude-opus-5-5"), đang là "opus"',
     'roles.worker.thinking phải là một trong off, minimal, low, medium, high, xhigh, max, đang là "ultra"',
     'roles.worker: không có khóa "effort" (chỉ có model, thinking)',
     'roles: không có vai "coder" (có main, researcher, explorer, worker, debugger, reviewer, verifier, advisor, auditor, oracle, autoMode)',
-    'preset "claud" không có (có default, claude, tree)',
+    'preset "claud" không có (có default, claude)',
   ]);
   assert.equal(resolved.roles.worker.model, 'openai-codex/gpt-6-sol');
   assert.deepEqual(resolveModelRoles(presets, []).errors, ['model-roles.json phải là một object JSON']);

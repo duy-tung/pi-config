@@ -44,24 +44,23 @@ Trong `/models`, chọn vai `advisor` để bật/tắt từng gate và đổi s
 
 Preset có sẵn nằm ở `assets/configs/model-presets.json` và cập nhật theo bản phát hành.
 
-| Vai | `default` | `claude` | `tree` |
-|---|---|---|---|
-| `main` | Claude Opus 5.5 / high | Claude Opus 5.5 / high | Claude Opus 5.5 / high |
-| `researcher` | GLM-5.3-Flash / max | Claude Sonnet 5 / high | Claude Opus 5.5 / medium |
-| `explorer` | GLM-5.3-Flash / high | Claude Sonnet 5 / medium | Claude Opus 5.5 / medium |
-| `worker`, `debugger` | GPT-6 Sol / max | Claude Opus 5.5 / high | Claude Opus 5.5 / medium |
-| `reviewer`, `verifier` | GPT-6 Astra / high | Claude Fable 5.1 / high | Claude Fable 5.1 / high |
-| `advisor` | GPT-6 Astra / high | Claude Fable 5.1 / high | Claude Fable 5.1 / high |
-| gate advisor, số lượt | lỗi lặp, trước khi xong; 5 | lỗi lặp, trước khi xong; 5 | trước plan, lỗi lặp, trước khi xong; 7 |
-| `auditor` | GPT-6 Astra / high | Claude Sonnet 5 / high | Claude Fable 5.1 / high |
-| `oracle` | GPT-6 Astra / high | Claude Fable 5.1 / high | Claude Fable 5.1 / high |
-| `autoMode` | Claude Sonnet 5 / low | Claude Sonnet 5 / low | Claude Opus 5.5 / low |
+| Vai | `default` | `claude` |
+|---|---|---|
+| `main` | Claude Opus 5.5 / high | Claude Opus 5.5 / high |
+| `researcher` | GLM-5.3-Flash / max | Claude Sonnet 5 / high |
+| `explorer` | GLM-5.3-Flash / high | Claude Sonnet 5 / medium |
+| `worker`, `debugger` | GPT-6 Sol / max | Claude Opus 5.5 / high |
+| `reviewer`, `verifier` | GPT-6 Astra / high | Claude Fable 5.1 / high |
+| `advisor` | GPT-6 Astra / high | Claude Fable 5.1 / high |
+| gate advisor, số lượt | lỗi lặp, trước khi xong; 5 | lỗi lặp, trước khi xong; 5 |
+| `auditor` | GPT-6 Astra / high | Claude Sonnet 5 / high |
+| `oracle` | GPT-6 Astra / high | Claude Fable 5.1 / high |
+| `autoMode` | Claude Sonnet 5 / low | Claude Sonnet 5 / low |
 
 - **`default`:** cần đăng nhập Claude, Codex và OpenCode Go.
 - **`claude`:** chỉ cần Claude. Reviewer, advisor và Oracle dùng một model khác với model viết code.
-- **`tree`:** chỉ cần Claude; quy trình "agent tree" mô tả trong [workflow.md](workflow.md#agent-tree). Opus 5.5 lập kế hoạch và quyết định ở high, subagent (worker, explorer, researcher, debugger) làm ở medium, Fable 5.1 trực advisor ở cả ba gate và làm reviewer, verifier, auditor, Oracle. Lệnh bị Jev gắn cờ do Opus 5.5 xét. Tốn quota Claude nhiều hơn `claude`: mọi subagent chạy Opus.
 
-Chọn preset: `pi-models preset claude` (hoặc `tree`), hoặc thêm `--models claude` vào lệnh cài (`curl … | bash -s -- --models claude`; Windows: thêm `--models claude` sau `& ([scriptblock]::Create(…))`).
+Chọn preset: `pi-models preset claude`, hoặc thêm `--models claude` vào lệnh cài (`curl … | bash -s -- --models claude`; Windows: thêm `--models claude` sau `& ([scriptblock]::Create(…))`).
 
 ## pi-models
 

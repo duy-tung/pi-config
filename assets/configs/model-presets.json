@@ -30,21 +30,5 @@
       "oracle": { "model": "anthropic/claude-fable-5-1", "thinking": "high" },
       "autoMode": { "model": "anthropic/claude-sonnet-5", "thinking": "low" }
     }
-  },
-  "tree": {
-    "description": "Agent tree: parent Opus 5.5/high lập kế hoạch và quyết định; worker, explorer, researcher, debugger Opus 5.5/medium; Fable 5.1 trực advisor (trước plan, lỗi lặp, trước khi xong; 7 lượt), review, verify, Oracle; auto mode: Jev sàng lọc, lệnh bị gắn cờ do Opus 5.5 xét. Chỉ cần đăng nhập Claude.",
-    "roles": {
-      "main": { "model": "anthropic/claude-opus-5-5", "thinking": "high" },
-      "researcher": { "model": "anthropic/claude-opus-5-5", "thinking": "medium" },
-      "explorer": { "model": "anthropic/claude-opus-5-5", "thinking": "medium" },
-      "worker": { "model": "anthropic/claude-opus-5-5", "thinking": "medium" },
-      "debugger": { "model": "anthropic/claude-opus-5-5", "thinking": "medium" },
-      "reviewer": { "model": "anthropic/claude-fable-5-1", "thinking": "high" },
-      "verifier": { "model": "anthropic/claude-fable-5-1", "thinking": "high" },
-      "advisor": { "model": "anthropic/claude-fable-5-1", "thinking": "high", "gates": ["plan", "failure", "completion"], "calls": 7 },
-      "auditor": { "model": "anthropic/claude-fable-5-1", "thinking": "high" },
-      "oracle": { "model": "anthropic/claude-fable-5-1", "thinking": "high" },
-      "autoMode": { "model": "anthropic/claude-opus-5-5", "thinking": "low" }
-    }
   }
 }

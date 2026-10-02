@@ -92,7 +92,7 @@ Pi dùng `Agent` của **@tintinweb/pi-subagents**:
 
 Parent Claude Opus 5.5/high giữ thiết kế, quyết định quan trọng và nghiệm thu cuối. GLM chạy trực tiếp qua OpenCode Go trong Pi.
 
-Bảng trên là preset `default`. Model và thinking của mọi vai (parent, các role, advisor, goal auditor, Oracle, auto mode) đặt trong `<agent-dir>/model-roles.json` và đổi bằng `pi-models`, ví dụ `pi-models preset claude` (chỉ cần đăng nhập Claude), `pi-models preset tree` (quy trình agent tree: Opus làm, Fable trực advisor; [docs/workflow.md](docs/workflow.md#agent-tree)) hay `pi-models set worker anthropic/claude-opus-5-5 high`. Trong Pi, `/models` mở menu các vai và áp ngay cho phiên đang chạy. Xem [docs/models.md](docs/models.md).
+Bảng trên là preset `default`. Model và thinking của mọi vai (parent, các role, advisor, goal auditor, Oracle, auto mode) đặt trong `<agent-dir>/model-roles.json` và đổi bằng `pi-models`, ví dụ `pi-models preset claude` (chỉ cần đăng nhập Claude) hay `pi-models set worker anthropic/claude-opus-5-5 high`. Trong Pi, `/models` mở menu các vai và áp ngay cho phiên đang chạy. Xem [docs/models.md](docs/models.md).
 
 ```text
 @explorer Tìm luồng xử lý timeout và báo file/dòng.

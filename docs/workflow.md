@@ -88,37 +88,19 @@ Skill không ghi tên model; chúng gọi **vai**, và `model-roles.json` quyế
 | Tái hiện và sửa một bug đã khoanh | `debugger` | GPT-6 Sol/max | Test đỏ trước, sửa tận gốc |
 | Ba trục review của `interrogate`, soát decision log, giám khảo eval | `reviewer` | GPT-6 Astra/high | Khác họ model với parent nên điểm mù không trùng; chỉ đọc |
 | Chứng minh trên sản phẩm thật | `verifier` | GPT-6 Astra/high | Context sạch, khác model với worker, không sửa code |
-| Design it twice | `researcher`, `reviewer`, parent (+ `worker` khi cần chạy code) | GLM, Astra, Opus, Sol | Nhiều model cho các phương án thật sự khác nhau, không cần CLI ngoài; preset `tree` chỉ reviewer khác model với parent |
+| Design it twice | `researcher`, `reviewer`, parent (+ `worker` khi cần chạy code) | GLM, Astra, Opus, Sol | Nhiều model cho các phương án thật sự khác nhau, không cần CLI ngoài |
 
-Preset `claude` dùng toàn Claude: reviewer và verifier chạy Fable 5.1, khác model với worker Opus. Preset `tree` là quy trình agent tree ở mục dưới. Khi reviewer cùng họ với parent, báo cáo `interrogate` nói rõ điểm mù có tương quan. Đổi vai bằng `/models` hoặc `pi-models`.
+Preset `claude` dùng toàn Claude: reviewer và verifier chạy Fable 5.1, khác model với worker Opus. Khi reviewer cùng họ với parent, báo cáo `interrogate` nói rõ điểm mù có tương quan. Đổi vai bằng `/models` hoặc `pi-models`.
 
-## Agent tree
+## Advisor và skill quy trình
 
-Quy trình "Opus làm, Fable trực": phiên chính Opus 5.5 ở effort high lập kế hoạch và quyết định; subagent làm ở effort medium; Fable 5.1 là advisor chỉ lên tiếng ở ba thời điểm; auto mode sàng lọc lệnh bằng Jev, lệnh rõ ràng chạy thẳng, lệnh đáng ngờ được Opus xét; kết quả quay về phiên chính để review và verify. Bật bằng:
-
-```sh
-pi-models preset tree        # hoặc /models → Chọn preset… → tree; cài mới: --models tree
-```
-
-| Thành phần | Cơ chế trong pi-config | Chỉnh ở đâu |
-|---|---|---|
-| Opus 5.5 · main session · high · 1M | Vai `main` | `pi-models set main <model> <thinking>` |
-| Fable 5.1 advisor, trực ở "trước plan", "lỗi lặp", "trước khi xong", im lặng ở lượt thường | pi-advisor-flow, gate `plan`/`failure`/`completion` của vai `advisor`; advisor đọc hội thoại (lời gọi tool và kết quả), không viết code | `pi-models set advisor gates=plan,failure,completion calls=7`; menu `/models` → advisor |
-| Jev: `sharp` chạy thẳng, `split` lên Opus | Giai đoạn 1 của auto mode (Jev, cần key TypeSafe); lệnh bị gắn cờ do vai `autoMode` (Opus 5.5/low trong preset `tree`) xét | Ngưỡng `autoMode.jev.flagAt`/`riskAt` trong `settings.json` ([auto-mode.md](auto-mode.md)); model: `pi-models set autoMode …` |
-| Subagent effort medium: worker (sửa, chạy test), explorer (đọc code), researcher (tra docs) | Vai `worker`, `explorer`, `researcher` (và `debugger`) của pi-subagents; explorer và researcher chạy nền song song | `pi-models set worker … medium`; số agent chạy cùng lúc: `/agents` → Settings |
-| Quay về main · review + verify | Phiên chính nghiệm thu; `reviewer` và `verifier` (Fable 5.1) kiểm độc lập khi cần | Vai `reviewer`, `verifier` |
-
-Mọi giá trị ở trên là preset; ghi đè từng vai trong `<agent-dir>/model-roles.json`, hoặc tạo preset riêng kế thừa `tree` (`"presets": {"tree-lite": {"extends": "tree", "roles": {...}}}`). Chi tiết: [models.md](models.md).
-
-### Với các skill quy trình
-
-Skill quy trình (từ tstack) chạy nguyên trên agent tree. Chỗ hai bên gặp nhau:
+Skill quy trình (từ tstack) dùng các gate của advisor (`pi-models set advisor gates=…`; preset có sẵn bật `failure` và `completion`):
 - Gate `plan`: trong build playbook (`/skill:implement`, playbook feature), plan là data shape, seam và các lát cắt chốt ở bước 2 đến 4; parent gửi advisor trước khi viết code.
 - Gate `completion`: gọi sau `prove` và `interrogate`, để bản nháp mang verdict và bằng chứng thật chứ không phải lời khẳng định; `/skill:afk` gửi báo cáo cho advisor trước `update_goal` complete.
 - Gate `failure` trùng luật "hai lần sửa cùng tiền đề thất bại" của `diagnose`.
 - Số lượt `calls` tính theo phiên. `/skill:afk` làm nhiều unit trong một phiên nên chỉ gọi advisor khi pivot và nghiệm thu cuối. Advisor tắt, hết lượt hoặc đang ở subagent (worker, debugger không có `ask_advisor`) thì skill bỏ bước advisor và ghi rõ; subagent báo parent.
 - Đọc code giao `explorer`, tra docs/web/lịch sử git giao `researcher`.
-- Preset `tree` cho researcher, explorer, worker, debugger chạy cùng model với phiên chính; chỉ reviewer, verifier, advisor (Fable 5.1) khác model. `interrogate`, `decision-log`, eval của `writing-for-agents` và design it twice nói rõ khi hai seat cùng model.
+- `interrogate`, `decision-log`, eval của `writing-for-agents` và design it twice nói rõ khi hai seat cùng model.
 
 ## afk chạy như một goal
 
