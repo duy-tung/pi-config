@@ -4,12 +4,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { baseProtectedBranches, checkGitGuard, DEFAULT_PROTECTED_BRANCHES, gitGuardOff } from "../assets/extensions/pi-auto-mode/lib/git-guard.ts";
+import { checkGitGuard } from "../assets/extensions/pi-auto-mode/lib/git-guard.ts";
 import { gitGuardDenial } from "../assets/extensions/pi-auto-mode/lib/messages.ts";
 
-// Bảng ca của tests/test_guard_git.py trong tstack (git guard gốc bằng Python), đổi tên cho pi-config:
-// khoá git config tstack.protectedBranches → pi.protectedBranches, TSTACK_GIT_GUARD → PI_GIT_GUARD,
-// TSTACK_PROTECTED_BRANCHES → PI_GIT_PROTECTED_BRANCHES. [lệnh, repo, chặn?]
+// Bảng ca của tests/test_guard_git.py trong tstack (git guard gốc bằng Python), bỏ các ca của khoá git config
+// tstack.protectedBranches (pi-config chỉ lấy danh sách nhánh từ settings). [lệnh, repo, chặn?]
 const CASES = [
   ["git status", "feature", false],
   ["git push -u origin feature/x", "feature", false],
@@ -78,7 +77,6 @@ const CASES = [
   ["git push -u origin hotfix/login-crash", "feature", false],
   ["git push -u origin release-notes-typo", "feature", false],
   ["git push origin refs/heads/main", "feature", true],
-  ["git push", "custom", true],
   ["git push origin main", "custom", true],
   ["git push origin develop", "custom", true],
   ["git push origin feature/y", "custom", false],
@@ -134,9 +132,6 @@ const CASES = [
   ["rm -rf ${HOME}/*", "feature", true],
   ["rm -rf build/ .cache", "feature", false],
   ["rm -rf ./dist", "feature", false],
-  ["git config pi.protectedBranches none", "feature", true],
-  ["git config --unset pi.protectedBranches", "feature", true],
-  ["git config --get pi.protectedBranches", "feature", false],
   ["git push -u origin $(git branch --show-current)", "main", true],
   ["git push -u origin $(git branch --show-current)", "feature", false],
   ["git push origin \"$(git rev-parse --abbrev-ref HEAD)\"", "main", true],
@@ -182,7 +177,6 @@ function fixture() {
   const feature = repo("feature", "feature/x");
   const main = repo("main", "main");
   const custom = repo("custom", "staging");
-  execFileSync("git", ["-C", custom, "config", "pi.protectedBranches", "main,staging"]);
   fs.mkdirSync(path.join(feature, ".githooks"));
   fs.writeFileSync(path.join(feature, ".githooks", "pre-commit"), "#!/bin/sh\nexit 0\n");
   fs.mkdirSync(path.join(feature, "docs"));
@@ -192,18 +186,15 @@ function fixture() {
   return { dirs: { feature, main, custom, subdir }, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
 }
 
-// Môi trường của tiến trình Pi, bỏ các biến điều khiển guard của máy chạy test.
+// Môi trường của tiến trình Pi (guard chỉ đọc HOME).
 function environment(extra = {}) {
-  const env = { ...process.env };
-  delete env.PI_GIT_GUARD;
-  delete env.PI_GIT_PROTECTED_BRANCHES;
-  return { ...env, ...extra };
+  return { ...process.env, ...extra };
 }
 
 test("git guard: toàn bộ bảng ca của bản Python, kể cả lệnh thường ngày phải cho qua", (t) => {
   const f = fixture();
   t.after(f.cleanup);
-  assert.equal(CASES.length, 159);
+  assert.equal(CASES.length, 155);
   const wrong = [];
   for (const [command, repo, blocked] of CASES) {
     const block = checkGitGuard(command, { cwd: f.dirs[repo], env: environment() });
@@ -233,22 +224,16 @@ test("git guard: tên lệnh viết khác (escape, nháy, biến đã gán) vẫ
   assert.deepEqual(wrong, []);
 });
 
-test("git guard: tắt bằng PI_GIT_GUARD của tiến trình, không bằng phép gán trong lệnh; danh sách nhánh từ môi trường và settings", (t) => {
+test("git guard: danh sách nhánh từ settings thay mặc định; biến môi trường và git config không đổi được guard", (t) => {
   const f = fixture();
   t.after(f.cleanup);
   const { feature, custom } = f.dirs;
-  assert.equal(checkGitGuard("git push --force", { cwd: feature, env: environment({ PI_GIT_GUARD: "off" }) }), undefined);
-  assert.equal(checkGitGuard("git push --force", { cwd: feature, env: environment({ PI_GIT_GUARD: "OFF" }) }), undefined);
-  assert.ok(checkGitGuard("PI_GIT_GUARD=off git push --force", { cwd: feature, env: environment() }));
-  assert.ok(checkGitGuard("git push origin develop", { cwd: feature, env: environment({ PI_GIT_PROTECTED_BRANCHES: "develop" }) }));
-  assert.equal(checkGitGuard("git push origin main", { cwd: feature, env: environment({ PI_GIT_PROTECTED_BRANCHES: "develop" }) }), undefined);
-  // Settings thay danh sách mặc định; biến môi trường thắng settings; git config của repo chỉ thêm.
   assert.equal(checkGitGuard("git push origin main", { cwd: feature, env: environment(), protectedBranches: ["staging"] }), undefined);
   assert.ok(checkGitGuard("git push origin staging", { cwd: feature, env: environment(), protectedBranches: ["staging"] }));
-  assert.deepEqual(baseProtectedBranches(environment({ PI_GIT_PROTECTED_BRANCHES: "a, b" }), ["staging"]), ["a", "b"]);
-  assert.deepEqual(baseProtectedBranches(environment(), undefined), DEFAULT_PROTECTED_BRANCHES);
-  assert.ok(checkGitGuard("git push origin staging", { cwd: custom, env: environment(), protectedBranches: ["develop"] }));
-  assert.equal(gitGuardOff(environment()), false);
+  assert.ok(checkGitGuard("git push --force", { cwd: feature, env: environment({ PI_GIT_GUARD: "off" }) }));
+  assert.ok(checkGitGuard("PI_GIT_GUARD=off git push --force", { cwd: feature, env: environment() }));
+  execFileSync("git", ["-C", custom, "config", "pi.protectedBranches", "staging"]);
+  assert.equal(checkGitGuard("git push", { cwd: custom, env: environment() }), undefined, "staging không thuộc danh sách mặc định");
 });
 
 test("git guard: input lạ cho qua, lỗi của git runner không làm hỏng lệnh; câu báo chỉ cách người dùng tự chạy", (t) => {

@@ -70,14 +70,7 @@ Guard đọc lệnh như shell: chữ trong nháy, trong heredoc có delimiter t
 
 Khi bị chặn, agent nhận lý do kèm cách an toàn hơn; bạn tự chạy lệnh bằng `!<lệnh>` trong editor của Pi (lệnh `!` của người dùng không qua cổng). Lần chặn hiện trong `/permissions` với luật `git guard` và không tính vào giới hạn chặn của bộ phân loại.
 
-Cấu hình:
-
-| Cách | Tác dụng |
-|---|---|
-| `autoMode.gitGuard` trong `settings.json` | `false` hoặc `{"enabled": false}` tắt; `{"protectedBranches": ["main", "staging"]}` thay danh sách mặc định |
-| `PI_GIT_GUARD=off pi` | Tắt cho một lần chạy Pi (phép gán ngay trong lệnh của agent bị bỏ qua) |
-| `PI_GIT_PROTECTED_BRANCHES="main,staging" pi` | Thay danh sách nhánh cho một lần chạy, thắng settings |
-| `git config --add pi.protectedBranches staging` | Thêm nhánh cho một repo (bạn tự chạy; git config chỉ thêm, và agent không được sửa khoá `pi.*`) |
+Cấu hình duy nhất là `autoMode.gitGuard` trong `settings.json`: `false` hoặc `{"enabled": false}` tắt; `{"protectedBranches": ["main", "staging"]}` thay danh sách nhánh mặc định.
 
 ### Giới hạn đọc khi có deny đường dẫn
 
