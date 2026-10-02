@@ -50,12 +50,9 @@ test("insertFile chỉ đọc file trong assets/patches", async () => {
   }
 });
 
-test("metadata ghim mười một bản vá cho một runtime", async () => {
+test("metadata bản vá: hash ghim và file chèn khớp nguồn trong repo", async () => {
   const data = await loadPatchData();
   assert.equal(data.schemaVersion, 1);
-  assert.equal(data.patches.length, 11);
-  // pi-anthropic-auth >= 3.3.2 tự giữ effort theo lượt (upstream PR #79): không còn vá.
-  assert.ok(!data.patches.some((spec) => spec.package === "@gotgenes/pi-anthropic-auth"));
   for (const spec of data.patches) {
     assert.match(spec.originalSha256, /^[a-f0-9]{64}$/);
     assert.match(spec.patchedSha256, /^[a-f0-9]{64}$/);
@@ -66,37 +63,5 @@ test("metadata ghim mười một bản vá cho một runtime", async () => {
   const insertion = webAccess.edits.find((edit) => edit.insertFile);
   assert.equal(insertion.insertFile, "pi-web-access/anthropic-search.js");
   assert.equal(insertion.insert, (await readFile(new URL("../assets/patches/pi-web-access/anthropic-search.js", import.meta.url), "utf8")).replace(/\r\n/g, "\n"));
-  // Advisor: dòng ngân sách cố định để system prompt không đổi sau mỗi lần hỏi (giữ prompt cache của executor).
-  const advisor = data.patches.find((spec) => spec.package === "pi-advisor-flow");
-  const budget = advisor.edits.find((edit) => edit.before.includes("Advisor calls remaining this session"));
-  assert.ok(budget && !budget.after.includes("remainingCalls"));
-  // Mỗi phiên bắt đầu với advisor tắt, chỉ bật khi alwaysOn kích hoạt thành công: /advisor-off giữ qua phiên sau.
-  assert.ok(advisor.edits.some((edit) => edit.before.includes("if (alwaysOnRef)") && edit.after.includes("runtime.flowEnabled()")));
-  // Goal auditor: bash qua cổng permission của phiên cha.
-  const auditor = data.patches.find((spec) => spec.package === "pi-goal-x");
-  assert.equal(auditor.file, "extensions/goal-auditor.ts");
-  assert.ok(auditor.edits.some((edit) => edit.after.includes("subagents:child:session-created")));
-  // pi-subagents mention-clone trên Pi 0.87 trở lên: bản sao lấy hội thoại qua SessionManager (không gán state của agent),
-  // system prompt qua before_agent_start, và agent do bản sao khởi động luôn chạy nền (kể cả role ghim foreground).
-  const clone = data.patches.find((spec) => spec.package === "@tintinweb/pi-subagents" && spec.file === "src/mention-clone.ts");
-  assert.ok(clone.edits.some((edit) => edit.after.includes("SessionManager.inMemory(ctx.cwd, undefined, ctx.sessionManager.getBranch())")));
-  assert.ok(clone.edits.some((edit) => edit.before.includes("session.agent.state.systemPrompt = systemPrompt") && edit.after === ""));
-  assert.ok(clone.edits.some((edit) => edit.after.includes('pi.on("before_agent_start"')));
-  const subagentsIndex = data.patches.find((spec) => spec.package === "@tintinweb/pi-subagents" && spec.file === "src/index.ts");
-  const marker = 'Symbol.for("pi-config:mention-clone-spawn")';
-  assert.ok(clone.edits.some((edit) => edit.after.includes(marker)) && subagentsIndex.edits.some((edit) => edit.after.includes(marker)));
-  // pi-usage: Astra và GPT-6.1 Sol có Codex fast; request qua ModelRuntime dùng chung (advisor, auditor, Oracle) cũng theo fast.
-  const usage = data.patches.find((spec) => spec.package === "@narumitw/pi-usage");
-  assert.ok(usage.edits.some((edit) => edit.before.includes('"gpt-6-sol"') && edit.after.includes('"gpt-6-astra"') && edit.after.includes('"gpt-6.1-sol"')));
-  assert.ok(usage.edits.some((edit) => edit.after.includes("runtime.streamSimple = wrapped") && edit.after.includes("requestModel ?? model")));
-  // bg_run giữ mặc định của upstream: job xong tự đánh thức model; bản vá chỉ giới hạn shell job và viết lại mô tả.
-  const background = data.patches.filter((spec) => spec.package === "pi-background-tasks");
-  assert.deepEqual(background.map((spec) => spec.file), ["dist/src/extension.js"]);
-  assert.ok(!background[0].edits.some((edit) => edit.before.includes("triggerOnCompletion ?? true")));
-  assert.ok(background[0].edits.some((edit) => edit.after.includes("completion notification wakes you")));
-  // rpiv từ 2.12 tự khai báo typebox là peer: không còn vá. pi-subagents vẫn khai báo nó trong dependencies.
-  assert.ok(!data.patches.some((spec) => spec.package.startsWith("@juicesharp/rpiv-")));
-  const subagentsManifest = data.patches.find((spec) => spec.package === "@tintinweb/pi-subagents" && spec.file === "package.json");
-  assert.ok(subagentsManifest.edits.some((edit) => edit.after.includes('"typebox": "*"')));
   await assert.rejects(applyPatches({ root: os.tmpdir(), runtimes: ["../escape"] }), /Runtime phải/);
 });

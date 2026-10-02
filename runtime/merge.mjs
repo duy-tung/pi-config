@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import {joinRole, splitRole} from './model-roles.mjs';
 
 /**
- * Gộp ba chiều cho file cấu hình JSON và file role, dùng chung cho installer và pi-models (bản cài chép file này
+ * Gộp ba chiều cho file cấu hình JSON và file role, dùng chung cho installer và /models (bản cài chép file này
  * vào <root>/bin). Các hàm gộp không đọc/ghi file; planConfigFile và writeConfigPlan ở cuối file làm việc với file.
  * base: mặc định installer ghi lần trước (<root>/state/defaults); next: mặc định mới; current: file hiện tại,
  * mà Pi và người dùng có thể đã sửa (Pi ghi lại settings.json khi đổi model, thinking, theme...).
@@ -237,7 +237,7 @@ export function describeMerge({file, changes = [], conflicts = [], additive = fa
   return [header, ...changes.map(change => `  - ${formatChange(change)}`), ...conflicts.map(conflict => `  - ${formatConflict(conflict, additive)}`)];
 }
 
-/** SHA-256 hex; dùng chung cho installer, pi-models và doctor. */
+/** SHA-256 hex; dùng chung cho installer, /models và doctor. */
 export const sha256 = data => crypto.createHash('sha256').update(data).digest('hex');
 
 /** Base (mặc định đã ghi lần cài trước) của một file được gộp, theo đường dẫn tuyệt đối; giữ đuôi của file. */
@@ -262,7 +262,7 @@ export function backupFile(root, file) {
  * Kế hoạch cập nhật một file cấu hình JSON hoặc file role, chưa ghi gì: gộp mặc định mới (content) với file hiện tại
  * theo base. recorded là checksum installer ghi lần trước, dùng khi chưa có base. Giữ nguyên (preserved) file không
  * đọc được (JSON hỏng, frontmatter không phải dạng key: value) và file có sẵn trước khi cài mà installer chưa từng
- * ghi (không có base lẫn checksum). force(text) sửa file hiện tại trước khi gộp: pi-models ép model/thinking của vai
+ * ghi (không có base lẫn checksum). force(text) sửa file hiện tại trước khi gộp: /models ép model/thinking của vai
  * vừa đổi, kể cả khi người dùng đã đổi vai đó trong file gốc.
  * Kết quả: content là nội dung mới (undefined: giữ file), base là mặc định cần lưu (undefined: base đã đúng), recorded
  * là checksum của mặc định mới, không phải của file sau khi gộp: file còn phần người dùng sửa không bao giờ khớp nó,
@@ -299,8 +299,8 @@ export function writeConfigPlan(plan, {mode = 0o600, backup = () => {}} = {}) {
 }
 
 /** planConfigFile rồi writeConfigPlan (installer). */
-export function reconcileConfigFile({root, file, content, mode = 0o600, recorded, backup = () => {}, force}) {
-  const plan = planConfigFile({root, file, content, recorded, force});
+export function reconcileConfigFile({root, file, content, mode = 0o600, recorded, backup = () => {}}) {
+  const plan = planConfigFile({root, file, content, recorded});
   if (plan.preserved) return {preserved: plan.preserved, written: false, changes: [], conflicts: []};
   writeConfigPlan(plan, {mode, backup});
   return {recorded: plan.recorded, written: plan.content !== undefined, changes: plan.changes, conflicts: plan.conflicts, additive: plan.additive};

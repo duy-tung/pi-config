@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { buildConfiguration, PACKAGES } from "../lib/config.mjs";
-import { changedRoles, fillRoleNames, forceNativeModels, loadPresets, nativeKind, nativeValues, nextModelDefault, resolveModelRoles } from "../runtime/model-roles.mjs";
+import { SUBAGENT_ROLES, changedRoles, fillRoleNames, forceNativeModels, loadPresets, nativeValues, nextModelDefault, resolveModelRoles } from "../runtime/model-roles.mjs";
 
 const repoDir = fileURLToPath(new URL("../", import.meta.url));
 function fixture(platform) {
@@ -112,8 +112,8 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.ok(!deny.some((rule) => rule.startsWith("Bash(rm ")));
       assert.equal(settings.permissions.defaultMode, "auto");
       assert.equal(settings.autoMode.model, "anthropic/claude-sonnet-5");
-      // Giai đoạn 1 là Jev khi có key, model ghim phiên bản (ngưỡng chỉnh theo phiên bản).
-      assert.deepEqual(settings.autoMode.jev, { model: "jev-1.13.0", flagAt: 0.3, riskAt: 0.5, probe: true });
+      // Giai đoạn 1 là Jev khi có key, model ghim phiên bản (ngưỡng trong code, chỉnh theo phiên bản).
+      assert.deepEqual(settings.autoMode.jev, { model: "jev-1.13.0" });
       assert.ok(settings.extensions.filter((entry) => !entry.startsWith("-")).at(-1).endsWith("pi-auto-mode"), "pi-auto-mode phải nạp sau cùng");
       assert.ok(!settings.packages.some((entry) => String(entry?.source ?? entry).includes("pi-permission-system")));
       assert.ok(!files.some((file) => file.path.includes("pi-permission-system")));
@@ -169,7 +169,8 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.equal(advisor.executorEffort, settings.defaultThinkingLevel);
       assert.equal(advisor.advisor, "openai-codex/gpt-6-astra");
       assert.equal(advisor.advisorEffort, "high");
-      // Gate là hướng dẫn trong prompt: khi lỗi lặp lại và trước khi báo xong; không có gate cứng chặn phiên.
+      // Gate là hướng dẫn trong prompt: khi lỗi lặp lại và trước khi báo xong; không có gate cứng chặn phiên. Người dùng
+      // đổi gate và số lượt bằng /advisor-settings; cài lại giữ giá trị đó (gộp ba chiều).
       assert.deepEqual([advisor.advisorPlanGate, advisor.advisorFailureGate, advisor.advisorCompletionGate], [false, true, true]);
       assert.equal(advisor.advisorAutoLoopGate, false);
       assert.equal(advisor.gateFailureMode, "warn-and-continue");
@@ -266,23 +267,27 @@ test("model-roles: preset và ghi đè đi tới mọi file gốc (settings, fil
   const guide = read("AGENTS.md");
   assert.match(guide, /researcher dùng claude-sonnet-5\/high .*worker dùng claude-opus-5-5\/max; debugger dùng claude-opus-5-5\/high; reviewer dùng claude-fable-5-1\/high, chỉ đọc\./u);
   assert.match(guide, /Parent claude-opus-5-5\/high giữ thiết kế/u);
-  assert.match(guide, /Advisor claude-fable-5-1\/high: gọi ask_advisor đúng các gate đang bật \(lỗi lặp, trước khi xong;/u);
-  assert.match(guide, /Số lượt: 5 mỗi phiên/u);
+  assert.match(guide, /Advisor claude-fable-5-1\/high: gọi ask_advisor theo system prompt của advisor/u);
   assert.match(guide, /auditor claude-sonnet-5\/high kiểm tra độc lập/u);
   assert.doesNotMatch(guide, /\{\{/u);
 });
 
-test("pi-models dựng mặc định mới từ base của preset khác: giống hệt file installer sinh cho preset đó", () => {
+test("/models dựng mặc định mới từ base của preset khác: giống hệt file installer sinh cho preset đó", () => {
   const presets = loadPresets(path.join(repoDir, "assets", "configs", "model-presets.json"));
   for (const platform of ["linux", "win32"]) {
     const { p, options } = fixture(platform);
+    // Loại file gốc chứa model (như danh sách file của planModelFiles trong runtime/models.mjs).
+    const kindOf = new Map([
+      ["settings.json", "settings"], ["advisor.json", "advisor"], ["pi-goal-x-settings.json", "goal"],
+      ...SUBAGENT_ROLES.map((role) => [p.join("agents", `${role}.md`), role]),
+    ].map(([name, kind]) => [p.join(options.agentDir, name), kind]));
     const before = resolveModelRoles(presets).roles;
     const after = resolveModelRoles(presets, { preset: "claude", roles: { worker: { thinking: "max" }, auditor: { thinking: "max" }, autoMode: { model: "anthropic/claude-haiku-4-5" } } }).roles;
     const old = buildConfiguration({ ...options, modelRoles: before });
     const fresh = new Map(buildConfiguration({ ...options, modelRoles: after }).map((entry) => [entry.path, entry.content]));
     const kinds = [];
     for (const entry of old) {
-      const kind = nativeKind(entry.path, options.agentDir, p);
+      const kind = kindOf.get(entry.path);
       if (!kind) {
         // File không chứa model thì không đổi theo preset (trừ AGENTS.md, sinh lại từ bản mẫu).
         if (p.basename(entry.path) !== "AGENTS.md") assert.equal(fresh.get(entry.path), entry.content, entry.path);
@@ -302,11 +307,11 @@ test("ép giá trị của vai trong file gốc người dùng đã đổi: ch�
   const presets = loadPresets(path.join(repoDir, "assets", "configs", "model-presets.json"));
   const models = nativeValues(resolveModelRoles(presets, { preset: "claude" }).roles);
   const settings = JSON.stringify({ theme: "rose-pine-dawn", defaultProvider: "openai-codex", defaultModel: "gpt-6-sol", defaultThinkingLevel: "max",
-    enabledModels: ["user/model"], autoMode: { model: "openai-codex/gpt-6-sol", stage2Model: "openai-codex/gpt-6-astra", stage2Reasoning: "high", log: true } });
+    enabledModels: ["user/model"], autoMode: { model: "openai-codex/gpt-6-sol", stage2Reasoning: "high", log: true } });
   const onlyMain = JSON.parse(forceNativeModels("settings", settings, models, ["main"]));
   assert.deepEqual([onlyMain.theme, onlyMain.defaultProvider, onlyMain.defaultModel, onlyMain.defaultThinkingLevel], ["rose-pine-dawn", "anthropic", "claude-opus-5-5", "high"]);
   // Danh sách suy ra (enabledModels) và vai không nêu giữ nguyên; bước gộp ba chiều lo phần đó.
-  assert.deepEqual([onlyMain.enabledModels, onlyMain.autoMode.model, onlyMain.autoMode.stage2Model], [["user/model"], "openai-codex/gpt-6-sol", "openai-codex/gpt-6-astra"]);
+  assert.deepEqual([onlyMain.enabledModels, onlyMain.autoMode.model], [["user/model"], "openai-codex/gpt-6-sol"]);
   const autoMode = JSON.parse(forceNativeModels("settings", settings, models, ["autoMode"])).autoMode;
   assert.deepEqual(autoMode, { model: "anthropic/claude-sonnet-5", stage2Reasoning: "low", log: true });
   assert.equal(forceNativeModels("settings", settings, models, ["worker"]), settings);

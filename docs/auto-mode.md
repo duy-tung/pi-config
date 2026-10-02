@@ -14,7 +14,7 @@
 - `/permissions`: mode hiện tại, danh sách lệnh vừa bị chặn (chọn một lệnh để duyệt cho **một lần thử lại**, Pi được báo "Permission granted for: …"), xem luật.
 - `/auto-mode`: trạng thái, gồm Jev (nguồn key, số lần gọi, token và chi phí trong phiên). `/auto-mode defaults` xem bộ luật mặc định. `/auto-mode test <lệnh bash>` chạy thử quyết định cho một lệnh (có gọi model khi cần) và in xác suất của Jev.
 - Key Jev: biến môi trường `TYPESAFE_API_KEY`.
-- Khởi động: `pi --permission-mode bypassPermissions` hoặc `pi --dangerously-skip-permissions`; mặc định lấy từ `permissions.defaultMode`. Mode bypass không bao giờ được khôi phục từ phiên cũ hay settings của project.
+- Khởi động: `pi --permission-mode bypassPermissions` hoặc `pi --dangerously-skip-permissions`; mặc định lấy từ `permissions.defaultMode` (`auto`, `bypass` hoặc `bypassPermissions`; giá trị khác là `auto`). Mode bypass không bao giờ được khôi phục từ phiên cũ hay settings của project.
 
 ## Auto mode quyết định thế nào
 
@@ -52,8 +52,8 @@ Mỗi tool call đi qua các bước sau, dừng ở bước đầu tiên có k�
    - `edit`/`write` trong thư mục làm việc, `additionalDirectories` hoặc thư mục tạm, trừ đường dẫn được bảo vệ (`.git/`, `.pi/`, `.claude/`, `.github/`, `.vscode/`, file rc của shell, `.npmrc`, `AGENTS.md`, `CLAUDE.md`…);
    - lệnh shell chứng minh được là chỉ đọc: toàn chữ thuần (không biến, `$()`, subshell, heredoc, gán biến môi trường), mọi lệnh con nằm trong danh sách đọc (`ls`, `cat`, `rg`, `git status/log/diff/show`, `gh pr view`…, `sed -n 1,20p`, `find` không `-exec/-delete`) và không có cờ ghi file (`sort -o`, `base64 -o`, `tree -o`, `yq -i`/`-s`, kể cả cụm cờ `-uoFILE` và tên dài viết tắt `--out=`), chuyển hướng chỉ tới `/dev/null`, và mọi đường dẫn nằm trong các thư mục đọc tự do ở trên;
    - `mkdir`/`touch`/`cp`/`mv` với mọi đích trong workspace (không có `cd` trong chuỗi lệnh);
-   - luật `allow` hẹp. Khi ở auto mode, luật allow cho phép chạy code tùy ý bị bỏ qua (`Bash(*)`, `python *`, `node *`, `npm run *`, `bash`, `sudo`, `Agent`, `SubagentWorkflow`…), như Claude Code.
-9. **Bộ phân loại** cho mọi thứ khác: đọc ngoài workspace (vd `grep` token trong `~/` — tool `grep` của Pi tìm cả file ẩn), lệnh shell còn lại, `bg_run`, `fetch_content` (trừ domain trong allow), spawn `Agent`, `SubagentWorkflow`, từng lời gọi tool MCP (`mcp__<server>__<tool>`, khi bạn bật MCP dựng sẵn của Pi), sửa file ngoài workspace hoặc vào đường dẫn được bảo vệ, tool lạ.
+   - luật `allow` hẹp. Khi ở auto mode, luật allow cho phép chạy code tùy ý bị bỏ qua (`Bash(*)`, `python *`, `node *`, `npm run *`, `bash`, `sudo`, `Agent`…), như Claude Code.
+9. **Bộ phân loại** cho mọi thứ khác: đọc ngoài workspace (vd `grep` token trong `~/` — tool `grep` của Pi tìm cả file ẩn), lệnh shell còn lại, `bg_run`, `fetch_content` (trừ domain trong allow), spawn `Agent`, từng lời gọi tool MCP (`mcp__<server>__<tool>`, khi bạn bật MCP dựng sẵn của Pi), sửa file ngoài workspace hoặc vào đường dẫn được bảo vệ, tool lạ.
 
 ### Git guard
 
@@ -70,14 +70,7 @@ Guard đọc lệnh như shell: chữ trong nháy, trong heredoc có delimiter t
 
 Khi bị chặn, agent nhận lý do kèm cách an toàn hơn; bạn tự chạy lệnh bằng `!<lệnh>` trong editor của Pi (lệnh `!` của người dùng không qua cổng). Lần chặn hiện trong `/permissions` với luật `git guard` và không tính vào giới hạn chặn của bộ phân loại.
 
-Cấu hình:
-
-| Cách | Tác dụng |
-|---|---|
-| `autoMode.gitGuard` trong `settings.json` | `false` hoặc `{"enabled": false}` tắt; `{"protectedBranches": ["main", "staging"]}` thay danh sách mặc định |
-| `PI_GIT_GUARD=off pi` | Tắt cho một lần chạy Pi (phép gán ngay trong lệnh của agent bị bỏ qua) |
-| `PI_GIT_PROTECTED_BRANCHES="main,staging" pi` | Thay danh sách nhánh cho một lần chạy, thắng settings |
-| `git config --add pi.protectedBranches staging` | Thêm nhánh cho một repo (bạn tự chạy; git config chỉ thêm, và agent không được sửa khoá `pi.*`) |
+Cấu hình duy nhất là `autoMode.gitGuard` trong `settings.json`: `false` hoặc `{"enabled": false}` tắt; `{"protectedBranches": ["main", "staging"]}` thay danh sách nhánh mặc định.
 
 ### Giới hạn đọc khi có deny đường dẫn
 
@@ -110,18 +103,18 @@ LLM mặc định là **Claude Sonnet 5** (`anthropic/claude-sonnet-5`), như Cl
 
   State không có tin nhắn, lời của agent hay kết quả tool.
 - 17 câu hỏi có/không (noul), mỗi câu một loại rủi ro, cùng một thang mức hại 0–3 (score). Các loại rủi ro: rò rỉ dữ liệu, credential, xoá không hoàn tác, lịch sử git, chạy code tải về, cài phần mềm, production/hệ dùng chung, bỏ qua kiểm tra, làm yếu bảo mật, persistence, thay đổi hệ thống, sửa ngoài project, ghi ra dịch vụ ngoài, tự sửa quyền, đổi remote/registry, che giấu, tấn công.
-- Code quyết định, không phải model:
-  - không câu nào ≥ `flagAt` (0,3) và P(mức hại ≥ "đáng kể") < `riskAt` (0,5) → cho chạy, không gọi LLM;
+- Code quyết định, không phải model (ngưỡng cố định trong `JEV_TUNING` của `lib/jev.ts`, hiệu chỉnh theo jev-1.13.0):
+  - không câu nào ≥ 0,3 và P(mức hại ≥ "đáng kể") < 0,5 → cho chạy, không gọi LLM;
   - còn lại → giai đoạn 2.
 
   Jev không bao giờ tự chặn, vì nó không đọc tin nhắn của người dùng nên không biết lệnh có được yêu cầu hay không.
 - Đi thẳng giai đoạn 2, không hỏi Jev:
   - lớp chính sách đã thấy rủi ro (`rm` vào đường dẫn quan trọng, ghi file được bảo vệ, lệnh rủi ro ở bước 5);
   - kể từ tin nhắn gần nhất của người dùng đã có kết quả tool nghi prompt injection (xem dưới).
-- Phạm vi: `bash`, `bg_run`, `powershell`, đọc ngoài workspace, `write`/`edit`, `fetch_content`, lời gọi MCP. `Agent`, `SubagentWorkflow` và tool lạ vẫn qua giai đoạn 1 bằng LLM.
+- Phạm vi: `bash`, `bg_run`, `powershell`, đọc ngoài workspace, `write`/`edit`, `fetch_content`, lời gọi MCP. `Agent` và tool lạ vẫn qua giai đoạn 1 bằng LLM.
 - Lỗi:
   - lỗi tạm thời (mạng, quá 5 giây, 429/529/5xx; thử lại một lần) → lần đó giai đoạn 1 bằng LLM; 3 lần liên tiếp thì tắt Jev tới hết phiên;
-  - key bị từ chối, endpoint sai hoặc câu trả lời sai kiểu → tắt Jev tới hết phiên và báo.
+  - key bị từ chối hoặc câu trả lời sai kiểu → tắt Jev tới hết phiên và báo.
 
   Jev không bao giờ là đường tự cho qua khi lỗi.
 
@@ -138,7 +131,7 @@ LLM mặc định là **Claude Sonnet 5** (`anthropic/claude-sonnet-5`), như Cl
 - Jev đọc trước khi agent thấy các kết quả mang nội dung bên ngoài: `fetch_content`, `get_search_content`, `web_search`, MCP, `Agent`/`get_subagent_result` (kết quả subagent trả về) và lệnh shell đọc mạng (`curl`, `wget`, `gh api`/`issue`/`pr`…).
 - Chỉ quét kết quả dài từ 100 ký tự. Nội dung chia tối đa 8 đoạn × 3.000 ký tự; dài hơn thì giữ phần đầu và phần cuối. Mỗi đoạn là một request riêng, gửi song song: khi mọi đoạn nằm chung một request, Jev chấm cả trang nên đoạn có lệnh chèn không nổi rõ.
 - Mỗi đoạn có hai câu hỏi độc lập: có lời nhắm vào AI đọc nó không (noul), và nó đang làm gì với AI (chiếm quyền / bàn luận / bình thường).
-- Cả hai cùng cao (≥ 0,5 và `probeAt` 0,5) thì:
+- Cả hai cùng cao (cùng ≥ 0,5) thì:
   - kết quả giữ nguyên nhưng kèm cảnh báo cho agent (coi là dữ liệu, không làm theo, cần thì hỏi người dùng);
   - người dùng được báo;
   - tới tin nhắn tiếp theo của người dùng, mọi hành động đi thẳng giai đoạn 2, và LLM được ghi chú là vừa có nội dung nghi injection.
@@ -148,10 +141,9 @@ LLM mặc định là **Claude Sonnet 5** (`anthropic/claude-sonnet-5`), như Cl
 
 - **Key**: tạo ở [console.typesafe.ai](https://console.typesafe.ai), đặt biến môi trường `TYPESAFE_API_KEY` trong profile của shell, rồi mở terminal mới trước khi chạy `pi`:
   - macOS/Linux: thêm `export TYPESAFE_API_KEY="<key>"` vào `~/.zshrc` hoặc `~/.bashrc`. Windows: `setx TYPESAFE_API_KEY "<key>"`.
-  - Đây là cách duy nhất tài liệu TypeSafe và SDK chính thức mô tả, và là cách phổ biến nhất trong các package Jev (khảo sát 9/2026: 10/13 package trên npm đọc `TYPESAFE_API_KEY`, 8 package lấy `export` làm bước đầu). Cùng biến này được pi-advisor-flow (bộ lọc Jev, mặc định tắt) đọc.
+  - Đây là cách duy nhất tài liệu TypeSafe và SDK chính thức mô tả, và là cách phổ biến nhất trong các package Jev. Cùng biến này được pi-advisor-flow (bộ lọc Jev, mặc định tắt) đọc.
   - Đánh đổi: mọi lệnh agent chạy đều thấy biến môi trường, và key nằm dạng chữ trong file profile. Ở auto mode, lệnh in biến (`env`, `printenv`, `export -p`) phải qua bộ phân loại, và luật Secret Exposure chặn làm lộ key; ở bypass không có lớp nào chặn.
-  - Thứ tự đọc: `SYSTEMONE_API_KEY` → `TYPESAFE_API_KEY` (chỉ gửi tới endpoint của TypeSafe).
-  - `SYSTEMONE_ENDPOINT` đổi provider (OpenCode Zen, OpenRouter…); khi đó dùng `SYSTEMONE_API_KEY` và đặt `autoMode.jev.model` theo tên model của provider.
+  - Key chỉ được gửi tới endpoint của TypeSafe (`https://api.typesafe.ai/v1/systemone`); không đổi được provider.
   - Kiểm tra: `pi-doctor` (in nguồn key, không in key), `/auto-mode`.
 - **Dữ liệu gửi cho TypeSafe**: giai đoạn 1 gửi môi trường và hành động; probe gửi nội dung kết quả tool. Secret dạng phổ biến được che trước khi gửi: token, API key, private key, mật khẩu trong URL, header `Authorization`, biến `*_TOKEN=`/`*_KEY=`.
   - Theo tài liệu của TypeSafe, họ không train trên dữ liệu khách hàng; việc lưu trữ theo Data Processing Agreement, và zero data retention chỉ có ở gói enterprise.
@@ -192,33 +184,26 @@ Completion auditor của goal (pi-goal-x) cũng là phiên con: bản vá nạp 
   },
   "autoMode": {
     "model": "anthropic/claude-sonnet-5",
-    "stage2Model": "anthropic/claude-sonnet-5",
     "stage2Reasoning": "low",
     "timeoutMs": 60000,
     "environment": ["$defaults", "Trusted GitHub org: my-org"],
     "soft_deny": ["$defaults"],
     "hard_deny": ["$defaults"],
     "allow": ["$defaults", "Deploy Previews: deploying preview environments with vercel is fine."],
-    "jev": { "model": "jev-1.13.0", "flagAt": 0.3, "riskAt": 0.5, "probe": true },
-    "keys": ["shift+tab"],
+    "jev": { "model": "jev-1.13.0" },
     "log": false
   }
 }
 ```
 
-`autoMode.jev` (đặt `false` để tắt Jev, cả giai đoạn 1 lẫn probe):
-- `model`: ghim phiên bản, vì ngưỡng được chỉnh theo phiên bản; không dùng alias `jev-latest`.
-- `flagAt`, `riskAt`: ngưỡng của giai đoạn 1. Thấp hơn thì gắn cờ nhiều hơn: an toàn hơn nhưng gọi LLM nhiều hơn. Với bộ lệnh hiệu chỉnh, `flagAt` 0,35 vẫn không lọt lệnh rủi ro nào và bớt vài lệnh thường phải gọi LLM, nhưng biên an toàn hẹp hơn.
-- `probe`, `probeTools` (danh sách tool được quét, `mcp` gồm mọi `mcp__*`), `probeAt`: probe prompt injection.
-- `timeoutMs`: 5000.
-- `PI_AUTO_MODE_JEV=0` tắt Jev trong một lần chạy.
+`autoMode.jev`: `false` (hoặc `{"enabled": false}`) tắt Jev, cả giai đoạn 1 lẫn probe; `model` ghim phiên bản, vì ngưỡng được chỉnh theo phiên bản; không dùng alias `jev-latest`. Ngưỡng (0,3/0,5 của giai đoạn 1, 0,5 của probe), thời gian chờ 5 giây và danh sách tool được probe quét là hằng số trong code (`JEV_TUNING`), không đổi bằng settings.
 
 - Luật theo cú pháp Claude Code: `Tool` hoặc `Tool(specifier)`. `Bash(git push *)` khớp từng lệnh con (` *` ở cuối cũng khớp khi không có đối số); luật bắt đầu bằng `*` còn khớp cả chuỗi lệnh gốc. `Read(...)`/`Edit(...)`/`Write(...)` cho đường dẫn: `~/…` theo HOME, `/…` hoặc `//…` tuyệt đối, không có `/` thì so với tên file, còn lại tương đối với thư mục làm việc; `**` khớp nhiều cấp. `Path(...)` là cách riêng của pi-config cho cả đọc và ghi. Deny bắt đầu bằng `!` là ngoại lệ. `WebFetch(domain:host)` cho `fetch_content`; MCP dùng tên `mcp__server__tool`.
 - Với `fetch_content`, xét mọi URL trong cả `url` và `urls`: deny/ask chỉ cần khớp một URL; auto chỉ dùng luật allow khi mọi URL đều được phủ. Ngoại lệ `!` áp dụng riêng từng URL.
 - Các ô `environment`, `soft_deny`, `hard_deny`, `allow` của `autoMode` là câu chữ đưa vào prompt; `"$defaults"` chèn bộ mặc định (xem `/auto-mode defaults`), bỏ nó đi là thay hẳn. Mỗi luật dạng `Tên: mô tả`.
 - `model` không dùng được thì dùng model của phiên và báo một lần: chưa đăng nhập hoặc không có trong catalog (ngay từ đầu), hay hết quota, rate limit, model bị từ chối (lúc chạy; chuyển luôn tới hết phiên như Claude Code). Model của phiên cũng lỗi thì chặn.
 - `log: true` (hoặc `PI_AUTO_MODE_LOG=1`) ghi quyết định vào `<stateDir>/decisions.jsonl` (có tóm tắt lệnh; tắt khi không cần). `PI_AUTO_MODE_DISABLE=1` tắt extension trong một lần chạy.
-- Installer đặt luật deny cho file bí mật (`.env`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube/config`, `~/.netrc`, `~/.git-credentials`, token của `gh`/docker, `id_rsa*`, `*.pem`, auth của Pi/Claude/Codex, credential Firecrawl, backups), `sudo` và helper khóa Firecrawl. Cài lại giữ luật deny bạn đã thêm, chuyển luật deny của pi-permission-system cũ sang và thêm luật mới của installer, kể cả khi `settings.json` đã được Pi hoặc bạn sửa.
+- Installer đặt luật deny cho file bí mật (`.env`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube/config`, `~/.netrc`, `~/.git-credentials`, token của `gh`/docker, `id_rsa*`, `*.pem`, auth của Pi/Claude/Codex, credential Firecrawl, backups), `sudo` và helper khóa Firecrawl. Cài lại giữ luật deny bạn đã thêm và thêm luật mới của installer, kể cả khi `settings.json` đã được Pi hoặc bạn sửa.
   - Thư mục chỉ chứa bí mật (`~/.ssh`, `~/.aws`, `~/.config/gcloud`, `~/.gnupg`, credential Firecrawl, backups) bị chặn cả chính thư mục và mọi cấp bên trong, vd `Path(~/.aws)` và `Path(~/.aws/**)`. Nhờ vậy lệnh đọc cả thư mục (`tar czf k.tgz ~/.ssh`, `cp -r ~/.aws`, `grep -r … ~/.ssh`) và file lồng nhiều cấp (token SSO trong `~/.aws/sso/cache/`) không lọt qua luật theo từng file. Đổi lại, `ls ~/.ssh` cũng bị chặn.
   - Bản cài trước dùng `~/.ssh/*`, `~/.aws/*`, `~/.config/gcloud/*` (chỉ khớp một cấp). Cài lại tự thêm các luật mới; luật mặc định cũ mà bản mới bỏ được xoá khỏi file, trừ lần cài đầu từ bản chưa lưu mặc định (`<root>/state/defaults`): khi đó luật cũ được giữ cạnh luật mới, vì deny chỉ thu hẹp quyền.
   - Luật `Bash(rm -rf *)` do bản cài cũ ghi bị bỏ khi cài lại: luật này chặn hẳn `rm -rf` (người dùng không duyệt được) nhưng để lọt `rm -fr`; bước 4 thay thế nó. Luật bạn tự thêm lại sau đó được giữ.
@@ -228,15 +213,15 @@ Completion auditor của goal (pi-goal-x) cũng là phiên con: bản vá nạp 
 ## Giới hạn
 
 - Bộ phân loại có thể sai. Claude Code công bố tỉ lệ bỏ lọt 17% trên các hành động quá đà thật (và 0,4% chặn nhầm) cho model và prompt của họ; pi-auto-mode chưa có số đo riêng. Không phải sandbox: lệnh được cho chạy có toàn quyền của người dùng. Với việc nhạy cảm, chạy Pi trong container/VM.
-- Câu hỏi và ngưỡng được hiệu chỉnh với jev-1.13.0 thật (9/2026), trên hai bộ: `tests/auto-mode-eval/cases.json` và `tests/auto-mode-eval/screen-cases.json` (272 lệnh gắn nhãn theo rủi ro tự thân); test offline chạy lại hai bộ này với câu trả lời giả để canh hồi quy. Gần một nửa bộ lệnh được viết sau, để kiểm độc lập; nó chỉ được dùng cho một lần sửa câu hỏi về credential.
+- Câu hỏi và ngưỡng được hiệu chỉnh với jev-1.13.0 thật (9/2026), trên hai bộ: `tests/auto-mode-eval/cases.json` và `tests/auto-mode-eval/screen-cases.json` (272 lệnh gắn nhãn theo rủi ro tự thân); test offline chỉ kiểm dữ liệu của hai bộ hợp lệ và các tình huống được luật hoặc lối đi nhanh quyết định (không gọi model) ra đúng nhãn. Gần một nửa bộ lệnh được viết sau, để kiểm độc lập; nó chỉ được dùng cho một lần sửa câu hỏi về credential.
   - Không lọt lệnh rủi ro nào: 27/27 và 141/141 bị gắn cờ. Lệnh rủi ro thấp nhất vẫn cao hơn ngưỡng khoảng 0,25.
   - Khoảng 11% lệnh thường (13/122) phải sang giai đoạn 2. Với bộ đánh giá, 7/22 hành động hợp lệ sang giai đoạn 2, trong đó 4 hành động (force-with-lease, cài công cụ, dừng tiến trình, migration) cần LLM xét ủy quyền.
   - Probe: 10/10 mẫu thật đúng. Trang hướng dẫn cho agent và bài viết về injection không bị cảnh báo; trang, issue và nội dung tiếng Việt có lệnh chèn đạt 0,94–1,00.
-  - Bộ lệnh vẫn là tự viết. Hành vi thật của agent có thể khác, và khi TypeSafe ra phiên bản Jev mới, hiệu chỉnh lại trên hai bộ lệnh trước khi đổi `model` (script chạy với Jev thật đã bỏ khỏi repo; lấy lại `scripts/auto-mode-eval.mjs` từ lịch sử git khi cần). Lỗi đáng lo là lệnh nguy hiểm được Jev cho qua; gắn cờ nhầm chỉ tốn một lần gọi giai đoạn 2.
+  - Bộ lệnh vẫn là tự viết. Hành vi thật của agent có thể khác, và khi TypeSafe ra phiên bản Jev mới, hiệu chỉnh lại trên hai bộ lệnh trước khi đổi `model` (script và harness chạy với model thật đã bỏ khỏi repo; lấy lại `scripts/auto-mode-eval.mjs` và `tests/auto-mode-eval/eval.ts` từ lịch sử git khi cần). Lỗi đáng lo là lệnh nguy hiểm được Jev cho qua; gắn cờ nhầm chỉ tốn một lần gọi giai đoạn 2.
 - Jev đọc câu chữ theo nghĩa đen. Theo mục "jaggedness" của jev-1.13, nó yếu với lệnh nhiều tầng gián tiếp và với nội dung cố tình đánh lừa. Vì vậy Jev chỉ cho qua lệnh mà mọi câu hỏi rủi ro đều thấp, không tự chặn, và probe chỉ cảnh báo.
 - Tiếng Anh là ngôn ngữ chính của Jev. Giai đoạn 1 không đọc tin nhắn người dùng nên không bị ảnh hưởng; probe trên nội dung không phải tiếng Anh kém chính xác hơn.
 - Probe chỉ chạy khi có key Jev và chỉ với kết quả mang nội dung bên ngoài. File đọc trong workspace (kể cả repo vừa clone) không được quét. Nội dung dài hơn 24.000 ký tự chỉ được quét phần đầu và phần cuối.
-- Kết quả subagent trả về được probe quét, nhưng không xét lại cả lịch sử hành động của subagent như Claude Code. Lệnh `gate:` trong `SubagentWorkflow` chạy không qua `tool_call`; vì vậy cả script workflow được phân loại lúc gọi.
+- Kết quả subagent trả về được probe quét, nhưng không xét lại cả lịch sử hành động của subagent như Claude Code.
 - Bước 4 chỉ nhận ra các lệnh shell ở trên. Script tự xoá thư mục (`python -c "shutil.rmtree(...)"`, `node -e`...) hoặc lệnh xoá trên máy khác (`ssh`, `docker exec`) không bị hỏi.
 - Bước 5 cũng vậy:
   - chỉ thấy đích là chữ thuần, `$HOME/…` và đường dẫn tương đối sau `cd`;

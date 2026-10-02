@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { type ExtensionAPI, type ExtensionContext, getAgentDir, getPackageDir, type ToolResultEventResult } from "@earendil-works/pi-coding-agent";
 import { classifyWithFallback, type ClassifierResult, type Complete, type ScreenOutcome } from "./lib/classifier.ts";
 import { loadConfig, parseMode, type PermissionMode, readState, writeState } from "./lib/config.ts";
-import { evaluate, JEV_DEFAULT_ENDPOINT, JEV_PRICE_PER_MTOK, type JevAccess, JevError, resolveAccess } from "./lib/jev.ts";
+import { evaluate, JEV_PRICE_PER_MTOK, JEV_TUNING, type JevAccess, JevError, resolveAccess } from "./lib/jev.ts";
 import * as text from "./lib/messages.ts";
 import { type CallFacts, decide, describeCall, escalates, filterDeniedGrep, type PolicyContext, SAFE_TOOLS, type ToolCall } from "./lib/policy.ts";
 import { resolveToolPath, temporaryRoots } from "./lib/paths.ts";
@@ -83,14 +83,13 @@ export default function piAutoMode(pi: ExtensionAPI) {
   let demoted = false;
   let pendingRelayed: string[] = [];
   const ownMessages = new Set<string>();
-  let hintKey = "shift+tab";
   /** Remote git lúc mở phiên ("origin git@github.com:org/repo.git"), cho state của Jev. */
   let remotes: string[] = [];
 
   // Jev (System One của TypeSafe): giai đoạn 1 và probe prompt injection, khi có API key.
   let jevAccess: Promise<JevAccess> | undefined;
   let jevResolved: JevAccess | undefined;
-  /** Lý do tắt Jev tới hết phiên (key bị từ chối, endpoint sai, API trả dữ liệu lạ). */
+  /** Lý do tắt Jev tới hết phiên (key bị từ chối, API trả lỗi hoặc dữ liệu lạ). */
   let jevOff: string | undefined;
   let jevWarned = false;
   /** Lỗi tạm thời liên tiếp của Jev. */
@@ -119,7 +118,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
       return {
         render: () => {
           const label = mode === "bypass" ? theme.fg("error", "⏵⏵ bypass permissions on") : theme.fg("warning", "⏵⏵ auto mode on");
-          return [`${label}${theme.fg("dim", ` (${hintKey} to cycle)`)}`];
+          return [`${label}${theme.fg("dim", " (shift+tab to cycle)")}`];
         },
         invalidate() {},
       };
@@ -299,11 +298,11 @@ export default function piAutoMode(pi: ExtensionAPI) {
     return `<user_instructions>\n${parts.join("\n\n")}\n</user_instructions>`;
   }
 
-  function makeComplete(ctx: ExtensionContext, model: NonNullable<ExtensionContext["model"]>, stage2: NonNullable<ExtensionContext["model"]>, cacheKey: string): Complete {
+  /** Hai giai đoạn dùng cùng model để giai đoạn 2 dùng lại cache của giai đoạn 1. */
+  function makeComplete(ctx: ExtensionContext, model: NonNullable<ExtensionContext["model"]>, cacheKey: string): Complete {
     return async (request, options) => {
-      const target = options.stage === 2 ? stage2 : model;
       const content = [...request.blocks, request.suffix].map((value) => ({ type: "text" as const, text: value }));
-      const stream = ctx.modelRegistry.streamSimple(target, {
+      const stream = ctx.modelRegistry.streamSimple(model, {
         systemPrompt: request.systemPrompt,
         messages: [{ role: "user", content, timestamp: Date.now() }],
       }, {
@@ -346,7 +345,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
 
   /**
    * Lỗi tạm thời: lần này dùng LLM; 3 lần liên tiếp thì tắt Jev tới hết phiên (không để mỗi lệnh chờ Jev đang sập).
-   * Lỗi khác (key bị từ chối, endpoint sai, dữ liệu lạ): tắt Jev tới hết phiên ngay.
+   * Lỗi khác (key bị từ chối, API trả lỗi hoặc dữ liệu lạ): tắt Jev tới hết phiên ngay.
    */
   function jevFailure(ctx: ExtensionContext, error: unknown, purpose: "screen" | "probe"): ScreenOutcome {
     const failure = error instanceof JevError ? error : new JevError("network", error instanceof Error ? error.message : String(error));
@@ -375,9 +374,9 @@ export default function piAutoMode(pi: ExtensionAPI) {
     };
     try {
       const result = await evaluate(access, { model: config.jev.model, state: screenState(action, jevEnvironment(ctx.cwd)), questions: screenQuestions() },
-        { signal: ctx.signal, timeoutMs: config.jev.timeoutMs });
+        { signal: ctx.signal, timeoutMs: JEV_TUNING.timeoutMs });
       recordUsage(result.inputTokens);
-      const verdict = judgeScreen(result.answers, config.jev);
+      const verdict = judgeScreen(result.answers);
       lastScreen = verdict;
       if (verdict.flagged) jevStats.flagged++;
       else jevStats.cleared++;
@@ -410,12 +409,11 @@ export default function piAutoMode(pi: ExtensionAPI) {
     if (!access) return "starting";
     if (access.status === "missing") return "no API key — set TYPESAFE_API_KEY";
     if (access.status === "unavailable") return `unavailable (${access.message})`;
-    return `${config.jev.model} (key from ${access.source}${access.endpoint.href === JEV_DEFAULT_ENDPOINT ? "" : `, ${access.endpoint.origin}`})`;
+    return `${config.jev.model} (key from TYPESAFE_API_KEY)`;
   }
 
   function jevUsage(): string {
-    const priced = jevResolved?.status === "ready" && jevResolved.endpoint.href === JEV_DEFAULT_ENDPOINT && config.jev.model === "jev-1.13.0";
-    const cost = priced ? ` ≈ $${(jevStats.inputTokens * JEV_PRICE_PER_MTOK / 1e6).toFixed(4)}` : "";
+    const cost = config.jev.model === "jev-1.13.0" ? ` ≈ $${(jevStats.inputTokens * JEV_PRICE_PER_MTOK / 1e6).toFixed(4)}` : "";
     return `${jevStats.calls} calls, ${jevStats.inputTokens} input tokens${cost} · screened ${jevStats.cleared + jevStats.flagged} (${jevStats.flagged} to stage 2)`
       + ` · probed ${jevStats.probes} results (${jevStats.injections} flagged)${jevStats.failures ? ` · ${jevStats.failures} failures` : ""}`;
   }
@@ -426,7 +424,6 @@ export default function piAutoMode(pi: ExtensionAPI) {
     const session = ctx.model;
     const model = demoted ? session : resolveModel(ctx, config.model);
     if (!model) return { kind: "unavailable", reason: "no model is configured for the classifier" };
-    const stage2 = !demoted && config.stage2Model ? resolveModel(ctx, config.stage2Model) ?? model : model;
     const sameAsSession = !!session && session.provider === model.provider && session.id === model.id;
     if (!facts.length) await loadFacts(ctx.cwd);
     lastScreen = undefined;
@@ -452,8 +449,8 @@ export default function piAutoMode(pi: ExtensionAPI) {
       blocks.push(`<root_user_messages>\n${anchor.map((item) => JSON.stringify({ user: item })).join("\n") || "(none)"}\n</root_user_messages>`);
     }
     blocks.push(transcript);
-    const complete = makeComplete(ctx, model, stage2, `pi-auto-mode:${sessionId}`);
-    const fallback = session && !sameAsSession ? makeComplete(ctx, session, session, `pi-auto-mode:${sessionId}:session`) : undefined;
+    const complete = makeComplete(ctx, model, `pi-auto-mode:${sessionId}`);
+    const fallback = session && !sameAsSession ? makeComplete(ctx, session, `pi-auto-mode:${sessionId}:session`) : undefined;
     if (ctx.hasUI) ctx.ui.setWorkingMessage(`Auto mode: checking ${call.toolName}…`);
     try {
       const { result, fellBack, primaryReason } = await classifyWithFallback({
@@ -560,8 +557,8 @@ export default function piAutoMode(pi: ExtensionAPI) {
   pi.on("tool_result", async (event, ctx) => {
     const content = denyFilteredContent(event, ctx);
     const changed = content !== event.content ? { content } : undefined;
-    if (currentMode() !== "auto" || !config.jev.probe || !jevReady()) return changed;
-    if (!shouldProbe(event.toolName, event.input as Record<string, unknown>, config.jev.probeTools)) return changed;
+    if (currentMode() !== "auto" || !jevReady()) return changed;
+    if (!shouldProbe(event.toolName, event.input as Record<string, unknown>)) return changed;
     const body = resultText(content);
     if (body.trim().length < 100) return changed;
     const access = await jevAccess;
@@ -571,10 +568,10 @@ export default function piAutoMode(pi: ExtensionAPI) {
     try {
       // Mỗi đoạn một request, gửi song song; một request lỗi thì bỏ qua lần quét này (probe chỉ cảnh báo).
       const results = await Promise.all(chunks.map((chunk) => evaluate(access, { model: config.jev.model, state: probeState(event.toolName, chunk), questions: PROBE_QUESTIONS },
-        { signal: ctx.signal, timeoutMs: config.jev.timeoutMs })));
+        { signal: ctx.signal, timeoutMs: JEV_TUNING.timeoutMs })));
       for (const result of results) recordUsage(result.inputTokens);
       jevStats.probes++;
-      const verdict = judgeProbe(results.map((result) => result.answers), config.jev.probeAt);
+      const verdict = judgeProbe(results.map((result) => result.answers));
       log({
         event: "probe", tool: event.toolName, ms: Date.now() - started, flagged: verdict.flagged, chunks: chunks.length,
         directed: Number(verdict.directed.toFixed(3)), hijack: Number(verdict.hijack.toFixed(3)),
@@ -638,7 +635,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
   // applied báo lại cho /models là phiên này đã nhận.
   pi.events.on(MODEL_ROLES_EVENT, (payload: unknown) => {
     const fresh = loadConfig(agentDir);
-    config = { ...config, model: fresh.model, stage2Model: fresh.stage2Model, stage2Reasoning: fresh.stage2Reasoning };
+    config = { ...config, model: fresh.model, stage2Reasoning: fresh.stage2Reasoning };
     (payload as { applied?: string[] } | undefined)?.applied?.push("autoMode");
   });
 
@@ -719,28 +716,13 @@ export default function piAutoMode(pi: ExtensionAPI) {
   // Phím tắt và lệnh
   // ---------------------------------------------------------------------------
 
-  // shift+tab chỉ đăng ký được khi app.thinking.cycle đã chuyển sang phím khác (Pi giữ phím này).
-  const thinkingKeys = (() => {
-    try {
-      const bindings = JSON.parse(fs.readFileSync(path.join(agentDir, "keybindings.json"), "utf8")) as Record<string, unknown>;
-      const value = bindings["app.thinking.cycle"];
-      return value === undefined ? ["shift+tab"] : (Array.isArray(value) ? value : [value]).map((item) => String(item).toLowerCase());
-    } catch {
-      return ["shift+tab"];
-    }
-  })();
-  const keys = config.keys.filter((key) => !thinkingKeys.includes(key.toLowerCase()));
-  if (!keys.length) keys.push("alt+m");
-  hintKey = keys[0];
-  for (const key of keys) {
-    pi.registerShortcut(key as never, { description: "Switch permission mode (auto ⇄ bypass)", handler: (ctx) => cycle(ctx) });
-  }
+  // Shift+Tab như Claude Code; bộ cài chuyển mức thinking của Pi sang Alt+T. Nếu keybindings.json vẫn gán
+  // Shift+Tab cho thinking, Pi bỏ phím này của extension (kèm chẩn đoán) và mode đổi bằng /permissions.
+  pi.registerShortcut("shift+tab" as never, { description: "Switch permission mode (auto ⇄ bypass)", handler: (ctx) => cycle(ctx) });
 
   function modelLabel(): string {
     const llm = config.model ?? "session model";
-    if (jevReady() && jevResolved?.status === "ready") return `Jev ${config.jev.model} → ${config.stage2Model ?? llm}`;
-    const stage2 = config.stage2Model && config.stage2Model !== config.model ? `, stage 2: ${config.stage2Model}` : "";
-    return `${llm}${stage2}`;
+    return jevReady() && jevResolved?.status === "ready" ? `Jev ${config.jev.model} → ${llm}` : llm;
   }
 
   pi.registerCommand("permissions", {

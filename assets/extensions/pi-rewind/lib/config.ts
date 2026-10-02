@@ -6,32 +6,22 @@ export interface RewindConfig {
   enabled: boolean;
   storageDir: string;
   retentionDays: number;
-  maxFileBytes: number;
-  /** Tổng dung lượng blob tối đa; lần dọn hằng ngày xóa blob tham chiếu lâu nhất (best-effort). */
-  maxStorageBytes: number;
-  /** Tool có thể sửa file ngoài edit/write; được theo dõi bằng git status trước/sau. */
-  watchTools: string[];
-  /** git status + chụp file bẩn chậm hơn ngưỡng này thì ngừng theo dõi repo trong phiên. */
+  /** git status + chụp file bẩn chậm hơn ngưỡng này thì ngừng theo dõi repo trong phiên (test đặt cao hơn). */
   watchSlowMs: number;
-  /** Số file chưa commit tối đa để theo dõi bash/Agent. */
-  watchMaxDirty: number;
-  /** Tổng dung lượng file chưa commit cần chụp trước mỗi bash/Agent; vượt thì ngừng theo dõi repo trong phiên. */
-  watchMaxBytes: number;
-  /** Esc Esc mở Rewind; cần doubleEscapeAction "none" để không trùng /tree của Pi. */
-  doubleEscape: boolean;
 }
 
-export const DEFAULTS: Omit<RewindConfig, "storageDir"> = {
-  enabled: true,
-  retentionDays: 30,
-  maxFileBytes: 20 * 1024 * 1024,
-  maxStorageBytes: 2 * 1024 * 1024 * 1024,
-  watchTools: ["bash", "powershell", "Agent"],
-  watchSlowMs: 2000,
-  watchMaxDirty: 500,
-  watchMaxBytes: 256 * 1024 * 1024,
-  doubleEscape: true,
-};
+/** File lớn hơn mức này không được chụp. */
+export const MAX_FILE_BYTES = 20 * 1024 * 1024;
+/** Tổng dung lượng blob tối đa; lần dọn hằng ngày xóa blob tham chiếu lâu nhất (best-effort). */
+export const MAX_STORAGE_BYTES = 2 * 1024 * 1024 * 1024;
+/** Tool có thể sửa file ngoài edit/write; được theo dõi bằng git status trước/sau. */
+export const WATCH_TOOLS = ["bash", "powershell", "Agent"];
+/** Số file chưa commit tối đa để theo dõi bash/Agent. */
+export const WATCH_MAX_DIRTY = 500;
+/** Tổng dung lượng file chưa commit cần chụp trước mỗi bash/Agent; vượt thì ngừng theo dõi repo trong phiên. */
+export const WATCH_MAX_BYTES = 256 * 1024 * 1024;
+
+export const DEFAULTS: Omit<RewindConfig, "storageDir"> = { enabled: true, retentionDays: 30, watchSlowMs: 2000 };
 
 function readJson(file: string): Record<string, unknown> {
   try {
@@ -59,13 +49,7 @@ export function loadConfig(agentDir: string): RewindConfig & { doubleEscapeActio
     enabled: raw.enabled !== false && process.env.PI_REWIND_DISABLE !== "1",
     storageDir: path.isAbsolute(storage) ? storage : path.resolve(agentDir, storage),
     retentionDays: number(raw.retentionDays, DEFAULTS.retentionDays),
-    maxFileBytes: number(raw.maxFileBytes, DEFAULTS.maxFileBytes),
-    maxStorageBytes: number(raw.maxStorageBytes, DEFAULTS.maxStorageBytes),
-    watchTools: Array.isArray(raw.watchTools) ? raw.watchTools.filter((item): item is string => typeof item === "string") : DEFAULTS.watchTools,
     watchSlowMs: number(raw.watchSlowMs, DEFAULTS.watchSlowMs),
-    watchMaxDirty: number(raw.watchMaxDirty, DEFAULTS.watchMaxDirty),
-    watchMaxBytes: number(raw.watchMaxBytes, DEFAULTS.watchMaxBytes),
-    doubleEscape: raw.doubleEscape !== false,
     doubleEscapeAction: typeof settings.doubleEscapeAction === "string" ? settings.doubleEscapeAction : "tree",
   };
 }

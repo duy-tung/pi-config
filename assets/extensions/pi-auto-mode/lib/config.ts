@@ -3,20 +3,14 @@ import path from "node:path";
 
 export type PermissionMode = "auto" | "bypass";
 
-/** Giai đoạn 1 và probe prompt injection bằng Jev (System One của TypeSafe); chỉ chạy khi có API key. */
+/**
+ * Giai đoạn 1 và probe prompt injection bằng Jev (System One của TypeSafe); chỉ chạy khi có API key.
+ * Ngưỡng là hằng số trong code (JEV_TUNING của lib/jev.ts).
+ */
 export interface JevConfig {
   enabled: boolean;
   /** Model ghim phiên bản (ngưỡng được chỉnh theo phiên bản). */
   model: string;
-  /** Câu hỏi rủi ro có xác suất từ mức này trở lên → giai đoạn 2. */
-  flagAt: number;
-  /** P(mức hại ≥ đáng kể) từ mức này trở lên → giai đoạn 2. */
-  riskAt: number;
-  timeoutMs: number;
-  probe: boolean;
-  probeTools: string[];
-  /** Xác suất "chiếm quyền" của một đoạn từ mức này trở lên (và có lời nhắm vào AI) → cảnh báo. */
-  probeAt: number;
 }
 
 /** Git guard tất định (lib/git-guard.ts): áp dụng ở cả auto và bypass, trước bộ phân loại. */
@@ -34,10 +28,8 @@ export interface AutoModeConfig {
   ask: string[];
   deny: string[];
   additionalDirectories: string[];
-  /** Model phân loại "provider/id"; bỏ trống thì dùng model của phiên. */
+  /** Model phân loại "provider/id" cho cả hai giai đoạn; bỏ trống thì dùng model của phiên. */
   model?: string;
-  /** Model cho giai đoạn 2 (mặc định = model). */
-  stage2Model?: string;
   stage2Reasoning: string;
   timeoutMs: number;
   environment: string[];
@@ -45,7 +37,6 @@ export interface AutoModeConfig {
   softDeny: string[];
   hardDeny: string[];
   stateDir: string;
-  keys: string[];
   log: boolean;
   /** Ghi chú thêm về môi trường; nối vào slot environment. */
   source: string;
@@ -56,36 +47,15 @@ export interface AutoModeConfig {
 const DEFAULTS = {
   timeoutMs: 60_000,
   stage2Reasoning: "low",
-  keys: ["shift+tab"],
 };
 
-export const DEFAULT_PROBE_TOOLS = ["fetch_content", "get_search_content", "web_search", "mcp", "Agent", "get_subagent_result"];
+const JEV_MODEL = "jev-1.13.0";
 
-const JEV_DEFAULTS: JevConfig = {
-  enabled: true, model: "jev-1.13.0", flagAt: 0.3, riskAt: 0.5, timeoutMs: 5_000,
-  probe: true, probeTools: DEFAULT_PROBE_TOOLS, probeAt: 0.5,
-};
-
-function fraction(value: unknown, fallback: number): number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0 && value < 1 ? value : fallback;
-}
-
-/** `autoMode.jev`: false tắt hẳn; object ghi đè từng trường; giá trị sai dùng mặc định. */
-export function parseJev(value: unknown, env: NodeJS.ProcessEnv = process.env): JevConfig {
-  if (value === false || env.PI_AUTO_MODE_JEV === "0") return { ...JEV_DEFAULTS, enabled: false, probe: false };
+/** `autoMode.jev`: false hoặc {enabled: false} tắt hẳn (cả giai đoạn 1 lẫn probe); `model` sai thì dùng mặc định. */
+export function parseJev(value: unknown): JevConfig {
   const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
-  const model = typeof raw.model === "string" && raw.model.trim() && raw.model.length <= 128 ? raw.model.trim() : JEV_DEFAULTS.model;
-  const timeout = Number(raw.timeoutMs);
-  return {
-    enabled: raw.enabled !== false,
-    model,
-    flagAt: fraction(raw.flagAt, JEV_DEFAULTS.flagAt),
-    riskAt: fraction(raw.riskAt, JEV_DEFAULTS.riskAt),
-    timeoutMs: Number.isFinite(timeout) && timeout >= 1_000 && timeout <= 60_000 ? timeout : JEV_DEFAULTS.timeoutMs,
-    probe: raw.enabled !== false && raw.probe !== false,
-    probeTools: strings(raw.probeTools) ?? JEV_DEFAULTS.probeTools,
-    probeAt: fraction(raw.probeAt, JEV_DEFAULTS.probeAt),
-  };
+  const model = typeof raw.model === "string" && raw.model.trim() && raw.model.length <= 128 ? raw.model.trim() : JEV_MODEL;
+  return { enabled: value !== false && raw.enabled !== false, model };
 }
 
 /** `autoMode.gitGuard`: false tắt; object {enabled, protectedBranches}; giá trị sai dùng mặc định (bật). */
@@ -101,8 +71,8 @@ function strings(value: unknown): string[] | undefined {
 }
 
 function mode(value: unknown): PermissionMode | undefined {
-  if (value === "bypassPermissions" || value === "bypass" || value === "yolo") return "bypass";
-  if (value === "auto" || value === "default" || value === "manual" || value === "acceptEdits") return "auto";
+  if (value === "bypassPermissions" || value === "bypass") return "bypass";
+  if (value === "auto") return "auto";
   return undefined;
 }
 
@@ -140,7 +110,6 @@ export function loadConfig(agentDir: string, env: NodeJS.ProcessEnv = process.en
     deny: strings(permissions.deny) ?? [],
     additionalDirectories: strings(permissions.additionalDirectories) ?? [],
     model: text(auto.model),
-    stage2Model: text(auto.stage2Model),
     stage2Reasoning: text(auto.stage2Reasoning) ?? DEFAULTS.stage2Reasoning,
     timeoutMs: Number.isFinite(timeout) && timeout >= 5_000 ? timeout : DEFAULTS.timeoutMs,
     environment: strings(auto.environment) ?? ["$defaults"],
@@ -148,10 +117,9 @@ export function loadConfig(agentDir: string, env: NodeJS.ProcessEnv = process.en
     softDeny: strings(auto.soft_deny) ?? ["$defaults"],
     hardDeny: strings(auto.hard_deny) ?? ["$defaults"],
     stateDir: text(auto.stateDir) ?? path.join(agentDir, "pi-auto-mode"),
-    keys: strings(auto.keys) ?? DEFAULTS.keys,
     log: auto.log === true || env.PI_AUTO_MODE_LOG === "1",
     source: path.join(agentDir, "settings.json"),
-    jev: parseJev(auto.jev, env),
+    jev: parseJev(auto.jev),
     gitGuard: parseGitGuard(auto.gitGuard),
   };
 }

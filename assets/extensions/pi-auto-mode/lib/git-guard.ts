@@ -13,9 +13,8 @@ import { realPath } from "./paths.ts";
  * heredoc vào shell, và các wrapper phổ biến (sudo, env, timeout, nice, xargs, flock...). Chữ trong nháy, trong
  * heredoc có delimiter trong nháy hoặc trong comment là dữ liệu, không phải lệnh.
  *
- * Nhánh được bảo vệ: PI_GIT_PROTECTED_BRANCHES="a,b" (môi trường của tiến trình Pi) > autoMode.gitGuard.protectedBranches
- * > mặc định; khoá git config `pi.protectedBranches` của repo (lặp được) chỉ thêm vào, và agent không được ghi khoá
- * `pi.*`. PI_GIT_GUARD=off tắt guard; phép gán ngay trong lệnh bị bỏ qua có chủ đích.
+ * Nhánh được bảo vệ: autoMode.gitGuard.protectedBranches nếu có, không thì mặc định. Bật/tắt bằng autoMode.gitGuard
+ * (lib/config.ts); bên gọi không gọi guard khi đã tắt.
  *
  * Đây là dây an toàn chống tai nạn, không phải sandbox: lỗi bất ngờ nào (kể cả lỗi của bộ phân tích) cũng cho qua.
  */
@@ -24,7 +23,7 @@ export type GitRunner = (args: string[], cwd: string) => string | undefined;
 
 export interface GitGuardOptions {
   cwd: string;
-  /** Môi trường của tiến trình Pi (PI_GIT_GUARD, PI_GIT_PROTECTED_BRANCHES, HOME); mặc định process.env. */
+  /** Môi trường của tiến trình Pi (HOME cho `~`); mặc định process.env. */
   env?: Record<string, string | undefined>;
   /** Danh sách nhánh được bảo vệ từ settings, thay danh sách mặc định. */
   protectedBranches?: string[];
@@ -739,24 +738,6 @@ function gitOutput(ctx: Context, cwd: string, ...args: string[]): string {
   return typeof out === "string" ? strip(out) : "";
 }
 
-/** PI_GIT_GUARD=off (không phân biệt hoa thường) trong môi trường của tiến trình Pi tắt guard. */
-export function gitGuardOff(env: Record<string, string | undefined> = process.env): boolean {
-  return (env.PI_GIT_GUARD ?? "").toLowerCase() === "off";
-}
-
-/** Danh sách nhánh được bảo vệ trước khi thêm git config của repo: biến môi trường > settings > mặc định. */
-export function baseProtectedBranches(env: Record<string, string | undefined> = process.env, settings?: string[]): string[] {
-  const replaced = env.PI_GIT_PROTECTED_BRANCHES;
-  if (replaced) return replaced.split(",").map(strip).filter(Boolean);
-  return settings ?? DEFAULT_PROTECTED_BRANCHES;
-}
-
-/** Git config của repo chỉ thêm nhánh, nên không gì ghi được từ trong phiên nới lỏng được bảo vệ. */
-function protectedPatterns(ctx: Context, cwd: string): string[] {
-  const extra = gitOutput(ctx, cwd, "config", "--get-all", "pi.protectedBranches");
-  return [...baseProtectedBranches(ctx.env, ctx.protectedBranches), ...extra.split(/[,\n]/u).map(strip).filter(Boolean)];
-}
-
 const VARIABLE = /\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))/gu;
 
 const DEFAULTED = /\$\{([A-Za-z_][A-Za-z0-9_]*)(:?)-([^}$`]*)\}/gu;
@@ -876,7 +857,7 @@ function checkPush(ctx: Context, args: string[], cwd: string, env: Map<string, s
   if (longs.has("--delete") || letters.has("d")) {
     block("pushing a branch deletion", "Delete remote branches only when the user asks, or let them do it.");
   }
-  const patterns = protectedPatterns(ctx, cwd);
+  const patterns = ctx.protectedBranches ?? DEFAULT_PROTECTED_BRANCHES;
   const refspecs = positional.slice(1).map((spec) => expand(spec, env));
   for (const spec of refspecs) {
     if (spec.startsWith("+")) block(`refspec '${spec}' force-updates the remote`, "Drop the leading '+'.");
@@ -906,13 +887,6 @@ const CONFIG_UNSET = ["--unset", "--unset-all", "unset", "--remove-section", "re
 
 function checkConfig(ctx: Context, args: string[], cwd: string): void {
   const lowered = args.map((arg) => arg.toLowerCase());
-  lowered.forEach((key, index) => {
-    if (!key.startsWith("pi.")) return;
-    const before = new Set(lowered.slice(0, index));
-    if (!has(before, ...CONFIG_READ) && (has(before, ...CONFIG_UNSET) || index + 1 < args.length)) {
-      block("pi.* settings in git config belong to the user", "Ask the user to change them.");
-    }
-  });
   const index = lowered.indexOf("core.hookspath");
   if (index < 0) return;
   const before = new Set(lowered.slice(0, index));
@@ -1085,7 +1059,7 @@ function sessionAssignments(commands: Parsed[]): Map<string, string> {
 export function checkGitGuard(command: string, opts: GitGuardOptions): GitGuardBlock | undefined {
   try {
     const env = opts.env ?? process.env;
-    if (gitGuardOff(env) || typeof command !== "string") return undefined;
+    if (typeof command !== "string") return undefined;
     const ctx: Context = { env, git: opts.git ?? runGit, protectedBranches: opts.protectedBranches };
     const cwd = opts.cwd || process.cwd();
     const commands = parseCommands(command);

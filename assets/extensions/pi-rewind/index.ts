@@ -4,7 +4,7 @@ import path from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { buildSessionContext, estimateTokens, generateSummaryWithUsage, getAgentDir, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { isKeyRelease, isKeyRepeat, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
-import { loadConfig } from "./lib/config.ts";
+import { loadConfig, MAX_FILE_BYTES, MAX_STORAGE_BYTES, WATCH_MAX_BYTES, WATCH_MAX_DIRTY, WATCH_TOOLS } from "./lib/config.ts";
 import {
   type DialogDeps, describeFiles, type MenuItem, oneLine, relativeTime, type RewindChoice, RewindDialog, type RewindRow, type RowStats,
 } from "./lib/dialog.ts";
@@ -33,14 +33,14 @@ export default function piRewind(pi: ExtensionAPI) {
   const agentDir = getAgentDir();
   const config = loadConfig(agentDir);
   const store = new BlobStore(config.storageDir);
-  const capturer = new Capturer(store, { maxBytes: config.maxFileBytes });
+  const capturer = new Capturer(store, { maxBytes: MAX_FILE_BYTES });
   const journals = new JournalStore(config.storageDir);
   const lock = new StorageLock(config.storageDir);
   let notifyContext: ExtensionContext | undefined;
   const watcher = new GitWatcher(capturer, {
     slowMs: config.watchSlowMs,
-    maxDirty: config.watchMaxDirty,
-    maxBytes: config.watchMaxBytes,
+    maxDirty: WATCH_MAX_DIRTY,
+    maxBytes: WATCH_MAX_BYTES,
     onDisable: (top, reason) => notifyContext?.ui.notify(`Rewind: ngừng theo dõi thay đổi bằng bash trong ${top} (${reason}).`, "warning"),
   });
 
@@ -191,7 +191,7 @@ export default function piRewind(pi: ExtensionAPI) {
         }
         return;
       }
-      if (!config.watchTools.includes(event.toolName)) return;
+      if (!WATCH_TOOLS.includes(event.toolName)) return;
       try {
         const window = await watcher.begin(ctx.cwd);
         bashTracked.set(ctx.cwd, !!window);
@@ -222,7 +222,7 @@ export default function piRewind(pi: ExtensionAPI) {
     unsubscribeInput?.();
     unsubscribeInput = undefined;
     // Pi tự mở /tree khi doubleEscapeAction khác "none"; không tranh phím với nó.
-    if (ctx.mode !== "tui" || !config.doubleEscape || config.doubleEscapeAction !== "none") return;
+    if (ctx.mode !== "tui" || config.doubleEscapeAction !== "none") return;
     let tui: { getFocusedComponent?: () => unknown } | undefined;
     // Lấy TUI để biết editor chính có đang giữ focus (không bắt Esc của dialog khác).
     ctx.ui.setWidget("pi-rewind-probe", (instance) => {
@@ -277,7 +277,7 @@ export default function piRewind(pi: ExtensionAPI) {
           const maxAge = config.retentionDays * 24 * 3600 * 1000;
           journals.gc(maxAge);
           // Blob mà nhật ký phục hồi còn lại cần thì giữ (hoàn tất hoặc hoàn tác lần khôi phục bị gián đoạn).
-          store.gc(maxAge, Date.now(), { maxBytes: config.maxStorageBytes, keep: journals.referenced() });
+          store.gc(maxAge, Date.now(), { maxBytes: MAX_STORAGE_BYTES, keep: journals.referenced() });
         } finally {
           release();
         }

@@ -5,13 +5,17 @@ import path from 'node:path';
 import test from 'node:test';
 import {fileURLToPath} from 'node:url';
 import {
-  ROLES, adoptRoles, changedRoles, checkCatalog, driftedRoles, effectiveModelRoles, fillRoleNames, listCatalog, loadPresets,
-  nativeValues, parseModelRef, presetErrors, readModelRoles, resolveModelRoles, roleModel, setRoleModel, splitRole, withPreset, withRole,
-  withoutRoles, writeModelRoles,
+  ROLES, changedRoles, checkCatalog, driftedRoles, effectiveModelRoles, fillRoleNames, loadPresets, nativeValues, parseModelRef,
+  readModelRoles, resolveModelRoles, roleModel, setRoleModel, splitRole, withPreset, withRole, withoutRoles, writeModelRoles,
 } from '../runtime/model-roles.mjs';
 
 const presets = loadPresets(fileURLToPath(new URL('../assets/configs/model-presets.json', import.meta.url)));
 const table = roles => Object.fromEntries(ROLES.map(name => [name, `${roles[name].model} ${roles[name].thinking}`]));
+// Lỗi của bộ preset có sẵn: mỗi preset đặt đủ model và thinking hợp lệ cho mọi vai (kiểm như ghi đè trong roles).
+const presetErrors = presets => Object.entries(presets).flatMap(([name, preset]) => [
+  ...resolveModelRoles(presets, {preset: name, roles: preset.roles}).errors.map(error => `${name}: ${error}`),
+  ...ROLES.flatMap(role => ['model', 'thinking'].filter(field => preset.roles?.[role]?.[field] === undefined).map(field => `${name}: vai ${role} thiếu ${field}`)),
+]);
 const role = (model, thinking) => `---\nname: worker\ndescription: Viết code.\nmodel: ${model}\nthinking: ${thinking}\ntools: "read, bash"\n---\n\nPrompt của role.\n`;
 
 test('preset có sẵn đặt đủ model và thinking cho mọi vai; default là bảng phân vai chuẩn', () => {
@@ -27,61 +31,19 @@ test('preset có sẵn đặt đủ model và thinking cho mọi vai; default l�
   const claude = resolveModelRoles(presets, {preset: 'claude'}).roles;
   assert.ok(ROLES.every(name => claude[name].model.startsWith('anthropic/')));
   assert.notEqual(claude.reviewer.model, claude.worker.model);
-  // Advisor chỉ tự gọi khi lỗi lặp và trước khi xong, tối đa 5 lần mỗi phiên, ở cả default và claude.
-  for (const preset of ['default', 'claude']) {
-    const {advisor} = resolveModelRoles(presets, {preset}).roles;
-    assert.deepEqual([advisor.gates, advisor.calls], [['failure', 'completion'], 5], preset);
-  }
-  // Preset thiếu gate/số lượt của advisor là lỗi.
+  // Preset thiếu model hoặc thinking của một vai là lỗi.
   const broken = structuredClone(presets);
-  delete broken.claude.roles.advisor.gates;
-  assert.deepEqual(presetErrors(broken), ['claude: vai advisor thiếu gates']);
+  delete broken.claude.roles.advisor.thinking;
+  assert.deepEqual(presetErrors(broken), ['claude: vai advisor thiếu thinking']);
 });
 
-test('gate và số lượt của advisor: ghi đè, kiểm giá trị, đi vào advisor.json, lệch và adopt', () => {
-  const resolved = resolveModelRoles(presets, {roles: {advisor: {gates: ['completion', 'plan'], calls: 9}}});
-  assert.deepEqual(resolved.errors, []);
-  assert.deepEqual([resolved.roles.advisor.gates, resolved.roles.advisor.calls], [['plan', 'completion'], 9], 'xếp theo thứ tự gate');
-  assert.deepEqual(resolved.roles.advisor.source, {model: 'preset', thinking: 'preset', gates: 'override', calls: 'override'});
-  const values = nativeValues(resolved.roles).advisor;
-  assert.deepEqual([values.advisorPlanGate, values.advisorFailureGate, values.advisorCompletionGate, values.advisorMaxCallsPerSession], [true, false, true, 9]);
-  assert.deepEqual(resolveModelRoles(presets, {roles: {advisor: {gates: []}}}).roles.advisor.gates, [], 'không gate: chỉ khi được gọi');
-  assert.deepEqual(resolveModelRoles(presets, {roles: {advisor: {gates: ['plan', 'plan', 'soon'], calls: 0}, worker: {gates: []}}}).errors, [
-    'roles.advisor.gates phải là danh sách không trùng gồm plan, failure, completion (có thể rỗng), đang là ["plan","plan","soon"]',
-    'roles.advisor.calls phải là số nguyên từ 1 đến 100, đang là 0',
-    'roles.worker: không có khóa "gates" (chỉ có model, thinking)',
-  ]);
-  const before = resolveModelRoles(presets).roles;
-  assert.deepEqual(changedRoles(before, resolved.roles), ['advisor']);
-  assert.deepEqual(changedRoles(before, resolveModelRoles(presets, {preset: 'claude'}).roles).includes('advisor'), true);
-  // advisor.json đổi gate ngoài model-roles.json (/advisor-settings): lệch; adopt ghi gate và số lượt đang chạy.
-  const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'model-roles-gates-'));
-  try {
-    const native = nativeValues(before);
-    fs.writeFileSync(path.join(agentDir, 'advisor.json'), JSON.stringify({...native.advisor, advisorPlanGate: true, advisorMaxCallsPerSession: 12, alwaysOn: true}));
-    const effective = effectiveModelRoles(agentDir);
-    assert.deepEqual([effective.advisor.gates, effective.advisor.calls], [['plan', 'failure', 'completion'], 12]);
-    assert.ok(driftedRoles(before, effective).includes('advisor'));
-    const {config, adopted} = adoptRoles({}, before, effective, ['advisor']);
-    assert.deepEqual(adopted, {advisor: {gates: ['plan', 'failure', 'completion'], calls: 12}});
-    assert.deepEqual(config.roles.advisor, {gates: ['plan', 'failure', 'completion'], calls: 12});
-    // Gate thiếu trong advisor.json: pi-advisor-flow mặc định bật.
-    fs.writeFileSync(path.join(agentDir, 'advisor.json'), JSON.stringify({advisor: 'x/y'}));
-    assert.deepEqual(effectiveModelRoles(agentDir).advisor.gates, ['plan', 'failure', 'completion']);
-  } finally {
-    fs.rmSync(agentDir, {recursive: true, force: true});
-  }
-});
-
-test('ghi đè theo vai và từng trường; preset riêng kế thừa preset có sẵn', () => {
+test('ghi đè theo vai và từng trường trên preset có sẵn', () => {
   const resolved = resolveModelRoles(presets, {
-    preset: 'mine',
-    presets: {mine: {description: 'Claude, worker rẻ hơn', extends: 'claude', roles: {worker: {model: 'anthropic/claude-sonnet-5'}}}},
-    roles: {worker: {thinking: 'max'}, researcher: {model: 'openai-codex/gpt-6-sol', thinking: 'low'}},
+    preset: 'claude', roles: {worker: {thinking: 'max'}, researcher: {model: 'openai-codex/gpt-6-sol', thinking: 'low'}},
   });
   assert.deepEqual(resolved.errors, []);
-  assert.equal(resolved.preset, 'mine');
-  assert.deepEqual([resolved.roles.worker.model, resolved.roles.worker.thinking], ['anthropic/claude-sonnet-5', 'max']);
+  assert.equal(resolved.preset, 'claude');
+  assert.deepEqual([resolved.roles.worker.model, resolved.roles.worker.thinking], ['anthropic/claude-opus-5-5', 'max']);
   assert.deepEqual(resolved.roles.worker.source, {model: 'preset', thinking: 'override'});
   assert.deepEqual([resolved.roles.researcher.model, resolved.roles.researcher.thinking], ['openai-codex/gpt-6-sol', 'low']);
   assert.deepEqual([resolved.roles.reviewer.model, resolved.roles.reviewer.source.model], ['anthropic/claude-fable-5-1', 'preset']);
@@ -91,13 +53,11 @@ test('cấu hình sai: báo từng lỗi, vẫn trả đủ vai theo preset mặ
   const resolved = resolveModelRoles(presets, {
     preset: 'claud', extra: true,
     roles: {worker: {model: 'opus', thinking: 'ultra', effort: 'high'}, coder: {}},
-    presets: {claude: {}, mine: {extends: 'nope'}, other: 'x'},
+    presets: {mine: {extends: 'claude'}},
   });
   assert.deepEqual(resolved.errors, [
-    'không có khóa "extra" (chỉ có preset, roles, presets)',
-    'presets.claude: trùng tên preset có sẵn, hãy đặt tên khác',
-    'presets.mine.extends phải là preset có sẵn (default, claude), đang là "nope"',
-    'presets.other phải là object dạng {"extends": "claude", "roles": {...}}',
+    'không có khóa "extra" (chỉ có preset, roles)',
+    'preset riêng ("presets") không còn được hỗ trợ: chọn preset có sẵn và ghi đè từng vai trong "roles"',
     'roles.worker.model phải có dạng "provider/id" (vd "anthropic/claude-opus-5-5"), đang là "opus"',
     'roles.worker.thinking phải là một trong off, minimal, low, medium, high, xhigh, max, đang là "ultra"',
     'roles.worker: không có khóa "effort" (chỉ có model, thinking)',
@@ -106,10 +66,10 @@ test('cấu hình sai: báo từng lỗi, vẫn trả đủ vai theo preset mặ
   ]);
   assert.equal(resolved.roles.worker.model, 'openai-codex/gpt-6-sol');
   assert.deepEqual(resolveModelRoles(presets, []).errors, ['model-roles.json phải là một object JSON']);
-  // Khóa "__proto__" trong JSON là một tên preset bình thường, không đổi prototype.
-  const proto = resolveModelRoles(presets, JSON.parse('{"preset": "__proto__", "presets": {"__proto__": {"roles": {"worker": {"thinking": "low"}}}}}'));
-  assert.deepEqual([proto.errors, proto.roles.worker.thinking], [[], 'low']);
-  assert.equal({}.roles, undefined);
+  // Tên preset như "__proto__" hay "toString" không phải preset có sẵn.
+  for (const name of ['__proto__', 'toString']) {
+    assert.deepEqual(resolveModelRoles(presets, {preset: name}).errors, [`preset "${name}" không có (có default, claude)`]);
+  }
   assert.deepEqual(parseModelRef('openrouter/anthropic/claude-sonnet-5'), {provider: 'openrouter', id: 'anthropic/claude-sonnet-5'});
   for (const bad of ['opus', '/x', 'x/', 'a /b', 42]) assert.equal(parseModelRef(bad), undefined);
 });
@@ -126,7 +86,6 @@ test('giá trị cho từng file gốc: phiên chính, advisor luôn cùng model
   assert.deepEqual(values.autoMode, {model: 'anthropic/claude-sonnet-5', stage2Reasoning: 'low'});
   assert.deepEqual(values.advisor, {
     executor: 'anthropic/claude-opus-5-5', executorEffort: 'high', advisor: 'openai-codex/gpt-6-astra', advisorEffort: 'high',
-    advisorPlanGate: false, advisorFailureGate: true, advisorCompletionGate: true, advisorMaxCallsPerSession: 5,
   });
   const custom = nativeValues(resolveModelRoles(presets, {preset: 'claude', roles: {auditor: {thinking: 'max'}, main: {thinking: 'xhigh'}}}).roles);
   assert.deepEqual(custom.goal, {
@@ -162,12 +121,6 @@ test('điền model/thinking của vai vào hướng dẫn cho parent; tên vai 
   const {roles} = resolveModelRoles(presets);
   assert.equal(fillRoleNames('Parent {{main}}; reviewer {{reviewer}}.', roles), 'Parent claude-opus-5-5/high; reviewer gpt-6-astra/high.');
   assert.throws(() => fillRoleNames('{{coder}}', roles), /Không có vai coder/u);
-  // Gate và số lượt của advisor theo đúng vai, không ghi cứng trong AGENTS.md.
-  const tree = {...roles, advisor: {...roles.advisor, gates: ['plan', 'failure', 'completion'], calls: 7}};
-  assert.equal(fillRoleNames('{{advisor.gates}}; {{advisor.calls}}', tree), 'trước plan, lỗi lặp, trước khi xong; 7');
-  const none = {...roles, advisor: {...roles.advisor, gates: [], calls: undefined}};
-  assert.equal(fillRoleNames('{{advisor.gates}}; {{advisor.calls}}', none), 'không gate nào; không giới hạn');
-  assert.throws(() => fillRoleNames('{{advisor.model}}', roles), /Không có trường model/u);
 });
 
 test('giá trị đang có hiệu lực theo file gốc và vai bị lệch so với cấu hình', t => {
@@ -223,15 +176,15 @@ test('catalog của runtime: mọi preset hợp lệ, model sai tên là lỗi, 
   assert.deepEqual(fs.readdirSync(agentDir), ['models.json']);
 });
 
-test('lệnh ghi của pi-models: chọn preset, ghi đè, bỏ ghi đè, không sửa object gốc; vai đổi giữa hai kết quả', t => {
-  const config = {roles: {worker: {thinking: 'max'}}, presets: {}};
-  assert.deepEqual(withPreset(config, 'claude'), {preset: 'claude', roles: {worker: {thinking: 'max'}}, presets: {}});
-  assert.deepEqual(withPreset({presets: {}, preset: 'default'}, 'claude'), {presets: {}, preset: 'claude'});
+test('thay đổi của /models: chọn preset, ghi đè, bỏ ghi đè, không sửa object gốc; vai đổi giữa hai kết quả', t => {
+  const config = {roles: {worker: {thinking: 'max'}}};
+  assert.deepEqual(withPreset(config, 'claude'), {preset: 'claude', roles: {worker: {thinking: 'max'}}});
+  assert.deepEqual(withPreset({roles: {}, preset: 'default'}, 'claude'), {roles: {}, preset: 'claude'});
   assert.deepEqual(withRole(config, 'worker', {model: 'anthropic/claude-opus-5-5'}).roles, {worker: {thinking: 'max', model: 'anthropic/claude-opus-5-5'}});
   assert.deepEqual(withRole({preset: 'claude'}, 'main', {thinking: 'xhigh'}), {preset: 'claude', roles: {main: {thinking: 'xhigh'}}});
   assert.deepEqual(withoutRoles(config, ['worker', 'main']).roles, {});
   assert.deepEqual(withRole('hỏng', 'main', {thinking: 'low'}), {preset: 'default', roles: {main: {thinking: 'low'}}});
-  assert.deepEqual(config, {roles: {worker: {thinking: 'max'}}, presets: {}});
+  assert.deepEqual(config, {roles: {worker: {thinking: 'max'}}});
   const before = resolveModelRoles(presets).roles;
   assert.deepEqual(changedRoles(before, before), []);
   assert.deepEqual(changedRoles(before, resolveModelRoles(presets, {roles: {worker: {thinking: 'high'}, main: {model: 'anthropic/claude-opus-5-5'}}}).roles), ['worker']);
@@ -242,42 +195,4 @@ test('lệnh ghi của pi-models: chọn preset, ghi đè, bỏ ghi đè, không
   assert.equal(fs.readFileSync(file, 'utf8'), '{\n  "preset": "claude",\n  "roles": {}\n}\n');
   if (process.platform !== 'win32') assert.equal(fs.statSync(file).mode & 0o777, 0o600);
   assert.deepEqual(fs.readdirSync(agentDir), ['model-roles.json']);
-});
-
-test('adopt: chỉ chép trường khác cấu hình, goal max/xhigh không tính là lệch, bỏ giá trị không hợp lệ', () => {
-  const roles = resolveModelRoles(presets, {roles: {auditor: {thinking: 'max'}}}).roles;
-  const effective = Object.fromEntries(ROLES.map(name => [name, {model: roles[name].model, thinking: roles[name].thinking, file: 'x'}]));
-  Object.assign(effective.main, {model: 'anthropic/claude-sonnet-5'});
-  Object.assign(effective.worker, {model: 'anthropic/claude-opus-5-5', thinking: 'high'});
-  Object.assign(effective.auditor, {thinking: 'xhigh'});
-  Object.assign(effective.reviewer, {model: 'opus', thinking: 'ultra'});
-  const result = adoptRoles({preset: 'default', roles: {worker: {thinking: 'low'}}}, roles, effective, ['main', 'worker', 'auditor', 'reviewer']);
-  assert.deepEqual(result.adopted, {main: {model: 'anthropic/claude-sonnet-5'}, worker: {model: 'anthropic/claude-opus-5-5', thinking: 'high'}});
-  assert.deepEqual(result.config, {preset: 'default', roles: {worker: {thinking: 'high', model: 'anthropic/claude-opus-5-5'}, main: {model: 'anthropic/claude-sonnet-5'}}});
-});
-
-test('catalog: provider chưa đăng nhập và danh sách model, không đọc giá trị credential, không ghi file', {skip: !root}, async t => {
-  const modules = path.join(root, 'runtimes', 'current', 'node_modules');
-  const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-model-login-'));
-  const saved = process.env.OPENCODE_API_KEY;
-  t.after(() => {
-    fs.rmSync(agentDir, {recursive: true, force: true});
-    if (saved === undefined) delete process.env.OPENCODE_API_KEY; else process.env.OPENCODE_API_KEY = saved;
-  });
-  // Credential giả: chỉ tên provider và loại được đọc; token hết hạn không được làm mới.
-  const auth = JSON.stringify({anthropic: {type: 'oauth', access: 'fixture-access', refresh: 'fixture-refresh', expires: 1}});
-  fs.writeFileSync(path.join(agentDir, 'auth.json'), auth);
-  process.env.OPENCODE_API_KEY = 'fixture-key';
-  const {roles} = resolveModelRoles(presets);
-  const result = await checkCatalog({modules, agentDir, roles, logins: true});
-  assert.deepEqual(result.loggedOut, [{provider: 'openai-codex', roles: ['worker', 'debugger', 'reviewer', 'advisor', 'auditor', 'oracle']}]);
-  delete process.env.OPENCODE_API_KEY;
-  assert.deepEqual((await checkCatalog({modules, agentDir, roles, logins: true})).loggedOut.map(entry => entry.provider), ['opencode-go', 'openai-codex']);
-  const providers = await listCatalog({modules, agentDir});
-  const anthropic = providers.find(entry => entry.id === 'anthropic');
-  assert.equal(anthropic.login, 'OAuth');
-  assert.deepEqual(anthropic.models.find(model => model.id === 'claude-opus-5-5').levels, ['low', 'medium', 'high', 'xhigh', 'max']);
-  assert.equal(providers.find(entry => entry.id === 'openai-codex').login, undefined);
-  assert.equal(fs.readFileSync(path.join(agentDir, 'auth.json'), 'utf8'), auth);
-  assert.deepEqual(fs.readdirSync(agentDir), ['auth.json']);
 });

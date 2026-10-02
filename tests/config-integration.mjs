@@ -10,12 +10,12 @@ import assert from "node:assert/strict";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { anthropicSearchEvents, sse, unifiedHeaders } from "./search-fixtures.mjs";
 
-// CLI: node tests/profile-integration.mjs <installRoot>
+// CLI: node tests/config-integration.mjs <installRoot>
 // Only installed configuration on the explicit root is used. The test copies
 // a fixed whitelist into a disposable agent, never auth/history/cache/secrets.
 const [installArg] = process.argv.slice(2);
 if (!installArg) {
-  throw new Error("Cách dùng: node tests/profile-integration.mjs <installRoot>");
+  throw new Error("Cách dùng: node tests/config-integration.mjs <installRoot>");
 }
 let activePhase = "khởi tạo runtime";
 const watchdog = setTimeout(() => {

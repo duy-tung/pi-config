@@ -49,7 +49,7 @@ Chạy `pi` để mở Claude Opus 5.5/high với toàn bộ công cụ. Các wo
 | Công cụ và giao diện | `/agents`, `/usage`, `/claude-usage`, `/open-tui` |
 
 Advisor (pi-advisor-flow) luôn bật khi mở phiên: executor là Opus/high của phiên, advisor là GPT-6 Astra/high.
-- System prompt dặn Opus gọi `ask_advisor` sau hai lần thử tương đương cùng thất bại và trước khi báo xong việc không nhỏ. Tối đa 5 lần mỗi phiên; không có gate cứng chặn phiên.
+- System prompt dặn Opus gọi `ask_advisor` sau hai lần thử tương đương cùng thất bại và trước khi báo xong việc không nhỏ. Tối đa 5 lần mỗi phiên; không có gate cứng chặn phiên. Đổi gate và số lượt bằng `/advisor-settings`; cài lại giữ giá trị đã đổi.
 - Advisor không có tool. Nó thấy tối đa 60.000 ký tự gồm hội thoại gần nhất và diff chưa commit (diff tối đa 20.000 ký tự, đã che secret). Thay đổi lớn vẫn nên giao reviewer.
 - Bản vá giữ system prompt không đổi sau mỗi lần hỏi, để Opus không mất prompt cache.
 - `/advisor-off` tắt hẳn, kể cả các phiên sau (bản vá: Pi tự bật mọi tool của extension khi mở phiên, nên advisor chỉ bật khi Always on kích hoạt được); bật lại ở `/advisor-settings` → Always on. Khi advisor đang bật, `/model` lưu model mới làm executor vào `advisor.json`; cài lại giữ giá trị này.
@@ -74,7 +74,7 @@ Permission (`pi-auto-mode`, extension của repo) có hai mode như Claude Code.
 
 **Git guard** chặn tất định (không qua bộ phân loại, ở cả hai mode, cả agent con và goal auditor): force-push (trừ `--force-with-lease`), push thẳng lên nhánh bảo vệ (`main`, `master`, `release/*`…), `reset --hard`, `clean -f`, `branch -D`, bỏ qua hook (`--no-verify`, `HUSKY=0`…), viết lại lịch sử và `rm -r` trên `/`, `~`, `.`, `.git`. Cần thật thì bạn tự chạy bằng `!<lệnh>` trong editor. Cấu hình: [docs/auto-mode.md](docs/auto-mode.md#git-guard).
 
-Opus 5.5 và GLM dùng context **1M** của catalog; Astra/Sol nâng lên **872K**. Theme mặc định Rosé Pine Moon, có thêm Rosé Pine và Dawn.
+Opus 5.5 và GLM dùng context **1M** của catalog; Astra/Sol nâng lên **872K**. Theme Rosé Pine Moon.
 
 ## Agent
 
@@ -89,7 +89,7 @@ Pi dùng `Agent` của **@tintinweb/pi-subagents**:
 
 Parent Claude Opus 5.5/high giữ thiết kế, quyết định quan trọng và nghiệm thu cuối. GLM chạy trực tiếp qua OpenCode Go trong Pi.
 
-Bảng trên là preset `default`. Model và thinking của mọi vai (parent, các role, advisor, goal auditor, Oracle, auto mode) đặt trong `<agent-dir>/model-roles.json` và đổi bằng `pi-models`, ví dụ `pi-models preset claude` (chỉ cần đăng nhập Claude) hay `pi-models set worker anthropic/claude-opus-5-5 high`. Trong Pi, `/models` mở menu các vai và áp ngay cho phiên đang chạy. Xem [docs/models.md](docs/models.md).
+Bảng trên là preset `default`. Model và thinking của mọi vai (parent, các role, advisor, goal auditor, Oracle, auto mode) đặt trong `<agent-dir>/model-roles.json` và đổi bằng `/models` trong Pi: menu chọn preset (vd `claude`, chỉ cần đăng nhập Claude) hoặc đổi model/thinking của từng vai, rồi áp ngay cho phiên đang chạy. Xem [docs/models.md](docs/models.md).
 
 ```text
 @researcher Tìm luồng xử lý timeout và báo file/dòng.
@@ -99,7 +99,7 @@ Bảng trên là preset `default`. Model và thinking của mọi vai (parent, c
 @reviewer Review diff, nêu lỗi có bằng chứng.
 ```
 
-Agent có context riêng và không giới hạn số lượt; dừng agent bằng `/agents` → chọn agent → `x` hai lần. Khi parent gọi, researcher/reviewer chạy nền theo mặc định (tối đa 4 cùng lúc), worker/debugger chạy foreground (tối đa 2); vượt giới hạn thì xếp hàng. Parent điều phối để tránh ghi chồng file. Gõ `@role nội dung` thì agent chạy nền và báo kết quả cho parent khi xong. Mặc định task là đúng nội dung bạn gõ; chế độ `model` (`/agents` → Settings → Agent mentions) cho một bản sao hội thoại viết task có context. Chi tiết cấu hình, quyền và vòng đời: [docs/subagents.md](docs/subagents.md).
+Agent có context riêng và không giới hạn số lượt; dừng agent bằng `/agents` → chọn agent → `x` hai lần. Khi parent gọi, researcher/reviewer chạy nền theo mặc định (tối đa 4 cùng lúc), worker/debugger chạy foreground (tối đa 2); vượt giới hạn thì xếp hàng. Parent điều phối để tránh ghi chồng file. Gõ `@role nội dung` thì agent chạy nền và báo kết quả cho parent khi xong. Task là đúng nội dung bạn gõ. Chi tiết cấu hình, quyền và vòng đời: [docs/subagents.md](docs/subagents.md).
 
 ## Công cụ và mặc định
 
@@ -114,7 +114,7 @@ Agent có context riêng và không giới hạn số lượt; dừng agent bằ
 - Hàng đợi tin nhắn: `Enter` khi Pi đang chạy để chỉnh hướng, `Alt+Enter` hoặc **Ctrl+Enter** để xếp follow-up, `Alt+Up` để lấy lại tin đang chờ. Ctrl+Enter được thêm vì terminal của Orca gửi Alt+Enter thành Shift+Enter.
 - Nhiều phiên song song, mỗi task một worktree: dùng Orca. Cài đặt, phím và các giới hạn xem [docs/orca.md](docs/orca.md).
 
-`pi-models` in model/thinking của mọi vai theo `model-roles.json`, giá trị đang có hiệu lực khi khác, kiểm model trong catalog của Pi và cảnh báo provider chưa đăng nhập; `pi-models preset|set|reset|adopt|apply` đổi rồi áp ngay vào cấu hình, `pi-models list` liệt kê provider và model; `/models` làm việc đó ngay trong Pi. `pi-doctor` kiểm dependency và checksum bản vá, in cùng bảng model đó cùng trạng thái advisor, goal và auto mode (kèm nguồn key Jev, không in key), và báo lỗi khi hai danh sách provider trong `web-search.json` lệch nhau (pi-web-access sẽ không nạp web tools). `pi-test` kiểm workflow và Agent bằng provider giả trong thư mục tạm, không gọi model trả phí.
+`pi-doctor` kiểm dependency và checksum bản vá, in model/thinking của mọi vai theo `model-roles.json` (kèm giá trị đang có hiệu lực khi khác và kết quả kiểm catalog của Pi) cùng trạng thái advisor, goal và auto mode (kèm nguồn key Jev, không in key), và báo lỗi khi hai danh sách provider trong `web-search.json` lệch nhau (pi-web-access sẽ không nạp web tools). `pi-test` kiểm workflow và Agent bằng provider giả trong thư mục tạm, không gọi model trả phí.
 
 Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều hành: bộ phân loại có thể sai. Luật `permissions.deny` (file bí mật, `sudo`...) áp dụng ở cả hai mode, theo đường dẫn có trong lệnh: glob hay tìm cả cây chạm tới file bị deny thì bị chặn, tool `grep` của Pi bỏ các dòng thuộc file đó khỏi kết quả, lệnh có tập đích không kiểm được (biến, `xargs`...) thì auto mode giao bộ phân loại, bypass hỏi bạn. Chương trình tùy ý (`node`, `python -c`...) vẫn tự mở được file; xem [giới hạn đọc](docs/auto-mode.md#giới-hạn-đọc-khi-có-deny-đường-dẫn). Bypass vẫn hỏi trước lệnh xoá đệ quy ra ngoài thư mục tạm (`rm -fr`, `find -delete`, `git clean`...) và lệnh rủi ro (`~/.bashrc`, git hook, crontab, `curl -k`, `/etc`...). Project cần được trust trước khi dùng cấu hình của project; settings của project không bật được bypass hay thêm luật allow. Nguồn web là dữ liệu để tham khảo, không phải instruction.
 
@@ -155,18 +155,18 @@ Khi chạy lại, installer dùng lockfile và checksum để kiểm tính nhấ
 
 File JSON cấu hình trong agent directory và `<root>/config`, kể cả `settings.json` mà Pi ghi lại khi đổi model hay thinking, được gộp ba chiều với mặc định của lần cài trước (lưu ở `<root>/state/defaults`):
 - Giá trị bạn chưa đổi nhận mặc định mới; giá trị bạn đã đổi được giữ. Nếu mặc định mới cũng đổi chính giá trị đó, installer giữ của bạn và báo xung đột kèm mặc định mới.
-- Danh sách của `settings.json` (`permissions.allow/ask/deny`, `enabledModels`, `skills`, `themes`, `prompts`, `extensions`, `packages`) gộp theo từng mục: mục bạn thêm hoặc bỏ và loại trừ extension `-` được giữ, mục mặc định mới được thêm, `pi-auto-mode` luôn nạp sau cùng; luật deny của pi-permission-system cũ được chuyển sang.
+- Danh sách của `settings.json` (`permissions.allow/ask/deny`, `enabledModels`, `skills`, `themes`, `prompts`, `extensions`, `packages`) gộp theo từng mục: mục bạn thêm hoặc bỏ và loại trừ extension `-` được giữ, mục mặc định mới được thêm, `pi-auto-mode` luôn nạp sau cùng.
 - Bản cài chưa lưu mặc định (trước khi có cơ chế này): file chưa sửa nhận mặc định mới như trước; file đã sửa lần đầu chỉ được thêm khóa và mục còn thiếu, mọi giá trị hiện có được giữ và giá trị khác mặc định mới được báo.
 - File role `agents/*.md` cũng được gộp: mỗi khóa frontmatter (`model`, `thinking`, `tools`...) là một giá trị, phần prompt là một giá trị. Sửa một dòng không làm file đứng yên; prompt mới vẫn vào được.
 - Installer in phần đã gộp và từng xung đột, backup file trước khi ghi lại; lần chạy không có gì mới thì không ghi gì.
 
-Model và thinking của các file trên sinh từ `<agent-dir>/model-roles.json`. File này thuộc về bạn: installer chỉ tạo khi chưa có (hoặc ghi preset khi cài với `--models <preset>`), kiểm model trong catalog của Pi trước khi ghi cấu hình, và dừng khi file sai. `pi-models` đổi file này và áp ngay theo cùng cách gộp ([docs/models.md](docs/models.md)).
+Model và thinking của các file trên sinh từ `<agent-dir>/model-roles.json`. File này thuộc về bạn: installer chỉ tạo khi chưa có, kiểm model trong catalog của Pi trước khi ghi cấu hình, và dừng khi file sai. `/models` đổi file này và áp ngay theo cùng cách gộp ([docs/models.md](docs/models.md)).
 
 File khác đã tùy chỉnh (`AGENTS.md`) được giữ và báo đường dẫn. Tài nguyên do installer quản lý, không còn được yêu cầu và chưa chỉnh sửa, được lưu vào backup; tài nguyên còn được cấu hình tham chiếu được giữ. Auth và file riêng của người dùng không thuộc danh sách tài nguyên được dọn.
 
 `npm ci` của installer được tối đa 30 phút (lệnh khác 10 phút). Mạng tới registry npm chậm thì tăng bằng `PI_CONFIG_NPM_TIMEOUT_MINUTES`, ví dụ `PI_CONFIG_NPM_TIMEOUT_MINUTES=60 node install.mjs` (PowerShell: `$env:PI_CONFIG_NPM_TIMEOUT_MINUTES=60`); chạy lại cũng nhanh hơn vì gói đã tải nằm trong cache của npm.
 
-Dừng các phiên Pi trước khi cập nhật. Dùng revision đã qua CI thay vì chạy `pi update` hoặc `npm update` trên runtime ghim. `.install.lock` còn sót từ lần cài bị ngắt được installer và `pi-models` tự gỡ khi tiến trình ghi trong đó đã dừng; tiến trình còn chạy thì báo PID.
+Dừng các phiên Pi trước khi cập nhật. Dùng revision đã qua CI thay vì chạy `pi update` hoặc `npm update` trên runtime ghim. `.install.lock` còn sót từ lần cài bị ngắt được installer và `/models` tự gỡ khi tiến trình ghi trong đó đã dừng; tiến trình còn chạy thì báo PID.
 
 ## Phát triển và kiểm thử
 

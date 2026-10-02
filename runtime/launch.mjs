@@ -9,13 +9,10 @@ if(action==='doctor'){
   process.env.PI_CONFIG_ROOT=root;await import('./doctor.mjs');
 }else if(action==='test'){
   const {spawnSync}=await import('node:child_process');
-  for(const script of ['profile-integration.mjs','agent-integration.mjs']){
+  for(const script of ['config-integration.mjs','agent-integration.mjs']){
     const result=spawnSync(state.nodePath,[path.join(root,'tests',script),root],{stdio:'inherit',env:process.env});
     if(result.status!==0){process.exitCode=result.status??1;break;}
   }
-}else if(action==='models'){
-  const {runModels}=await import('./models.mjs');
-  process.exitCode=await runModels({root,agentDir:state.agentDir,args});
 }else{
   if(!['main','firecrawl'].includes(action))throw new Error(`Lệnh không hợp lệ: ${action}`);
   const modules=path.join(root,'runtimes','current','node_modules');

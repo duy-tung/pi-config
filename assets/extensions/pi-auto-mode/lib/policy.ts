@@ -42,7 +42,7 @@ export interface PolicyContext {
   tempRoots?: string[];
   /** Git guard tất định; undefined = bật với danh sách nhánh mặc định. */
   gitGuard?: GitGuardConfig;
-  /** Môi trường của tiến trình Pi cho git guard (PI_GIT_GUARD, PI_GIT_PROTECTED_BRANCHES); mặc định process.env. */
+  /** Môi trường của tiến trình Pi cho git guard (HOME cho `~`); mặc định process.env. */
   env?: Record<string, string | undefined>;
   /** Chạy git cho git guard (test); mặc định git thật. */
   git?: GitRunner;
