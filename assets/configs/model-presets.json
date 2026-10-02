@@ -1,14 +1,12 @@
 {
   "default": {
-    "description": "Parent Claude Opus; researcher, explorer GLM qua OpenCode Go; worker/debugger GPT-6 Sol; reviewer, verifier, advisor, goal auditor và Oracle GPT-6 Astra; auto mode Sonnet 5. Advisor gọi khi lỗi lặp và trước khi xong. Cần đăng nhập Claude, Codex và OpenCode Go.",
+    "description": "Parent Claude Opus; researcher GLM qua OpenCode Go; worker/debugger GPT-6 Sol; reviewer, advisor, goal auditor và Oracle GPT-6 Astra; auto mode Sonnet 5. Advisor gọi khi lỗi lặp và trước khi xong. Cần đăng nhập Claude, Codex và OpenCode Go.",
     "roles": {
       "main": { "model": "anthropic/claude-opus-5-5", "thinking": "high" },
       "researcher": { "model": "opencode-go/glm-5.3-flash", "thinking": "max" },
-      "explorer": { "model": "opencode-go/glm-5.3-flash", "thinking": "high" },
       "worker": { "model": "openai-codex/gpt-6-sol", "thinking": "max" },
       "debugger": { "model": "openai-codex/gpt-6-sol", "thinking": "max" },
       "reviewer": { "model": "openai-codex/gpt-6-astra", "thinking": "high" },
-      "verifier": { "model": "openai-codex/gpt-6-astra", "thinking": "high" },
       "advisor": { "model": "openai-codex/gpt-6-astra", "thinking": "high", "gates": ["failure", "completion"], "calls": 5 },
       "auditor": { "model": "openai-codex/gpt-6-astra", "thinking": "high" },
       "oracle": { "model": "openai-codex/gpt-6-astra", "thinking": "high" },
@@ -16,15 +14,13 @@
     }
   },
   "claude": {
-    "description": "Chỉ cần đăng nhập Claude: parent, worker, debugger Opus 5.5; reviewer, verifier, advisor, Oracle Fable 5.1 (khác model với người viết code); researcher, explorer, goal auditor, auto mode Sonnet 5.",
+    "description": "Chỉ cần đăng nhập Claude: parent, worker, debugger Opus 5.5; reviewer, advisor, Oracle Fable 5.1 (khác model với người viết code); researcher, goal auditor, auto mode Sonnet 5.",
     "roles": {
       "main": { "model": "anthropic/claude-opus-5-5", "thinking": "high" },
       "researcher": { "model": "anthropic/claude-sonnet-5", "thinking": "high" },
-      "explorer": { "model": "anthropic/claude-sonnet-5", "thinking": "medium" },
       "worker": { "model": "anthropic/claude-opus-5-5", "thinking": "high" },
       "debugger": { "model": "anthropic/claude-opus-5-5", "thinking": "high" },
       "reviewer": { "model": "anthropic/claude-fable-5-1", "thinking": "high" },
-      "verifier": { "model": "anthropic/claude-fable-5-1", "thinking": "high" },
       "advisor": { "model": "anthropic/claude-fable-5-1", "thinking": "high", "gates": ["failure", "completion"], "calls": 5 },
       "auditor": { "model": "anthropic/claude-sonnet-5", "thinking": "high" },
       "oracle": { "model": "anthropic/claude-fable-5-1", "thinking": "high" },

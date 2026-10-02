@@ -1,6 +1,6 @@
 ---
 name: why
-description: "Find why code has its shape (rationale, regressions, defensive code, magic numbers) from git blame, history and PRs, plus MCP sources on request. Use before changing or deleting code you do not understand."
+description: "Find why code has its shape (rationale, regressions, defensive code, magic numbers) from git blame, history and PRs, plus other sources the session can reach on request. Use before changing or deleting code you do not understand."
 argument-hint: "<code, pattern or decision> [deep]"
 ---
 
@@ -54,29 +54,17 @@ Say in one line of the answer which depth you ran and why.
 
 ### Discover the sources
 
-MCP servers come from Pi's built-in MCP, which pi-config turns off: when it is on, servers live in `~/.pi/agent/mcp.json` or a project `.pi/mcp.json`, and each tool is a tool of its own named `mcp__<server>__<tool>`. No such tools means no server is available. Map each server to one evidence category, using its name, its tool names, and its server instructions. When a server fits two categories, choose the one matching its primary evidence and record the ambiguity in the coverage map.
-
-| Category | Playbook | Servers it covers |
-|---|---|---|
-| Source control history | [code-archaeology.md](sources/code-archaeology.md) | git and `gh`, always available |
-| Issue / ticket tracker | [linear.md](sources/linear.md) | Linear; adapt for Jira, GitHub Issues, Plane, Shortcut |
-| Long-form documents | [notion.md](sources/notion.md) | Notion; adapt for Confluence, Google Docs, Coda |
-| Real-time team chat | [slack.md](sources/slack.md) | Slack; adapt for Discord, Microsoft Teams, Mattermost |
-| Infrastructure observability | [datadog.md](sources/datadog.md) | Datadog; adapt for New Relic, Honeycomb, Grafana, Splunk |
-| Error / exception tracking | [sentry.md](sources/sentry.md) | Sentry; adapt for Rollbar, Bugsnag, Airbrake |
-| Product analytics warehouse | [databricks.md](sources/databricks.md) | Databricks SQL; adapt for Snowflake, BigQuery, ClickHouse, dbt |
-
-Playbooks name each server's own tools. The exact name carries the server prefix: `mcp__<server>__<tool>`. Aim for a complete coverage map, not a minimal one. Document the null, don't skip the search.
+Source control (git and `gh`) is always available: [code-archaeology.md](sources/code-archaeology.md). A GitHub issue tracker is reachable through `gh`. The other categories below (long-form documents, team chat, observability, error tracking, analytics) are reachable only through a tool the session has for them, such as `mcp__<server>__<tool>` tools from Pi's built-in MCP (pi-config turns it off). No such tool means the category is a gap. Aim for a complete coverage map, not a minimal one. Document the null, don't skip the search.
 
 ### Spawn the investigators
 
 Spawn one `researcher` investigator for source control, always, and one for each other category it can reach without MCP (a GitHub Issues tracker, through `gh`). Launch them all in one response (parallel Agent calls) so they run concurrently, and collect each full report with `get_subagent_result`. Each owns exactly one source; never ask one agent to cover two.
 
 - Use `subagent_type: researcher`, with no model parameter. It reads whole threads and documents, and its read-only bash runs `git log -S`, `git blame` and `gh`. It has no MCP tools.
-- The prompt is everything below the divider in [INVESTIGATOR.md](INVESTIGATOR.md) with its placeholders filled in, plus the category's playbook, plus the code anchor and the user's question verbatim.
+- The prompt is everything below the divider in [INVESTIGATOR.md](INVESTIGATOR.md) with its placeholders filled in, plus [code-archaeology.md](sources/code-archaeology.md) for source control, plus the code anchor and the user's question verbatim.
 - Add [incident-postmortem.md](sources/incident-postmortem.md) to every brief when the target code looks defensive.
 - The brief forbids writes. Investigators search and read; they never edit files, commit, comment, post, or change a ticket.
-- Query each MCP-backed category yourself while the researchers run: call its `mcp__<server>__<tool>` tools, following that category's playbook and the posture in [INVESTIGATOR.md](INVESTIGATOR.md). The same rule holds: read-only calls only. Keep the queries and the verbatim excerpts with their citations: they are that category's findings for step 5.
+- Query any other category the session has a tool for yourself while the researchers run, following the posture in [INVESTIGATOR.md](INVESTIGATOR.md). The same rule holds: read-only calls only. Keep the queries and the verbatim excerpts with their citations: they are that category's findings for step 5.
 
 What each category surfaces best. Use it to know what to expect back, and to name the gap when a category returns empty:
 
@@ -92,7 +80,7 @@ What each category surfaces best. Use it to know what to expect back, and to nam
 
 Every skip goes in Sources consulted with its reason. Two reasons are valid:
 
-- **No server is available** for that category. This is a gap, not a choice: "Real-time team chat: not searched. No matching MCP server, so the conversational record was not searchable." Name the server that would close it: the user turns on Pi's built-in MCP (`pi config`, Built-in), adds the server with `pi mcp add <name> … ` and `"exposure": "direct"`, and `/mcp` shows its status and authentication.
+- **No tool reaches that category.** This is a gap, not a choice: "Real-time team chat: not searched. No tool in this session reads it, so the conversational record was not searchable."
 - **The source is provably irrelevant**, not "probably irrelevant". The bar is high: "Error / exception tracking: skipped. The target is a build-time script with no runtime code path."
 
 ## 5. Synthesize

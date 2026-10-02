@@ -63,9 +63,8 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.deepEqual(settings.enabledModels, ["anthropic/claude-opus-5-5", "openai-codex/gpt-6-sol", "openai-codex/gpt-6-astra", "opencode-go/glm-5.3-flash"]);
       if (name === "main") {
       const roles = {
-        researcher: ["opencode-go/glm-5.3-flash", "max"], explorer: ["opencode-go/glm-5.3-flash", "high"], worker: ["openai-codex/gpt-6-sol", "max"],
+        researcher: ["opencode-go/glm-5.3-flash", "max"], worker: ["openai-codex/gpt-6-sol", "max"],
         debugger: ["openai-codex/gpt-6-sol", "max"], reviewer: ["openai-codex/gpt-6-astra", "high"],
-        verifier: ["openai-codex/gpt-6-astra", "high"],
       };
       for (const [role, [model, thinking]] of Object.entries(roles)) {
         const agent = read(p.join(profile.agentDir, "agents", `${role}.md`)).replaceAll("\r\n", "\n");
@@ -76,16 +75,16 @@ for (const platform of ["darwin", "linux", "win32"]) {
         assert.equal(field("inherit_context"), "false");
         assert.equal(field("isolated"), "false");
         assert.equal(field("max_turns"), "0", "Không giới hạn số lượt");
-        // Worker/debugger ghi file, verifier trả kết luận mà bước sau cần: chạy foreground. Role Codex (Sol, Astra) nạp
+        // Worker/debugger ghi file: chạy foreground. Role Codex (Sol, Astra) nạp
         // pi-usage để request fast có chi phí đúng.
-        const foreground = role === "worker" || role === "debugger" || role === "verifier";
+        const foreground = role === "worker" || role === "debugger";
         assert.equal(field("run_in_background"), foreground ? "false" : undefined, role);
         assert.equal(JSON.parse(field("extensions")).includes("pi-usage"), model.startsWith("openai-codex/"), role);
         assert.equal(JSON.parse(field("extensions")).includes("pi-web-access"), role === "researcher", role);
       }
       const subagents = json(p.join(profile.agentDir, "subagents.json"));
       assert.deepEqual([subagents.maxConcurrent, subagents.maxConcurrentForeground, subagents.defaultMaxTurns, subagents.backgroundByDefault], [4, 2, 0, true]);
-      assert.equal(files.filter(file=>file.path.startsWith(p.join(profile.agentDir,"agents")+p.sep)).length,6);
+      assert.equal(files.filter(file=>file.path.startsWith(p.join(profile.agentDir,"agents")+p.sep)).length,4);
       } else {
         assert.ok(!files.some(file => file.path.startsWith(p.join(profile.agentDir,"agents")+p.sep)));
       }
@@ -256,7 +255,6 @@ test("model-roles: preset và ghi đè đi tới mọi file gốc (settings, fil
   const frontmatter = (role) => read(`agents/${role}.md`).split("\n---\n")[0];
   assert.match(frontmatter("worker"), /^model: anthropic\/claude-opus-5-5\nthinking: max$/mu);
   assert.match(frontmatter("reviewer"), /^model: anthropic\/claude-fable-5-1\nthinking: high$/mu);
-  assert.match(frontmatter("verifier"), /^model: anthropic\/claude-fable-5-1\nthinking: high$/mu);
   assert.match(frontmatter("researcher"), /^model: anthropic\/claude-sonnet-5\nthinking: high$/mu);
   const advisor = JSON.parse(read("advisor.json"));
   assert.deepEqual([advisor.executor, advisor.executorEffort, advisor.advisor, advisor.advisorEffort, advisor.alwaysOn],
@@ -267,7 +265,7 @@ test("model-roles: preset và ghi đè đi tới mọi file gốc (settings, fil
   assert.deepEqual(goal.oracle, { enabled: true, provider: "anthropic", model: "claude-fable-5-1", thinkingLevel: "xhigh" });
   // Hướng dẫn cho parent nêu đúng model/thinking của từng vai.
   const guide = read("AGENTS.md");
-  assert.match(guide, /researcher dùng claude-sonnet-5\/high .*worker dùng claude-opus-5-5\/max; debugger dùng claude-opus-5-5\/high; reviewer dùng claude-fable-5-1\/high, chỉ đọc; verifier dùng claude-fable-5-1\/high/u);
+  assert.match(guide, /researcher dùng claude-sonnet-5\/high .*worker dùng claude-opus-5-5\/max; debugger dùng claude-opus-5-5\/high; reviewer dùng claude-fable-5-1\/high, chỉ đọc\./u);
   assert.match(guide, /Parent claude-opus-5-5\/high giữ thiết kế/u);
   assert.match(guide, /Advisor claude-fable-5-1\/high: gọi ask_advisor đúng các gate đang bật \(lỗi lặp, trước khi xong;/u);
   assert.match(guide, /Số lượt: 5 mỗi phiên/u);
@@ -294,10 +292,10 @@ test("pi-models dựng mặc định mới từ base của preset khác: giống
       kinds.push(kind);
       assert.equal(nextModelDefault(kind, entry.content, nativeValues(after)), fresh.get(entry.path), entry.path);
     }
-    assert.deepEqual(kinds.sort(), ["advisor", "debugger", "explorer", "goal", "researcher", "reviewer", "settings", "verifier", "worker"]);
+    assert.deepEqual(kinds.sort(), ["advisor", "debugger", "goal", "researcher", "reviewer", "settings", "worker"]);
     const template = fs.readFileSync(path.join(repoDir, "assets", "AGENTS.md"), "utf8");
     assert.equal(fillRoleNames(template, after), fresh.get(p.join(options.agentDir, "AGENTS.md")));
-    assert.deepEqual(changedRoles(before, after), ["researcher", "explorer", "worker", "debugger", "reviewer", "verifier", "advisor", "auditor", "oracle", "autoMode"]);
+    assert.deepEqual(changedRoles(before, after), ["researcher", "worker", "debugger", "reviewer", "advisor", "auditor", "oracle", "autoMode"]);
   }
 });
 

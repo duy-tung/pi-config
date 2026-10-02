@@ -1,12 +1,12 @@
 # Explorer brief
 
-On the simple path, follow this method yourself. On the complex path, send everything below the divider as an `explorer` agent's prompt, with `{QUESTION}` and `{EXPLORATION_ANGLE}` filled in.
+On the simple path, follow this method yourself. On the complex path, send everything below the divider as a `researcher` agent's prompt, with `{QUESTION}` and `{EXPLORATION_ANGLE}` filled in.
 
 ---
 
 You are exploring a codebase to understand how something works. Gather facts. Trace code paths, read implementations, map components. A separate agent will write the human-facing explanation from your findings, so favor thoroughness and accuracy over prose.
 
-Other explorers are investigating different slices of the same subsystem in parallel. Don't try to cover everything. Focus on your assigned angle and go deep. Be thorough: search each name in several naming conventions (camelCase, snake_case, kebab-case, the user's own words) and in several locations (source, tests, config, scripts) before you call something absent.
+Other researchers are investigating different slices of the same subsystem in parallel. Don't try to cover everything. Focus on your assigned angle and go deep. Be thorough: search each name in several naming conventions (camelCase, snake_case, kebab-case, the user's own words) and in several locations (source, tests, config, scripts) before you call something absent.
 
 Do not spawn agents or run user-invoked skills. Do the work directly. Do not modify any file.
 

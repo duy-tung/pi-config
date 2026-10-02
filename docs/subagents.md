@@ -5,11 +5,9 @@ Pi dùng tool `Agent` của `@tintinweb/pi-subagents` 0.19.0. Parent Claude Opus
 | Role | Model/effort (preset `default`) | Quyền và trách nhiệm |
 |---|---|---|
 | `researcher` | GLM-5.3-Flash/max | Khảo sát code/docs/log, lịch sử git và web (`web_search`, `fetch_content`); chỉ đọc (bash cho lệnh đọc như `git log`, `rg`, `jq`) và trả bằng chứng |
-| `explorer` | GLM-5.3-Flash/high | Đọc code trong workspace (read, grep, find, ls, bash chỉ đọc), trả bản đồ file:dòng, symbol, luồng gọi và test liên quan; không web, không chạy build/test. Giao song song với researcher khi cần cả code lẫn tài liệu |
 | `worker` | GPT-6 Sol/max | Triển khai phần việc đã chốt, sửa file và kiểm thử |
 | `debugger` | GPT-6 Sol/max | Tái hiện, xác định nguyên nhân, sửa và kiểm hồi quy |
 | `reviewer` | GPT-6 Astra/high | Review độc lập, chỉ đọc; bash để chạy `git diff`, test sẵn có và script thử trong `/tmp`. Chạy các trục review của skill `interrogate` |
-| `verifier` | GPT-6 Astra/high | Chứng minh thay đổi trên sản phẩm thật bằng verify skill của repo; trả VERIFIED, NOT VERIFIED hoặc INCONCLUSIVE kèm bằng chứng; không sửa code, chỉ ghi bằng chứng |
 
 GLM dùng provider `opencode-go` trực tiếp trong Pi. Opus 5.5 và GLM dùng context 1M của catalog; Astra/Sol nâng lên 872K. File role nằm trong `agents/` của Pi; model/thinking của chúng sinh từ `model-roles.json` ([models.md](models.md)). `pi-doctor` in model/thinking thật của từng role, cảnh báo role lệch so với `model-roles.json` và đánh dấu role đã sửa so với bản cài.
 
@@ -42,15 +40,15 @@ Role dùng `inherit_context:false`, `prompt_mode:replace`, `isolated:false` và 
 
 Role không giới hạn số lượt (`max_turns: 0` trong file role, `defaultMaxTurns: 0`); giá trị trong role thắng tham số `max_turns` của tool. Agent chạy tới khi xong; dừng bằng `/agents` → chọn agent → `x` hai lần (Esc dừng lời gọi foreground đang chờ). Parent theo dõi và dùng `steer_subagent` khi agent lạc hướng.
 
-`backgroundByDefault:true`: explorer, researcher và reviewer chạy nền, lời gọi `Agent` trả ID ngay, thông báo completion mở lượt mới cho parent kèm trích đoạn kết quả; `get_subagent_result` lấy toàn văn. Worker, debugger và verifier ghim `run_in_background: false` nên luôn chạy foreground và trả kết quả ngay trong tool call; parent không đổi được. Background tối đa 4 agent, foreground tối đa 2; vượt giới hạn thì xếp hàng. Nhiều lời gọi `Agent` foreground trong cùng một lượt chạy song song; các phiên Pi quản lý pool riêng.
+`backgroundByDefault:true`: researcher và reviewer chạy nền, lời gọi `Agent` trả ID ngay, thông báo completion mở lượt mới cho parent kèm trích đoạn kết quả; `get_subagent_result` lấy toàn văn. Worker và debugger ghim `run_in_background: false` nên luôn chạy foreground và trả kết quả ngay trong tool call; parent không đổi được. Background tối đa 4 agent, foreground tối đa 2; vượt giới hạn thì xếp hàng. Nhiều lời gọi `Agent` foreground trong cùng một lượt chạy song song; các phiên Pi quản lý pool riêng.
 
-Codex fast mode (`service_tier: "priority"`) áp dụng cho request của GPT-6 Sol (worker, debugger), GPT-6 Astra (reviewer, verifier) và GPT-6.1 Sol khi một vai dùng model này. Bản vá pi-usage bọc `ModelRuntime` dùng chung của phiên chính, nên request không đi qua hook của phiên (advisor, goal auditor, Oracle, agent con) cũng theo cài đặt fast và chọn hàng theo model của chính request. Worker, debugger, reviewer và verifier nạp `pi-usage` để chi phí của request fast được tính đúng; bản vá bỏ truy vấn quota và timer của pi-usage trong phiên không có UI.
+Codex fast mode (`service_tier: "priority"`) áp dụng cho request của GPT-6 Sol (worker, debugger), GPT-6 Astra (reviewer) và GPT-6.1 Sol khi một vai dùng model này. Bản vá pi-usage bọc `ModelRuntime` dùng chung của phiên chính, nên request không đi qua hook của phiên (advisor, goal auditor, Oracle, agent con) cũng theo cài đặt fast và chọn hàng theo model của chính request. Worker, debugger và reviewer nạp `pi-usage` để chi phí của request fast được tính đúng; bản vá bỏ truy vấn quota và timer của pi-usage trong phiên không có UI.
 
 Researcher nạp `pi-web-access`. Package này khai extension là thư mục `./dist`; bản vá pi-subagents cho entry thư mục khớp tên package, nếu không `extensions`/`ext:pi-web-access` của role không nạp được web tools.
 
 ## Quyền và nghiệm thu
 
-Explorer, researcher, reviewer và verifier không có write/edit; shell của chúng dành cho lệnh đọc, chạy test và thu bằng chứng, và vẫn qua cổng permission. Worker/debugger dùng shell, write và edit qua cổng permission; chỉ commit khi brief cho phép rõ. Child dùng mode (auto/bypass) của phiên gốc; bộ phân loại của child lấy tin nhắn của người dùng ở phiên gốc làm ý định, coi task do parent viết là không phải lời người dùng. Khi cần hỏi (luật ask, chạm giới hạn chặn), câu hỏi hiện ở UI của phiên gốc. Trong auto mode, `Agent` với `isolated:true` hoặc danh sách extension thiếu `pi-auto-mode` bị chặn vì child sẽ chạy không có cổng.
+Researcher và reviewer không có write/edit; shell của chúng dành cho lệnh đọc, chạy test và thu bằng chứng, và vẫn qua cổng permission. Worker/debugger dùng shell, write và edit qua cổng permission; chỉ commit khi brief cho phép rõ. Child dùng mode (auto/bypass) của phiên gốc; bộ phân loại của child lấy tin nhắn của người dùng ở phiên gốc làm ý định, coi task do parent viết là không phải lời người dùng. Khi cần hỏi (luật ask, chạm giới hạn chặn), câu hỏi hiện ở UI của phiên gốc. Trong auto mode, `Agent` với `isolated:true` hoặc danh sách extension thiếu `pi-auto-mode` bị chặn vì child sẽ chạy không có cổng.
 
 Parent cần tránh giao trùng việc hoặc để nhiều writer sửa chồng file. Dùng ID của agent đang chạy để lấy kết quả hay điều chỉnh; parent kiểm evidence và test trước khi kết luận.
 
@@ -60,4 +58,4 @@ Project có thể override role. Với `scopeModels:true`, lựa chọn ngoài s
 
 ## Kiểm thử
 
-`pi-test` hoặc `tests/agent-integration.mjs <root> main` dùng provider giả và chặn mạng để kiểm model/effort thực, context, quyền, web tools của researcher, fast mode trong request của worker/debugger/reviewer/verifier, shell chỉ đọc của researcher, reviewer/verifier không ghi được file, advisor và goal auditor, agent chạy quá 14 lượt, role không tồn tại và completion. Các test request payload kiểm provider OpenCode Go trên SDK đã ghim. Nghiệm thu chất lượng model trên công việc thật là bước riêng với ngân sách cụ thể.
+`pi-test` hoặc `tests/agent-integration.mjs <root> main` dùng provider giả và chặn mạng để kiểm model/effort thực, context, quyền, web tools của researcher, fast mode trong request của worker/debugger/reviewer, shell chỉ đọc của researcher, reviewer không ghi được file, advisor và goal auditor, agent chạy quá 14 lượt, role không tồn tại và completion. Các test request payload kiểm provider OpenCode Go trên SDK đã ghim. Nghiệm thu chất lượng model trên công việc thật là bước riêng với ngân sách cụ thể.

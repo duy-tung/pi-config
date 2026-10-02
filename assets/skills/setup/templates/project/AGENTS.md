@@ -15,14 +15,11 @@
 ### Issue tracker
 <Where issues live, in one line>. See `docs/agents/issue-tracker.md`.
 
-### Triage labels
-<Default or custom label names, in one line>. See `docs/agents/triage-labels.md`.
-
 ### Domain docs
 <Single-context or multi-context>. See `docs/agents/domain.md`.
 
 ### Verification
-Before calling a user-visible change done, prove it with `.agents/skills/verify-<app>/`.
+Before calling a user-visible change done, prove it: run it the way a user would and read the real output.
 
 ### Coding standards
 Review-time rules live in `CODING_STANDARDS.md`; read it when reviewing a diff.

@@ -13,7 +13,7 @@ Read `CONTEXT.md` if it exists, so test names and interface words match the doma
 
 **Run it** when the user asks for TDD, a failing test or a regression test, when a spec or ticket names seams to test, or when the behavior has an obvious cheap local test target.
 
-**Skip it** when the test path is unclear, expensive, integration-heavy, or not requested. Prove the change on the real artifact instead (load the `prove` skill) and say in the reply why you skipped.
+**Skip it** when the test path is unclear, expensive, integration-heavy, or not requested. Prove the change on the real artifact instead (run it the way a user would and read the output) and say in the reply why you skipped.
 
 - **Pick the narrowest existing check** that reaches the behavior through a public interface: the unit, component or integration test file already used for that code path. Do not create one from scratch just to satisfy the workflow.
 - **Prefer no new test over a bad test.** A bad test mostly tests mocks, encodes the current implementation, depends on timing or global state, needs expensive infrastructure for a small fix, or would be deleted right after proving the fix.
@@ -23,8 +23,6 @@ Read `CONTEXT.md` if it exists, so test names and interface words match the doma
 A **seam** is where a module's interface lives: the place you observe behavior without reaching inside. The interface is the test surface. Tests live at seams, never against internals. Module, interface, seam, adapter and depth mean what the `codebase-design` skill says they mean; when the shape of the interface itself is in question, load the `codebase-design` skill.
 
 **Test only at agreed seams.** A seam is agreed when the spec or ticket names it, the user confirmed it, or an existing test file already tests that public interface. Prefer those. Before the first test at any other seam, write the seam down and ask: "What is the public interface, and which seams should we test?" No test is written at an unconfirmed seam.
-
-In an unattended run, only the ticket's seams and existing ones count as agreed. If they cannot observe the behavior, do not invent a seam: record the gap in the run's decision log and prove the behavior with the `prove` skill instead.
 
 ## Tests worth keeping
 

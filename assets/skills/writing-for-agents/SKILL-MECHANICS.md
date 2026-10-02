@@ -34,15 +34,15 @@ Shared reference that two user-invoked skills both need can live in neither: wit
 
 - **The call rule.** A user-invoked skill may load model-invoked skills. It never loads another user-invoked skill: it tells the user to run it instead (tell the user to run `/skill:setup`). A model-invoked skill may load other model-invoked skills. Pi enforces the rule: a user-invoked skill is not in the list the agent reads.
 - **Name the skill.** An operative dependency is an explicit instruction: "Load the `grilling` skill", or "Load the `grilling` and `domain-modeling` skills" for two. The agent finds each in the skill list and reads its `SKILL.md`. A bare `/skill:<name>` in prose is a label for the human, not a load.
-- **Reach material by loading its skill.** Links point at sibling files in the skill's own folder (a relative link to `RUBRIC.md`); a relative path is relative to the file it appears in. Link into another skill's folder only for a file no load reaches: a supporting file (`../create-verify/CONTROL-ADAPTERS.md`), or a user-invoked skill's file another skill must read, the way `implement` and `afk` reach `../work/playbooks/build.md`. When a subagent needs one of the skill's files, put its absolute path in the brief, resolved from the skill's `<location>`.
+- **Reach material by loading its skill.** Links point at sibling files in the skill's own folder (a relative link to `RUBRIC.md`); a relative path is relative to the file it appears in. Link into another skill's folder only for a file no load reaches: a supporting file (`../ship/BLAST-RADIUS.md`), or a user-invoked skill's file another skill must read. When a subagent needs one of the skill's files, put its absolute path in the brief, resolved from the skill's `<location>`.
 - **Check the load.** Naming a skill does not reliably load it. A wrapper that depends on another skill's behaviour names the tell that it loaded ("if your questions come without recommended answers, grilling did not load: read its SKILL.md again").
 - **Reading a doc is not loading a skill.** Merely reading `CONTEXT.md` for vocabulary is a one-line prose pointer, not the domain-modeling skill.
 
 ## Subagents
 
-- Spawn a role with the `Agent` tool: `explorer`, `researcher`, `worker`, `debugger`, `reviewer` or `verifier`; the global AGENTS.md says what each is for. The role pins its model and thinking: never pass `model` or `thinking`.
+- Spawn a role with the `Agent` tool: `researcher`, `worker`, `debugger` or `reviewer`; the global AGENTS.md says what each is for. The role pins its model and thinking: never pass `model` or `thinking`.
 - A subagent does not see the conversation. Brief with pointers (absolute paths, SHAs, commands), not pasted dumps. Each brief stands alone: goal, scope, context pointers, acceptance, verify, forbidden, report format.
-- Several `Agent` calls in one response run in parallel (at most 4 in the background, 2 in the foreground; the rest queue). Collect background results (`explorer`, `researcher`, `reviewer`) with `get_subagent_result` (`wait: true`).
+- Several `Agent` calls in one response run in parallel (at most 4 in the background, 2 in the foreground; the rest queue). Collect background results (`researcher`, `reviewer`) with `get_subagent_result` (`wait: true`).
 - The main thread is the only spawner: subagents have no Agent tool. End every brief with: "Do not spawn agents or run user-invoked skills. Do the work directly."
 - You own each subagent's output: read its diff or file yourself, never pass its summary through.
 
@@ -56,4 +56,4 @@ The invocation cut of splitting (the sequence cut lives in `SKILL.md`): split of
 
 ## Router skills
 
-When user-invoked skills multiply past what you can remember, that piled-up cognitive load is cured by a **router skill**: one user-invoked skill that names the others and when to reach for each, so the human has one skill to remember instead of many (this set's is `/skill:work`). It can only hint, never fire them: user-invoked skills are not in the skill list, so nothing but the human can reach them. Adding, renaming, or removing a user-reachable skill means updating the router, or it becomes a router that lies.
+When user-invoked skills multiply past what you can remember, that piled-up cognitive load is cured by a **router skill**: one user-invoked skill that names the others and when to reach for each, so the human has one skill to remember instead of many. It can only hint, never fire them: user-invoked skills are not in the skill list, so nothing but the human can reach them. Adding, renaming, or removing a user-reachable skill means updating the router, or it becomes a router that lies.

@@ -37,4 +37,4 @@ Ground the hot path first (load the `how` skill), then use these families as hyp
 
 The baseline number, the post-fix number, the delta, the method (N, what one sample is, machine, data), and the artifact paths. Cite the measurement in the commit or PR.
 
-Sustained improvement of one metric toward a target, across many attempts, is a different job: tell the user to run `/skill:work` with the hillclimb playbook.
+Sustained improvement of one metric toward a target, across many attempts, is a different job: agree the target and the measurement with the user, then log every attempt and its result.

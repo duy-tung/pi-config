@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 Break a plan, spec, or conversation into a set of **tickets**: tracer-bullet vertical slices, each declaring the tickets that **block** it and the checks that prove it.
 
-The issue tracker and triage label vocabulary should have been provided to you. If not, tell the user to run `/skill:setup` before you publish.
+The issue tracker should have been provided to you. If not, tell the user to run `/skill:setup` before you publish.
 
 ## Process
 
@@ -46,7 +46,7 @@ Order the tickets so each lands green before the next starts and the sequence pr
 **Every ticket carries a `Verify:` line** with two checks:
 
 - **Unit**: the test or check, named by behaviour, that is red at the starting commit and green when done.
-- **Live**: the feature of the repo's verify skill (`.agents/skills/verify-<app>/`) to drive and the result to observe. Without a verify skill, the command and its expected output.
+- **Live**: the command or user path to run and the result to observe.
 
 **Wide refactors are the exception to vertical slicing.** A **wide refactor** is one mechanical change (rename a column, retype a shared symbol) whose **blast radius** fans across the whole codebase, so a single edit breaks thousands of call sites at once and no vertical slice can land green. Don't force it into a tracer bullet; sequence it as **expand-contract**. First expand: add the new form beside the old so nothing breaks. Then migrate the call sites over in batches sized by blast radius (per package, per directory), each batch its own ticket blocked by the expand, keeping CI green batch to batch because the old form still exists. Finally contract: delete the old form once no caller remains, in a ticket blocked by every migrate batch. When even the batches can't stay green alone, keep the sequence but let them share an integration branch that all block a final integrate-and-verify ticket; green is promised only there.
 
@@ -72,14 +72,14 @@ Iterate until the user approves the breakdown.
 Publish the approved tickets. **How** depends on the tracker the repo's issue-tracker doc describes; the tickets are the same either way, only the shape of the blocking edges changes:
 
 - **Local files** → write one file per ticket under `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01` in dependency order (blockers first). Each file's "Blocked by" lists the numbers/titles it depends on. Use the per-ticket file template below: one ticket per file, never a single combined file.
-- **GitHub** → create one issue per ticket in dependency order (blockers first, so their numbers exist at creation) with native links: `gh issue create --title "<title>" --body-file <body.md> --parent <spec-number> --blocked-by <n>,<n>` (`--parent` only when the source is an existing issue; add `--label <ready-for-agent label>` only when `docs/agents/triage-labels.md` exists). If `gh issue create --help` lacks `--parent` or `--blocked-by` (older gh), make those links with the tracker doc's API calls; if that fails too, the `## Parent` section and a `## Blocked by` section carry the edges.
-- **Another real issue tracker (GitLab, Linear, …)** → publish one issue per ticket in dependency order (blockers first) so each ticket's blocking edges can reference real identifiers. Use the platform's native blocking / sub-issue relationship where it has one; otherwise write each ticket's `## Blocked by` section. Apply the `ready-for-agent` label from `docs/agents/triage-labels.md` when that file exists, unless instructed otherwise; the tickets are agent-grabbable by construction.
+- **GitHub** → create one issue per ticket in dependency order (blockers first, so their numbers exist at creation) with native links: `gh issue create --title "<title>" --body-file <body.md> --parent <spec-number> --blocked-by <n>,<n>` (`--parent` only when the source is an existing issue). If `gh issue create --help` lacks `--parent` or `--blocked-by` (older gh), make those links with the tracker doc's API calls; if that fails too, the `## Parent` section and a `## Blocked by` section carry the edges.
+- **Another real issue tracker (GitLab, Linear, …)** → publish one issue per ticket in dependency order (blockers first) so each ticket's blocking edges can reference real identifiers. Use the platform's native blocking / sub-issue relationship where it has one; otherwise write each ticket's `## Blocked by` section.
 
 Work the **frontier**: any ticket whose blockers are all done. For a purely linear chain that means top to bottom.
 
 Do NOT close or modify any parent issue. Linking a ticket to it as a sub-issue is fine.
 
-When the tickets are published, tell the user how to run them: `/skill:implement <ticket>` in a fresh session per ticket, or `/skill:afk` to work the frontier unattended.
+When the tickets are published, tell the user how to run them: `/skill:implement <ticket>` in a fresh session per ticket.
 
 <local-ticket-template>
 
@@ -89,8 +89,6 @@ When the tickets are published, tell the user how to run them: `/skill:implement
 
 **Blocked by:** the numbers/titles of the tickets that gate this one, or "None (can start immediately)".
 
-**Triage:** ready-for-agent
-
 **Status:** open
 
 - [ ] Acceptance criterion 1
@@ -98,7 +96,7 @@ When the tickets are published, tell the user how to run them: `/skill:implement
 
 **Verify:**
 - Unit: <the test or check that is red now and green when done>
-- Live: <the verify-<app> feature to drive and the result to observe, or the command and its expected output>
+- Live: <the command or user path to run and the result to observe>
 
 </local-ticket-template>
 
@@ -119,7 +117,7 @@ The end-to-end behaviour this ticket makes work, from the user's perspective, no
 
 **Verify:**
 - Unit: <the test or check that is red now and green when done>
-- Live: <the verify-<app> feature to drive and the result to observe, or the command and its expected output>
+- Live: <the command or user path to run and the result to observe>
 
 ## Blocked by
 

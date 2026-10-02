@@ -19,7 +19,7 @@ Follow [EPISTEMICS.md](EPISTEMICS.md) in full. The key rules:
 2. **Reconcile overlapping findings.** Multiple investigators may cite the same PR, ticket, or doc. Merge them into a single, authoritative reference.
 3. **Identify contradictions.** If two items of evidence disagree, don't pick one. Surface both.
 4. **Calibrate confidence.** For each claim, identify the evidence and the tier. State Direct claims plainly with a citation. Hedge Inferred claims and explain the inference. Mark Speculative claims explicitly. Put claims with no evidence in the gaps section.
-5. **Verify citations by spot-checking.** Read the codebase, run `git` and `gh`, and call MCP tools (`mcp__<server>__<tool>`) to check a cited item exists and says what's claimed. Do not write files, commit, or modify external state. Do not spawn agents or run user-invoked skills: check directly. Don't propagate errors.
+5. **Verify citations by spot-checking.** Read the codebase, run `git` and `gh`, and call any source tool the session has to check a cited item exists and says what's claimed. Do not write files, commit, or modify external state. Do not spawn agents or run user-invoked skills: check directly. Don't propagate errors.
 6. **Don't overreach.** The user will act on your output. Better to leave an open question open than to fill it with a confident-sounding guess.
 
 ## Output format
@@ -88,8 +88,8 @@ One line per category, including the ones that returned nothing or were not sear
 
 A category with no search takes its reason instead of the details:
 
-- Quick depth: "Not searched (quick pass). Server available: `<server>`; ask for a deep answer to search it." Or "Not searched. No matching MCP server in this environment."
-- Deep depth: "Not searched. No matching MCP server in this environment." Or the written reason the source is provably irrelevant.
+- Quick depth: "Not searched (quick pass). A tool is available for it; ask for a deep answer to search it." Or "Not searched. No tool in this session reaches it."
+- Deep depth: "Not searched. No tool in this session reaches it." Or the written reason the source is provably irrelevant.
 
 Source control is never "not searched": git and `gh` are always expected.
 

@@ -14,7 +14,7 @@ Review the changes since a fixed point along separate axes, each in its own fres
 | Spec | `reviewer` + [axes/spec.md](axes/spec.md) | Does it do what the spec asked, no more and no less? | When a spec exists |
 | Adversarial | `reviewer` + [axes/adversarial.md](axes/adversarial.md) | Where does it break? | Risky diffs, or when asked |
 
-**Mode.** Fix mode when the caller is the `implement` or `afk` skill, or the arguments include `fix`: fix the Act-on items (step 7). Report mode otherwise: report only and apply nothing.
+**Mode.** Fix mode when the caller is the `implement` skill, or the arguments include `fix`: fix the Act-on items (step 7). Report mode otherwise: report only and apply nothing.
 
 Run from the main thread. Reviewers are subagents, and a subagent cannot spawn them. If you have no Agent tool, stop and tell your caller that interrogate must run from the main thread.
 
@@ -81,7 +81,7 @@ Read [LEAD-JUDGMENT.md](LEAD-JUDGMENT.md) before bucketing. You are the lead: a 
 
 Never merge or rerank findings across axes. A finding raised on two axes stays on both, marked "also on <axis>".
 
-**Fix mode.** Fix every Act-on item, rerun the affected tests, and commit. Under the `afk` skill the coordinator does not edit: it gives the Act-on list to a fresh `worker` agent as a full brief (GOAL: the Act-on list; SCOPE: the files it names). Then re-run only the axes that had Act-on items, once. Whatever that re-run still flags is reported open. Do not loop until clean.
+**Fix mode.** Fix every Act-on item, rerun the affected tests, and commit. Then re-run only the axes that had Act-on items, once. Whatever that re-run still flags is reported open. Do not loop until clean.
 
 ## 8. Report
 
