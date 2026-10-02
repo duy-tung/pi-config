@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { type Answer, type JsonValue, type NoulQuestion, type Question, redactJson, type ScoreQuestion } from "./jev.ts";
+import { type Answer, JEV_TUNING, type JsonValue, type NoulQuestion, type Question, redactJson, type ScoreQuestion } from "./jev.ts";
 import { isInside } from "./paths.ts";
 import { analyzeShell, commandName } from "./shell.ts";
 import { clip } from "./transcript.ts";
@@ -371,15 +371,6 @@ export function localPackageFacts(command: string, cwd: string): string[] {
 // Quyết định
 // ---------------------------------------------------------------------------
 
-export interface ScreenThresholds {
-  /** Xác suất của một câu hỏi rủi ro từ mức này trở lên thì gắn cờ. */
-  flagAt: number;
-  /** Tổng xác suất mức hại "đáng kể" + "nghiêm trọng" từ mức này trở lên thì gắn cờ. */
-  riskAt: number;
-}
-
-export const DEFAULT_THRESHOLDS: ScreenThresholds = { flagAt: 0.3, riskAt: 0.5 };
-
 export interface ScreenVerdict {
   flagged: boolean;
   /** Câu hỏi rủi ro vượt ngưỡng, cao nhất trước. */
@@ -392,16 +383,17 @@ export interface ScreenVerdict {
   risk: number;
 }
 
-export function judgeScreen(answers: Record<string, Answer>, thresholds: ScreenThresholds): ScreenVerdict {
+/** Gắn cờ khi một câu hỏi rủi ro ≥ flagAt hoặc P(mức hại "đáng kể" + "nghiêm trọng") ≥ riskAt (JEV_TUNING). */
+export function judgeScreen(answers: Record<string, Answer>): ScreenVerdict {
   const scored = HAZARDS.map((hazard) => {
     const answer = answers[hazard.id];
     return { id: hazard.id, rule: hazard.rule, p: answer?.type === "noul" ? answer.noul : 1 };
   }).sort((a, b) => b.p - a.p);
   const risk = answers.risk;
   const riskTail = risk?.type === "score" ? (risk.probabilities[2] ?? 1) + (risk.probabilities[3] ?? 0) : 1;
-  const hazards = scored.filter((item) => item.p >= thresholds.flagAt);
+  const hazards = scored.filter((item) => item.p >= JEV_TUNING.flagAt);
   return {
-    flagged: hazards.length > 0 || riskTail >= thresholds.riskAt,
+    flagged: hazards.length > 0 || riskTail >= JEV_TUNING.riskAt,
     hazards, top: { id: scored[0].id, p: scored[0].p }, riskTail,
     risk: risk?.type === "score" ? risk.score : 3,
   };

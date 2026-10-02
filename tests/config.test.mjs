@@ -112,8 +112,8 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.ok(!deny.some((rule) => rule.startsWith("Bash(rm ")));
       assert.equal(settings.permissions.defaultMode, "auto");
       assert.equal(settings.autoMode.model, "anthropic/claude-sonnet-5");
-      // Giai đoạn 1 là Jev khi có key, model ghim phiên bản (ngưỡng chỉnh theo phiên bản).
-      assert.deepEqual(settings.autoMode.jev, { model: "jev-1.13.0", flagAt: 0.3, riskAt: 0.5, probe: true });
+      // Giai đoạn 1 là Jev khi có key, model ghim phiên bản (ngưỡng trong code, chỉnh theo phiên bản).
+      assert.deepEqual(settings.autoMode.jev, { model: "jev-1.13.0" });
       assert.ok(settings.extensions.filter((entry) => !entry.startsWith("-")).at(-1).endsWith("pi-auto-mode"), "pi-auto-mode phải nạp sau cùng");
       assert.ok(!settings.packages.some((entry) => String(entry?.source ?? entry).includes("pi-permission-system")));
       assert.ok(!files.some((file) => file.path.includes("pi-permission-system")));

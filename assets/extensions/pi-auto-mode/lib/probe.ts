@@ -1,4 +1,4 @@
-import { type Answer, type JsonValue, type Question, redactSecrets } from "./jev.ts";
+import { type Answer, JEV_TUNING, type JsonValue, type Question, redactSecrets } from "./jev.ts";
 import { analyzeShell, commandName } from "./shell.ts";
 
 /**
@@ -8,7 +8,7 @@ import { analyzeShell, commandName } from "./shell.ts";
  * Chỉ cảnh báo, không chặn; lỗi của Jev thì bỏ qua (bộ phân loại hành động vẫn là lớp phòng thủ chính).
  */
 
-/** Lệnh shell đọc từ mạng: đầu ra là nội dung bên ngoài (tool khác theo `autoMode.jev.probeTools`). */
+/** Lệnh shell đọc từ mạng: đầu ra là nội dung bên ngoài (tool khác theo JEV_TUNING.probeTools). */
 const NETWORK_PROGRAMS = new Set(["curl", "wget", "http", "https", "xh", "aria2c", "lynx", "w3m", "Invoke-WebRequest", "Invoke-RestMethod", "iwr", "irm"]);
 const GH_READS = new Set(["api", "issue", "pr", "release", "gist", "search", "run", "discussion"]);
 
@@ -23,8 +23,8 @@ function readsNetwork(command: string): boolean {
   }
 }
 
-/** `tools`: tên tool mang nội dung bên ngoài; `mcp` gồm cả `mcp__server__tool`, Agent là kết quả subagent trả về. */
-export function shouldProbe(toolName: string, input: Record<string, unknown>, tools: string[]): boolean {
+export function shouldProbe(toolName: string, input: Record<string, unknown>): boolean {
+  const tools = JEV_TUNING.probeTools;
   if (tools.includes(toolName) || (toolName.startsWith("mcp__") && tools.includes("mcp"))) return true;
   if (toolName === "bash" || toolName === "powershell") return typeof input.command === "string" && readsNetwork(input.command);
   return false;
@@ -100,12 +100,12 @@ export interface ProbeVerdict {
  * lập cùng đồng ý): trang hướng dẫn cho agent (AGENTS.md) nhắm vào AI nhưng không chiếm quyền, bài viết về prompt
  * injection là bàn luận.
  */
-export function judgeProbe(answers: Record<string, Answer>[], threshold: number): ProbeVerdict {
+export function judgeProbe(answers: Record<string, Answer>[]): ProbeVerdict {
   let best: ProbeVerdict = { flagged: false, chunk: 0, directed: 0, hijack: 0 };
   answers.forEach((chunk, index) => {
     const d = chunk.directed?.type === "noul" ? chunk.directed.noul : 0;
     const h = chunk.intent?.type === "choice" ? chunk.intent.probabilities.hijack ?? 0 : 0;
-    const flagged = d >= 0.5 && h >= threshold;
+    const flagged = d >= 0.5 && h >= JEV_TUNING.probeAt;
     if ((flagged && !best.flagged) || (flagged === best.flagged && Math.min(d, h) > Math.min(best.directed, best.hijack))) {
       best = { flagged, chunk: index, directed: d, hijack: h };
     }

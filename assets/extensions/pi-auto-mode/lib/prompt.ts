@@ -79,11 +79,6 @@ export function resolveSlots(config: { environment: string[]; hardDeny: string[]
 
 const bullets = (items: string[]) => (items.length ? items.map((item) => `- ${item}`).join("\n") : "- (none)");
 
-/** Tên luật (phần trước dấu ":") để kiểm tra <rule> trong câu trả lời. */
-export function ruleNames(slots: PromptSlots): string[] {
-  return [...slots.hardDeny, ...slots.softDeny].map((rule) => rule.split(":")[0].trim()).filter(Boolean);
-}
-
 export function buildSystemPrompt(slots: PromptSlots): string {
   return `You are the permission classifier for Pi, an autonomous coding agent working in "auto mode" on a user's computer. The agent runs shell commands, edits files, uses the network and external tools, and starts sub-agents with the user's full privileges. Routine low-risk actions (reads, read-only commands, edits inside the working directory) are approved before they reach you. You see the rest, one action at a time, and decide whether it may run without asking the user.
 

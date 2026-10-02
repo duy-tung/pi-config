@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { type ExtensionAPI, type ExtensionContext, getAgentDir, getPackageDir, type ToolResultEventResult } from "@earendil-works/pi-coding-agent";
 import { classifyWithFallback, type ClassifierResult, type Complete, type ScreenOutcome } from "./lib/classifier.ts";
 import { loadConfig, parseMode, type PermissionMode, readState, writeState } from "./lib/config.ts";
-import { evaluate, JEV_PRICE_PER_MTOK, type JevAccess, JevError, resolveAccess } from "./lib/jev.ts";
+import { evaluate, JEV_PRICE_PER_MTOK, JEV_TUNING, type JevAccess, JevError, resolveAccess } from "./lib/jev.ts";
 import * as text from "./lib/messages.ts";
 import { type CallFacts, decide, describeCall, escalates, filterDeniedGrep, type PolicyContext, SAFE_TOOLS, type ToolCall } from "./lib/policy.ts";
 import { resolveToolPath, temporaryRoots } from "./lib/paths.ts";
@@ -375,9 +375,9 @@ export default function piAutoMode(pi: ExtensionAPI) {
     };
     try {
       const result = await evaluate(access, { model: config.jev.model, state: screenState(action, jevEnvironment(ctx.cwd)), questions: screenQuestions() },
-        { signal: ctx.signal, timeoutMs: config.jev.timeoutMs });
+        { signal: ctx.signal, timeoutMs: JEV_TUNING.timeoutMs });
       recordUsage(result.inputTokens);
-      const verdict = judgeScreen(result.answers, config.jev);
+      const verdict = judgeScreen(result.answers);
       lastScreen = verdict;
       if (verdict.flagged) jevStats.flagged++;
       else jevStats.cleared++;
@@ -559,8 +559,8 @@ export default function piAutoMode(pi: ExtensionAPI) {
   pi.on("tool_result", async (event, ctx) => {
     const content = denyFilteredContent(event, ctx);
     const changed = content !== event.content ? { content } : undefined;
-    if (currentMode() !== "auto" || !config.jev.probe || !jevReady()) return changed;
-    if (!shouldProbe(event.toolName, event.input as Record<string, unknown>, config.jev.probeTools)) return changed;
+    if (currentMode() !== "auto" || !jevReady()) return changed;
+    if (!shouldProbe(event.toolName, event.input as Record<string, unknown>)) return changed;
     const body = resultText(content);
     if (body.trim().length < 100) return changed;
     const access = await jevAccess;
@@ -570,10 +570,10 @@ export default function piAutoMode(pi: ExtensionAPI) {
     try {
       // Mỗi đoạn một request, gửi song song; một request lỗi thì bỏ qua lần quét này (probe chỉ cảnh báo).
       const results = await Promise.all(chunks.map((chunk) => evaluate(access, { model: config.jev.model, state: probeState(event.toolName, chunk), questions: PROBE_QUESTIONS },
-        { signal: ctx.signal, timeoutMs: config.jev.timeoutMs })));
+        { signal: ctx.signal, timeoutMs: JEV_TUNING.timeoutMs })));
       for (const result of results) recordUsage(result.inputTokens);
       jevStats.probes++;
-      const verdict = judgeProbe(results.map((result) => result.answers), config.jev.probeAt);
+      const verdict = judgeProbe(results.map((result) => result.answers));
       log({
         event: "probe", tool: event.toolName, ms: Date.now() - started, flagged: verdict.flagged, chunks: chunks.length,
         directed: Number(verdict.directed.toFixed(3)), hijack: Number(verdict.hijack.toFixed(3)),

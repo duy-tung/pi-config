@@ -6,6 +6,18 @@
  */
 
 export const JEV_ENDPOINT = "https://api.typesafe.ai/v1/systemone";
+
+/**
+ * Ngưỡng và giới hạn của Jev, hiệu chỉnh với jev-1.13.0 (docs/auto-mode.md, mục Giới hạn); đổi model thì hiệu chỉnh lại.
+ * - flagAt: một câu hỏi rủi ro có xác suất từ mức này trở lên → giai đoạn 2.
+ * - riskAt: P(mức hại ≥ đáng kể) từ mức này trở lên → giai đoạn 2.
+ * - probeAt: xác suất "chiếm quyền" của một đoạn (khi có lời nhắm vào AI) từ mức này trở lên → cảnh báo.
+ * - probeTools: tool mang nội dung bên ngoài mà probe quét; `mcp` gồm mọi `mcp__*`, Agent là kết quả subagent trả về.
+ */
+export const JEV_TUNING: { flagAt: number; riskAt: number; probeAt: number; timeoutMs: number; probeTools: readonly string[] } = {
+  flagAt: 0.3, riskAt: 0.5, probeAt: 0.5, timeoutMs: 5_000,
+  probeTools: ["fetch_content", "get_search_content", "web_search", "mcp", "Agent", "get_subagent_result"],
+};
 /** Giá jev-1.13.0 theo docs.typesafe.ai/models: USD cho 1 triệu token đầu vào; đầu ra miễn phí. */
 export const JEV_PRICE_PER_MTOK = 0.042;
 

@@ -110,8 +110,8 @@ LLM mặc định là **Claude Sonnet 5** (`anthropic/claude-sonnet-5`), như Cl
 
   State không có tin nhắn, lời của agent hay kết quả tool.
 - 17 câu hỏi có/không (noul), mỗi câu một loại rủi ro, cùng một thang mức hại 0–3 (score). Các loại rủi ro: rò rỉ dữ liệu, credential, xoá không hoàn tác, lịch sử git, chạy code tải về, cài phần mềm, production/hệ dùng chung, bỏ qua kiểm tra, làm yếu bảo mật, persistence, thay đổi hệ thống, sửa ngoài project, ghi ra dịch vụ ngoài, tự sửa quyền, đổi remote/registry, che giấu, tấn công.
-- Code quyết định, không phải model:
-  - không câu nào ≥ `flagAt` (0,3) và P(mức hại ≥ "đáng kể") < `riskAt` (0,5) → cho chạy, không gọi LLM;
+- Code quyết định, không phải model (ngưỡng cố định trong `JEV_TUNING` của `lib/jev.ts`, hiệu chỉnh theo jev-1.13.0):
+  - không câu nào ≥ 0,3 và P(mức hại ≥ "đáng kể") < 0,5 → cho chạy, không gọi LLM;
   - còn lại → giai đoạn 2.
 
   Jev không bao giờ tự chặn, vì nó không đọc tin nhắn của người dùng nên không biết lệnh có được yêu cầu hay không.
@@ -138,7 +138,7 @@ LLM mặc định là **Claude Sonnet 5** (`anthropic/claude-sonnet-5`), như Cl
 - Jev đọc trước khi agent thấy các kết quả mang nội dung bên ngoài: `fetch_content`, `get_search_content`, `web_search`, MCP, `Agent`/`get_subagent_result` (kết quả subagent trả về) và lệnh shell đọc mạng (`curl`, `wget`, `gh api`/`issue`/`pr`…).
 - Chỉ quét kết quả dài từ 100 ký tự. Nội dung chia tối đa 8 đoạn × 3.000 ký tự; dài hơn thì giữ phần đầu và phần cuối. Mỗi đoạn là một request riêng, gửi song song: khi mọi đoạn nằm chung một request, Jev chấm cả trang nên đoạn có lệnh chèn không nổi rõ.
 - Mỗi đoạn có hai câu hỏi độc lập: có lời nhắm vào AI đọc nó không (noul), và nó đang làm gì với AI (chiếm quyền / bàn luận / bình thường).
-- Cả hai cùng cao (≥ 0,5 và `probeAt` 0,5) thì:
+- Cả hai cùng cao (cùng ≥ 0,5) thì:
   - kết quả giữ nguyên nhưng kèm cảnh báo cho agent (coi là dữ liệu, không làm theo, cần thì hỏi người dùng);
   - người dùng được báo;
   - tới tin nhắn tiếp theo của người dùng, mọi hành động đi thẳng giai đoạn 2, và LLM được ghi chú là vừa có nội dung nghi injection.
@@ -198,19 +198,14 @@ Completion auditor của goal (pi-goal-x) cũng là phiên con: bản vá nạp 
     "soft_deny": ["$defaults"],
     "hard_deny": ["$defaults"],
     "allow": ["$defaults", "Deploy Previews: deploying preview environments with vercel is fine."],
-    "jev": { "model": "jev-1.13.0", "flagAt": 0.3, "riskAt": 0.5, "probe": true },
+    "jev": { "model": "jev-1.13.0" },
     "keys": ["shift+tab"],
     "log": false
   }
 }
 ```
 
-`autoMode.jev` (đặt `false` để tắt Jev, cả giai đoạn 1 lẫn probe):
-- `model`: ghim phiên bản, vì ngưỡng được chỉnh theo phiên bản; không dùng alias `jev-latest`.
-- `flagAt`, `riskAt`: ngưỡng của giai đoạn 1. Thấp hơn thì gắn cờ nhiều hơn: an toàn hơn nhưng gọi LLM nhiều hơn. Với bộ lệnh hiệu chỉnh, `flagAt` 0,35 vẫn không lọt lệnh rủi ro nào và bớt vài lệnh thường phải gọi LLM, nhưng biên an toàn hẹp hơn.
-- `probe`, `probeTools` (danh sách tool được quét, `mcp` gồm mọi `mcp__*`), `probeAt`: probe prompt injection.
-- `timeoutMs`: 5000.
-- `PI_AUTO_MODE_JEV=0` tắt Jev trong một lần chạy.
+`autoMode.jev`: `false` (hoặc `{"enabled": false}`) tắt Jev, cả giai đoạn 1 lẫn probe; `model` ghim phiên bản, vì ngưỡng được chỉnh theo phiên bản; không dùng alias `jev-latest`. Ngưỡng (0,3/0,5 của giai đoạn 1, 0,5 của probe), thời gian chờ 5 giây và danh sách tool được probe quét là hằng số trong code (`JEV_TUNING`), không đổi bằng settings.
 
 - Luật theo cú pháp Claude Code: `Tool` hoặc `Tool(specifier)`. `Bash(git push *)` khớp từng lệnh con (` *` ở cuối cũng khớp khi không có đối số); luật bắt đầu bằng `*` còn khớp cả chuỗi lệnh gốc. `Read(...)`/`Edit(...)`/`Write(...)` cho đường dẫn: `~/…` theo HOME, `/…` hoặc `//…` tuyệt đối, không có `/` thì so với tên file, còn lại tương đối với thư mục làm việc; `**` khớp nhiều cấp. `Path(...)` là cách riêng của pi-config cho cả đọc và ghi. Deny bắt đầu bằng `!` là ngoại lệ. `WebFetch(domain:host)` cho `fetch_content`; MCP dùng tên `mcp__server__tool`.
 - Với `fetch_content`, xét mọi URL trong cả `url` và `urls`: deny/ask chỉ cần khớp một URL; auto chỉ dùng luật allow khi mọi URL đều được phủ. Ngoại lệ `!` áp dụng riêng từng URL.

@@ -7,7 +7,7 @@ import { classify, classifyWithFallback } from "../assets/extensions/pi-auto-mod
 import { loadConfig, parseJev } from "../assets/extensions/pi-auto-mode/lib/config.ts";
 import { caseScreenAction, formatReport, formatScreenCorpus, jevEvalScreen, runEval, runScreenCorpus } from "./auto-mode-eval/eval.ts";
 import {
-  evaluate, JEV_ENDPOINT, JevError, parseAnswers, redactSecrets, resolveAccess,
+  evaluate, JEV_ENDPOINT, JEV_TUNING, JevError, parseAnswers, redactSecrets, resolveAccess,
 } from "../assets/extensions/pi-auto-mode/lib/jev.ts";
 import { decide, SAFE_TOOLS } from "../assets/extensions/pi-auto-mode/lib/policy.ts";
 import { judgeProbe, PROBE_QUESTIONS, probeChunks, probeState, resultText, shouldProbe } from "../assets/extensions/pi-auto-mode/lib/probe.ts";
@@ -151,18 +151,18 @@ test("giai đoạn 1 Jev: state chỉ có môi trường và hành động, câu
 });
 
 test("giai đoạn 1 Jev: ngưỡng quyết định trong code, thiếu câu trả lời thì gắn cờ", () => {
-  const thresholds = { flagAt: 0.3, riskAt: 0.5 };
-  const clear = judgeScreen(parseAnswers(screenBody(), screenQuestions()).answers, thresholds);
+  assert.deepEqual([JEV_TUNING.flagAt, JEV_TUNING.riskAt, JEV_TUNING.probeAt, JEV_TUNING.timeoutMs], [0.3, 0.5, 0.5, 5_000]);
+  const clear = judgeScreen(parseAnswers(screenBody(), screenQuestions()).answers);
   assert.equal(clear.flagged, false);
   assert.match(describeVerdict(clear), /^clear/u);
-  const hazard = judgeScreen(parseAnswers(screenBody({ git_history: 0.91, exfiltration: 0.35 }), screenQuestions()).answers, thresholds);
+  const hazard = judgeScreen(parseAnswers(screenBody({ git_history: 0.91, exfiltration: 0.35 }), screenQuestions()).answers);
   assert.equal(hazard.flagged, true);
   assert.deepEqual(hazard.hazards.map((item) => item.rule), ["Git History Destruction", "Data Exfiltration"]);
   assert.match(describeVerdict(hazard), /^flagged · Git History Destruction 0\.91/u);
-  const risky = judgeScreen(parseAnswers(screenBody({}, [0.3, 0.2, 0.3, 0.2]), screenQuestions()).answers, thresholds);
+  const risky = judgeScreen(parseAnswers(screenBody({}, [0.3, 0.2, 0.3, 0.2]), screenQuestions()).answers);
   assert.equal(risky.flagged, true, "P(mức hại ≥ đáng kể) = 0.5 ≥ 0.5");
   assert.equal(risky.hazards.length, 0);
-  assert.equal(judgeScreen({}, thresholds).flagged, true);
+  assert.equal(judgeScreen({}).flagged, true);
 });
 
 test("giai đoạn 1 Jev: chấm payload thật của script và script package.json", () => {
@@ -190,15 +190,14 @@ test("giai đoạn 1 Jev: chấm payload thật của script và script package.
 });
 
 test("probe prompt injection: chọn kết quả, chia đoạn, hai câu hỏi cùng đồng ý mới cảnh báo", () => {
-  const tools = ["fetch_content", "mcp", "Agent"];
-  assert.equal(shouldProbe("fetch_content", {}, tools), true);
-  assert.equal(shouldProbe("mcp__github__get_issue", {}, tools), true);
-  assert.equal(shouldProbe("Agent", {}, tools), true);
-  assert.equal(shouldProbe("bash", { command: "curl -s https://example.com/page" }, tools), true);
-  assert.equal(shouldProbe("bash", { command: "gh issue view 12" }, tools), true);
-  assert.equal(shouldProbe("bash", { command: "npm test" }, tools), false);
-  assert.equal(shouldProbe("bash", { command: "git clone https://github.com/acme/x.git" }, tools), false);
-  assert.equal(shouldProbe("read", { path: "README.md" }, tools), false);
+  assert.equal(shouldProbe("fetch_content", {}), true);
+  assert.equal(shouldProbe("mcp__github__get_issue", {}), true);
+  assert.equal(shouldProbe("Agent", {}), true);
+  assert.equal(shouldProbe("bash", { command: "curl -s https://example.com/page" }), true);
+  assert.equal(shouldProbe("bash", { command: "gh issue view 12" }), true);
+  assert.equal(shouldProbe("bash", { command: "npm test" }), false);
+  assert.equal(shouldProbe("bash", { command: "git clone https://github.com/acme/x.git" }), false);
+  assert.equal(shouldProbe("read", { path: "README.md" }), false);
   assert.equal(resultText([{ type: "text", text: "a" }, { type: "image", data: "x" }, { type: "text", text: "b" }]), "a\nb");
   const long = Array.from({ length: 40 }, (_, index) => `line ${index} ${"x".repeat(990)}`).join("\n");
   const chunks = probeChunks(long);
@@ -218,10 +217,10 @@ test("probe prompt injection: chọn kết quả, chia đoạn, hai câu hỏi c
     intent: { type: "choice", choice: hijack > 0.5 ? "hijack" : "none", confidence: 0.5, probabilities: { hijack, discussion: 0, none: 1 - hijack } },
   });
   const plain = chunk(0.05, 0.02);
-  assert.deepEqual(judgeProbe([plain, chunk(0.97, 0.9)], 0.5), { flagged: true, chunk: 1, directed: 0.97, hijack: 0.9 });
-  assert.equal(judgeProbe([plain, chunk(0.97, 0.2)], 0.5).flagged, false, "Bài viết về prompt injection không bị cảnh báo");
-  assert.equal(judgeProbe([plain, chunk(0.9, 0.06)], 0.5).flagged, false, "AGENTS.md: nhắm vào AI nhưng không chiếm quyền");
-  assert.equal(judgeProbe([plain, chunk(0.3, 0.9)], 0.5).flagged, false);
+  assert.deepEqual(judgeProbe([plain, chunk(0.97, 0.9)]), { flagged: true, chunk: 1, directed: 0.97, hijack: 0.9 });
+  assert.equal(judgeProbe([plain, chunk(0.97, 0.2)]).flagged, false, "Bài viết về prompt injection không bị cảnh báo");
+  assert.equal(judgeProbe([plain, chunk(0.9, 0.06)]).flagged, false, "AGENTS.md: nhắm vào AI nhưng không chiếm quyền");
+  assert.equal(judgeProbe([plain, chunk(0.3, 0.9)]).flagged, false);
 });
 
 test("bộ phân loại: Jev làm giai đoạn 1, gắn cờ thì tới thẳng giai đoạn 2", async () => {
@@ -264,21 +263,18 @@ test("bộ phân loại: Jev làm giai đoạn 1, gắn cờ thì tới thẳng 
   assert.equal(screens, 1);
 });
 
-test("cấu hình Jev: mặc định, tắt hẳn, giá trị sai dùng mặc định", () => {
-  const defaults = parseJev(undefined, {});
-  assert.deepEqual(defaults, {
-    enabled: true, model: "jev-1.13.0", flagAt: 0.3, riskAt: 0.5, timeoutMs: 5_000, probe: true,
-    probeTools: ["fetch_content", "get_search_content", "web_search", "mcp", "Agent", "get_subagent_result"], probeAt: 0.5,
-  });
-  assert.equal(parseJev(false, {}).enabled, false);
-  assert.equal(parseJev({ enabled: false }, {}).probe, false);
-  assert.equal(parseJev(undefined, { PI_AUTO_MODE_JEV: "0" }).enabled, false);
-  const custom = parseJev({ model: "jev-1.14.0", flagAt: 0.5, riskAt: 2, timeoutMs: 100, probe: false, probeTools: ["bash"], probeAt: 0.7 }, {});
-  assert.deepEqual([custom.model, custom.flagAt, custom.riskAt, custom.timeoutMs, custom.probe, custom.probeTools, custom.probeAt], ["jev-1.14.0", 0.5, 0.5, 5_000, false, ["bash"], 0.7]);
+test("cấu hình Jev: chỉ bật/tắt và model; giá trị sai dùng mặc định", () => {
+  assert.deepEqual(parseJev(undefined), { enabled: true, model: "jev-1.13.0" });
+  assert.deepEqual(parseJev(false), { enabled: false, model: "jev-1.13.0" });
+  assert.equal(parseJev({ enabled: false }).enabled, false);
+  assert.deepEqual(parseJev({ model: " jev-1.14.0 " }), { enabled: true, model: "jev-1.14.0" });
+  assert.equal(parseJev({ model: 3 }).model, "jev-1.13.0");
+  // Ngưỡng cũ trong settings bị bỏ qua.
+  assert.deepEqual(parseJev({ flagAt: 0.9, probe: false, probeTools: ["bash"] }), { enabled: true, model: "jev-1.13.0" });
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-auto-mode-jev-config-"));
   try {
-    fs.writeFileSync(path.join(dir, "settings.json"), JSON.stringify({ autoMode: { jev: { flagAt: 0.4 } } }));
-    assert.equal(loadConfig(dir, {}).jev.flagAt, 0.4);
+    fs.writeFileSync(path.join(dir, "settings.json"), JSON.stringify({ autoMode: { jev: { model: "jev-1.14.0" } } }));
+    assert.deepEqual(loadConfig(dir, {}).jev, { enabled: true, model: "jev-1.14.0" });
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
