@@ -45,9 +45,8 @@ for (const platform of ["darwin", "linux", "win32"]) {
         "openai-codex/gpt-6-astra": "high", "opencode-go/glm-5.3-flash": "max",
       });
       assert.equal(settings.shellPath, options.shellPath);
-      assert.equal(settings.skills.length, 3);
-      // Skills quy trình đi cùng repo (assets/skills), không tải từ nguồn ngoài.
-      assert.equal(settings.skills[0], p.join(options.root, "assets", "skills"));
+      // Chỉ skill của Firecrawl; pi-config không cài skill quy trình.
+      assert.deepEqual(settings.skills, ["firecrawl-cli-source", "firecrawl-workflows"].map((name) => p.join(options.root, "sources", name, "skills")));
       assert.ok(!settings.skills.some((entry) => entry.includes("mattpocock")));
       assert.deepEqual(settings.extensions, [...["rose-pine-palette.ts", "pi-rewind", "claude-usage", "model-roles", "pi-auto-mode"]
         .map((entry) => p.join(options.root, "assets", "extensions", entry)), "-builtin:mcp", "-builtin:codemode", "-builtin:tool-search"]);

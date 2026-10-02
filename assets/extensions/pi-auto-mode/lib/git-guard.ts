@@ -884,7 +884,7 @@ function checkPush(ctx: Context, args: string[], cwd: string, env: Map<string, s
     let dst = spec.includes(":") ? spec.slice(spec.indexOf(":") + 1) : spec;
     // Tên tính lúc chạy nhiều khả năng là nhánh hiện tại.
     if (dst === "HEAD" || dst === "@" || unknown(dst)) dst = gitOutput(ctx, cwd, "symbolic-ref", "--quiet", "--short", "HEAD");
-    if (dst && isProtected(dst, patterns)) block(`direct push to protected branch '${dst}'`, "Push a feature branch and open a PR with /skill:ship.");
+    if (dst && isProtected(dst, patterns)) block(`direct push to protected branch '${dst}'`, "Push a feature branch and open a PR.");
   }
   if (!refspecs.length && !longs.has("--tags")) {
     const branch = gitOutput(ctx, cwd, "symbolic-ref", "--quiet", "--short", "HEAD");

@@ -265,5 +265,5 @@ test("git guard: input lạ cho qua, lỗi của git runner không làm hỏng l
   assert.match(message, /^BLOCKED by git guard: /u);
   assert.match(message, /run it themselves in Pi's editor with !<command>/u);
   assert.match(message, /sits inside backticks or \$\(\.\.\.\)/u);
-  assert.match(gitGuardDenial(checkGitGuard("git push origin main", { cwd: feature, env: environment() })), /\/skill:ship/u);
+  assert.match(gitGuardDenial(checkGitGuard("git push origin main", { cwd: feature, env: environment() })), /open a PR/u);
 });
