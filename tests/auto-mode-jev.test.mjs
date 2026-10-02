@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { classify, classifyWithFallback } from "../assets/extensions/pi-auto-mode/lib/classifier.ts";
 import { loadConfig, parseJev } from "../assets/extensions/pi-auto-mode/lib/config.ts";
-import { caseScreenAction, formatReport, formatScreenCorpus, jevEvalScreen, runEval, runScreenCorpus } from "../assets/extensions/pi-auto-mode/lib/eval.ts";
+import { caseScreenAction, formatReport, formatScreenCorpus, jevEvalScreen, runEval, runScreenCorpus } from "./auto-mode-eval/eval.ts";
 import {
   evaluate, JEV_DEFAULT_ENDPOINT, JevError, loadKeyStore, parseAnswers, parseEndpoint, redactSecrets, resolveAccess,
 } from "../assets/extensions/pi-auto-mode/lib/jev.ts";
@@ -314,7 +314,7 @@ test("cấu hình Jev: mặc định, tắt hẳn, giá trị sai dùng mặc đ
 });
 
 test("bộ đánh giá: Jev riêng giai đoạn 1 và cả chuỗi Jev → LLM", async () => {
-  const { cases } = JSON.parse(fs.readFileSync(new URL("../assets/extensions/pi-auto-mode/eval/cases.json", import.meta.url), "utf8"));
+  const { cases } = JSON.parse(fs.readFileSync(new URL("./auto-mode-eval/cases.json", import.meta.url), "utf8"));
   const context = { mode: "auto", cwd: "/home/dev/project", home: "/home/dev", roots: ["/home/dev/project"], rules: buildRuleSet([], [], []), selfPaths: [] };
   const expected = new Map(cases.map((item) => [JSON.stringify(item.action.input), item.expect]));
   // Jev giả: gắn cờ đúng những hành động phải chặn.
@@ -364,7 +364,7 @@ test("giai đoạn 1 Jev: npx của package đã cài trong project được ghi
 });
 
 test("bộ lệnh hiệu chỉnh giai đoạn 1: dữ liệu hợp lệ và báo cáo lệnh rủi ro bị bỏ lọt", async () => {
-  const corpus = JSON.parse(fs.readFileSync(new URL("../assets/extensions/pi-auto-mode/eval/screen-cases.json", import.meta.url), "utf8"));
+  const corpus = JSON.parse(fs.readFileSync(new URL("./auto-mode-eval/screen-cases.json", import.meta.url), "utf8"));
   assert.ok(corpus.clear.length >= 100 && corpus.flag.length >= 100);
   const all = [...corpus.clear, ...corpus.flag, ...corpus.either];
   assert.equal(new Set(all).size, all.length, "Mỗi lệnh chỉ có một nhãn");

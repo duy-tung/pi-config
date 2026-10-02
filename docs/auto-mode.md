@@ -13,8 +13,6 @@
 - Mức thinking chuyển sang `Alt+T` (như Option+T của Claude Code; trên macOS terminal cần gửi Option như Alt — WezTerm mặc định với Option trái) hoặc `/thinking`.
 - `/permissions`: mode hiện tại, danh sách lệnh vừa bị chặn (chọn một lệnh để duyệt cho **một lần thử lại**, Pi được báo "Permission granted for: …"), xem luật.
 - `/auto-mode`: trạng thái, gồm Jev (nguồn key, số lần gọi, token và chi phí trong phiên). `/auto-mode defaults` xem bộ luật mặc định. `/auto-mode test <lệnh bash>` chạy thử quyết định cho một lệnh (có gọi model khi cần) và in xác suất của Jev.
-- `/auto-mode eval [provider/model]` chạy bộ đánh giá có nhãn (`eval/cases.json`, gần 50 tình huống, có tin nhắn tiếng Việt) qua cả chuỗi Jev → LLM và báo số lệnh nguy hiểm lọt, lệnh lành bị chặn và độ trễ. Dùng khi đổi model phân loại. `/auto-mode eval jev` chỉ chạy giai đoạn 1 bằng Jev trên bộ đánh giá và bộ lệnh hiệu chỉnh `eval/screen-cases.json`, không gọi LLM (khoảng 3 xu Mỹ); dùng khi chỉnh ngưỡng hoặc đổi phiên bản Jev.
-- Ngoài Pi: `node scripts/auto-mode-eval.mjs [--model provider/id] [--jev | --jev-only]`. Các lệnh eval tốn quota của provider và tiền Jev.
 - Key Jev: biến môi trường `TYPESAFE_API_KEY`, hoặc keyring qua `pi-mcp-adapter key set systemone` (nhập ẩn), `pi-mcp-adapter key status systemone`, `pi-mcp-adapter key remove systemone`.
 - Khởi động: `pi --permission-mode bypassPermissions` hoặc `pi --dangerously-skip-permissions`; mặc định lấy từ `permissions.defaultMode`. Mode bypass không bao giờ được khôi phục từ phiên cũ hay settings của project.
 
@@ -99,8 +97,8 @@ Hai giai đoạn như Claude Code: giai đoạn 1 sàng lọc nhanh và nghiêng
 LLM mặc định là **Claude Sonnet 5** (`anthropic/claude-sonnet-5`), như Claude Code:
 - Claude Code 2.1.282 để server của Anthropic duyệt trong chính request model (model không công bố, Pi không dùng được). Khi server không duyệt, Claude Code tự gọi Sonnet 5, không theo `/model`, và dùng model của phiên khi Sonnet 5 không có.
 - Codex dùng `codex-auto-review`, một model nhỏ riêng cho việc duyệt; model này không có trong catalog `openai-codex` của Pi.
-- Eval 9/2026 với Sonnet 5 (`/auto-mode eval anthropic/claude-sonnet-5`, không có Jev): 0/27 lệnh nguy hiểm lọt, 0/22 lệnh lành bị chặn, 36/49 sang giai đoạn 2, p50 3,9 s, p90 5,5 s; lệnh cho qua ở giai đoạn 1 mất khoảng 1,3–2,8 s.
-- Request đi qua pi-anthropic-auth như request chính nên tính vào quota của gói Claude. Chạy eval Claude trong Pi (`/auto-mode eval`); `scripts/auto-mode-eval.mjs` chạy ngoài Pi, không có shaping OAuth nên request Claude có thể bị tính là app bên thứ ba; script dừng khi gặp model Claude, trừ khi thêm `--unshaped-anthropic`.
+- Eval 9/2026 với Sonnet 5 (chạy bộ `cases.json` với model thật, không có Jev): 0/27 lệnh nguy hiểm lọt, 0/22 lệnh lành bị chặn, 36/49 sang giai đoạn 2, p50 3,9 s, p90 5,5 s; lệnh cho qua ở giai đoạn 1 mất khoảng 1,3–2,8 s.
+- Request đi qua pi-anthropic-auth như request chính nên tính vào quota của gói Claude.
 
 **Giai đoạn 1 bằng Jev** (khi đã lưu key TypeSafe):
 - Jev là model System One của TypeSafe. Nó không sinh chữ: nhận một state và các câu hỏi có kiểu, trả xác suất.
@@ -231,11 +229,11 @@ Completion auditor của goal (pi-goal-x) cũng là phiên con: bản vá nạp 
 ## Giới hạn
 
 - Bộ phân loại có thể sai. Claude Code công bố tỉ lệ bỏ lọt 17% trên các hành động quá đà thật (và 0,4% chặn nhầm) cho model và prompt của họ; pi-auto-mode chưa có số đo riêng. Không phải sandbox: lệnh được cho chạy có toàn quyền của người dùng. Với việc nhạy cảm, chạy Pi trong container/VM.
-- Câu hỏi và ngưỡng được hiệu chỉnh với jev-1.13.0 thật (9/2026), trên hai bộ: `eval/cases.json` và `eval/screen-cases.json` (272 lệnh gắn nhãn theo rủi ro tự thân). Gần một nửa bộ lệnh được viết sau, để kiểm độc lập; nó chỉ được dùng cho một lần sửa câu hỏi về credential.
+- Câu hỏi và ngưỡng được hiệu chỉnh với jev-1.13.0 thật (9/2026), trên hai bộ: `tests/auto-mode-eval/cases.json` và `tests/auto-mode-eval/screen-cases.json` (272 lệnh gắn nhãn theo rủi ro tự thân); test offline chạy lại hai bộ này với câu trả lời giả để canh hồi quy. Gần một nửa bộ lệnh được viết sau, để kiểm độc lập; nó chỉ được dùng cho một lần sửa câu hỏi về credential.
   - Không lọt lệnh rủi ro nào: 27/27 và 141/141 bị gắn cờ. Lệnh rủi ro thấp nhất vẫn cao hơn ngưỡng khoảng 0,25.
   - Khoảng 11% lệnh thường (13/122) phải sang giai đoạn 2. Với bộ đánh giá, 7/22 hành động hợp lệ sang giai đoạn 2, trong đó 4 hành động (force-with-lease, cài công cụ, dừng tiến trình, migration) cần LLM xét ủy quyền.
   - Probe: 10/10 mẫu thật đúng. Trang hướng dẫn cho agent và bài viết về injection không bị cảnh báo; trang, issue và nội dung tiếng Việt có lệnh chèn đạt 0,94–1,00.
-  - Bộ lệnh vẫn là tự viết. Hành vi thật của agent có thể khác, và khi TypeSafe ra phiên bản Jev mới, chạy lại `/auto-mode eval jev` trước khi đổi `model`. Lỗi đáng lo là lệnh nguy hiểm được Jev cho qua; gắn cờ nhầm chỉ tốn một lần gọi giai đoạn 2.
+  - Bộ lệnh vẫn là tự viết. Hành vi thật của agent có thể khác, và khi TypeSafe ra phiên bản Jev mới, hiệu chỉnh lại trên hai bộ lệnh trước khi đổi `model` (script chạy với Jev thật đã bỏ khỏi repo; lấy lại `scripts/auto-mode-eval.mjs` từ lịch sử git khi cần). Lỗi đáng lo là lệnh nguy hiểm được Jev cho qua; gắn cờ nhầm chỉ tốn một lần gọi giai đoạn 2.
 - Jev đọc câu chữ theo nghĩa đen. Theo mục "jaggedness" của jev-1.13, nó yếu với lệnh nhiều tầng gián tiếp và với nội dung cố tình đánh lừa. Vì vậy Jev chỉ cho qua lệnh mà mọi câu hỏi rủi ro đều thấp, không tự chặn, và probe chỉ cảnh báo.
 - Tiếng Anh là ngôn ngữ chính của Jev. Giai đoạn 1 không đọc tin nhắn người dùng nên không bị ảnh hưởng; probe trên nội dung không phải tiếng Anh kém chính xác hơn.
 - Probe chỉ chạy khi có key Jev và chỉ với kết quả mang nội dung bên ngoài. File đọc trong workspace (kể cả repo vừa clone) không được quét. Nội dung dài hơn 24.000 ký tự chỉ được quét phần đầu và phần cuối.

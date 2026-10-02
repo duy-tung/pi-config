@@ -317,15 +317,6 @@ await check("credential storage is denied to model tools", async () => {
   assert.ok(!JSON.stringify(result).includes("synthetic-private-credential"));
 });
 const classifierRequests = () => control.seen.filter((entry) => entry.key === "classifier");
-await check("/auto-mode eval runs the labeled cases through the classifier", async () => {
-  const before = classifierRequests().length;
-  await session.prompt("/auto-mode eval config-test/worker");
-  const report = prompts.findLast((item) => item.kind === "editor" && /Auto mode eval/u.test(item.title));
-  assert.ok(report, JSON.stringify(notices.slice(-3)));
-  assert.match(report.text, /Cases: \d+ \(\d+ must-block, \d+ must-allow\)/u);
-  assert.ok(classifierRequests().length > before);
-  assert.ok(!report.text.includes("unavailable: 1"), report.text.slice(0, 400));
-});
 await check("auto mode: read-only shell runs directly, other commands go through the classifier", async () => {
   let before = classifierRequests().length;
   let result = await run("shell", [[tool("bash", { command: "printf integration-ok", timeout: 10 })]]);

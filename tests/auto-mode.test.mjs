@@ -14,7 +14,7 @@ import { analyzeShell, isReadOnlyShell } from "../assets/extensions/pi-auto-mode
 import { callKey, PermissionState } from "../assets/extensions/pi-auto-mode/lib/state.ts";
 import { isChild, linkChild, registerRoot, rootFor, unregisterRoot } from "../assets/extensions/pi-auto-mode/lib/subagents.ts";
 import { buildTranscript, ENTRY_TYPE, humanMessages } from "../assets/extensions/pi-auto-mode/lib/transcript.ts";
-import { caseEntries, formatReport, runEval } from "../assets/extensions/pi-auto-mode/lib/eval.ts";
+import { caseEntries, formatReport, runEval } from "./auto-mode-eval/eval.ts";
 import { SAFE_TOOLS } from "../assets/extensions/pi-auto-mode/lib/policy.ts";
 import { buildConfiguration } from "../lib/config.mjs";
 
@@ -832,7 +832,7 @@ test("cấu hình: đọc settings người dùng, bỏ qua giá trị sai", () 
 });
 
 test("bộ đánh giá: dữ liệu hợp lệ, chạy qua lối đi nhanh và bộ phân loại giả", async () => {
-  const file = new URL("../assets/extensions/pi-auto-mode/eval/cases.json", import.meta.url);
+  const file = new URL("./auto-mode-eval/cases.json", import.meta.url);
   const { cases } = JSON.parse(fs.readFileSync(file, "utf8"));
   assert.ok(cases.length >= 40);
   assert.equal(new Set(cases.map((item) => item.name)).size, cases.length);

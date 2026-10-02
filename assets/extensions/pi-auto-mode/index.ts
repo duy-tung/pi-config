@@ -20,7 +20,6 @@ import {
 import { callKey, LIMITS, PermissionState } from "./lib/state.ts";
 import { isChild, linkChild, registerRoot, rootFor, type RootHandle, unlinkChild, unregisterRoot } from "./lib/subagents.ts";
 import { buildTranscript, ENTRY_TYPE, humanMessages, type SessionEntryLike } from "./lib/transcript.ts";
-import { type EvalCase, formatReport, formatScreenCorpus, jevEvalScreen, runEval, runScreenCorpus, type ScreenCorpus } from "./lib/eval.ts";
 
 const WIDGET = "pi-auto-mode";
 const MCP_APPROVAL_EVENT = "pi-mcp-adapter:tool-approval-request";
@@ -856,51 +855,10 @@ export default function piAutoMode(pi: ExtensionAPI) {
   });
 
   pi.registerCommand("auto-mode", {
-    description: "Auto mode status, defaults, dry run and eval: /auto-mode [status|defaults|test <command>|eval [jev|provider/model]]",
-    getArgumentCompletions: (prefix) => ["status", "defaults", "test ", "eval", "eval jev"].filter((item) => item.startsWith(prefix)).map((value) => ({ value, label: value.trim() })),
+    description: "Auto mode status, defaults and dry run: /auto-mode [status|defaults|test <command>]",
+    getArgumentCompletions: (prefix) => ["status", "defaults", "test "].filter((item) => item.startsWith(prefix)).map((value) => ({ value, label: value.trim() })),
     handler: async (args, ctx) => {
       const [sub, ...rest] = args.trim().split(/\s+/u);
-      if (sub === "eval") {
-        // Chạy bộ đánh giá có nhãn qua Jev và/hoặc LLM thật (tốn tiền/quota); không dùng luật allow/ask/deny.
-        const file = selfDir ? path.join(selfDir, "eval", "cases.json") : undefined;
-        if (!file || !fs.existsSync(file)) {
-          notify(ctx, "Eval cases are missing", "error");
-          return;
-        }
-        const jevOnly = rest[0] === "jev";
-        const access = jevReady() ? await jevAccess : undefined;
-        const screen = access?.status === "ready" ? jevEvalScreen(access, config.jev) : undefined;
-        if (jevOnly && !screen) {
-          notify(ctx, `Jev is not available: ${jevLabel()}`, "error");
-          return;
-        }
-        const model = jevOnly ? undefined : resolveModel(ctx, rest[0] ?? config.model);
-        if (!jevOnly && !model) {
-          notify(ctx, "No model is available for the classifier", "error");
-          return;
-        }
-        const cases = (JSON.parse(fs.readFileSync(file, "utf8")) as { cases: EvalCase[] }).cases;
-        const evalContext: PolicyContext = {
-          mode: "auto", cwd: "/home/dev/project", home: "/home/dev", roots: ["/home/dev/project"],
-          rules: buildRuleSet([], [], []), selfPaths: ["/home/dev/.pi/agent/settings.json"],
-        };
-        const label = model ? `${screen ? `Jev ${config.jev.model} → ` : ""}${model.provider}/${model.id}` : `Jev ${config.jev.model} only (stage 1)`;
-        notify(ctx, `Running ${cases.length} eval cases with ${label}…`, "info");
-        const outcomes = await runEval(cases, {
-          slots: resolveSlots({ ...config, deny: [] }, []),
-          complete: model ? makeComplete(ctx, model, model, `pi-auto-mode-eval:${Date.now()}`) : async () => { throw new Error("Jev-only eval calls no LLM"); },
-          timeoutMs: config.timeoutMs, stage2Reasoning: config.stage2Reasoning,
-          decide: (call) => decide(call, evalContext), skipTools: SAFE_TOOLS, concurrency: jevOnly ? 6 : 3, screen, screenOnly: jevOnly,
-        });
-        let report = formatReport(outcomes, label, jevOnly);
-        const corpusFile = path.join(path.dirname(file), "screen-cases.json");
-        if (jevOnly && screen && fs.existsSync(corpusFile)) {
-          const corpus = await runScreenCorpus(JSON.parse(fs.readFileSync(corpusFile, "utf8")) as ScreenCorpus, screen);
-          report += `\n\n${formatScreenCorpus(corpus, `Jev ${config.jev.model}, flagAt ${config.jev.flagAt}, riskAt ${config.jev.riskAt}`)}`;
-        }
-        if (ctx.hasUI) await ctx.ui.editor("Auto mode eval (read-only view)", report);
-        return;
-      }
       if (sub === "defaults") {
         const body = [
           "# Environment", ...DEFAULT_ENVIRONMENT.map((item) => `- ${item}`), "",
