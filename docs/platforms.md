@@ -12,19 +12,7 @@ Alpine/musl, Windows 32-bit và các CPU khác chưa hỗ trợ. Có binary ARM6
 
 ## Cài một lệnh
 
-macOS/Linux:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/duy-tung/pi-config/main/install.sh | bash
-```
-
-Windows PowerShell:
-
-```powershell
-& ([scriptblock]::Create((Invoke-RestMethod 'https://raw.githubusercontent.com/duy-tung/pi-config/main/install.ps1').TrimStart([char]0xFEFF)))
-```
-
-Không cần đăng nhập GitHub. Hai lệnh lấy phiên bản hiện tại của nhánh `main`; để tái lập chính xác, thay `main` trong URL bằng commit đã kiểm chứng **và** đặt `PI_CONFIG_REF` cùng commit đó. Installer không mang theo đăng nhập, API key hoặc lịch sử của máy nguồn. Đăng nhập dịch vụ trên máy đích là bước riêng.
+Lệnh cài cho từng hệ điều hành và cách ghim commit (`PI_CONFIG_REF`): [README](../README.md#cài-đặt). Installer không mang theo đăng nhập, API key hoặc lịch sử của máy nguồn. Đăng nhập dịch vụ trên máy đích là bước riêng.
 
 Lệnh Windows bỏ BOM trước khi thực thi chuỗi tải về. File `.ps1` giữ UTF-8 BOM để Windows PowerShell 5.1 đọc tiếng Việt đúng khi chạy từ file; không dùng `irm URL | iex` thiếu bước bỏ BOM.
 
