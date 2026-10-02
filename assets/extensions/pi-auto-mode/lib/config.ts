@@ -28,10 +28,8 @@ export interface AutoModeConfig {
   ask: string[];
   deny: string[];
   additionalDirectories: string[];
-  /** Model phân loại "provider/id"; bỏ trống thì dùng model của phiên. */
+  /** Model phân loại "provider/id" cho cả hai giai đoạn; bỏ trống thì dùng model của phiên. */
   model?: string;
-  /** Model cho giai đoạn 2 (mặc định = model). */
-  stage2Model?: string;
   stage2Reasoning: string;
   timeoutMs: number;
   environment: string[];
@@ -39,7 +37,6 @@ export interface AutoModeConfig {
   softDeny: string[];
   hardDeny: string[];
   stateDir: string;
-  keys: string[];
   log: boolean;
   /** Ghi chú thêm về môi trường; nối vào slot environment. */
   source: string;
@@ -50,7 +47,6 @@ export interface AutoModeConfig {
 const DEFAULTS = {
   timeoutMs: 60_000,
   stage2Reasoning: "low",
-  keys: ["shift+tab"],
 };
 
 const JEV_MODEL = "jev-1.13.0";
@@ -75,8 +71,8 @@ function strings(value: unknown): string[] | undefined {
 }
 
 function mode(value: unknown): PermissionMode | undefined {
-  if (value === "bypassPermissions" || value === "bypass" || value === "yolo") return "bypass";
-  if (value === "auto" || value === "default" || value === "manual" || value === "acceptEdits") return "auto";
+  if (value === "bypassPermissions" || value === "bypass") return "bypass";
+  if (value === "auto") return "auto";
   return undefined;
 }
 
@@ -114,7 +110,6 @@ export function loadConfig(agentDir: string, env: NodeJS.ProcessEnv = process.en
     deny: strings(permissions.deny) ?? [],
     additionalDirectories: strings(permissions.additionalDirectories) ?? [],
     model: text(auto.model),
-    stage2Model: text(auto.stage2Model),
     stage2Reasoning: text(auto.stage2Reasoning) ?? DEFAULTS.stage2Reasoning,
     timeoutMs: Number.isFinite(timeout) && timeout >= 5_000 ? timeout : DEFAULTS.timeoutMs,
     environment: strings(auto.environment) ?? ["$defaults"],
@@ -122,7 +117,6 @@ export function loadConfig(agentDir: string, env: NodeJS.ProcessEnv = process.en
     softDeny: strings(auto.soft_deny) ?? ["$defaults"],
     hardDeny: strings(auto.hard_deny) ?? ["$defaults"],
     stateDir: text(auto.stateDir) ?? path.join(agentDir, "pi-auto-mode"),
-    keys: strings(auto.keys) ?? DEFAULTS.keys,
     log: auto.log === true || env.PI_AUTO_MODE_LOG === "1",
     source: path.join(agentDir, "settings.json"),
     jev: parseJev(auto.jev),

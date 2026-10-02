@@ -83,7 +83,6 @@ export default function piAutoMode(pi: ExtensionAPI) {
   let demoted = false;
   let pendingRelayed: string[] = [];
   const ownMessages = new Set<string>();
-  let hintKey = "shift+tab";
   /** Remote git lúc mở phiên ("origin git@github.com:org/repo.git"), cho state của Jev. */
   let remotes: string[] = [];
 
@@ -119,7 +118,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
       return {
         render: () => {
           const label = mode === "bypass" ? theme.fg("error", "⏵⏵ bypass permissions on") : theme.fg("warning", "⏵⏵ auto mode on");
-          return [`${label}${theme.fg("dim", ` (${hintKey} to cycle)`)}`];
+          return [`${label}${theme.fg("dim", " (shift+tab to cycle)")}`];
         },
         invalidate() {},
       };
@@ -299,11 +298,11 @@ export default function piAutoMode(pi: ExtensionAPI) {
     return `<user_instructions>\n${parts.join("\n\n")}\n</user_instructions>`;
   }
 
-  function makeComplete(ctx: ExtensionContext, model: NonNullable<ExtensionContext["model"]>, stage2: NonNullable<ExtensionContext["model"]>, cacheKey: string): Complete {
+  /** Hai giai đoạn dùng cùng model để giai đoạn 2 dùng lại cache của giai đoạn 1. */
+  function makeComplete(ctx: ExtensionContext, model: NonNullable<ExtensionContext["model"]>, cacheKey: string): Complete {
     return async (request, options) => {
-      const target = options.stage === 2 ? stage2 : model;
       const content = [...request.blocks, request.suffix].map((value) => ({ type: "text" as const, text: value }));
-      const stream = ctx.modelRegistry.streamSimple(target, {
+      const stream = ctx.modelRegistry.streamSimple(model, {
         systemPrompt: request.systemPrompt,
         messages: [{ role: "user", content, timestamp: Date.now() }],
       }, {
@@ -425,7 +424,6 @@ export default function piAutoMode(pi: ExtensionAPI) {
     const session = ctx.model;
     const model = demoted ? session : resolveModel(ctx, config.model);
     if (!model) return { kind: "unavailable", reason: "no model is configured for the classifier" };
-    const stage2 = !demoted && config.stage2Model ? resolveModel(ctx, config.stage2Model) ?? model : model;
     const sameAsSession = !!session && session.provider === model.provider && session.id === model.id;
     if (!facts.length) await loadFacts(ctx.cwd);
     lastScreen = undefined;
@@ -451,8 +449,8 @@ export default function piAutoMode(pi: ExtensionAPI) {
       blocks.push(`<root_user_messages>\n${anchor.map((item) => JSON.stringify({ user: item })).join("\n") || "(none)"}\n</root_user_messages>`);
     }
     blocks.push(transcript);
-    const complete = makeComplete(ctx, model, stage2, `pi-auto-mode:${sessionId}`);
-    const fallback = session && !sameAsSession ? makeComplete(ctx, session, session, `pi-auto-mode:${sessionId}:session`) : undefined;
+    const complete = makeComplete(ctx, model, `pi-auto-mode:${sessionId}`);
+    const fallback = session && !sameAsSession ? makeComplete(ctx, session, `pi-auto-mode:${sessionId}:session`) : undefined;
     if (ctx.hasUI) ctx.ui.setWorkingMessage(`Auto mode: checking ${call.toolName}…`);
     try {
       const { result, fellBack, primaryReason } = await classifyWithFallback({
@@ -637,7 +635,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
   // applied báo lại cho /models là phiên này đã nhận.
   pi.events.on(MODEL_ROLES_EVENT, (payload: unknown) => {
     const fresh = loadConfig(agentDir);
-    config = { ...config, model: fresh.model, stage2Model: fresh.stage2Model, stage2Reasoning: fresh.stage2Reasoning };
+    config = { ...config, model: fresh.model, stage2Reasoning: fresh.stage2Reasoning };
     (payload as { applied?: string[] } | undefined)?.applied?.push("autoMode");
   });
 
@@ -718,28 +716,13 @@ export default function piAutoMode(pi: ExtensionAPI) {
   // Phím tắt và lệnh
   // ---------------------------------------------------------------------------
 
-  // shift+tab chỉ đăng ký được khi app.thinking.cycle đã chuyển sang phím khác (Pi giữ phím này).
-  const thinkingKeys = (() => {
-    try {
-      const bindings = JSON.parse(fs.readFileSync(path.join(agentDir, "keybindings.json"), "utf8")) as Record<string, unknown>;
-      const value = bindings["app.thinking.cycle"];
-      return value === undefined ? ["shift+tab"] : (Array.isArray(value) ? value : [value]).map((item) => String(item).toLowerCase());
-    } catch {
-      return ["shift+tab"];
-    }
-  })();
-  const keys = config.keys.filter((key) => !thinkingKeys.includes(key.toLowerCase()));
-  if (!keys.length) keys.push("alt+m");
-  hintKey = keys[0];
-  for (const key of keys) {
-    pi.registerShortcut(key as never, { description: "Switch permission mode (auto ⇄ bypass)", handler: (ctx) => cycle(ctx) });
-  }
+  // Shift+Tab như Claude Code; bộ cài chuyển mức thinking của Pi sang Alt+T. Nếu keybindings.json vẫn gán
+  // Shift+Tab cho thinking, Pi bỏ phím này của extension (kèm chẩn đoán) và mode đổi bằng /permissions.
+  pi.registerShortcut("shift+tab" as never, { description: "Switch permission mode (auto ⇄ bypass)", handler: (ctx) => cycle(ctx) });
 
   function modelLabel(): string {
     const llm = config.model ?? "session model";
-    if (jevReady() && jevResolved?.status === "ready") return `Jev ${config.jev.model} → ${config.stage2Model ?? llm}`;
-    const stage2 = config.stage2Model && config.stage2Model !== config.model ? `, stage 2: ${config.stage2Model}` : "";
-    return `${llm}${stage2}`;
+    return jevReady() && jevResolved?.status === "ready" ? `Jev ${config.jev.model} → ${llm}` : llm;
   }
 
   pi.registerCommand("permissions", {

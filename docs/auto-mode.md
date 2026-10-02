@@ -14,7 +14,7 @@
 - `/permissions`: mode hiện tại, danh sách lệnh vừa bị chặn (chọn một lệnh để duyệt cho **một lần thử lại**, Pi được báo "Permission granted for: …"), xem luật.
 - `/auto-mode`: trạng thái, gồm Jev (nguồn key, số lần gọi, token và chi phí trong phiên). `/auto-mode defaults` xem bộ luật mặc định. `/auto-mode test <lệnh bash>` chạy thử quyết định cho một lệnh (có gọi model khi cần) và in xác suất của Jev.
 - Key Jev: biến môi trường `TYPESAFE_API_KEY`.
-- Khởi động: `pi --permission-mode bypassPermissions` hoặc `pi --dangerously-skip-permissions`; mặc định lấy từ `permissions.defaultMode`. Mode bypass không bao giờ được khôi phục từ phiên cũ hay settings của project.
+- Khởi động: `pi --permission-mode bypassPermissions` hoặc `pi --dangerously-skip-permissions`; mặc định lấy từ `permissions.defaultMode` (`auto`, `bypass` hoặc `bypassPermissions`; giá trị khác là `auto`). Mode bypass không bao giờ được khôi phục từ phiên cũ hay settings của project.
 
 ## Auto mode quyết định thế nào
 
@@ -184,7 +184,6 @@ Completion auditor của goal (pi-goal-x) cũng là phiên con: bản vá nạp 
   },
   "autoMode": {
     "model": "anthropic/claude-sonnet-5",
-    "stage2Model": "anthropic/claude-sonnet-5",
     "stage2Reasoning": "low",
     "timeoutMs": 60000,
     "environment": ["$defaults", "Trusted GitHub org: my-org"],
@@ -192,7 +191,6 @@ Completion auditor của goal (pi-goal-x) cũng là phiên con: bản vá nạp 
     "hard_deny": ["$defaults"],
     "allow": ["$defaults", "Deploy Previews: deploying preview environments with vercel is fine."],
     "jev": { "model": "jev-1.13.0" },
-    "keys": ["shift+tab"],
     "log": false
   }
 }
