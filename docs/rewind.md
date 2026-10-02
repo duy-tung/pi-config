@@ -39,4 +39,4 @@ File có tên nhạy cảm bị loại kể cả khi đã track trong Git hoặc
 
 ## Cấu hình
 
-Khối `rewind` trong `settings.json` của agent: `enabled`, `storageDir`, `retentionDays`, `maxFileBytes`, `maxStorageBytes`, `watchTools`, `watchSlowMs`, `watchMaxDirty`, `watchMaxBytes`, `doubleEscape`. `PI_REWIND_DISABLE=1` tắt trong một lần chạy. Settings của project không đổi được các giá trị này.
+Khối `rewind` trong `settings.json` của agent: `enabled`, `storageDir`, `retentionDays` (mặc định 30). Giới hạn dung lượng (file 20 MiB, kho 2 GiB) và danh sách tool được theo dõi (bash, powershell, Agent) cố định trong code. Esc Esc mở Rewind khi `doubleEscapeAction` là `none` (installer đặt sẵn). `PI_REWIND_DISABLE=1` tắt trong một lần chạy. Settings của project không đổi được các giá trị này.
