@@ -1,9 +1,7 @@
 {
   "maxConcurrent": 4,
   "maxConcurrentForeground": 2,
-  "defaultMaxTurns": 0,
   "graceTurns": 2,
-  "backgroundByDefault": true,
   "disableDefaultAgents": true,
   "strictAgentFiles": true,
   "scopeModels": true,
@@ -11,6 +9,5 @@
   "schedulingEnabled": false,
   "workflowsEnabled": false,
   "agentMentions": "direct",
-  "rememberAgents": true,
   "worktreeIsolation": false
 }

@@ -52,7 +52,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.deepEqual(settings.extensions, [...["rose-pine-palette.ts", "pi-rewind", "claude-usage", "model-roles", "pi-auto-mode"]
         .map((entry) => p.join(options.root, "assets", "extensions", entry)), "-builtin:mcp", "-builtin:codemode", "-builtin:tool-search"]);
       assert.equal(settings.doubleEscapeAction, "none");
-      assert.deepEqual(settings.rewind, { storageDir: p.join(options.root, "state", "rewind"), retentionDays: 30 });
+      assert.deepEqual(settings.rewind, { storageDir: p.join(options.root, "state", "rewind") }, "retentionDays theo mặc định 30 ngày của pi-rewind");
       assert.equal(settings.workspaceHistory, undefined);
       const manifest = JSON.parse(fs.readFileSync(path.join(repoDir, "manifests", "current", "package.json"), "utf8"));
       assert.equal(settings.lastChangelogVersion, manifest.dependencies["@earendil-works/pi-coding-agent"]);
@@ -83,7 +83,9 @@ for (const platform of ["darwin", "linux", "win32"]) {
         assert.equal(JSON.parse(field("extensions")).includes("pi-web-access"), role === "researcher", role);
       }
       const subagents = json(p.join(profile.agentDir, "subagents.json"));
-      assert.deepEqual([subagents.maxConcurrent, subagents.maxConcurrentForeground, subagents.defaultMaxTurns, subagents.backgroundByDefault], [4, 2, 0, true]);
+      assert.deepEqual([subagents.maxConcurrent, subagents.maxConcurrentForeground], [4, 2]);
+      // Mặc định của pi-subagents: không giới hạn lượt, chạy nền, nhớ agent giữa các lần gọi.
+      assert.deepEqual([subagents.defaultMaxTurns, subagents.backgroundByDefault, subagents.rememberAgents], [undefined, undefined, undefined]);
       assert.equal(files.filter(file=>file.path.startsWith(p.join(profile.agentDir,"agents")+p.sep)).length,4);
       } else {
         assert.ok(!files.some(file => file.path.startsWith(p.join(profile.agentDir,"agents")+p.sep)));
@@ -134,7 +136,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.deepEqual(settings.permissions.ask, ["Edit(**/.pi/pi-goal-x-settings.json)"]);
       assert.deepEqual(firecrawl.fetchRouting.providers, ["firecrawl"]);
       assert.ok(settings.permissions.allow.includes("web_search"));
-      assert.equal(firecrawl.allowBrowserCookies, false);
+      assert.equal(firecrawl.allowBrowserCookies, undefined, "pi-web-access chỉ đọc cookie trình duyệt khi bật rõ (true)");
       assert.match(firecrawl.firecrawlApiKey, /^!/u);
       assert.ok(firecrawl.firecrawlApiKey.includes(options.nodePath));
       assert.ok(firecrawl.firecrawlApiKey.includes(p.join(options.root, "bin", "firecrawl-key.cjs")));
@@ -177,16 +179,17 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.equal(advisor.advisorMaxCallsPerSession, 5);
       // Diff đầy đủ chiếm tối đa một nửa contextMaxChars: 20.000 ký tự diff, còn ít nhất 40.000 cho hội thoại.
       assert.equal(advisor.advisorGitContext, "full");
-      assert.ok(advisor.contextMaxChars >= 2 * advisor.advisorGitContextMaxChars);
+      assert.equal(advisor.advisorGitContextMaxChars, undefined, "mặc định 20.000 của pi-advisor-flow");
+      assert.ok(advisor.contextMaxChars >= 2 * 20000);
       assert.equal(advisor.advisorRedactSecrets, true);
       assert.equal(advisor.advisorTrackedFileContent, false);
       assert.equal(advisor.advisorUntrackedContent, false);
       } else assert.ok(!files.some(file => file.path === p.join(profile.agentDir,"advisor.json")));
       if (profile.packages.includes("pi-goal-x")) {
       const goal = json(p.join(profile.agentDir, "pi-goal-x-settings.json"));
-      assert.equal(goal.disabled, false);
       assert.deepEqual([goal.provider, goal.model, goal.thinkingLevel], ["openai-codex", "gpt-6-astra", "high"]);
-      assert.equal(goal.auditorProjectResources, false);
+      // Mặc định của pi-goal-x: auditor bật, không nạp tài nguyên của project.
+      assert.deepEqual([goal.disabled, goal.auditorProjectResources], [undefined, undefined]);
       assert.deepEqual(goal.oracle, { enabled: true, provider: "openai-codex", model: "gpt-6-astra", thinkingLevel: "high" });
       assert.equal(goal.maxAutonomousRuns, 10);
       } else assert.ok(!files.some(file => file.path === p.join(profile.agentDir,"pi-goal-x-settings.json")));

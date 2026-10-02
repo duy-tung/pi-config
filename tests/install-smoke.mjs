@@ -54,18 +54,21 @@ const settings=readJson(settingsPath),base=readJson(settingsBase);
 // Pi ghi lại settings.json khi người dùng đổi theme/model (không có newline cuối); người dùng thêm một luật deny.
 Object.assign(settings,{theme:'rose-pine-dawn',defaultProvider:'openai-codex',defaultModel:'gpt-6-sol'});
 settings.permissions.deny.push('Path(~/notes/private/**)');
-// Mặc định của bản cũ hơn: chưa có luật deny ~/.gnupg/**, keepRecentTokens 10000 và một khóa nay đã bỏ; người dùng
-// chưa đổi các mục này. defaultModel cũ khác cả giá trị người dùng lẫn mặc định mới: xung đột, giữ của người dùng.
+// Mặc định của bản cũ hơn: chưa có luật deny ~/.gnupg/**, Esc Esc mở /tree, còn compaction và defaultProjectTrust (nay
+// bỏ vì trùng mặc định của Pi). Người dùng chưa đổi các mục này nên nhận mặc định mới, khóa đã bỏ thì bỏ theo; riêng
+// defaultProjectTrust người dùng đã đổi nên được giữ. defaultModel cũ khác cả giá trị người dùng lẫn mặc định mới:
+// xung đột, giữ của người dùng.
 const gnupg='Path(~/.gnupg/**)';
 for(const value of [settings,base]){
   value.permissions.deny=value.permissions.deny.filter(rule=>rule!==gnupg);
-  value.compaction.keepRecentTokens=10000;value.retiredSetting=true;
+  Object.assign(value,{doubleEscapeAction:'tree',compaction:{enabled:true,keepRecentTokens:10000},defaultProjectTrust:'ask'});
 }
+settings.defaultProjectTrust='always';
 base.defaultModel='claude-opus-5';
 fs.writeFileSync(settingsPath,JSON.stringify(settings,null,2));writeJson(settingsBase,base);
 // Bản cài trước khi có base: open-tui.json người dùng đã sửa được gộp cộng dồn.
 const openTuiPath=path.join(agentDir,'open-tui.json');fs.rmSync(defaultsOf(openTuiPath));
-const openTui=readJson(openTuiPath);openTui.fullscreen.wheelScrollLines=8;delete openTui.thinkingPeek;writeJson(openTuiPath,openTui);
+const openTui=readJson(openTuiPath);openTui.thinkingPeek.lines=2;delete openTui.cursorStyle;writeJson(openTuiPath,openTui);
 const statePath=path.join(root,'install-state.json'),prior=readJson(statePath);
 const unused=path.join(root,'assets/unused-resource.json');
 writeJson(unused,{fixture:'managed resource'});prior.files[unused]=sha256(fs.readFileSync(unused));
@@ -85,18 +88,20 @@ const merged=readJson(settingsPath);
 assert.deepEqual([merged.theme,merged.defaultProvider,merged.defaultModel],['rose-pine-dawn','openai-codex','gpt-6-sol']);
 assert.ok(merged.permissions.deny.includes('Path(~/notes/private/**)'));
 assert.ok(merged.permissions.deny.includes(gnupg),'luật deny mới của mặc định vào được file người dùng đã sửa');
-assert.equal(merged.compaction.keepRecentTokens,20000);
-assert.equal(merged.retiredSetting,undefined);
+assert.deepEqual([merged.doubleEscapeAction,merged.compaction,merged.defaultProjectTrust],['none',undefined,'always']);
 assert.ok(merged.extensions.filter(entry=>!entry.startsWith('-')).at(-1).endsWith('pi-auto-mode'));
 for(const name of ['mcp','codemode','tool-search'])assert.ok(merged.extensions.includes(`-builtin:${name}`),`thiếu -builtin:${name}`);
 const settingsDefault=readJson(settingsBase);
-assert.deepEqual([settingsDefault.defaultModel,settingsDefault.compaction.keepRecentTokens,settingsDefault.permissions.deny.includes(gnupg)],['claude-opus-5-5',20000,true]);
+assert.deepEqual([settingsDefault.defaultModel,settingsDefault.compaction,settingsDefault.permissions.deny.includes(gnupg)],['claude-opus-5-5',undefined,true]);
 assert.ok(reinstall.includes(`Đã gộp mặc định mới vào ${settingsPath}, giữ phần bạn đã sửa:`),reinstall);
 assert.ok(reinstall.includes(`  - thêm vào permissions.deny: ${gnupg}`),reinstall);
 assert.ok(reinstall.includes('  - xung đột: giữ giá trị của bạn cho defaultModel; mặc định mới là "claude-opus-5-5"'),reinstall);
+assert.ok(reinstall.includes('  - doubleEscapeAction: "tree" → "none"'),reinstall);
+assert.ok(reinstall.includes('  - bỏ compaction (mặc định mới không còn khóa này)'),reinstall);
+assert.ok(reinstall.includes('  - xung đột: giữ giá trị của bạn cho defaultProjectTrust; mặc định mới đã bỏ khóa này'),reinstall);
 const tui=readJson(openTuiPath);
-assert.deepEqual([tui.fullscreen.wheelScrollLines,tui.thinkingPeek],[8,{lines:0}]);
-assert.ok(reinstall.includes('  - xung đột: giữ giá trị hiện có cho fullscreen.wheelScrollLines; mặc định mới là 4'),reinstall);
+assert.deepEqual([tui.thinkingPeek.lines,tui.cursorStyle],[2,'bar']);
+assert.ok(reinstall.includes('  - xung đột: giữ giá trị hiện có cho thinkingPeek.lines; mặc định mới là 0'),reinstall);
 assert.ok(fs.existsSync(defaultsOf(openTuiPath)));
 assert.equal(fs.existsSync(unused),false);
 assert.match(reinstall,/Đã lưu \d+ tài nguyên ngoài cấu hình hiện tại tại /u);
