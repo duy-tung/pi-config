@@ -29,7 +29,7 @@ const fixture = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `pi-config
 const agentDir = path.join(fixture, "fixture agent");
 const cwd = path.join(fixture, "fixture workspace");
 for (const dir of [agentDir, cwd]) fs.mkdirSync(dir, { recursive: true });
-for (const name of ["settings.json", "keybindings.json", "models.json", "advisor.json", "subagents.json", "mcp-adapter.json", "open-tui.json", "pi-goal-x-settings.json", "pi-usage.json"]) {
+for (const name of ["settings.json", "keybindings.json", "models.json", "advisor.json", "subagents.json", "open-tui.json", "pi-goal-x-settings.json", "pi-usage.json"]) {
   if (fs.existsSync(path.join(configuration.agentDir, name))) fs.copyFileSync(path.join(configuration.agentDir, name), path.join(agentDir, name));
 }
 // Kiểm cơ chế của bản cài với model của preset default (provider giả chỉ có các model này), dù model-roles.json
@@ -50,7 +50,7 @@ if (fs.existsSync(goalFile)) {
 }
 const settings = readJson(path.join(agentDir, "settings.json"));
 // Jev của bản cài (settings.json người dùng đã sửa có thể không có mục này: dùng mặc định của extension). Phiên chính
-// tắt Jev (không đọc keyring của máy); phiên Jev riêng ở cuối dùng key và endpoint giả.
+// tắt Jev (không dùng key của máy); phiên Jev riêng ở cuối dùng key và endpoint giả.
 const installedJev = typeof settings.autoMode?.jev === "object" ? settings.autoMode.jev : {};
 const jevModel = installedJev.model ?? "jev-1.13.0";
 settings.autoMode = { ...settings.autoMode, model: "config-test/parent", stateDir: path.join(fixture, "auto-mode"), jev: false };
@@ -393,7 +393,7 @@ await check('@worker mention in model mode: a conversation copy writes the task,
 });
 
 // Jev (System One của TypeSafe) qua endpoint và key giả: fetch chỉ trả lời đúng endpoint fixture, không có mạng thật
-// và không đọc keyring. Fixture gắn cờ exfiltration khi lệnh có JEV_RISKY và prompt injection khi đoạn có câu lệnh cho AI.
+// và không dùng key của máy. Fixture gắn cờ exfiltration khi lệnh có JEV_RISKY và prompt injection khi đoạn có câu lệnh cho AI.
 const jevEndpoint='https://jev.fixture.invalid/v1/systemone';
 const jevControl={requests:[],failures:[]};
 const blockedFetch=globalThis.fetch;
@@ -491,11 +491,6 @@ await check('Jev rejecting the key falls back to the LLM classifier for the rest
   assert.equal(llm.length,2);assert.ok(llm.every(x=>/Stage 1/.test(JSON.stringify(x.messages))));
   assert.ok(notices.slice(before.notices).some(n=>/Jev is unavailable/.test(n.message)));
 });
-await check('the key store of the pinned pi-mcp-adapter loads for auto mode',async()=>{
-  const {loadKeyStore}=await import(pathToFileURL(path.join(installRoot,'assets','extensions','pi-auto-mode','lib','jev.ts')).href);
-  const store=await loadKeyStore(modules);
-  assert.equal(typeof store?.resolveJevCredential,'function','Không nạp được jev-key-store của pi-mcp-adapter');
-});
 await closeSession(jevSession);
 await check('three Jev outages in a row turn Jev off for the session instead of slowing every action',async()=>{
   const outage=await newJevSession();
@@ -509,24 +504,6 @@ await check('three Jev outages in a row turn Jev off for the session instead of 
     assert.equal(jevControl.requests.length-before.jev,6,'3 lần gọi × 2 lần thử, lệnh thứ tư không gọi Jev');
     assert.ok(notices.slice(before.notices).some(n=>/Jev is unavailable \(3 failures in a row/.test(n.message)));
   }finally{jevControl.failures.length=0;await closeSession(outage);}
-});
-await check('without an environment key, auto mode asks the pi-mcp-adapter key store inside Pi',async()=>{
-  // Kho giả của pi-mcp-adapter báo keyring không dùng được: chứng minh extension gọi tới kho key mà không đụng keyring thật.
-  delete process.env.SYSTEMONE_API_KEY;process.env.PI_MCP_ADAPTER_TEST_AUTH_STORE='unavailable';
-  const storeLoader=new sdk.DefaultResourceLoader({cwd,agentDir});await storeLoader.reload();
-  const {session:storeSession}=await sdk.createAgentSession({cwd,agentDir,resourceLoader:storeLoader,modelRuntime:runtime,sessionManager:sdk.SessionManager.inMemory(cwd)});
-  try{
-    await storeSession.bindExtensions({uiContext:ui,mode:'rpc',onError:error=>errors.push(error)});
-    await delay(200);
-    const before=notices.length;
-    await storeSession.prompt('/auto-mode');
-    const status=notices.slice(before).map(n=>n.message).join('\n');
-    assert.match(status,/Jev \(System One\): unavailable \(Jev API key secure credential store unavailable/u,status);
-    assert.equal(jevControl.requests.filter(r=>r.headers.authorization!=='Bearer fixture-jev-key').length,0);
-  }finally{
-    await storeSession.extensionRunner.emit({type:'session_shutdown',reason:'quit'});storeSession.dispose();
-    delete process.env.PI_MCP_ADAPTER_TEST_AUTH_STORE;
-  }
 });
 await session.extensionRunner.emit({type:'session_shutdown',reason:'quit'});session.dispose();
 const failed=results.some(r=>r.status==='FAIL')||errors.length>0||networkAttempts.length>0;

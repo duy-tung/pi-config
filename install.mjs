@@ -8,8 +8,8 @@ import {applyPatches} from './lib/patches.mjs';
 import {pruneBackups} from './lib/backups.mjs';
 import {backupFile,describeMerge,reconcileConfigFile,writeAtomic} from './runtime/merge.mjs';
 import {acquireInstallLock} from './runtime/install-lock.mjs';
-import {localDefaults,mergesConfig,reconcileResources} from './lib/resources.mjs';
-import {SUBAGENT_ROLES,changedRoles,checkCatalog,forceNativeModels,legacyOverrides,loadPresets,nativeKind,nativeValues,readModelRoles,resolveModelRoles,withPreset,writeModelRoles} from './runtime/model-roles.mjs';
+import {mergesConfig,reconcileResources} from './lib/resources.mjs';
+import {SUBAGENT_ROLES,changedRoles,checkCatalog,forceNativeModels,loadPresets,nativeKind,nativeValues,readModelRoles,resolveModelRoles,withPreset,writeModelRoles} from './runtime/model-roles.mjs';
 import {run,download,npmCli,npmTimeout,readJson,writeJson,sha256,shellQuote,assertSafePath} from './lib/system.mjs';
 
 const repoDir=path.dirname(fileURLToPath(import.meta.url));
@@ -77,16 +77,7 @@ function modelRolesPlan(){
   const presets=loadPresets(path.join(repoDir,'assets','configs','model-presets.json'));
   const current=readModelRoles(agentDir);
   if(current.error)throw new Error(`${current.error}\nSửa file, hoặc xoá để dùng preset mặc định.`);
-  let config=current.config,imported={};
-  if(!current.exists&&previous){
-    const texts={};
-    for(const role of SUBAGENT_ROLES){
-      const file=path.join(agentDir,'agents',`${role}.md`);
-      if(fs.existsSync(file)&&previous.files[file]&&sha256(fs.readFileSync(file))!==previous.files[file])texts[role]=fs.readFileSync(file,'utf8');
-    }
-    imported=legacyOverrides(presets,texts);
-    config={...config,roles:imported};
-  }
+  let config=current.config;
   const preset=option('--models');
   const before=preset===undefined?undefined:resolveModelRoles(presets,config);
   if(preset!==undefined)config=withPreset(config,preset);
@@ -94,7 +85,7 @@ function modelRolesPlan(){
   if(resolved.errors.length)throw new Error(`${current.file} ${preset===undefined?'':`với --models ${preset} `}không hợp lệ:\n- ${resolved.errors.join('\n- ')}`);
   const forced=before&&previous?changedRoles(before.roles,resolved.roles):[];
   const write=!current.exists||JSON.stringify(config)!==JSON.stringify(current.config);
-  return {file:current.file,write,config,imported,preset,forced,roles:resolved.roles};
+  return {file:current.file,write,config,preset,forced,roles:resolved.roles};
 }
 function copyTree(from,to){
   for(const entry of fs.readdirSync(from,{withFileTypes:true})){
@@ -124,7 +115,7 @@ async function installRuntime(name,relative){
     fs.renameSync(stage,dest);state.runtimes[name]=manifestHash;writeJson(statePath,state);
   }catch(error){fs.rmSync(stage,{recursive:true,force:true});throw error;}
 }
-// Chuyển thư mục runtime/nguồn cũ vào backups/<label>-<thời điểm> (pruneBackups giữ bản gần nhất).
+// Chuyển thư mục runtime/nguồn cũ vào backups/<label>-<thời điểm>; pruneBackups xoá khi cài xong.
 function moveToBackups(dest,label){
   const backup=path.join(root,'backups',`${label}-${Date.now()}`);
   fs.mkdirSync(path.dirname(backup),{recursive:true});fs.renameSync(dest,backup);
@@ -201,7 +192,7 @@ try{
   const files=buildConfiguration({root,agentDir,binDir,nodePath,platform:process.platform,home,repoDir,shellPath:state.shellPath,modelRoles:models.roles});
   const native=nativeValues(models.roles);
   for(const specification of files){
-    const file=localDefaults(specification);
+    const file=specification;
     const kind=models.forced.length?nativeKind(file.path,agentDir):undefined;
     const force=kind&&(text=>forceNativeModels(kind,text,native,models.forced));
     (mergesConfig(file.path,{root,agentDir})?managedJson:managed)(file.path,file.content,file.mode,force||undefined);
@@ -209,21 +200,19 @@ try{
   // model-roles.json thuộc về người dùng: chỉ tạo khi chưa có hoặc ghi preset của --models, không nằm trong danh
   // sách file installer quản lý.
   if(models.write)writeModelRoles(models.file,models.config);
-  for(const [name,action] of Object.entries({'pi':'main','pi-doctor':'doctor','pi-test':'test','firecrawl':'firecrawl','pi-models':'models','pi-mcp-adapter':'mcp-adapter'}))launcher(name,action);
+  for(const [name,action] of Object.entries({'pi':'main','pi-doctor':'doctor','pi-test':'test','firecrawl':'firecrawl','pi-models':'models'}))launcher(name,action);
   const auth=path.join(agentDir,'auth.json');
   if(!fs.existsSync(auth)){fs.mkdirSync(agentDir,{recursive:true,mode:0o700});fs.writeFileSync(auth,'{}\n',{mode:0o600});}
   await addPath();
   reconcileResources({root,agentDir,binDir,state,wanted});
   state.installedAt=new Date().toISOString();writeJson(statePath,state);
   const pruned=pruneBackups(root);
-  if(pruned.length)console.log(`Đã xoá ${pruned.length} bản runtime/nguồn/tài nguyên cũ trong ${path.join(root,'backups')} (giữ bản gần nhất).`);
+  if(pruned.length)console.log(`Đã xoá ${pruned.length} bản runtime/nguồn/tài nguyên cũ trong ${path.join(root,'backups')}.`);
   console.log(`\nĐã cài Pi vào ${root}. Mở terminal mới rồi chạy pi.`);
   const jevKey=process.platform==='win32'?'setx TYPESAFE_API_KEY "<key>"':'export TYPESAFE_API_KEY="<key>" trong ~/.zshrc hoặc ~/.bashrc';
-  console.log(`Đăng nhập: pi → /login. Firecrawl: firecrawl login --browser. Jev cho auto mode: ${jevKey} (hoặc keyring: pi-mcp-adapter key set systemone).`);
+  console.log(`Đăng nhập: pi → /login. Firecrawl: firecrawl login --browser. Jev cho auto mode: ${jevKey}.`);
   if(preserved.length)console.log('Giữ nguyên các file đã được bạn tùy chỉnh:\n'+preserved.join('\n'));
   for(const entry of merged)console.log(describeMerge(entry).join('\n'));
-  const imported=Object.entries(models.imported).map(([role,value])=>`${role}: ${[value.model,value.thinking&&`thinking ${value.thinking}`].filter(Boolean).join(', ')}`);
-  if(imported.length)console.log(`Đã chuyển model/thinking bạn sửa trong agents/*.md sang ${models.file}:\n  - ${imported.join('\n  - ')}`);
   if(models.preset!==undefined)console.log(`Đã chọn preset ${models.preset} trong ${models.file}.`);
   if(catalog.notes.length)console.log(`Mức thinking model không hỗ trợ (Pi dùng mức gần nhất):\n  - ${catalog.notes.join('\n  - ')}`);
   await run(nodePath,[path.join(root,'bin/launch.mjs'),'doctor']);

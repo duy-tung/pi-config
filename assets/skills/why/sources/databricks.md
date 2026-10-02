@@ -15,7 +15,7 @@ The table names below come from an example warehouse. Yours will differ: probe b
 
 ## How to search it
 
-Use the Databricks SQL MCP server through the `mcp` proxy (`mcp({connect: "<server>"})`, then `mcp({tool: "<name>", args: {...}})`); adapt for Snowflake, BigQuery, ClickHouse, or dbt. Primary tool: `execute_sql_read_only`. If it returns a `statement_id`, poll with `poll_sql_result` rather than re-running.
+Use the Databricks SQL MCP server (Pi's built-in MCP; its tools are called directly as `mcp__<server>__<tool>`); adapt for Snowflake, BigQuery, ClickHouse, or dbt. Primary tool: `execute_sql_read_only`. If it returns a `statement_id`, poll with `poll_sql_result` rather than re-running.
 
 **Orient before querying.** Schemas are company-specific. Probe before trusting a table name:
 

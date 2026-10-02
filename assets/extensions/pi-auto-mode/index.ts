@@ -6,13 +6,13 @@ import { fileURLToPath } from "node:url";
 import { type ExtensionAPI, type ExtensionContext, getAgentDir, getPackageDir, type ToolResultEventResult } from "@earendil-works/pi-coding-agent";
 import { classifyWithFallback, type ClassifierResult, type Complete, type ScreenOutcome } from "./lib/classifier.ts";
 import { loadConfig, parseMode, type PermissionMode, readState, writeState } from "./lib/config.ts";
-import { evaluate, JEV_DEFAULT_ENDPOINT, JEV_PRICE_PER_MTOK, type JevAccess, JevError, loadKeyStore, resolveAccess } from "./lib/jev.ts";
+import { evaluate, JEV_DEFAULT_ENDPOINT, JEV_PRICE_PER_MTOK, type JevAccess, JevError, resolveAccess } from "./lib/jev.ts";
 import * as text from "./lib/messages.ts";
 import { type CallFacts, decide, describeCall, escalates, filterDeniedGrep, type PolicyContext, SAFE_TOOLS, type ToolCall } from "./lib/policy.ts";
 import { resolveToolPath, temporaryRoots } from "./lib/paths.ts";
 import { judgeProbe, PROBE_QUESTIONS, PROBE_WARNING, probeChunks, probeState, resultText, shouldProbe } from "./lib/probe.ts";
 import { buildSystemPrompt, DEFAULT_ALLOW, DEFAULT_ENVIRONMENT, DEFAULT_HARD_DENY, DEFAULT_SOFT_DENY, resolveSlots } from "./lib/prompt.ts";
-import { buildRuleSet, firstMatch, isPathRule } from "./lib/rules.ts";
+import { buildRuleSet, isPathRule } from "./lib/rules.ts";
 import {
   describeVerdict, executedScripts, judgeScreen, localPackageFacts, packageScripts, type ScreenAction, type ScreenEnvironment,
   screenable, screenQuestions, screenState, type ScreenVerdict,
@@ -20,23 +20,11 @@ import {
 import { callKey, LIMITS, PermissionState } from "./lib/state.ts";
 import { isChild, linkChild, registerRoot, rootFor, type RootHandle, unlinkChild, unregisterRoot } from "./lib/subagents.ts";
 import { buildTranscript, ENTRY_TYPE, humanMessages, type SessionEntryLike } from "./lib/transcript.ts";
-import { type EvalCase, formatReport, formatScreenCorpus, jevEvalScreen, runEval, runScreenCorpus, type ScreenCorpus } from "./lib/eval.ts";
 
 const WIDGET = "pi-auto-mode";
-const MCP_APPROVAL_EVENT = "pi-mcp-adapter:tool-approval-request";
 // /models (extension model-roles) vừa ghi model của vai autoMode vào settings.json.
 const MODEL_ROLES_EVENT = "pi-config:model-roles-changed";
 const DESTRUCTIVE_GIT = /\b(?:rm|rmdir|rimraf|git\s+(?:reset|checkout|restore|clean|stash|push|commit|add|rebase|branch\s+-[dD]))\b|\s-delete\b/u;
-
-type McpRequest = {
-  serverName: string;
-  originalToolName: string;
-  prefixedToolName: string;
-  args: Record<string, unknown>;
-  origin: string;
-  signal?: AbortSignal;
-  claim(handler: () => Promise<string> | string): boolean;
-};
 
 function ownDirectory(): string | undefined {
   try {
@@ -95,7 +83,6 @@ export default function piAutoMode(pi: ExtensionAPI) {
   let demoted = false;
   let pendingRelayed: string[] = [];
   const ownMessages = new Set<string>();
-  const recentlyAllowed = new Map<string, number>();
   let hintKey = "shift+tab";
   /** Remote git lúc mở phiên ("origin git@github.com:org/repo.git"), cho state của Jev. */
   let remotes: string[] = [];
@@ -194,8 +181,8 @@ export default function piAutoMode(pi: ExtensionAPI) {
   function selfPaths(): string[] {
     return [
       path.join(agentDir, "settings.json"), path.join(agentDir, "keybindings.json"), path.join(agentDir, "extensions"),
-      // Server MCP stdio là lệnh chạy ở lần mở phiên sau: mcp.json (MCP dựng sẵn của Pi) và mcp-adapter.json (pi-mcp-adapter 3.x).
-      path.join(agentDir, "mcp.json"), path.join(agentDir, "mcp-adapter.json"),
+      // Server MCP stdio trong mcp.json là lệnh chạy ở lần mở phiên sau.
+      path.join(agentDir, "mcp.json"),
       config.stateDir, ...(selfDir ? [selfDir] : []),
     ];
   }
@@ -335,17 +322,8 @@ export default function piAutoMode(pi: ExtensionAPI) {
   // Jev (System One): giai đoạn 1 và probe prompt injection
   // ---------------------------------------------------------------------------
 
-  /** node_modules của runtime Pi, nơi có kho key của pi-mcp-adapter. */
-  function runtimeModules(): string | undefined {
-    try {
-      return path.resolve(getPackageDir(), "..", "..");
-    } catch {
-      return undefined;
-    }
-  }
-
   async function resolveJev(): Promise<JevAccess> {
-    const access = resolveAccess(process.env, await loadKeyStore(runtimeModules()));
+    const access = resolveAccess(process.env);
     jevResolved = access;
     return access;
   }
@@ -430,7 +408,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
     if (jevOff) return `off for this session (${jevOff})`;
     const access = jevResolved;
     if (!access) return "starting";
-    if (access.status === "missing") return "no API key — set TYPESAFE_API_KEY or run `pi-mcp-adapter key set systemone`";
+    if (access.status === "missing") return "no API key — set TYPESAFE_API_KEY";
     if (access.status === "unavailable") return `unavailable (${access.message})`;
     return `${config.jev.model} (key from ${access.source}${access.endpoint.href === JEV_DEFAULT_ENDPOINT ? "" : `, ${access.endpoint.origin}`})`;
   }
@@ -497,30 +475,8 @@ export default function piAutoMode(pi: ExtensionAPI) {
   // Cổng tool_call
   // ---------------------------------------------------------------------------
 
-  /** Khóa để luồng duyệt của pi-mcp-adapter nhận ra lời gọi MCP vừa qua cổng tool_call. */
-  function mcpKey(call: ToolCall): string {
-    if (call.toolName !== "mcp") return callKey(call.toolName, call.input);
-    let args = call.input.args ?? {};
-    if (typeof args === "string") {
-      try {
-        args = JSON.parse(args);
-      } catch {
-        /* giữ nguyên chuỗi */
-      }
-    }
-    return callKey(String(call.input.tool), args);
-  }
-
-  const BUILTIN = new Set(["bash", "bg_run", "powershell", "read", "grep", "find", "ls", "edit", "write"]);
-
   function allowed(call: ToolCall, via: string): undefined {
     state.recordAllowed();
-    // Chỉ lời gọi có thể là MCP (proxy hoặc tool lạ) cần nhớ cho luồng duyệt của pi-mcp-adapter.
-    if (!BUILTIN.has(call.toolName) && !SAFE_TOOLS.has(call.toolName)) {
-      const now = Date.now();
-      for (const [key, at] of recentlyAllowed) if (now - at > 60_000) recentlyAllowed.delete(key);
-      recentlyAllowed.set(mcpKey(call), now);
-    }
     log({ event: "allow", tool: call.toolName, via });
     return undefined;
   }
@@ -632,29 +588,6 @@ export default function piAutoMode(pi: ExtensionAPI) {
       jevFailure(ctx, error, "probe");
       return changed;
     }
-  });
-
-  // Lời gọi MCP (proxy, direct, mcpScript...) được duyệt qua sự kiện của pi-mcp-adapter.
-  pi.events.on(MCP_APPROVAL_EVENT, (payload: unknown) => {
-    const request = payload as McpRequest;
-    const ctx = latest;
-    if (!ctx || typeof request?.claim !== "function") return;
-    // Tên theo quy ước Claude Code (mcp__server__tool) để luật allow/deny khớp được.
-    const toolName = `mcp__${request.serverName}__${request.originalToolName}`;
-    const input = { server: request.serverName, tool: request.originalToolName, args: request.args ?? {} };
-    request.claim(async () => {
-      if (request.origin === "resource") return firstMatch(rules().deny, { toolName }, ctx.cwd) ? "deny" : "allow_once";
-      // Lời gọi proxy/direct đã qua cổng tool_call ngay trước đó (cùng tool, cùng tham số).
-      const key = callKey(request.prefixedToolName, request.args ?? {});
-      const approvedAt = recentlyAllowed.get(key);
-      if ((request.origin === "proxy" || request.origin === "direct") && approvedAt && Date.now() - approvedAt < 60_000) {
-        recentlyAllowed.delete(key);
-        return "allow_once";
-      }
-      // Lời gọi bên trong mcpScript (và trường hợp khác): phân loại từng lời gọi.
-      const verdict = await gate(ctx, { toolName, input });
-      return verdict ? "deny" : "allow_once";
-    });
   });
 
   // ---------------------------------------------------------------------------
@@ -780,7 +713,6 @@ export default function piAutoMode(pi: ExtensionAPI) {
       if (ctx.mode === "tui") ctx.ui.setWidget(WIDGET, undefined);
       widgetTui = undefined;
     }
-    recentlyAllowed.clear();
   });
 
   // ---------------------------------------------------------------------------
@@ -856,51 +788,10 @@ export default function piAutoMode(pi: ExtensionAPI) {
   });
 
   pi.registerCommand("auto-mode", {
-    description: "Auto mode status, defaults, dry run and eval: /auto-mode [status|defaults|test <command>|eval [jev|provider/model]]",
-    getArgumentCompletions: (prefix) => ["status", "defaults", "test ", "eval", "eval jev"].filter((item) => item.startsWith(prefix)).map((value) => ({ value, label: value.trim() })),
+    description: "Auto mode status, defaults and dry run: /auto-mode [status|defaults|test <command>]",
+    getArgumentCompletions: (prefix) => ["status", "defaults", "test "].filter((item) => item.startsWith(prefix)).map((value) => ({ value, label: value.trim() })),
     handler: async (args, ctx) => {
       const [sub, ...rest] = args.trim().split(/\s+/u);
-      if (sub === "eval") {
-        // Chạy bộ đánh giá có nhãn qua Jev và/hoặc LLM thật (tốn tiền/quota); không dùng luật allow/ask/deny.
-        const file = selfDir ? path.join(selfDir, "eval", "cases.json") : undefined;
-        if (!file || !fs.existsSync(file)) {
-          notify(ctx, "Eval cases are missing", "error");
-          return;
-        }
-        const jevOnly = rest[0] === "jev";
-        const access = jevReady() ? await jevAccess : undefined;
-        const screen = access?.status === "ready" ? jevEvalScreen(access, config.jev) : undefined;
-        if (jevOnly && !screen) {
-          notify(ctx, `Jev is not available: ${jevLabel()}`, "error");
-          return;
-        }
-        const model = jevOnly ? undefined : resolveModel(ctx, rest[0] ?? config.model);
-        if (!jevOnly && !model) {
-          notify(ctx, "No model is available for the classifier", "error");
-          return;
-        }
-        const cases = (JSON.parse(fs.readFileSync(file, "utf8")) as { cases: EvalCase[] }).cases;
-        const evalContext: PolicyContext = {
-          mode: "auto", cwd: "/home/dev/project", home: "/home/dev", roots: ["/home/dev/project"],
-          rules: buildRuleSet([], [], []), selfPaths: ["/home/dev/.pi/agent/settings.json"],
-        };
-        const label = model ? `${screen ? `Jev ${config.jev.model} → ` : ""}${model.provider}/${model.id}` : `Jev ${config.jev.model} only (stage 1)`;
-        notify(ctx, `Running ${cases.length} eval cases with ${label}…`, "info");
-        const outcomes = await runEval(cases, {
-          slots: resolveSlots({ ...config, deny: [] }, []),
-          complete: model ? makeComplete(ctx, model, model, `pi-auto-mode-eval:${Date.now()}`) : async () => { throw new Error("Jev-only eval calls no LLM"); },
-          timeoutMs: config.timeoutMs, stage2Reasoning: config.stage2Reasoning,
-          decide: (call) => decide(call, evalContext), skipTools: SAFE_TOOLS, concurrency: jevOnly ? 6 : 3, screen, screenOnly: jevOnly,
-        });
-        let report = formatReport(outcomes, label, jevOnly);
-        const corpusFile = path.join(path.dirname(file), "screen-cases.json");
-        if (jevOnly && screen && fs.existsSync(corpusFile)) {
-          const corpus = await runScreenCorpus(JSON.parse(fs.readFileSync(corpusFile, "utf8")) as ScreenCorpus, screen);
-          report += `\n\n${formatScreenCorpus(corpus, `Jev ${config.jev.model}, flagAt ${config.jev.flagAt}, riskAt ${config.jev.riskAt}`)}`;
-        }
-        if (ctx.hasUI) await ctx.ui.editor("Auto mode eval (read-only view)", report);
-        return;
-      }
       if (sub === "defaults") {
         const body = [
           "# Environment", ...DEFAULT_ENVIRONMENT.map((item) => `- ${item}`), "",

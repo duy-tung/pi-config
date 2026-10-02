@@ -3,7 +3,7 @@
 ## Reading the numbers
 
 - Estimates use characters divided by 4. Use them to compare parts, and before with after; they are not a bill.
-- Every always-on part loads on every request. Skill bodies, user-invoked skills (`disable-model-invocation: true`) cost nothing until used, and an MCP server is lazy and sits behind the one `mcp` proxy tool unless it sets `directTools`.
+- Every always-on part loads on every request. Skill bodies, user-invoked skills (`disable-model-invocation: true`) cost nothing until used, and an MCP server (Pi's built-in MCP, off in pi-config) declares only its `direct` tools; `codemode` and `deferred` tools cost a line in the system prompt per server.
 - Pricing is arithmetic, not a probe: a change saves the rows it removes. The re-measure in step 4 confirms it.
 
 ## Levers
@@ -15,8 +15,8 @@ Pi has no auto-memory or connectors setting. The levers are below; pi-config's i
 | Disable a skill: `pi config` (it lists skills, extensions and prompt templates; `--local` for this project), or a `!pattern` or `-path` exclusion in the `skills` array of `~/.pi/agent/settings.json` or `.pi/settings.json` | its line in the skill list | that skill, `/skill:<name>` included |
 | `disable-model-invocation: true` in a skill's frontmatter | its line in the skill list | the model and other skills loading it; `/skill:<name>` still works |
 | Disable an extension the same way (`extensions` array) | its tool definitions and prompt text | every tool and command it adds, and the skills that call them. Never `pi-auto-mode`: it is the permission gate. |
-| `"directTools": false` on an MCP server in its config file (`mcp-adapter.json` or `.mcp.json`), or a list of only the tools you call | each other direct tool definition | direct calls: those tools stay reachable through `mcp({search})` and `mcp({tool})` |
-| Remove an MCP server from its config file, or set `"disabled": true` | its direct tools | that server |
+| `"exposure": "deferred"` on an MCP server in `mcp.json`, or `toolExposure` making only the tools you call `direct` | each other direct tool definition | direct calls: those tools stay reachable through `tool_search` |
+| Remove an MCP server from its config file, or set `"enabled": false` | its direct tools | that server |
 | Shorten a role's `description` in `~/.pi/agent/agents/<role>.md` | its text in the Agent tool definition | nothing, while the description still says when to use the role |
 | Agent tool description `compact` (`/agents` → Settings) | about three quarters of the Agent tool definition | its usage notes; the parameter descriptions stay |
 

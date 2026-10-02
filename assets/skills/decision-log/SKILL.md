@@ -73,7 +73,7 @@ Correct the log, not the story. The audit never edits or removes a row, even an 
 
 Before handing back, a reviewer that did not do the work reads the trail and the run's transcript, then flags what the user should pay attention to. Self-review is not a substitute. Not a redo of the work: a scan for what's suboptimal or risky.
 
-The seat is a fresh `reviewer` agent. The global AGENTS.md names the model each role runs. In the default preset the reviewer is a different model family from the main thread, so its blind spots differ from yours; when the two share a family (the `claude` and `tree` presets), its blind spots are correlated with yours. Name the family either way in the Attention line.
+The seat is a fresh `reviewer` agent. The global AGENTS.md names the model each role runs. In the default preset the reviewer is a different model family from the main thread, so its blind spots differ from yours; when the two share a family (the `claude` preset), its blind spots are correlated with yours. Name the family either way in the Attention line.
 
 The brief gives the absolute log path and transcript path (pointers, not pasted content; expand `$PI_SESSION_FILE` yourself, since inside the reviewer it names the reviewer's own session), the four flag types below, and the reply format: one flag per line, each pointing at a row's `ts` or a moment in the transcript, or "No flags". It ends with: "Read only. Do not edit files. Do not spawn agents or run user-invoked skills."
 

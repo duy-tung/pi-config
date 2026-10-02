@@ -98,22 +98,17 @@ for (const platform of ["darwin", "linux", "win32"]) {
     assert.equal(json(p.join(options.agentDir, "pi-usage.json")).codexFastMode, true);
   });
 
-  test(`${platform}: MCP không qua shell, đường dẫn có khoảng trắng và credential được chặn`, () => {
+  test(`${platform}: không cài sẵn MCP, đường dẫn có khoảng trắng và credential được chặn`, () => {
     const { p, options, json, profile, files } = fixture(platform);
     const forward = (value) => value.replaceAll("\\", "/");
     {
-      assert.ok(!files.some((file) => file.path === p.join(profile.agentDir, "mcp.json")), "mcp.json thuộc MCP dựng sẵn của Pi");
-      const mcp = json(p.join(profile.agentDir, "mcp-adapter.json"));
-      assert.deepEqual(mcp.settings, { hostConfigDiscovery: "off", allowInstall: false, scriptMode: false });
-      assert.equal(mcp.mcpServers, undefined, "không cài sẵn server MCP");
+      assert.ok(!files.some((file) => /^mcp(?:-adapter)?\.json$/u.test(p.basename(file.path))), "không cài sẵn server MCP");
       const settings = json(p.join(profile.agentDir, "settings.json"));
       const deny = settings.permissions.deny;
       for (const file of [p.join(options.agentDir, "auth.json"), p.join(options.root, "secrets", "*.env"), p.join(options.home, ".codex", "auth.json")]) {
         assert.ok(deny.includes(`Path(${forward(file)})`), file);
       }
-      assert.ok(deny.includes("mcpScript"));
       assert.ok(deny.includes("Bash(*firecrawl-key.cjs*)"));
-      assert.ok(deny.includes("Bash(*pi-mcp-adapter.service-key*)"), "Agent không đọc key Jev trong keyring");
       assert.ok(deny.includes("!Path(*.env.example)"));
       // Xoá đệ quy do pi-auto-mode hỏi (bypass) hoặc phân loại (auto), không chặn cứng theo một cách viết cờ.
       assert.ok(!deny.some((rule) => rule.startsWith("Bash(rm ")));

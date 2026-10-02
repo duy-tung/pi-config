@@ -74,54 +74,6 @@ test('mảng tập hợp: thêm mục mặc định mới vào cuối, bỏ mụ
     && deepEqual(change.added, ['Path(~/.ssh)', 'Path(~/.ssh/**)']) && deepEqual(change.removed, ['Path(~/.ssh/*)'])));
 });
 
-test('luật deny đã thay thế: bỏ khi do installer ghi (base có, hoặc chưa có base); người dùng tự thêm lại thì giữ', () => {
-  const next = {permissions: {deny: ['Bash(sudo *)']}};
-  const current = {permissions: {deny: ['Bash(rm -rf *)', 'Bash(sudo *)', 'Path(~/mine)']}};
-  for (const base of [{permissions: {deny: ['Bash(rm -rf *)', 'Bash(sudo *)']}}, undefined]) {
-    const result = merge(base, next, current);
-    assert.deepEqual(result.value.permissions.deny, ['Bash(sudo *)', 'Path(~/mine)']);
-    assert.ok(result.changes.some(change => change.type === 'items' && change.removed.includes('Bash(rm -rf *)')));
-  }
-  // Base (mặc định lần trước) không có luật này: người dùng thêm lại sau lần cài đó, là tùy chỉnh của họ.
-  const kept = merge({permissions: {deny: ['Bash(sudo *)']}}, next, current);
-  assert.deepEqual(kept.value.permissions.deny, current.permissions.deny);
-  assert.deepEqual([kept.changes, kept.conflicts], [[], []]);
-});
-
-test('extensions: giữ loại trừ "-" và extension riêng; pi-auto-mode luôn nạp sau cùng', () => {
-  const root = '/r/assets/extensions';
-  const base = {extensions: [`${root}/rose-pine-palette.ts`, `${root}/pi-rewind`, `${root}/pi-auto-mode`]};
-  const next = {extensions: [`${root}/rose-pine-palette.ts`, `${root}/pi-rewind`, `${root}/claude-usage`, `${root}/pi-auto-mode`]};
-  const current = {extensions: [`-${root}/pi-rewind`, `${root}/rose-pine-palette.ts`, `${root}/pi-rewind`, `${root}/pi-auto-mode`, '/home/u/mine.ts']};
-  const result = merge(base, next, current);
-  assert.deepEqual(result.value.extensions, [`-${root}/pi-rewind`, `${root}/rose-pine-palette.ts`, `${root}/pi-rewind`, '/home/u/mine.ts', `${root}/claude-usage`, `${root}/pi-auto-mode`]);
-  assert.ok(result.changes.some(change => change.type === 'last'));
-  // Chỉ có loại trừ phía sau pi-auto-mode: không cần đổi thứ tự. Windows dùng dấu \.
-  const windows = {extensions: ['C:\\r\\pi-rewind', 'C:\\r\\pi-auto-mode', '-C:\\r\\other']};
-  const kept = merge(windows, windows, {extensions: ['C:\\r\\pi-rewind', 'C:\\r\\pi-auto-mode', '-C:\\r\\other', '!C:\\x\\*.ts']});
-  assert.deepEqual(kept.value.extensions, ['C:\\r\\pi-rewind', 'C:\\r\\pi-auto-mode', '-C:\\r\\other', '!C:\\x\\*.ts']);
-  assert.deepEqual(kept.changes, []);
-  const moved = merge(windows, windows, {extensions: ['C:\\r\\pi-auto-mode', 'C:\\r\\pi-rewind', '+D:\\mine.ts']});
-  assert.deepEqual(moved.value.extensions, ['C:\\r\\pi-rewind', '+D:\\mine.ts', 'C:\\r\\pi-auto-mode']);
-  // Người dùng bỏ pi-auto-mode thì không thêm lại.
-  assert.deepEqual(merge(base, next, {extensions: [`${root}/pi-rewind`]}).value.extensions, [`${root}/pi-rewind`, `${root}/claude-usage`]);
-});
-
-test('packages: gộp theo mục, object cùng source là một mục; mục người dùng sửa được giữ', () => {
-  const background = extensions => ({source: '/rt/pi-background-tasks', extensions});
-  const base = {packages: ['/rt/a', background(['dist/old.js']), '/rt/retired']};
-  const next = {packages: ['/rt/a', background(['dist/new.js']), '/rt/b']};
-  const unedited = merge(base, next, {packages: ['/user/pkg', '/rt/a', background(['dist/old.js']), '/rt/retired']});
-  assert.deepEqual(unedited.value.packages, ['/user/pkg', '/rt/a', background(['dist/new.js']), '/rt/b']);
-  assert.deepEqual(unedited.conflicts, []);
-  const edited = merge(base, next, {packages: [{source: '/rt/a', extensions: ['x.js']}, background(['dist/old.js', 'dist/mine.js'])]});
-  assert.deepEqual(edited.value.packages, [{source: '/rt/a', extensions: ['x.js']}, background(['dist/old.js', 'dist/mine.js']), '/rt/b']);
-  assert.deepEqual(edited.conflicts.map(conflict => conflict.item), ['/rt/pi-background-tasks']);
-  // Thứ tự khóa trong object không làm hai mục khác nhau.
-  const reordered = merge(base, base, {packages: ['/rt/a', {extensions: ['dist/old.js'], source: '/rt/pi-background-tasks'}, '/rt/retired']});
-  assert.deepEqual([reordered.changes, reordered.conflicts], [[], []]);
-});
-
 test('chưa có base: giữ mọi giá trị hiện có, thêm khóa và mục còn thiếu, báo giá trị khác mặc định mới', () => {
   const next = {
     defaultModel: 'claude-opus-5-5', compaction: {enabled: true, keepRecentTokens: 20000},
@@ -130,7 +82,7 @@ test('chưa có base: giữ mọi giá trị hiện có, thêm khóa và mục c
   };
   const current = {
     defaultModel: 'gpt-6-sol', compaction: {enabled: true},
-    permissions: {deny: ['Path(~/.ssh/*)', 'Bash(rm -rf *)', 'Bash(sudo *)', 'Path(~/mine)']},
+    permissions: {deny: ['Path(~/.ssh/*)', 'Bash(sudo *)', 'Path(~/mine)']},
     extensions: ['-/r/palette.ts', '/r/palette.ts', '/r/pi-auto-mode', '/home/u/x.ts'],
   };
   const result = merge(undefined, next, current);
@@ -150,7 +102,7 @@ test('chưa có base: giữ mọi giá trị hiện có, thêm khóa và mục c
 
 test('chưa có base nhưng file chưa sửa: nhận mặc định mới, giữ loại trừ extension và luật deny như trước', () => {
   const next = {defaultModel: 'new', extensions: ['/r/a', '/r/pi-auto-mode'], permissions: {deny: ['Bash(sudo *)']}};
-  const current = {defaultModel: 'old', extensions: ['-/user/x.ts', '/r/a', '/r/pi-auto-mode'], permissions: {deny: ['Bash(rm -rf *)', 'Path(/user/key)']}};
+  const current = {defaultModel: 'old', extensions: ['-/user/x.ts', '/r/a', '/r/pi-auto-mode'], permissions: {deny: ['Path(/user/key)']}};
   const carried = {defaultModel: 'new', extensions: ['-/user/x.ts', '/r/a', '/r/pi-auto-mode'], permissions: {deny: ['Bash(sudo *)', 'Path(/user/key)']}};
   assert.deepEqual(carryLocalControls(next, current), carried);
   const plan = reconcileJson({next: json(next), current: json(current), unedited: true, settings: true});

@@ -14,7 +14,7 @@ import { analyzeShell, isReadOnlyShell } from "../assets/extensions/pi-auto-mode
 import { callKey, PermissionState } from "../assets/extensions/pi-auto-mode/lib/state.ts";
 import { isChild, linkChild, registerRoot, rootFor, unregisterRoot } from "../assets/extensions/pi-auto-mode/lib/subagents.ts";
 import { buildTranscript, ENTRY_TYPE, humanMessages } from "../assets/extensions/pi-auto-mode/lib/transcript.ts";
-import { caseEntries, formatReport, runEval } from "../assets/extensions/pi-auto-mode/lib/eval.ts";
+import { caseEntries, formatReport, runEval } from "./auto-mode-eval/eval.ts";
 import { SAFE_TOOLS } from "../assets/extensions/pi-auto-mode/lib/policy.ts";
 import { buildConfiguration } from "../lib/config.mjs";
 
@@ -182,16 +182,11 @@ test("chính sách: lối đi nhanh, luật, bypass và tự bảo vệ", () => 
     const ungated = context(ws, { agentIsUngated: (input) => input.isolated === true });
     assert.equal(decide({ toolName: "Agent", input: { subagent_type: "worker", prompt: "x", isolated: true } }, ungated).kind, "deny");
     assert.equal(decide({ toolName: "Agent", input: { subagent_type: "worker", prompt: "x" } }, ungated).kind, "classify");
-    // MCP: lời gọi đơn lẻ duyệt qua sự kiện của adapter; cài server thì phân loại.
-    assert.equal(decide({ toolName: "mcp", input: { tool: "x", args: {} } }, auto).kind, "classify");
-    assert.equal(decide({ toolName: "mcp", input: { search: "files" } }, auto).kind, "allow");
-    assert.equal(decide({ toolName: "mcp", input: { action: "install", url: "https://x" } }, auto).kind, "classify");
     assert.equal(decide({ toolName: "fetch_content", input: { url: "https://example.com" } }, auto).kind, "classify");
     // Tool MCP/extension: luật đường dẫn áp dụng cho tham số giống đường dẫn (kể cả args dạng chuỗi JSON).
     const secrets = context(ws, { rules: buildRuleSet([], [], ["Path(*.env)"]) });
     const mcp = (args) => ({ toolName: "mcp__workspace__read_text_file", input: { server: "workspace", tool: "read_text_file", args } });
     assert.equal(decide(mcp({ path: ".env" }), secrets).kind, "deny");
-    assert.equal(decide({ toolName: "mcp", input: { tool: "workspace_read_text_file", args: JSON.stringify({ path: ".env" }) } }, secrets).kind, "deny");
     assert.equal(decide(mcp(JSON.stringify({ path: `${ws.cwd}/.env` })), secrets).kind, "deny");
     assert.equal(decide(mcp({ path: "safe.txt" }), secrets).kind, "classify");
     // Đường dẫn có dấu cách vẫn phải khớp luật deny (tool và shell).
@@ -832,7 +827,7 @@ test("cấu hình: đọc settings người dùng, bỏ qua giá trị sai", () 
 });
 
 test("bộ đánh giá: dữ liệu hợp lệ, chạy qua lối đi nhanh và bộ phân loại giả", async () => {
-  const file = new URL("../assets/extensions/pi-auto-mode/eval/cases.json", import.meta.url);
+  const file = new URL("./auto-mode-eval/cases.json", import.meta.url);
   const { cases } = JSON.parse(fs.readFileSync(file, "utf8"));
   assert.ok(cases.length >= 40);
   assert.equal(new Set(cases.map((item) => item.name)).size, cases.length);

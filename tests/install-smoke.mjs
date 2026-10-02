@@ -84,11 +84,6 @@ const secret=path.join(root,'secrets/provider.env');
 fs.mkdirSync(path.dirname(secret),{recursive:true});fs.writeFileSync(secret,'PROVIDER_API_KEY=synthetic-preservation-fixture\n',{mode:0o600});
 const secretBefore=fs.readFileSync(secret);
 const auth=path.join(agentDir,'auth.json');const authBefore=fs.readFileSync(auth);
-// Bản cài trước khi có model-roles.json (không có file này và base của file role): người dùng đổi model của worker
-// ngay trong file role. Lần cài này chuyển lựa chọn đó sang model-roles.json thay vì ghi đè.
-const workerPath=path.join(agentDir,'agents','worker.md');
-fs.rmSync(modelRolesPath);fs.rmSync(defaultsOf(workerPath));
-fs.writeFileSync(workerPath,fs.readFileSync(workerPath,'utf8').replace('model: openai-codex/gpt-6-sol','model: anthropic/claude-opus-5-5'));
 function install(extra=[]){
   const result=spawnSync(process.execPath,[...args,...extra],{encoding:'utf8',maxBuffer:64*1024*1024,timeout:1800000});
   process.stdout.write(result.stdout ?? '');process.stderr.write(result.stderr ?? '');
@@ -116,9 +111,6 @@ assert.ok(fs.existsSync(defaultsOf(openTuiPath)));
 assert.equal(fs.existsSync(unused),false);
 assert.equal(readJson(custom).fixture,'user edit');
 assert.deepEqual(fs.readFileSync(secret),secretBefore);
-assert.deepEqual(readJson(modelRolesPath),{preset:'default',roles:{worker:{model:'anthropic/claude-opus-5-5'}}});
-assert.match(fs.readFileSync(workerPath,'utf8'),/^model: anthropic\/claude-opus-5-5\nthinking: max$/mu);
-assert.ok(reinstall.includes(`Đã chuyển model/thinking bạn sửa trong agents/*.md sang ${modelRolesPath}:\n  - worker: anthropic/claude-opus-5-5`),reinstall);
 await run(process.execPath,[path.join(repo,'tests/agent-integration.mjs'),root]);
 assert.deepEqual(fs.readFileSync(auth),authBefore);
 // Đổi preset trong model-roles.json: mọi file gốc nhận model mới; dòng tools người dùng sửa trong file role được giữ.

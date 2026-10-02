@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import {fileURLToPath,pathToFileURL} from 'node:url';
+import {fileURLToPath} from 'node:url';
 import {SUBAGENT_ROLES,modelRolesReport} from './model-roles.mjs';
 import {sha256} from './merge.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -29,19 +29,9 @@ for(const patch of read(path.join(root,'patches/manifest.json'))){
   const hash=sha256(fs.readFileSync(file,'utf8').replaceAll('\r\n','\n'));
   if(hash!==patch.patchedSha256)errors.push(`Bản vá đã đổi: ${patch.package}/${patch.file}`);
 }
-// Key Jev cho auto mode: kho của pi-mcp-adapter (biến môi trường rồi keyring); chỉ báo nguồn, không in key.
-let jevKey='không kiểm được kho key';
-try{
-  const store=await import(pathToFileURL(path.join(root,'runtimes/current/node_modules/pi-mcp-adapter/dist/jev-key-store.js')).href);
-  const endpoint=store.resolveJevEndpoint();
-  if(endpoint.status==='unavailable')jevKey=`SYSTEMONE_ENDPOINT không hợp lệ: ${endpoint.message}`;
-  else{
-    const credential=store.resolveJevCredential(process.env,endpoint.endpoint);
-    const variable=Object.hasOwn(process.env,'SYSTEMONE_API_KEY')?'SYSTEMONE_API_KEY':'TYPESAFE_API_KEY';
-    jevKey=credential.status==='present'?`key từ ${credential.source==='keyring'?'keyring':variable}`
-      :credential.status==='missing'?'chưa có key: đặt TYPESAFE_API_KEY hoặc pi-mcp-adapter key set systemone':`không đọc được key: ${credential.message}`;
-  }
-}catch{}
+// Key Jev cho auto mode: biến môi trường như pi-auto-mode; chỉ báo nguồn, không in key.
+const jevVariable=['SYSTEMONE_API_KEY','TYPESAFE_API_KEY'].find((name)=>process.env[name]?.trim());
+const jevKey=jevVariable?`key từ ${jevVariable}`:'chưa có key: đặt TYPESAFE_API_KEY';
 {
   const p={agentDir:state.agentDir,runtime:'current'};
   const s=read(path.join(p.agentDir,'settings.json'));
@@ -51,9 +41,6 @@ try{
   errors.push(...models.errors);warnings.push(...models.warnings);
   for(const pkg of s.packages)if(!fs.existsSync(typeof pkg==='string'?pkg:pkg.source))errors.push(`Thiếu package: ${typeof pkg==='string'?pkg:pkg.source}`);
   for(const entry of s.extensions??[])if(typeof entry==='string'&&!entry.startsWith('-')&&path.isAbsolute(entry)&&!fs.existsSync(entry))errors.push(`Thiếu extension: ${entry}`);
-  // Lần gộp đầu của bản cài chưa lưu mặc định giữ mục cũ trong file đã sửa; search Claude nay là provider anthropic của pi-web-access.
-  if((s.extensions??[]).some(entry=>typeof entry==='string'&&/[\\/]native-web-search[\\/]?$/u.test(entry)))
-    warnings.push(`settings.json còn extension native-web-search đã bỏ; xoá dòng này`);
   const webSearch=path.join(p.agentDir,'web-search.json');
   if(fs.existsSync(webSearch)){
     const config=read(webSearch),providers=config.searchRouting?.providers,allowed=config.webSearch?.allowedProviders;

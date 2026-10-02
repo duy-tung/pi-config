@@ -11,11 +11,6 @@ import {joinRole, splitRole} from './model-roles.mjs';
  * Giá trị undefined nghĩa là thiếu khóa. Không có base thì gộp cộng dồn: giữ mọi giá trị hiện có, chỉ thêm phần thiếu.
  */
 
-// Luật deny installer từng ghi, nay do pi-auto-mode xử lý: Bash(rm -rf *) chặn hẳn rm -rf (kể cả khi người
-// dùng muốn duyệt) nhưng để lọt rm -fr; thay bằng kiểm tra xoá đệ quy (bypass hỏi, auto qua bộ phân loại).
-// Chỉ bỏ khi chưa có base (luật do bản cài cũ ghi); có base thì mặc định không còn luật này, nên luật còn trong
-// file là do người dùng tự thêm lại và được giữ.
-export const RETIRED_DENY = new Set(['Bash(rm -rf *)']);
 
 // Mảng dạng tập hợp của settings.json: gộp theo phần tử và giữ thứ tự của file hiện tại. Mảng khác là một giá trị.
 const SET_PATHS = new Set(['permissions.allow', 'permissions.ask', 'permissions.deny', 'enabledModels', 'skills', 'themes', 'prompts', 'extensions', 'packages']);
@@ -71,18 +66,14 @@ function mergeSet(path, base, next, current, context) {
     // Người dùng đã bỏ một mục mặc định: vẫn bỏ, kể cả khi mặc định mới đổi nội dung mục đó (báo xung đột).
     else if (!deepEqual(before.get(key), item)) conflict(item, undefined, item);
   }
-  return finishSet(path, value, added, removed, context, !Array.isArray(base));
+  return finishSet(path, value, added, removed, context);
 }
 
-// Luật riêng của settings.json sau khi gộp: bỏ luật deny đã thay thế (khi chưa có base); pi-auto-mode nạp sau cùng
+// Luật riêng của settings.json sau khi gộp: pi-auto-mode nạp sau cùng
 // để duyệt input cuối của mỗi tool call.
-function finishSet(path, value, added, removed, context, legacy) {
+function finishSet(path, value, added, removed, context) {
   const setPath = path.join('.');
   let result = value;
-  if (setPath === 'permissions.deny' && legacy) {
-    removed.push(...result.filter(rule => RETIRED_DENY.has(rule)));
-    result = result.filter(rule => !RETIRED_DENY.has(rule));
-  }
   if (added.length || removed.length) context.changes.push({type: 'items', path, added, removed});
   if (setPath === 'extensions') {
     const exclusion = entry => typeof entry === 'string' && /^[!-]/u.test(entry.trim());
@@ -150,8 +141,7 @@ export function carryLocalControls(next, current) {
   const exclusions = strings(current?.extensions).filter(entry => entry.startsWith('-'));
   if (exclusions.length) value.extensions = [...new Set([...exclusions, ...strings(value.extensions)])];
   if (isObject(value.permissions)) {
-    value.permissions.deny = [...new Set([...strings(value.permissions.deny), ...strings(current?.permissions?.deny)])]
-      .filter(rule => !RETIRED_DENY.has(rule));
+    value.permissions.deny = [...new Set([...strings(value.permissions.deny), ...strings(current?.permissions?.deny)])];
   }
   return value;
 }

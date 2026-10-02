@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import {localDefaults,mergesConfig,reconcileResources} from '../lib/resources.mjs';
+import {mergesConfig,reconcileResources} from '../lib/resources.mjs';
 import {defaultsFile,reconcileConfigFile} from '../runtime/merge.mjs';
 import {writeJson,readJson,sha256} from '../lib/system.mjs';
 
@@ -76,28 +76,18 @@ test('resources remain recoverable when install directories use different volume
     assert.equal(saved.length,1);assert.equal(readJson(path.join(result.archive,saved[0])).fixture,'original');
   } finally {fs.renameSync=rename;}
 });
-test('settings defaults gain pi-permission-system denials and drop retired rules',t=>{
-  // Bash(rm -rf *) của bản cài cũ (và của pi-permission-system) được bỏ: pi-auto-mode hỏi trước khi xoá đệ quy.
-  const f=fixture(t),settings=path.join(f.root,'agent','settings.json');
-  owned(f,'agent/extensions/pi-permission-system/config.json',{permission:{'*':'ask',mcpScript:'deny',path:{'*':'allow','/private/token.json':'deny','~/.ssh/*':'deny'},bash:{'*':'ask','git push*':'deny','rm -rf *':'deny'}}});
-  const file=localDefaults({path:settings,content:JSON.stringify({extensions:['palette.ts'],permissions:{deny:['Bash(sudo *)','Bash(rm -rf *)']}}),mode:0o600});
-  assert.deepEqual(JSON.parse(file.content).permissions.deny,['Bash(sudo *)','Path(/private/token.json)','Path(~/.ssh/*)','Bash(git push*)','mcpScript']);
-  const other={path:path.join(f.root,'agent','models.json'),content:'{}',mode:0o600};
-  assert.equal(localDefaults(other),other);
-});
-test('reinstalling settings without a stored default keeps exclusions, user denials and migrated rules',t=>{
-  const f=fixture(t),settings=owned(f,'agent/settings.json',{extensions:['-/user/optional.ts','palette.ts'],permissions:{deny:['Path(/user/extra.key)','Bash(rm -rf *)']}});
-  owned(f,'agent/extensions/pi-permission-system/config.json',{permission:{mcpScript:'deny',bash:{'git push*':'deny'}}});
-  const content=localDefaults({path:settings,content:JSON.stringify({extensions:['palette.ts'],permissions:{deny:['Bash(sudo *)']}}),mode:0o600}).content;
+test('reinstalling settings without a stored default keeps exclusions and user denials',t=>{
+  const f=fixture(t),settings=owned(f,'agent/settings.json',{extensions:['-/user/optional.ts','palette.ts'],permissions:{deny:['Path(/user/extra.key)']}});
+  const content=JSON.stringify({extensions:['palette.ts'],permissions:{deny:['Bash(sudo *)']}});
   const before=fs.readFileSync(settings);
   // Chưa sửa từ lần cài trước (checksum khớp): mặc định mới, giữ loại trừ và luật deny như trước khi có base.
   const unedited=reconcileConfigFile({root:f.root,file:settings,content,recorded:f.state.files[settings]});
-  assert.deepEqual(readJson(settings),{extensions:['-/user/optional.ts','palette.ts'],permissions:{deny:['Bash(sudo *)','Bash(git push*)','mcpScript','Path(/user/extra.key)']}});
+  assert.deepEqual(readJson(settings),{extensions:['-/user/optional.ts','palette.ts'],permissions:{deny:['Bash(sudo *)','Path(/user/extra.key)']}});
   assert.deepEqual([unedited.written,unedited.changes,unedited.conflicts],[true,[],[]]);
   // Người dùng đã sửa và chưa có base: gộp cộng dồn, giữ thứ tự của người dùng.
   fs.writeFileSync(settings,before);fs.rmSync(defaultsFile(f.root,settings));
   const edited=reconcileConfigFile({root:f.root,file:settings,content,recorded:'edited'});
-  assert.deepEqual(readJson(settings).permissions.deny,['Path(/user/extra.key)','Bash(sudo *)','Bash(git push*)','mcpScript']);
+  assert.deepEqual(readJson(settings).permissions.deny,['Path(/user/extra.key)','Bash(sudo *)']);
   assert.deepEqual(readJson(settings).extensions,['-/user/optional.ts','palette.ts']);
   assert.equal(edited.additive,true);
 });

@@ -18,7 +18,7 @@ Read [CHECKLIST.md](CHECKLIST.md) before step 2. It holds the levers, the line t
 
 ## 2. Settings
 
-Read `~/.pi/agent/settings.json` (its `packages`, `extensions` and `skills` entries), the project's `.pi/settings.json` when present, the MCP configs (`~/.pi/agent/mcp-adapter.json`, `.mcp.json`, `.pi/mcp-adapter.json`, `~/.config/mcp/mcp.json`) and the role files in `~/.pi/agent/agents/`. Build the candidates from CHECKLIST.md "Levers", skipping anything already off. Price each one by its characters divided by 4. Price the chosen set together before applying it.
+Read `~/.pi/agent/settings.json` (its `packages`, `extensions` and `skills` entries), the project's `.pi/settings.json` when present, the MCP configs (`~/.pi/agent/mcp.json`, `.pi/mcp.json`) and the role files in `~/.pi/agent/agents/`. Build the candidates from CHECKLIST.md "Levers", skipping anything already off. Price each one by its characters divided by 4. Price the chosen set together before applying it.
 
 Show one table (Change, Saves, You lose) and ask which rows to apply, as one multi-select `ask_user_question`. Apply only the rows the user picked, by editing the file (the user may run `pi config` instead: it is interactive). Copy the file to `<file>.bak-<timestamp>` first, merge the entries (append exclusions to the `skills` or `extensions` array, never replace it), then validate it as JSON with `node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' <file>`.
 

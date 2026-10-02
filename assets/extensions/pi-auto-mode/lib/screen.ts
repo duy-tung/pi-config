@@ -184,10 +184,9 @@ export function screenQuestions(): Record<string, Question> {
 const SHELL_TOOLS = new Set(["bash", "bg_run", "powershell"]);
 const FILE_TOOLS = new Set(["read", "grep", "find", "ls", "write", "edit"]);
 
-/** Hành động Jev chấm được. Agent, SubagentWorkflow, mcpScript và tool lạ đi thẳng tới bộ phân loại LLM. */
+/** Hành động Jev chấm được. Agent, SubagentWorkflow và tool lạ đi thẳng tới bộ phân loại LLM. */
 export function screenable(toolName: string): boolean {
-  return SHELL_TOOLS.has(toolName) || FILE_TOOLS.has(toolName) || toolName === "fetch_content"
-    || toolName === "mcp" || toolName.startsWith("mcp__");
+  return SHELL_TOOLS.has(toolName) || FILE_TOOLS.has(toolName) || toolName === "fetch_content" || toolName.startsWith("mcp__");
 }
 
 export interface ScreenEnvironment {

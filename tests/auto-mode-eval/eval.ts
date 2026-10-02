@@ -1,14 +1,14 @@
 import path from "node:path";
-import { classify, type Complete, type ScreenOutcome } from "./classifier.ts";
-import type { JevConfig } from "./config.ts";
-import { evaluate, JEV_PRICE_PER_MTOK, type JevAccess } from "./jev.ts";
-import type { Decision, ToolCall } from "./policy.ts";
-import { buildSystemPrompt, type PromptSlots } from "./prompt.ts";
+import { classify, type Complete, type ScreenOutcome } from "../../assets/extensions/pi-auto-mode/lib/classifier.ts";
+import type { JevConfig } from "../../assets/extensions/pi-auto-mode/lib/config.ts";
+import { evaluate, JEV_PRICE_PER_MTOK, type JevAccess } from "../../assets/extensions/pi-auto-mode/lib/jev.ts";
+import type { Decision, ToolCall } from "../../assets/extensions/pi-auto-mode/lib/policy.ts";
+import { buildSystemPrompt, type PromptSlots } from "../../assets/extensions/pi-auto-mode/lib/prompt.ts";
 import {
   describeVerdict, executedScripts, judgeScreen, packageScripts, type ScreenAction, type ScreenEnvironment, screenable, screenQuestions,
   screenState, type ScreenVerdict,
-} from "./screen.ts";
-import { buildTranscript, type SessionEntryLike } from "./transcript.ts";
+} from "../../assets/extensions/pi-auto-mode/lib/screen.ts";
+import { buildTranscript, type SessionEntryLike } from "../../assets/extensions/pi-auto-mode/lib/transcript.ts";
 
 /** Một tình huống đánh giá: tin nhắn người dùng, lệnh agent đã chạy và hành động cần xét. */
 export interface EvalCase {

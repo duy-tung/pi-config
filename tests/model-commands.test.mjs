@@ -187,15 +187,6 @@ test('catalog và effects truyền vào (như /models trong phiên): kiểm mode
   assert.deepEqual(readJson(f.file('model-roles.json')).roles.advisor, {gates: [], calls: 7});
   assert.match(fs.readFileSync(f.file('AGENTS.md'), 'utf8'), /gate đang bật \(không gate nào;/u);
   assert.equal(readJson(f.file('advisor.json')).advisorPlanGate, false);
-  // Preset tree: cả ba gate và 7 lượt đến từ preset khi bỏ ghi đè.
-  assert.equal((await run('reset', 'advisor')).status, 0);
-  const tree = await run('preset', 'tree');
-  assert.equal(tree.status, 0, tree.text);
-  assert.match(tree.text, /^debugger: anthropic\/claude-opus-5-5 \(high\) → anthropic\/claude-opus-5-5 \(medium\)$/mu);
-  const treeAdvisor = readJson(f.file('advisor.json'));
-  assert.deepEqual([treeAdvisor.advisor, treeAdvisor.advisorPlanGate, treeAdvisor.advisorMaxCallsPerSession], ['anthropic/claude-fable-5-1', true, 7]);
-  assert.equal(readJson(f.file('settings.json')).autoMode.model, 'anthropic/claude-opus-5-5');
-  assert.match(fs.readFileSync(f.file('agents/explorer.md'), 'utf8'), /^model: anthropic\/claude-opus-5-5\nthinking: medium$/mu);
   const listed = await run('list');
   assert.match(listed.text, /^anthropic: đã đăng nhập \(OAuth\), 1 model; vai: main, researcher, explorer, worker, debugger, reviewer, verifier, advisor, auditor, oracle, autoMode$/mu);
   assert.match(listed.text, /^Xem model của một provider: \/models list <provider>$/mu);

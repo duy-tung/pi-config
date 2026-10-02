@@ -36,7 +36,7 @@ git log -1 --format=%B <commit>          # full message: PR number, ticket IDs
 gh pr view <number> --json title,body,author,createdAt,mergedAt,labels,closingIssuesReferences,comments,reviews
 ```
 
-Pull the PR body, comments, and reviews for every substantive commit: review threads are where the real signal usually is. Skip bot commits (Dependabot, Renovate, automated backports); they carry no motivation. When the anchor links one specific ticket, doc, or thread and a configured MCP server can read it, read that item through the `mcp` proxy. Following a link is part of the anchor. Searching is the sweep.
+Pull the PR body, comments, and reviews for every substantive commit: review threads are where the real signal usually is. Skip bot commits (Dependabot, Renovate, automated backports); they carry no motivation. When the anchor links one specific ticket, doc, or thread and a configured MCP server can read it, read that item with its `mcp__<server>__<tool>` tools. Following a link is part of the anchor. Searching is the sweep.
 
 ## 3. Choose the depth
 
@@ -54,7 +54,7 @@ Say in one line of the answer which depth you ran and why.
 
 ### Discover the sources
 
-MCP servers come from the user's MCP config (`~/.pi/agent/mcp-adapter.json`, or a project `.mcp.json`) and are reached through the `mcp` proxy tool: `mcp({})` lists them, and `mcp({server: "<name>"})` shows a server's tools and instructions. Map each server to one evidence category, using its name, its tool names, and its server instructions. When a server fits two categories, choose the one matching its primary evidence and record the ambiguity in the coverage map.
+MCP servers come from Pi's built-in MCP, which pi-config turns off: when it is on, servers live in `~/.pi/agent/mcp.json` or a project `.pi/mcp.json`, and each tool is a tool of its own named `mcp__<server>__<tool>`. No such tools means no server is available. Map each server to one evidence category, using its name, its tool names, and its server instructions. When a server fits two categories, choose the one matching its primary evidence and record the ambiguity in the coverage map.
 
 | Category | Playbook | Servers it covers |
 |---|---|---|
@@ -66,7 +66,7 @@ MCP servers come from the user's MCP config (`~/.pi/agent/mcp-adapter.json`, or 
 | Error / exception tracking | [sentry.md](sources/sentry.md) | Sentry; adapt for Rollbar, Bugsnag, Airbrake |
 | Product analytics warehouse | [databricks.md](sources/databricks.md) | Databricks SQL; adapt for Snowflake, BigQuery, ClickHouse, dbt |
 
-Playbooks name each server's own tools. Through the proxy a name usually carries a server prefix; `mcp({search: "<tool>"})` shows the exact name. Aim for a complete coverage map, not a minimal one. Document the null, don't skip the search.
+Playbooks name each server's own tools. The exact name carries the server prefix: `mcp__<server>__<tool>`. Aim for a complete coverage map, not a minimal one. Document the null, don't skip the search.
 
 ### Spawn the investigators
 
@@ -76,7 +76,7 @@ Spawn one `researcher` investigator for source control, always, and one for each
 - The prompt is everything below the divider in [INVESTIGATOR.md](INVESTIGATOR.md) with its placeholders filled in, plus the category's playbook, plus the code anchor and the user's question verbatim.
 - Add [incident-postmortem.md](sources/incident-postmortem.md) to every brief when the target code looks defensive.
 - The brief forbids writes. Investigators search and read; they never edit files, commit, comment, post, or change a ticket.
-- Query each MCP-backed category yourself while the researchers run: `mcp({connect: "<server>"})`, then `mcp({tool: "<name>", args: {...}})`, following that category's playbook and the posture in [INVESTIGATOR.md](INVESTIGATOR.md). The same rule holds: read-only calls only. Keep the queries and the verbatim excerpts with their citations: they are that category's findings for step 5.
+- Query each MCP-backed category yourself while the researchers run: call its `mcp__<server>__<tool>` tools, following that category's playbook and the posture in [INVESTIGATOR.md](INVESTIGATOR.md). The same rule holds: read-only calls only. Keep the queries and the verbatim excerpts with their citations: they are that category's findings for step 5.
 
 What each category surfaces best. Use it to know what to expect back, and to name the gap when a category returns empty:
 
@@ -92,7 +92,7 @@ What each category surfaces best. Use it to know what to expect back, and to nam
 
 Every skip goes in Sources consulted with its reason. Two reasons are valid:
 
-- **No server is available** for that category. This is a gap, not a choice: "Real-time team chat: not searched. No matching MCP server, so the conversational record was not searchable." Name the server that would close it: the user adds it to `~/.pi/agent/mcp-adapter.json`, and `/mcp` shows its status and authentication.
+- **No server is available** for that category. This is a gap, not a choice: "Real-time team chat: not searched. No matching MCP server, so the conversational record was not searchable." Name the server that would close it: the user turns on Pi's built-in MCP (`pi config`, Built-in), adds the server with `pi mcp add <name> … ` and `"exposure": "direct"`, and `/mcp` shows its status and authentication.
 - **The source is provably irrelevant**, not "probably irrelevant". The bar is high: "Error / exception tracking: skipped. The target is a build-time script with no runtime code path."
 
 ## 5. Synthesize

@@ -1,6 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
-import { pathToFileURL } from "node:url";
 
 /**
  * Client tối giản cho System One API của TypeSafe (model Jev): POST state + câu hỏi có kiểu, nhận xác suất.
@@ -36,20 +33,9 @@ export interface JevResult {
 export interface JevEndpoint { href: string; origin: string; path: string }
 
 export type JevAccess =
-  | { status: "ready"; endpoint: JevEndpoint; apiKey: string; source: "environment" | "keyring" }
+  | { status: "ready"; endpoint: JevEndpoint; apiKey: string; source: "environment" }
   | { status: "missing"; endpoint: JevEndpoint }
   | { status: "unavailable"; message: string };
-
-/**
- * Kho key của pi-mcp-adapter (`pi-mcp-adapter key set systemone`): biến môi trường rồi keyring của hệ điều hành,
- * mỗi endpoint một key. Dùng chung để một key phục vụ cả MCP semantic search và auto mode.
- */
-export interface KeyStore {
-  resolveJevCredential(env: NodeJS.ProcessEnv, endpoint: JevEndpoint):
-    | { status: "present"; source: "environment" | "keyring"; apiKey: string }
-    | { status: "missing" }
-    | { status: "unavailable"; message: string };
-}
 
 export type JevErrorKind =
   | "auth" | "payment" | "endpoint" | "invalid_request" | "invalid_response"
@@ -71,7 +57,7 @@ export class JevError extends Error {
   }
 }
 
-/** Như pi-mcp-adapter: chỉ HTTPS, không credential, query hay fragment trong URL, phải có path. */
+/** Chỉ HTTPS, không credential, query hay fragment trong URL, phải có path. */
 export function parseEndpoint(raw: string): JevEndpoint {
   if (!raw.trim() || raw.length > 512 || /[\u0000-\u0020\u007f]/u.test(raw)) throw new Error("SYSTEMONE_ENDPOINT must be a URL without spaces");
   let url: URL;
@@ -90,25 +76,12 @@ function validKey(value: unknown): value is string {
   return typeof value === "string" && value.trim() !== "" && !/[\u0000-\u001f\u007f]/u.test(value);
 }
 
-/** Đọc kho key của pi-mcp-adapter trong node_modules của runtime; không có thì chỉ dùng biến môi trường. */
-export async function loadKeyStore(nodeModules: string | undefined): Promise<KeyStore | undefined> {
-  if (!nodeModules) return undefined;
-  const file = path.join(nodeModules, "pi-mcp-adapter", "dist", "jev-key-store.js");
-  if (!fs.existsSync(file)) return undefined;
-  try {
-    const module = await import(pathToFileURL(file).href) as Partial<KeyStore>;
-    return typeof module.resolveJevCredential === "function" ? { resolveJevCredential: module.resolveJevCredential } : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 /**
  * Endpoint: SYSTEMONE_ENDPOINT hoặc TypeSafe. Key: SYSTEMONE_API_KEY (mọi endpoint), TYPESAFE_API_KEY
- * (chỉ endpoint TypeSafe, không bao giờ gửi đi nơi khác), rồi keyring qua pi-mcp-adapter.
+ * (chỉ endpoint TypeSafe, không bao giờ gửi đi nơi khác).
  * SYSTEMONE_ENDPOINT sai thì không dùng Jev (không lặng lẽ gửi dữ liệu về endpoint mặc định).
  */
-export function resolveAccess(env: NodeJS.ProcessEnv, store?: KeyStore): JevAccess {
+export function resolveAccess(env: NodeJS.ProcessEnv): JevAccess {
   let endpoint: JevEndpoint;
   try {
     endpoint = parseEndpoint(Object.hasOwn(env, "SYSTEMONE_ENDPOINT") ? String(env.SYSTEMONE_ENDPOINT) : JEV_DEFAULT_ENDPOINT);
@@ -125,15 +98,6 @@ export function resolveAccess(env: NodeJS.ProcessEnv, store?: KeyStore): JevAcce
       ? { status: "ready", endpoint, apiKey: env.TYPESAFE_API_KEY, source: "environment" }
       : { status: "unavailable", message: "TYPESAFE_API_KEY is set but invalid" };
   }
-  if (!store) return { status: "missing", endpoint };
-  let stored: ReturnType<KeyStore["resolveJevCredential"]>;
-  try {
-    stored = store.resolveJevCredential({}, endpoint);
-  } catch (error) {
-    return { status: "unavailable", message: error instanceof Error ? error.message : "the OS credential store failed" };
-  }
-  if (stored.status === "present" && validKey(stored.apiKey)) return { status: "ready", endpoint, apiKey: stored.apiKey, source: "keyring" };
-  if (stored.status === "unavailable") return { status: "unavailable", message: stored.message };
   return { status: "missing", endpoint };
 }
 

@@ -5,9 +5,9 @@ import path from "node:path";
 import test from "node:test";
 import { classify, classifyWithFallback } from "../assets/extensions/pi-auto-mode/lib/classifier.ts";
 import { loadConfig, parseJev } from "../assets/extensions/pi-auto-mode/lib/config.ts";
-import { caseScreenAction, formatReport, formatScreenCorpus, jevEvalScreen, runEval, runScreenCorpus } from "../assets/extensions/pi-auto-mode/lib/eval.ts";
+import { caseScreenAction, formatReport, formatScreenCorpus, jevEvalScreen, runEval, runScreenCorpus } from "./auto-mode-eval/eval.ts";
 import {
-  evaluate, JEV_DEFAULT_ENDPOINT, JevError, loadKeyStore, parseAnswers, parseEndpoint, redactSecrets, resolveAccess,
+  evaluate, JEV_DEFAULT_ENDPOINT, JevError, parseAnswers, parseEndpoint, redactSecrets, resolveAccess,
 } from "../assets/extensions/pi-auto-mode/lib/jev.ts";
 import { decide, SAFE_TOOLS } from "../assets/extensions/pi-auto-mode/lib/policy.ts";
 import { judgeProbe, PROBE_QUESTIONS, probeChunks, probeState, resultText, shouldProbe } from "../assets/extensions/pi-auto-mode/lib/probe.ts";
@@ -48,7 +48,7 @@ function fakeFetch(queue) {
 
 const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers } });
 
-test("jev: endpoint, key từ biến môi trường hoặc keyring của pi-mcp-adapter", () => {
+test("jev: endpoint và key từ biến môi trường", () => {
   assert.equal(resolveAccess({ SYSTEMONE_API_KEY: "k1" }).status, "ready");
   assert.equal(resolveAccess({ SYSTEMONE_API_KEY: "k1" }).apiKey, "k1");
   assert.equal(resolveAccess({ TYPESAFE_API_KEY: "k2" }).source, "environment");
@@ -58,31 +58,7 @@ test("jev: endpoint, key từ biến môi trường hoặc keyring của pi-mcp-
   assert.equal(resolveAccess({ SYSTEMONE_ENDPOINT: "http://api.typesafe.ai/v1/systemone" }).status, "unavailable");
   assert.equal(resolveAccess({ SYSTEMONE_ENDPOINT: "https://x.example/" }).status, "unavailable");
   assert.equal(resolveAccess({ SYSTEMONE_API_KEY: "" }).status, "unavailable");
-  const seen = [];
-  const store = { resolveJevCredential: (env, endpoint) => { seen.push({ env, endpoint }); return { status: "present", source: "keyring", apiKey: "k3" }; } };
-  const stored = resolveAccess({}, store);
-  assert.deepEqual([stored.status, stored.source, stored.apiKey], ["ready", "keyring", "k3"]);
-  assert.deepEqual(seen[0].env, {}, "Kho key chỉ đọc keyring; biến môi trường đã xử lý ở trên");
-  assert.equal(seen[0].endpoint.href, JEV_DEFAULT_ENDPOINT);
-  assert.equal(resolveAccess({}, { resolveJevCredential: () => ({ status: "missing" }) }).status, "missing");
-  assert.equal(resolveAccess({}, { resolveJevCredential: () => { throw new Error("locked"); } }).status, "unavailable");
   assert.equal(resolveAccess({}).status, "missing");
-});
-
-test("jev: nạp kho key từ node_modules của runtime", async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-auto-mode-jev-store-"));
-  try {
-    assert.equal(await loadKeyStore(dir), undefined);
-    assert.equal(await loadKeyStore(undefined), undefined);
-    const file = path.join(dir, "pi-mcp-adapter", "dist", "jev-key-store.js");
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, "export function resolveJevCredential(env, endpoint) { return { status: 'present', source: 'keyring', apiKey: 'from-store:' + endpoint.href }; }\n");
-    const store = await loadKeyStore(dir);
-    const access = resolveAccess({}, store);
-    assert.equal(access.apiKey, `from-store:${JEV_DEFAULT_ENDPOINT}`);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
 });
 
 test("jev: request có kiểu, kiểm câu trả lời, lỗi và thử lại", async () => {
@@ -176,7 +152,7 @@ test("giai đoạn 1 Jev: state chỉ có môi trường và hành động, câu
   const mcp = screenState({ toolName: "mcp__github__create_issue", input: { server: "github", tool: "create_issue", args: { title: "x" } } }, environment);
   assert.deepEqual([mcp.action.tool, mcp.action.server, mcp.action.name], ["mcp", "github", "create_issue"]);
   assert.ok(screenable("bash") && screenable("write") && screenable("fetch_content") && screenable("mcp__a__b"));
-  assert.ok(!screenable("Agent") && !screenable("SubagentWorkflow") && !screenable("mcpScript"));
+  assert.ok(!screenable("Agent") && !screenable("SubagentWorkflow"));
 });
 
 test("giai đoạn 1 Jev: ngưỡng quyết định trong code, thiếu câu trả lời thì gắn cờ", () => {
@@ -314,7 +290,7 @@ test("cấu hình Jev: mặc định, tắt hẳn, giá trị sai dùng mặc đ
 });
 
 test("bộ đánh giá: Jev riêng giai đoạn 1 và cả chuỗi Jev → LLM", async () => {
-  const { cases } = JSON.parse(fs.readFileSync(new URL("../assets/extensions/pi-auto-mode/eval/cases.json", import.meta.url), "utf8"));
+  const { cases } = JSON.parse(fs.readFileSync(new URL("./auto-mode-eval/cases.json", import.meta.url), "utf8"));
   const context = { mode: "auto", cwd: "/home/dev/project", home: "/home/dev", roots: ["/home/dev/project"], rules: buildRuleSet([], [], []), selfPaths: [] };
   const expected = new Map(cases.map((item) => [JSON.stringify(item.action.input), item.expect]));
   // Jev giả: gắn cờ đúng những hành động phải chặn.
@@ -364,7 +340,7 @@ test("giai đoạn 1 Jev: npx của package đã cài trong project được ghi
 });
 
 test("bộ lệnh hiệu chỉnh giai đoạn 1: dữ liệu hợp lệ và báo cáo lệnh rủi ro bị bỏ lọt", async () => {
-  const corpus = JSON.parse(fs.readFileSync(new URL("../assets/extensions/pi-auto-mode/eval/screen-cases.json", import.meta.url), "utf8"));
+  const corpus = JSON.parse(fs.readFileSync(new URL("./auto-mode-eval/screen-cases.json", import.meta.url), "utf8"));
   assert.ok(corpus.clear.length >= 100 && corpus.flag.length >= 100);
   const all = [...corpus.clear, ...corpus.flag, ...corpus.either];
   assert.equal(new Set(all).size, all.length, "Mỗi lệnh chỉ có một nhãn");

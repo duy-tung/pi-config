@@ -15,7 +15,7 @@ Notion is where "why" often lives in long form before it becomes code. A signifi
 
 ## How to search it
 
-Use the Notion MCP server through the `mcp` proxy: `mcp({connect: "<server>"})` once, then `mcp({tool: "<name>", args: {...}})` for each tool named below. Adapt the tool names for Confluence, Google Docs, or Coda.
+Use the Notion MCP server (Pi's built-in MCP); its tools are called directly as `mcp__<server>__<tool>` for each tool named below. Adapt the tool names for Confluence, Google Docs, or Coda.
 
 1. **Keyword searches with `notion-search`.** Try:
    - The feature name

@@ -86,7 +86,6 @@ export function serializeInput(toolName: string, input: Record<string, unknown>,
     case "Agent":
       return `(${str(input.subagent_type) || "agent"}${input.isolated === true ? ", isolated" : ""}): ${clip(str(input.prompt), limit)}`;
     case "SubagentWorkflow":
-    case "mcpScript":
       return clip(str(input.script ?? input.code ?? input.source ?? JSON.stringify(input)), limit);
     case "web_search":
       return clip(str(input.query ?? input.queries), limit);
