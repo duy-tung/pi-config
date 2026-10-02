@@ -17,7 +17,7 @@
     "pi-open-tui": "0.3.10",
     "pi-web-access": "0.35.0",
     "typescript": "5.9.3",
-    "pi-goal-x": "file:../../vendor/pi-goal-x-0.31.9-pi0992.tgz",
+    "pi-goal-x": "0.32.1",
     "pi-background-tasks": "file:../../vendor/pi-background-tasks-2.6.9-pi0992.tgz",
     "@pi-archimedes/image-paste": "2.8.0",
     "@mariozechner/clipboard": "0.3.9"
@@ -31,14 +31,6 @@
         "sha256": "00423ed5a7bea3aa3b31b7703bbf9b141cf59c35e9f97145e14a2236fa681319",
         "upstreamIntegrity": "sha512-5dma6xvO7jeAimRaCNCzfe5y+b4bVBYPxnJ/0RnGS+mj6B6SzgA4FcORKuAtZaoGvC29dlyof3NtX7/QD4Ywew==",
         "upstreamTarball": "https://registry.npmjs.org/pi-background-tasks/-/pi-background-tasks-2.6.9.tgz",
-        "reason": "Peer metadata adds exactly Pi 0.99.2; runtime changes are tracked separately in assets/patches.json."
-      },
-      "pi-goal-x": {
-        "version": "0.31.9",
-        "source": "../../vendor/pi-goal-x-0.31.9-pi0992.tgz",
-        "sha256": "7fcbc24f09a9652c8e31762cc10c07534b868e2b34628632b4596fa906555666",
-        "upstreamIntegrity": "sha512-sknD0nCDRFE5A6X4VWqKl/dvI8I7qeGTZ0NT57ZjeBreh3yJxunNXpDjaI5pyDeB5JsW9KJ/dy8hZe7AiW+eGg==",
-        "upstreamTarball": "https://registry.npmjs.org/pi-goal-x/-/pi-goal-x-0.31.9.tgz",
         "reason": "Peer metadata adds exactly Pi 0.99.2; runtime changes are tracked separately in assets/patches.json."
       }
     }

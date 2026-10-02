@@ -129,7 +129,7 @@ Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều
 | `@juicesharp/rpiv-ask-user-question`, `rpiv-todo` | 2.12.0 |
 | `@narumitw/pi-usage` | 0.61.1 |
 | `pi-background-tasks` | 2.6.9 |
-| `pi-goal-x` | 0.31.9 |
+| `pi-goal-x` | 0.32.1 |
 | `pi-advisor-flow` | 0.9.1 |
 | `pi-open-tui` | 0.3.10 |
 | `@pi-archimedes/image-paste` | 2.8.0 |
@@ -137,7 +137,7 @@ Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều
 | Firecrawl CLI | 1.25.1 |
 | Firecrawl skills | Commit trong [sources.lock.json](sources.lock.json) |
 
-Các manifest và lockfile nằm trong [manifests](manifests). Hai package có peer range chưa gồm Pi 0.99.2 (pi-background-tasks, pi-goal-x) được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json). Quy trình nâng phiên bản (vendor, lockfile, tính lại checksum bản vá): [docs/upgrade.md](docs/upgrade.md).
+Các manifest và lockfile nằm trong [manifests](manifests). `pi-background-tasks` có peer range chưa gồm Pi 0.99.2 nên được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json). Quy trình nâng phiên bản (vendor, lockfile, tính lại checksum bản vá): [docs/upgrade.md](docs/upgrade.md).
 
 ## Quản lý cấu hình
 

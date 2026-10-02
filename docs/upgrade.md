@@ -4,7 +4,7 @@ Mọi thứ cài vào runtime đều ghim: phiên bản trong `manifests/current
 
 ## 1. Manifest
 
-Sửa phiên bản trong `manifests/current/package.json` (`dependencies` và, với package vendor, `piPlatform.localPackages.<tên>`: `version`, `source`, `upstreamTarball`, `upstreamIntegrity` lấy từ `npm view <tên>@<phiên bản> dist.integrity`). Tên tarball vendor mang phiên bản Pi mà nó mở peer range, vd `pi-goal-x-0.31.9-pi0992.tgz`; đổi Pi thì đổi hậu tố và đường dẫn `file:` trong `dependencies`.
+Sửa phiên bản trong `manifests/current/package.json` (`dependencies` và, với package vendor, `piPlatform.localPackages.<tên>`: `version`, `source`, `upstreamTarball`, `upstreamIntegrity` lấy từ `npm view <tên>@<phiên bản> dist.integrity`). Tên tarball vendor mang phiên bản Pi mà nó mở peer range, vd `pi-background-tasks-2.6.9-pi0992.tgz`; đổi Pi thì đổi hậu tố và đường dẫn `file:` trong `dependencies`.
 
 ## 2. Tarball vendor
 

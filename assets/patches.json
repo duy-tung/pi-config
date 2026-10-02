@@ -219,7 +219,7 @@
     {
       "package": "pi-goal-x",
       "versions": {
-        "current": "0.31.9"
+        "current": "0.32.1"
       },
       "file": "extensions/goal-auditor.ts",
       "originalSha256": "498ad6b3273b575c86ba28a6a155e9f73b343b99b5f8d601fcd311095c45881a",

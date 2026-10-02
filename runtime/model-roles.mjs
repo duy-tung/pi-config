@@ -23,7 +23,7 @@ const defaultModelRoles = () => ({preset: DEFAULT_PRESET, roles: {}});
 // Thứ tự suy ra enabledModels (Ctrl+P, scopeModels của pi-subagents) và thinking mặc định theo model:
 // model của phiên chính đứng đầu; model của auto mode không vào danh sách chọn model.
 const MODEL_ORDER = ['main', 'worker', 'debugger', 'reviewer', 'researcher', 'advisor', 'auditor', 'oracle'];
-// pi-goal-x 0.31.9 chỉ nhận tới xhigh; giá trị lạ bị bỏ và auditor chạy ở medium.
+// pi-goal-x chỉ nhận tới xhigh; giá trị lạ bị bỏ và auditor chạy ở medium.
 const goalThinking = level => level === 'max' ? 'xhigh' : level;
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
