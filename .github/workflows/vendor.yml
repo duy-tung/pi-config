@@ -1,0 +1,22 @@
+name: Vendor tái tạo từ upstream
+
+on:
+  pull_request:
+    paths:
+      - vendor/**
+      - scripts/rebuild-vendor.py
+      - manifests/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  vendor:
+    name: vendor tái tạo từ upstream
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Tarball vendor khớp bản đóng gói lại từ npm (chỉ đổi peer metadata)
+        run: python3 scripts/rebuild-vendor.py
