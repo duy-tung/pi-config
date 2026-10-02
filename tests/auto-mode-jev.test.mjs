@@ -7,7 +7,7 @@ import { classify, classifyWithFallback } from "../assets/extensions/pi-auto-mod
 import { loadConfig, parseJev } from "../assets/extensions/pi-auto-mode/lib/config.ts";
 import { caseScreenAction, formatReport, formatScreenCorpus, jevEvalScreen, runEval, runScreenCorpus } from "./auto-mode-eval/eval.ts";
 import {
-  evaluate, JEV_DEFAULT_ENDPOINT, JevError, parseAnswers, parseEndpoint, redactSecrets, resolveAccess,
+  evaluate, JEV_ENDPOINT, JevError, parseAnswers, redactSecrets, resolveAccess,
 } from "../assets/extensions/pi-auto-mode/lib/jev.ts";
 import { decide, SAFE_TOOLS } from "../assets/extensions/pi-auto-mode/lib/policy.ts";
 import { judgeProbe, PROBE_QUESTIONS, probeChunks, probeState, resultText, shouldProbe } from "../assets/extensions/pi-auto-mode/lib/probe.ts";
@@ -20,7 +20,7 @@ import {
 // Giá trị giống secret được ghép lúc chạy để file test không chứa chuỗi giống credential thật.
 const fakeToken = ["gh", "p_"].join("") + "A1b2C3d4".repeat(5);
 const typesafeKey = ["api", "key_"].join("") + "0a1b2c3d".repeat(5) + "_" + "9f8e7d6c".repeat(8);
-const ready = { status: "ready", endpoint: parseEndpoint(JEV_DEFAULT_ENDPOINT), apiKey: "fixture-key", source: "environment" };
+const ready = { status: "ready", apiKey: "fixture-key" };
 
 /** Câu trả lời System One giả cho bộ câu hỏi giai đoạn 1. */
 function screenBody(nouls = {}, risk = [0.9, 0.1, 0, 0]) {
@@ -48,16 +48,11 @@ function fakeFetch(queue) {
 
 const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers } });
 
-test("jev: endpoint và key từ biến môi trường", () => {
-  assert.equal(resolveAccess({ SYSTEMONE_API_KEY: "k1" }).status, "ready");
-  assert.equal(resolveAccess({ SYSTEMONE_API_KEY: "k1" }).apiKey, "k1");
-  assert.equal(resolveAccess({ TYPESAFE_API_KEY: "k2" }).source, "environment");
-  // Key của TypeSafe không bao giờ gửi tới endpoint khác.
-  const other = resolveAccess({ TYPESAFE_API_KEY: "k2", SYSTEMONE_ENDPOINT: "https://gateway.example/v1/systemone" });
-  assert.equal(other.status, "missing");
-  assert.equal(resolveAccess({ SYSTEMONE_ENDPOINT: "http://api.typesafe.ai/v1/systemone" }).status, "unavailable");
-  assert.equal(resolveAccess({ SYSTEMONE_ENDPOINT: "https://x.example/" }).status, "unavailable");
-  assert.equal(resolveAccess({ SYSTEMONE_API_KEY: "" }).status, "unavailable");
+test("jev: key chỉ từ TYPESAFE_API_KEY", () => {
+  assert.deepEqual(resolveAccess({ TYPESAFE_API_KEY: "k2" }), { status: "ready", apiKey: "k2" });
+  assert.equal(resolveAccess({ TYPESAFE_API_KEY: "" }).status, "unavailable");
+  assert.equal(resolveAccess({ TYPESAFE_API_KEY: "a\nb" }).status, "unavailable");
+  assert.equal(resolveAccess({ SYSTEMONE_API_KEY: "k1" }).status, "missing", "Không còn đọc SYSTEMONE_API_KEY");
   assert.equal(resolveAccess({}).status, "missing");
 });
 
@@ -66,7 +61,7 @@ test("jev: request có kiểu, kiểm câu trả lời, lỗi và thử lại", 
   let fake = fakeFetch([json(screenBody())]);
   const result = await evaluate(ready, { model: "jev-1.13.0", state: { action: { tool: "bash", command: "npm test" } }, questions }, { timeoutMs: 2_000, fetch: fake.fetch });
   assert.equal(fake.calls.length, 1);
-  assert.equal(fake.calls[0].url, JEV_DEFAULT_ENDPOINT);
+  assert.equal(fake.calls[0].url, JEV_ENDPOINT);
   assert.equal(fake.calls[0].init.method, "POST");
   assert.equal(fake.calls[0].init.redirect, "error", "Không theo redirect mang key đi nơi khác");
   assert.equal(fake.calls[0].init.headers.authorization, "Bearer fixture-key");

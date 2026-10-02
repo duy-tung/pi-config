@@ -29,9 +29,8 @@ for(const patch of read(path.join(root,'patches/manifest.json'))){
   const hash=sha256(fs.readFileSync(file,'utf8').replaceAll('\r\n','\n'));
   if(hash!==patch.patchedSha256)errors.push(`Bản vá đã đổi: ${patch.package}/${patch.file}`);
 }
-// Key Jev cho auto mode: biến môi trường như pi-auto-mode; chỉ báo nguồn, không in key.
-const jevVariable=['SYSTEMONE_API_KEY','TYPESAFE_API_KEY'].find((name)=>process.env[name]?.trim());
-const jevKey=jevVariable?`key từ ${jevVariable}`:'chưa có key: đặt TYPESAFE_API_KEY';
+// Key Jev cho auto mode: TYPESAFE_API_KEY như pi-auto-mode; chỉ báo có hay không, không in key.
+const jevKey=process.env.TYPESAFE_API_KEY?.trim()?'key từ TYPESAFE_API_KEY':'chưa có key: đặt TYPESAFE_API_KEY';
 const s=read(path.join(state.agentDir,'settings.json'));
 // Model/thinking của mọi vai theo model-roles.json, giá trị đang có hiệu lực khi khác, và kiểm catalog của Pi.
 const models=await modelRolesReport({root,agentDir:state.agentDir,modules:path.join(root,'runtimes','current','node_modules')});

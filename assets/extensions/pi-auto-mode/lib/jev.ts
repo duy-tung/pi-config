@@ -5,8 +5,7 @@
  * trước khi dùng (sai khoá, sai kiểu, xác suất ngoài [0, 1] đều là lỗi) và mọi lỗi đều do bên gọi xử lý.
  */
 
-export const JEV_DEFAULT_ENDPOINT = "https://api.typesafe.ai/v1/systemone";
-export const JEV_DEFAULT_MODEL = "jev-1.13.0";
+export const JEV_ENDPOINT = "https://api.typesafe.ai/v1/systemone";
 /** Giá jev-1.13.0 theo docs.typesafe.ai/models: USD cho 1 triệu token đầu vào; đầu ra miễn phí. */
 export const JEV_PRICE_PER_MTOK = 0.042;
 
@@ -30,11 +29,9 @@ export interface JevResult {
   ms: number;
 }
 
-export interface JevEndpoint { href: string; origin: string; path: string }
-
 export type JevAccess =
-  | { status: "ready"; endpoint: JevEndpoint; apiKey: string; source: "environment" }
-  | { status: "missing"; endpoint: JevEndpoint }
+  | { status: "ready"; apiKey: string }
+  | { status: "missing" }
   | { status: "unavailable"; message: string };
 
 export type JevErrorKind =
@@ -57,48 +54,16 @@ export class JevError extends Error {
   }
 }
 
-/** Chỉ HTTPS, không credential, query hay fragment trong URL, phải có path. */
-export function parseEndpoint(raw: string): JevEndpoint {
-  if (!raw.trim() || raw.length > 512 || /[\u0000-\u0020\u007f]/u.test(raw)) throw new Error("SYSTEMONE_ENDPOINT must be a URL without spaces");
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    throw new Error("SYSTEMONE_ENDPOINT must be an absolute URL");
-  }
-  if (url.protocol !== "https:") throw new Error("SYSTEMONE_ENDPOINT must use https");
-  if (url.username || url.password || url.search || url.hash) throw new Error("SYSTEMONE_ENDPOINT must not contain credentials, a query or a fragment");
-  if (url.pathname === "" || url.pathname === "/") throw new Error("SYSTEMONE_ENDPOINT must include a path such as /v1/systemone");
-  return { href: `${url.origin}${url.pathname}`, origin: url.origin, path: url.pathname };
-}
-
 function validKey(value: unknown): value is string {
   return typeof value === "string" && value.trim() !== "" && !/[\u0000-\u001f\u007f]/u.test(value);
 }
 
-/**
- * Endpoint: SYSTEMONE_ENDPOINT hoặc TypeSafe. Key: SYSTEMONE_API_KEY (mọi endpoint), TYPESAFE_API_KEY
- * (chỉ endpoint TypeSafe, không bao giờ gửi đi nơi khác).
- * SYSTEMONE_ENDPOINT sai thì không dùng Jev (không lặng lẽ gửi dữ liệu về endpoint mặc định).
- */
+/** Key chỉ lấy từ TYPESAFE_API_KEY và chỉ gửi tới endpoint của TypeSafe. */
 export function resolveAccess(env: NodeJS.ProcessEnv): JevAccess {
-  let endpoint: JevEndpoint;
-  try {
-    endpoint = parseEndpoint(Object.hasOwn(env, "SYSTEMONE_ENDPOINT") ? String(env.SYSTEMONE_ENDPOINT) : JEV_DEFAULT_ENDPOINT);
-  } catch (error) {
-    return { status: "unavailable", message: error instanceof Error ? error.message : "SYSTEMONE_ENDPOINT is invalid" };
-  }
-  if (Object.hasOwn(env, "SYSTEMONE_API_KEY")) {
-    return validKey(env.SYSTEMONE_API_KEY)
-      ? { status: "ready", endpoint, apiKey: env.SYSTEMONE_API_KEY, source: "environment" }
-      : { status: "unavailable", message: "SYSTEMONE_API_KEY is set but invalid" };
-  }
-  if (Object.hasOwn(env, "TYPESAFE_API_KEY") && endpoint.href === JEV_DEFAULT_ENDPOINT) {
-    return validKey(env.TYPESAFE_API_KEY)
-      ? { status: "ready", endpoint, apiKey: env.TYPESAFE_API_KEY, source: "environment" }
-      : { status: "unavailable", message: "TYPESAFE_API_KEY is set but invalid" };
-  }
-  return { status: "missing", endpoint };
+  if (!Object.hasOwn(env, "TYPESAFE_API_KEY")) return { status: "missing" };
+  return validKey(env.TYPESAFE_API_KEY)
+    ? { status: "ready", apiKey: env.TYPESAFE_API_KEY }
+    : { status: "unavailable", message: "TYPESAFE_API_KEY is set but invalid" };
 }
 
 // ---------------------------------------------------------------------------
@@ -202,7 +167,7 @@ export function parseAnswers(body: unknown, questions: Record<string, Question>)
 function statusError(status: number, retryAfter: string | null): JevError {
   if (status === 401 || status === 403) return new JevError("auth", `Jev rejected the API key (HTTP ${status})`, status);
   if (status === 402) return new JevError("payment", "Jev requires payment for this account (HTTP 402)", status);
-  if (status === 404 || status === 405 || status === 410) return new JevError("endpoint", `Jev endpoint was not found (HTTP ${status}); check SYSTEMONE_ENDPOINT`, status);
+  if (status === 404 || status === 405 || status === 410) return new JevError("endpoint", `Jev endpoint was not found (HTTP ${status})`, status);
   if (status === 408) return new JevError("timeout", "Jev timed out (HTTP 408)", status);
   if (status === 429) return new JevError("rate_limit", `Jev rate limit exceeded${retryAfter ? ` (retry after ${retryAfter})` : ""}`, status);
   if (status === 529) return new JevError("overloaded", "Jev is overloaded (HTTP 529)", status);
@@ -235,7 +200,7 @@ export async function evaluate(
     const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
     let failure: JevError;
     try {
-      const response = await (options.fetch ?? globalThis.fetch)(access.endpoint.href, {
+      const response = await (options.fetch ?? globalThis.fetch)(JEV_ENDPOINT, {
         method: "POST", body, signal, redirect: "error",
         headers: { authorization: `Bearer ${access.apiKey}`, "content-type": "application/json", accept: "application/json", "user-agent": "pi-auto-mode" },
       });

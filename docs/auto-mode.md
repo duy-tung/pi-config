@@ -121,7 +121,7 @@ LLM mặc định là **Claude Sonnet 5** (`anthropic/claude-sonnet-5`), như Cl
 - Phạm vi: `bash`, `bg_run`, `powershell`, đọc ngoài workspace, `write`/`edit`, `fetch_content`, lời gọi MCP. `Agent` và tool lạ vẫn qua giai đoạn 1 bằng LLM.
 - Lỗi:
   - lỗi tạm thời (mạng, quá 5 giây, 429/529/5xx; thử lại một lần) → lần đó giai đoạn 1 bằng LLM; 3 lần liên tiếp thì tắt Jev tới hết phiên;
-  - key bị từ chối, endpoint sai hoặc câu trả lời sai kiểu → tắt Jev tới hết phiên và báo.
+  - key bị từ chối hoặc câu trả lời sai kiểu → tắt Jev tới hết phiên và báo.
 
   Jev không bao giờ là đường tự cho qua khi lỗi.
 
@@ -150,8 +150,7 @@ LLM mặc định là **Claude Sonnet 5** (`anthropic/claude-sonnet-5`), như Cl
   - macOS/Linux: thêm `export TYPESAFE_API_KEY="<key>"` vào `~/.zshrc` hoặc `~/.bashrc`. Windows: `setx TYPESAFE_API_KEY "<key>"`.
   - Đây là cách duy nhất tài liệu TypeSafe và SDK chính thức mô tả, và là cách phổ biến nhất trong các package Jev. Cùng biến này được pi-advisor-flow (bộ lọc Jev, mặc định tắt) đọc.
   - Đánh đổi: mọi lệnh agent chạy đều thấy biến môi trường, và key nằm dạng chữ trong file profile. Ở auto mode, lệnh in biến (`env`, `printenv`, `export -p`) phải qua bộ phân loại, và luật Secret Exposure chặn làm lộ key; ở bypass không có lớp nào chặn.
-  - Thứ tự đọc: `SYSTEMONE_API_KEY` → `TYPESAFE_API_KEY` (chỉ gửi tới endpoint của TypeSafe).
-  - `SYSTEMONE_ENDPOINT` đổi provider (OpenCode Zen, OpenRouter…); khi đó dùng `SYSTEMONE_API_KEY` và đặt `autoMode.jev.model` theo tên model của provider.
+  - Key chỉ được gửi tới endpoint của TypeSafe (`https://api.typesafe.ai/v1/systemone`); không đổi được provider.
   - Kiểm tra: `pi-doctor` (in nguồn key, không in key), `/auto-mode`.
 - **Dữ liệu gửi cho TypeSafe**: giai đoạn 1 gửi môi trường và hành động; probe gửi nội dung kết quả tool. Secret dạng phổ biến được che trước khi gửi: token, API key, private key, mật khẩu trong URL, header `Authorization`, biến `*_TOKEN=`/`*_KEY=`.
   - Theo tài liệu của TypeSafe, họ không train trên dữ liệu khách hàng; việc lưu trữ theo Data Processing Agreement, và zero data retention chỉ có ở gói enterprise.

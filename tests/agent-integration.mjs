@@ -348,9 +348,9 @@ await check('/advisor-off lasts into the next session; alwaysOn brings the advis
   assert.ok((await toolsOfNewSession()).includes('ask_advisor'));
 });
 
-// Jev (System One của TypeSafe) qua endpoint và key giả: fetch chỉ trả lời đúng endpoint fixture, không có mạng thật
+// Jev (System One của TypeSafe) với key giả: fetch giả trả lời thay endpoint của TypeSafe, không có mạng thật
 // và không dùng key của máy. Fixture gắn cờ exfiltration khi lệnh có JEV_RISKY và prompt injection khi đoạn có câu lệnh cho AI.
-const jevEndpoint='https://jev.fixture.invalid/v1/systemone';
+const jevEndpoint='https://api.typesafe.ai/v1/systemone';
 const jevControl={requests:[],failures:[]};
 const blockedFetch=globalThis.fetch;
 globalThis.fetch=async(input,init={})=>{
@@ -377,7 +377,7 @@ globalThis.fetch=async(input,init={})=>{
   }
   return reply({model:'jev-1.13.0',answers,usage:{input_tokens:900,output_tokens:30}});
 };
-process.env.SYSTEMONE_API_KEY='fixture-jev-key';process.env.SYSTEMONE_ENDPOINT=jevEndpoint;
+process.env.TYPESAFE_API_KEY='fixture-jev-key';
 const jevSettings=readJson(path.join(agentDir,'settings.json'));
 jevSettings.autoMode={...jevSettings.autoMode,jev:{...installedJev,enabled:true,probe:true,probeTools:['bash'],flagAt:0.3,riskAt:0.5,probeAt:0.5,timeoutMs:5000}};
 writeJson(path.join(agentDir,'settings.json'),jevSettings);

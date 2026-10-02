@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { type ExtensionAPI, type ExtensionContext, getAgentDir, getPackageDir, type ToolResultEventResult } from "@earendil-works/pi-coding-agent";
 import { classifyWithFallback, type ClassifierResult, type Complete, type ScreenOutcome } from "./lib/classifier.ts";
 import { loadConfig, parseMode, type PermissionMode, readState, writeState } from "./lib/config.ts";
-import { evaluate, JEV_DEFAULT_ENDPOINT, JEV_PRICE_PER_MTOK, type JevAccess, JevError, resolveAccess } from "./lib/jev.ts";
+import { evaluate, JEV_PRICE_PER_MTOK, type JevAccess, JevError, resolveAccess } from "./lib/jev.ts";
 import * as text from "./lib/messages.ts";
 import { type CallFacts, decide, describeCall, escalates, filterDeniedGrep, type PolicyContext, SAFE_TOOLS, type ToolCall } from "./lib/policy.ts";
 import { resolveToolPath, temporaryRoots } from "./lib/paths.ts";
@@ -90,7 +90,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
   // Jev (System One của TypeSafe): giai đoạn 1 và probe prompt injection, khi có API key.
   let jevAccess: Promise<JevAccess> | undefined;
   let jevResolved: JevAccess | undefined;
-  /** Lý do tắt Jev tới hết phiên (key bị từ chối, endpoint sai, API trả dữ liệu lạ). */
+  /** Lý do tắt Jev tới hết phiên (key bị từ chối, API trả lỗi hoặc dữ liệu lạ). */
   let jevOff: string | undefined;
   let jevWarned = false;
   /** Lỗi tạm thời liên tiếp của Jev. */
@@ -346,7 +346,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
 
   /**
    * Lỗi tạm thời: lần này dùng LLM; 3 lần liên tiếp thì tắt Jev tới hết phiên (không để mỗi lệnh chờ Jev đang sập).
-   * Lỗi khác (key bị từ chối, endpoint sai, dữ liệu lạ): tắt Jev tới hết phiên ngay.
+   * Lỗi khác (key bị từ chối, API trả lỗi hoặc dữ liệu lạ): tắt Jev tới hết phiên ngay.
    */
   function jevFailure(ctx: ExtensionContext, error: unknown, purpose: "screen" | "probe"): ScreenOutcome {
     const failure = error instanceof JevError ? error : new JevError("network", error instanceof Error ? error.message : String(error));
@@ -410,12 +410,11 @@ export default function piAutoMode(pi: ExtensionAPI) {
     if (!access) return "starting";
     if (access.status === "missing") return "no API key — set TYPESAFE_API_KEY";
     if (access.status === "unavailable") return `unavailable (${access.message})`;
-    return `${config.jev.model} (key from ${access.source}${access.endpoint.href === JEV_DEFAULT_ENDPOINT ? "" : `, ${access.endpoint.origin}`})`;
+    return `${config.jev.model} (key from TYPESAFE_API_KEY)`;
   }
 
   function jevUsage(): string {
-    const priced = jevResolved?.status === "ready" && jevResolved.endpoint.href === JEV_DEFAULT_ENDPOINT && config.jev.model === "jev-1.13.0";
-    const cost = priced ? ` ≈ $${(jevStats.inputTokens * JEV_PRICE_PER_MTOK / 1e6).toFixed(4)}` : "";
+    const cost = config.jev.model === "jev-1.13.0" ? ` ≈ $${(jevStats.inputTokens * JEV_PRICE_PER_MTOK / 1e6).toFixed(4)}` : "";
     return `${jevStats.calls} calls, ${jevStats.inputTokens} input tokens${cost} · screened ${jevStats.cleared + jevStats.flagged} (${jevStats.flagged} to stage 2)`
       + ` · probed ${jevStats.probes} results (${jevStats.injections} flagged)${jevStats.failures ? ` · ${jevStats.failures} failures` : ""}`;
   }
