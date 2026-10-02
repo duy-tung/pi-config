@@ -135,7 +135,7 @@ async function installSource(source){
   fs.renameSync(stage,dest);state.sources[source.name]=source.sha256;writeJson(statePath,state);
   fs.unlinkSync(archive);
 }
-// Nguồn đã cài nhưng không còn trong sources.lock.json (vd mattpocock-skills, nay thay bằng assets/skills): chuyển
+// Nguồn đã cài nhưng không còn trong sources.lock.json (vd mattpocock-skills của bản cài cũ): chuyển
 // thư mục vào backups và bỏ khỏi state, để doctor và lần cài sau không còn coi là nguồn đang dùng.
 function retireSources(names){
   for(const name of Object.keys(state.sources)){

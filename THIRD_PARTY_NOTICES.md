@@ -33,9 +33,9 @@ Các manifest `manifests/current`, `manifests/firecrawl` liệt kê phiên bản
 
 Các skill của [firecrawl/cli](https://github.com/firecrawl/cli) (ISC theo package manifest) và [firecrawl/firecrawl-workflows](https://github.com/firecrawl/firecrawl-workflows) (ISC) được tải từ commit ghim cùng repository và thông tin giấy phép gốc.
 
-## Skills quy trình (tstack)
+## Git guard
 
-`assets/skills/` là bộ skill tstack (MIT, Phạm Duy Tùng) chuyển sang Pi. tstack là bản phái sinh từ [mattpocock/skills](https://github.com/mattpocock/skills) 1.2.3 (MIT, Copyright (c) 2026 Matt Pocock) và [pstack](https://github.com/cursor/plugins/tree/main/pstack) 0.15.5 (MIT, Copyright (c) 2026 Lauren Tan); toàn văn các thông báo bản quyền nằm trong [assets/skills/LICENSE](assets/skills/LICENSE) và được cài cùng skill. Git guard của pi-auto-mode (`lib/git-guard.ts`) chuyển từ `hooks/guard_git.py` của tstack (mã riêng, MIT). Nguồn của từng skill: [docs/workflow.md](docs/workflow.md#nguồn-gốc-và-giấy-phép).
+Git guard của pi-auto-mode (`lib/git-guard.ts`) chuyển từ `hooks/guard_git.py` của tstack (mã riêng, MIT).
 
 ## Màu giao diện
 

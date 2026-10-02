@@ -236,24 +236,6 @@ await check("single session exposes slash commands and only one model delegation
   assert.ok(!session.getActiveToolNames().includes("codemode"));
   assert.equal(control.seen.length, 0, "Startup must not call any model");
 });
-await check("workflow skills (tstack) load in Pi without warnings; flows are user-invoked only", async () => {
-  const { skills, diagnostics } = sdk.loadSkillsFromDir({ dir: path.join(installRoot, "assets", "skills"), source: "path" });
-  assert.deepEqual(diagnostics, []);
-  assert.equal(skills.length, 25);
-  assert.deepEqual(skills.filter((skill) => skill.disableModelInvocation).map((skill) => skill.name).sort(), [
-    "grill-me", "grill-with-docs", "handoff", "implement", "improve-architecture",
-    "reflect", "setup", "ship", "to-spec", "to-tickets", "wait-what",
-  ]);
-  // Skill kỷ luật vào danh sách của model; skill luồng chỉ gọi bằng /skill:<tên>.
-  const listed = sdk.formatSkillsForPrompt(skills);
-  for (const name of ["grilling", "interrogate", "tdd"]) assert.match(listed, new RegExp(`<name>${name}</name>`, "u"));
-  for (const name of ["implement", "ship"]) assert.doesNotMatch(listed, new RegExp(`<name>${name}</name>`, "u"));
-  // Skill theo stack không nằm trong danh sách chung; bản /skill:setup chép vào .agents/skills/ của repo nạp không cảnh báo.
-  for (const name of ["typescript", "python", "mobile"]) assert.doesNotMatch(listed, new RegExp(`<name>${name}</name>`, "u"));
-  const stack = sdk.loadSkillsFromDir({ dir: path.join(installRoot, "assets", "stack-skills"), source: "path" });
-  assert.deepEqual(stack.diagnostics, []);
-  assert.deepEqual(stack.skills.map((skill) => skill.name).sort(), ["mobile", "python", "typescript"]);
-});
 await check("Claude: web_search provider anthropic, quota footer from headers and /claude-usage", async () => {
   const claude = runtime.getModel("anthropic", "claude-sonnet-5");
   const webSearch = session.extensionRunner.getToolDefinition("web_search");
