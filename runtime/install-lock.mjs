@@ -12,7 +12,7 @@ const lockPid = file => {
 };
 
 /**
- * Khóa chung <root>/.install.lock của installer và pi-models, chứa PID. Khóa của tiến trình đã chết (cài bị ngắt)
+ * Khóa chung <root>/.install.lock của installer và /models, chứa PID. Khóa của tiến trình đã chết (cài bị ngắt)
  * được gỡ: đổi tên trước rồi kiểm PID, để không xoá nhầm khóa mới một tiến trình khác vừa tạo. Trả hàm mở khóa.
  */
 export function acquireInstallLock(root, log = message => console.error(message)) {
@@ -34,7 +34,7 @@ export function acquireInstallLock(root, log = message => console.error(message)
       fs.rmSync(aside, {force: true});
       continue;
     }
-    throw new Error(`Installer hoặc pi-models khác đang chạy${Number.isInteger(pid) ? ` (PID ${pid})` : ''}: ${lock}. ` +
+    throw new Error(`Installer hoặc /models khác đang chạy${Number.isInteger(pid) ? ` (PID ${pid})` : ''}: ${lock}. ` +
       'Chờ xong rồi thử lại; nếu chắc không còn tiến trình nào thì xoá file này.');
   }
 }

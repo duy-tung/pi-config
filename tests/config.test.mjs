@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { buildConfiguration, PACKAGES } from "../lib/config.mjs";
-import { changedRoles, fillRoleNames, forceNativeModels, loadPresets, nativeKind, nativeValues, nextModelDefault, resolveModelRoles } from "../runtime/model-roles.mjs";
+import { SUBAGENT_ROLES, changedRoles, fillRoleNames, forceNativeModels, loadPresets, nativeValues, nextModelDefault, resolveModelRoles } from "../runtime/model-roles.mjs";
 
 const repoDir = fileURLToPath(new URL("../", import.meta.url));
 function fixture(platform) {
@@ -272,17 +272,22 @@ test("model-roles: preset và ghi đè đi tới mọi file gốc (settings, fil
   assert.doesNotMatch(guide, /\{\{/u);
 });
 
-test("pi-models dựng mặc định mới từ base của preset khác: giống hệt file installer sinh cho preset đó", () => {
+test("/models dựng mặc định mới từ base của preset khác: giống hệt file installer sinh cho preset đó", () => {
   const presets = loadPresets(path.join(repoDir, "assets", "configs", "model-presets.json"));
   for (const platform of ["linux", "win32"]) {
     const { p, options } = fixture(platform);
+    // Loại file gốc chứa model (như danh sách file của planModelFiles trong runtime/models.mjs).
+    const kindOf = new Map([
+      ["settings.json", "settings"], ["advisor.json", "advisor"], ["pi-goal-x-settings.json", "goal"],
+      ...SUBAGENT_ROLES.map((role) => [p.join("agents", `${role}.md`), role]),
+    ].map(([name, kind]) => [p.join(options.agentDir, name), kind]));
     const before = resolveModelRoles(presets).roles;
     const after = resolveModelRoles(presets, { preset: "claude", roles: { worker: { thinking: "max" }, auditor: { thinking: "max" }, autoMode: { model: "anthropic/claude-haiku-4-5" } } }).roles;
     const old = buildConfiguration({ ...options, modelRoles: before });
     const fresh = new Map(buildConfiguration({ ...options, modelRoles: after }).map((entry) => [entry.path, entry.content]));
     const kinds = [];
     for (const entry of old) {
-      const kind = nativeKind(entry.path, options.agentDir, p);
+      const kind = kindOf.get(entry.path);
       if (!kind) {
         // File không chứa model thì không đổi theo preset (trừ AGENTS.md, sinh lại từ bản mẫu).
         if (p.basename(entry.path) !== "AGENTS.md") assert.equal(fresh.get(entry.path), entry.content, entry.path);
@@ -302,11 +307,11 @@ test("ép giá trị của vai trong file gốc người dùng đã đổi: ch�
   const presets = loadPresets(path.join(repoDir, "assets", "configs", "model-presets.json"));
   const models = nativeValues(resolveModelRoles(presets, { preset: "claude" }).roles);
   const settings = JSON.stringify({ theme: "rose-pine-dawn", defaultProvider: "openai-codex", defaultModel: "gpt-6-sol", defaultThinkingLevel: "max",
-    enabledModels: ["user/model"], autoMode: { model: "openai-codex/gpt-6-sol", stage2Model: "openai-codex/gpt-6-astra", stage2Reasoning: "high", log: true } });
+    enabledModels: ["user/model"], autoMode: { model: "openai-codex/gpt-6-sol", stage2Reasoning: "high", log: true } });
   const onlyMain = JSON.parse(forceNativeModels("settings", settings, models, ["main"]));
   assert.deepEqual([onlyMain.theme, onlyMain.defaultProvider, onlyMain.defaultModel, onlyMain.defaultThinkingLevel], ["rose-pine-dawn", "anthropic", "claude-opus-5-5", "high"]);
   // Danh sách suy ra (enabledModels) và vai không nêu giữ nguyên; bước gộp ba chiều lo phần đó.
-  assert.deepEqual([onlyMain.enabledModels, onlyMain.autoMode.model, onlyMain.autoMode.stage2Model], [["user/model"], "openai-codex/gpt-6-sol", "openai-codex/gpt-6-astra"]);
+  assert.deepEqual([onlyMain.enabledModels, onlyMain.autoMode.model], [["user/model"], "openai-codex/gpt-6-sol"]);
   const autoMode = JSON.parse(forceNativeModels("settings", settings, models, ["autoMode"])).autoMode;
   assert.deepEqual(autoMode, { model: "anthropic/claude-sonnet-5", stage2Reasoning: "low", log: true });
   assert.equal(forceNativeModels("settings", settings, models, ["worker"]), settings);

@@ -3,39 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import {pathToFileURL} from 'node:url';
-import {completions, levelOf, levelOptions, mainMenu, roleMenu, splitArgs} from '../assets/extensions/model-roles/lib/menu.ts';
+import {levelOf, levelOptions, mainMenu, roleMenu} from '../assets/extensions/model-roles/lib/menu.ts';
 import {linkRuntime, readJson, simulatedInstall, snapshot} from './install-fixture.mjs';
 
-// /models (extension model-roles): pi-models ngay trong phiên Pi.
-
-const prefixFilter = (items, query, text) => items.filter(item => text(item).toLowerCase().startsWith(query.toLowerCase()));
-const data = {
-  roles: ['main', 'worker', 'reviewer'],
-  presets: [{name: 'default', description: 'mặc định'}, {name: 'claude'}],
-  providers: ['anthropic', 'openai-codex'],
-  models: [{ref: 'anthropic/claude-opus-5-5', description: 'Claude Opus 5.5'}, {ref: 'anthropic/claude-sonnet-5'}],
-  levels: ['off', 'low', 'high', 'max'],
-};
-const values = prefix => completions(prefix, data, prefixFilter)?.map(item => item.value) ?? null;
-
-test('/models: gợi ý thay cả chuỗi tham số, theo từng lệnh và vị trí', () => {
-  assert.deepEqual(values(''), ['show', 'list', 'preset', 'set', 'reset', 'adopt', 'apply', 'help']);
-  assert.deepEqual(values('s'), ['show', 'set']);
-  assert.deepEqual(values('set '), ['set main', 'set worker', 'set reviewer']);
-  assert.deepEqual(values('set worker anthropic/claude-s'), ['set worker anthropic/claude-sonnet-5']);
-  assert.deepEqual(values('set worker anthropic/claude-sonnet-5 h'), ['set worker anthropic/claude-sonnet-5 high']);
-  // Đã nêu mức thinking: chỉ còn gợi ý model; đủ tham số thì không gợi ý.
-  assert.deepEqual(values('set worker high '), ['set worker high anthropic/claude-opus-5-5', 'set worker high anthropic/claude-sonnet-5']);
-  assert.equal(values('set worker anthropic/claude-sonnet-5 high '), null);
-  assert.deepEqual(values('preset c'), ['preset claude']);
-  assert.deepEqual(completions('preset ', data, prefixFilter)[0], {value: 'preset default', label: 'default', description: 'mặc định'});
-  assert.deepEqual(values('reset worker '), ['reset worker main', 'reset worker reviewer']);
-  assert.deepEqual(values('reset --'), ['reset --all', 'reset --dry-run']);
-  assert.deepEqual(values('apply --reset --'), ['apply --reset --dry-run']);
-  assert.deepEqual(values('list a'), ['list anthropic']);
-  assert.equal(values('frobnicate '), null);
-  assert.deepEqual(splitArgs('  set  worker\thigh '), ['set', 'worker', 'high']);
-});
+// /models (extension model-roles): menu đổi model/thinking của các vai ngay trong phiên Pi.
 
 test('/models: menu các vai đánh dấu ghi đè và giá trị đang chạy khi lệch; menu của vai', () => {
   const roles = {
@@ -51,23 +22,22 @@ test('/models: menu các vai đánh dấu ghi đè và giá trị đang chạy k
     'main       anthropic/claude-opus-5-5 · high',
     'worker     openai-codex/gpt-6-sol · high, ghi đè; đang chạy anthropic/claude-sonnet-5 · max theo agents/worker.md',
     'Chọn preset… (đang dùng default)',
-    'Giữ giá trị đang chạy của worker (adopt)',
-    'Đưa worker về model-roles.json (apply --reset)',
+    'Đưa worker về model-roles.json',
   ]);
-  assert.deepEqual(menu.actions, [{role: 'main'}, {role: 'worker'}, {preset: true}, {args: ['adopt']}, {args: ['apply', '--reset']}]);
+  assert.deepEqual(menu.actions, [{role: 'main'}, {role: 'worker'}, {preset: true}, {change: {apply: true}}]);
   assert.deepEqual(mainMenu({preset: 'claude', file: 'x', roles, names: ['main'], drifted: {}}).options.slice(1), ['Chọn preset… (đang dùng claude)']);
   const role = roleMenu('worker', roles.worker, {model: 'openai-codex/gpt-6-sol', thinking: 'max'});
   assert.deepEqual(role.options, [
     'Đổi model… (đang dùng openai-codex/gpt-6-sol)', 'Đổi thinking… (đang dùng high)', 'Bỏ ghi đè, dùng preset (openai-codex/gpt-6-sol · max)',
   ]);
-  assert.deepEqual(role.actions, [{pick: 'model'}, {pick: 'thinking'}, {args: ['reset', 'worker']}]);
+  assert.deepEqual(role.actions, [{pick: 'model'}, {pick: 'thinking'}, {change: {reset: 'worker'}}]);
   assert.equal(roleMenu('main', roles.main).options.length, 2, 'vai không ghi đè thì không có mục bỏ ghi đè');
   assert.deepEqual(levelOptions(['low', 'high', 'max'], 'high'), ['low', 'high (đang dùng)', 'max']);
   assert.equal(levelOf('high (đang dùng)'), 'high');
 });
 
 const testRoot = process.env.PI_CONFIG_TEST_ROOT;
-test('/models trong phiên Pi thật: menu, set áp ngay cho phiên và auto mode, lỗi, xem trước, list, gợi ý', {skip: !testRoot, timeout: 120000}, async t => {
+test('/models trong phiên Pi thật: menu đổi thinking, model, preset, bỏ ghi đè, đưa vai lệch về cấu hình; áp ngay cho phiên và auto mode', {skip: !testRoot, timeout: 120000}, async t => {
   // Bản cài giả có extension và bin như installer; runtime nối từ bản cài thật. Chỉ nạp model-roles và pi-auto-mode,
   // model của các vai giữ như installer sinh. Chỉ Claude có key giả: Codex và OpenCode Go chưa đăng nhập.
   const f = simulatedInstall(t, {full: true});
@@ -96,7 +66,7 @@ test('/models trong phiên Pi thật: menu, set áp ngay cho phiên và auto mod
       const services = await sdk.createAgentSessionServices({cwd: target, agentDir: f.agentDir, modelRuntime});
       return {...(await sdk.createAgentSessionFromServices({services, sessionManager, sessionStartEvent})), services, diagnostics: services.diagnostics};
     }, {cwd, agentDir: f.agentDir, sessionManager: sdk.SessionManager.inMemory(cwd)});
-    const answers = [], keystrokes = [], notices = [], confirms = [], titles = [], missing = [], errors = [];
+    const answers = [], keystrokes = [], notices = [], confirms = [], decisions = [], titles = [], missing = [], errors = [];
     const ui = {
       ...Object.fromEntries(['setStatus', 'setWorkingMessage', 'setWorkingVisible', 'setWorkingIndicator', 'setHiddenThinkingLabel', 'setWidget', 'setFooter', 'setHeader', 'setTitle', 'pasteToEditor', 'setEditorText', 'addAutocompleteProvider', 'setEditorComponent', 'setToolsExpanded'].map(key => [key, () => {}])),
       onTerminalInput: () => () => {}, input: async () => undefined, editor: async () => undefined,
@@ -110,9 +80,10 @@ test('/models trong phiên Pi thật: menu, set áp ngay cho phiên và auto mod
         if (wanted && !found) missing.push(`${wanted} không có trong: ${options.join(' | ')}`);
         return found;
       },
+      // Xác nhận ghi: mặc định đồng ý; decisions xếp sẵn câu trả lời khác.
       confirm: async (title, message) => {
         confirms.push(`${title}\n${message}`);
-        return true;
+        return decisions.shift() ?? true;
       },
       notify: (message, type = 'info') => notices.push({message, type}),
       // Hộp thoại riêng (ô tìm model): gõ lần lượt các phím đã xếp; hộp thoại phải tự đóng.
@@ -140,14 +111,17 @@ test('/models trong phiên Pi thật: menu, set áp ngay cho phiên và auto mod
     assert.ok(command, 'Thiếu /models');
     const last = () => notices.at(-1);
     const frontmatter = role => fs.readFileSync(f.file(`agents/${role}.md`), 'utf8').split('\n---\n')[0];
+    const menu = async (...steps) => {
+      answers.push(...steps);
+      await runtime.session.prompt('/models');
+      assert.deepEqual(missing, []);
+    };
     assert.equal(`${runtime.session.model.provider}/${runtime.session.model.id}`, 'anthropic/claude-opus-5-5');
 
-    // Menu: worker → đổi thinking → high, xem trước rồi xác nhận.
-    answers.push(/^worker +openai-codex\/gpt-6-sol · max$/u, /^Đổi thinking/u, /^high$/u);
-    await runtime.session.prompt('/models');
-    assert.deepEqual(missing, []);
+    // worker → đổi thinking → high, xem trước rồi xác nhận.
+    await menu(/^worker +openai-codex\/gpt-6-sol · max$/u, /^Đổi thinking/u, /^high$/u);
     assert.match(titles[0], /^Model của các vai: preset default \(.*model-roles\.json\)\nPhiên này: anthropic\/claude-opus-5-5 · high$/u);
-    assert.match(confirms[0], /^\/models set worker high\nworker: openai-codex\/gpt-6-sol \(max\) → openai-codex\/gpt-6-sol \(high\)$/mu);
+    assert.match(confirms[0], /^Ghi thay đổi này\?\nworker: openai-codex\/gpt-6-sol \(max\) → openai-codex\/gpt-6-sol \(high\)$/mu);
     assert.match(confirms[0], /^Sẽ cập nhật: .*agents\/worker\.md/mu);
     assert.match(frontmatter('worker'), /^thinking: high$/mu);
     assert.equal(last().type, 'warning', 'provider chưa đăng nhập là cảnh báo');
@@ -155,15 +129,14 @@ test('/models trong phiên Pi thật: menu, set áp ngay cho phiên và auto mod
     assert.match(last().message, /^Có hiệu lực: worker ở lần gọi Agent kế tiếp\.$/mu);
 
     // Đổi model qua ô tìm: gõ để lọc cả catalog, Enter chọn, rồi chọn thinking trong các mức model hỗ trợ.
-    answers.push(/^reviewer /u, /^Đổi model/u, /^medium$/u);
     keystrokes.push(...'anthropic/claude-sonnet-5', '\r');
-    await runtime.session.prompt('/models');
-    assert.deepEqual(missing, []);
-    assert.match(confirms[1], /^\/models set reviewer anthropic\/claude-sonnet-5 medium$/mu);
+    await menu(/^reviewer /u, /^Đổi model/u, /^medium$/u);
+    assert.match(confirms[1], /^reviewer: openai-codex\/gpt-6-astra \(high\) → anthropic\/claude-sonnet-5 \(medium\)$/mu);
     assert.match(frontmatter('reviewer'), /^model: anthropic\/claude-sonnet-5\nthinking: medium$/mu);
 
-    // set main: ghi cấu hình rồi đổi luôn model/thinking của phiên này.
-    await runtime.session.prompt('/models set main anthropic/claude-sonnet-5 low');
+    // main: ghi cấu hình rồi đổi luôn model/thinking của phiên này.
+    keystrokes.push(...'anthropic/claude-sonnet-5', '\r');
+    await menu(/^main /u, /^Đổi model/u, /^low$/u);
     assert.match(last().message, /^main: anthropic\/claude-opus-5-5 \(high\) → anthropic\/claude-sonnet-5 \(low\)$/mu);
     assert.match(last().message, /^Phiên này dùng anthropic\/claude-sonnet-5 · low\.$/mu);
     assert.equal(`${runtime.session.model.provider}/${runtime.session.model.id}`, 'anthropic/claude-sonnet-5');
@@ -172,33 +145,30 @@ test('/models trong phiên Pi thật: menu, set áp ngay cho phiên và auto mod
     assert.deepEqual(readJson(f.file('model-roles.json')).roles.main, {model: 'anthropic/claude-sonnet-5', thinking: 'low'});
 
     // autoMode: pi-auto-mode đọc lại model của bộ phân loại ngay trong phiên.
-    await runtime.session.prompt('/models set autoMode anthropic/claude-opus-5-5 high');
+    keystrokes.push(...'anthropic/claude-opus-5-5', '\r');
+    await menu(/^autoMode /u, /^Đổi model/u, /^high$/u);
     assert.match(last().message, /^Có hiệu lực: autoMode ở lần phân loại kế tiếp của auto mode\.$/mu);
     await runtime.session.prompt('/permissions');
     assert.match(titles.at(-1), /Classifier: .*anthropic\/claude-opus-5-5/u);
 
-    // Model sai tên: báo lỗi, không ghi gì; --dry-run cũng không ghi.
+    // Chọn preset nhưng không xác nhận: chỉ xem trước, không ghi gì; tham số gõ kèm /models bị bỏ qua (huỷ menu).
     const before = snapshot(f.root, f.agentDir);
-    await runtime.session.prompt('/models set worker anthropic/claude-opus-9');
-    assert.equal(last().type, 'error');
-    assert.match(last().message, /^\/models: Model không dùng được, chưa ghi gì:\n- worker: không có model anthropic\/claude-opus-9/u);
-    await runtime.session.prompt('/models preset claude --dry-run');
-    assert.match(last().message, /^Xem trước \(--dry-run\), chưa ghi file nào\.\npreset: default → claude$/mu);
+    decisions.push(false);
+    await menu(/^Chọn preset/u, /^claude: /u);
+    assert.match(confirms.at(-1), /^preset: default → claude$/mu);
+    await runtime.session.prompt('/models preset claude');
     assert.deepEqual(snapshot(f.root, f.agentDir), before);
 
-    // list và bảng dùng catalog và trạng thái đăng nhập của phiên.
-    await runtime.session.prompt('/models list anthropic');
-    assert.match(last().message, /^anthropic \(Anthropic\): đã đăng nhập \(API key đã lưu\)$/mu);
-    assert.match(last().message, /^ {2}anthropic\/claude-sonnet-5 {2}thinking: .*← main, reviewer$/mu);
-    await runtime.session.prompt('/models show');
-    assert.match(last().message, /^ {2}main: anthropic\/claude-sonnet-5 \(low\), ghi đè$/mu);
-    assert.match(last().message, /^Phiên này: anthropic\/claude-sonnet-5 · low$/mu);
+    // Bỏ ghi đè của worker: dùng lại thinking của preset.
+    await menu(/^worker .*ghi đè/u, /^Bỏ ghi đè/u);
+    assert.equal(readJson(f.file('model-roles.json')).roles.worker, undefined);
+    assert.match(frontmatter('worker'), /^thinking: max$/mu);
 
-    // Gợi ý tham số từ catalog và model-roles.json của bản cài.
-    const suggested = async prefix => (await command.getArgumentCompletions(prefix))?.map(item => item.value) ?? [];
-    assert.ok((await suggested('set wor')).includes('set worker'));
-    assert.ok((await suggested('set worker anthropic/claude-sonn')).includes('set worker anthropic/claude-sonnet-5'));
-    assert.ok((await suggested('preset ')).includes('preset claude'));
+    // debugger lệch qua /agents: menu có mục đưa vai lệch về model-roles.json.
+    fs.writeFileSync(f.file('agents/debugger.md'), fs.readFileSync(f.file('agents/debugger.md'), 'utf8').replace('thinking: max', 'thinking: low'));
+    await menu(/^Đưa .*debugger.* về model-roles\.json$/u);
+    assert.match(confirms.at(-1), /^Ghi đè giá trị đổi ngoài model-roles\.json: debugger \(agents\/debugger\.md: openai-codex\/gpt-6-sol \(low\)\)$/mu);
+    assert.match(frontmatter('debugger'), /^thinking: max$/mu);
     assert.equal(fs.existsSync(path.join(f.root, '.install.lock')), false);
     assert.deepEqual(errors, []);
   } finally {

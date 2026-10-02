@@ -6,12 +6,13 @@ import {
   DynamicBorder, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext, getAgentDir, getSelectListTheme, type Theme,
 } from "@earendil-works/pi-coding-agent";
 import { Container, type Focusable, fuzzyFilter, getKeybindings, Input, SelectList, type SelectItem, Spacer, Text } from "@earendil-works/pi-tui";
-import { type Action, completions, levelOf, levelOptions, mainMenu, type Menu, roleMenu, type RoleValue, splitArgs } from "./lib/menu.ts";
+import { type Action, type Change, levelOf, levelOptions, mainMenu, type Menu, roleMenu, type RoleValue } from "./lib/menu.ts";
 
 /**
- * /models: pi-models ngay trong phiên Pi. Cùng lệnh, cùng kiểm tra, cùng cách gộp và khóa với pi-models của bản cài
- * (<root>/bin/models.mjs), nhưng kiểm model và đăng nhập bằng catalog của chính phiên này, rồi áp ngay phần áp được:
- * phiên chính đổi model/thinking, auto mode đọc lại model của bộ phân loại. Không có tham số thì mở menu.
+ * /models: menu đổi model/thinking của các vai (model-roles.json), cách duy nhất để đổi model theo vai. Phần ghi chạy
+ * bằng <root>/bin/models.mjs của bản cài (cùng kiểm tra, cách gộp và khóa với installer), nhưng kiểm model và đăng
+ * nhập bằng catalog của chính phiên này, rồi áp ngay phần áp được: phiên chính đổi model/thinking, auto mode đọc lại
+ * model của bộ phân loại. Không có UI thì in bảng model của các vai.
  */
 
 // pi-auto-mode đọc lại model của bộ phân loại khi nhận sự kiện này và ghi "autoMode" vào applied.
@@ -34,7 +35,6 @@ interface CatalogReport {
 }
 interface Catalog {
   check(roles: Record<string, RoleValue>, options?: { logins?: boolean }): Promise<CatalogReport>;
-  list(): Promise<{ id: string; name: string; login?: string; models: { id: string; levels: string[] }[] }[]>;
 }
 interface Resolved {
   preset: string;
@@ -61,7 +61,7 @@ interface RolesModule {
 }
 interface ModelsModule {
   runModels(options: {
-    root: string; agentDir: string; args: string[]; out: Out; command: string; catalog: Catalog;
+    root: string; agentDir: string; catalog: Catalog; change?: Change; dryRun?: boolean; out: Out;
     effects: (changed: string[]) => Promise<string[]>;
   }): Promise<number>;
   whenApplied(changed: string[], when?: Record<string, string>): string[];
@@ -77,7 +77,7 @@ interface Result {
   lines: string[];
   level: "info" | "warning" | "error";
 }
-type Run = (args: string[], out: Out) => Promise<number>;
+type Run = (change: Change | undefined, dryRun: boolean, out: Out) => Promise<number>;
 
 const samePath = (a: string, b: string) => {
   const [x, y] = [path.resolve(a), path.resolve(b)];
@@ -117,14 +117,6 @@ function sessionCatalog(ctx: ExtensionContext, roles: RolesModule): Catalog {
       roles: wanted, find: (provider, id) => registry.find(provider, id),
       clamp: clampThinkingLevel as unknown as (model: never, level: never) => string, login: logins ? login : undefined,
     }),
-    list: async () => {
-      const byProvider = new Map<string, Model<Api>[]>();
-      for (const model of registry.getAll()) byProvider.set(model.provider, [...(byProvider.get(model.provider) ?? []), model]);
-      return [...byProvider].map(([id, models]) => ({
-        id, name: registry.getProviderDisplayName(id), login: login(id),
-        models: models.map((model) => ({ id: model.id, levels: getSupportedThinkingLevels(model) as string[] })),
-      })).sort((a, b) => a.id.localeCompare(b.id));
-    },
   };
 }
 
@@ -163,10 +155,10 @@ async function applyToSession(pi: ExtensionAPI, ctx: ExtensionContext, install: 
   return lines;
 }
 
-async function capture(run: Run, args: string[]): Promise<Result> {
+async function capture(run: Run, change?: Change, dryRun = false): Promise<Result> {
   const lines: string[] = [];
   let level: Result["level"] = "info";
-  const status = await run(args, {
+  const status = await run(change, dryRun, {
     log: (line) => lines.push(line),
     warn: (line) => {
       lines.push(line);
@@ -180,7 +172,7 @@ async function capture(run: Run, args: string[]): Promise<Result> {
   return { status, lines, level: status ? "error" : level };
 }
 
-// Pi thay thông báo info liền trước bằng thông báo mới: mỗi lệnh gửi một thông báo gộp mọi dòng.
+// Pi thay thông báo info liền trước bằng thông báo mới: mỗi lần chạy gửi một thông báo gộp mọi dòng.
 const show = (ctx: ExtensionContext, result: Result) => ctx.ui.notify(result.lines.join("\n"), result.level);
 
 async function choose(ctx: ExtensionContext, menu: Menu): Promise<Action | undefined> {
@@ -276,33 +268,32 @@ async function pickLevel(ctx: ExtensionContext, role: string, model: Model<Api> 
   return choice === undefined ? undefined : levelOf(choice);
 }
 
-/** Menu của một vai → tham số lệnh (set/reset), hoặc undefined khi huỷ. */
-async function roleArgs(ctx: ExtensionContext, install: Install, name: string, config: unknown, resolved: Resolved, presets: Presets) {
+/** Menu của một vai → thay đổi (ghi đè hoặc bỏ ghi đè), hoặc undefined khi huỷ. */
+async function roleChange(ctx: ExtensionContext, install: Install, name: string, config: unknown, resolved: Resolved, presets: Presets) {
   const wanted = resolved.roles[name];
   const fallback = install.roles.resolveModelRoles(presets, install.roles.withoutRoles(config, [name])).roles[name];
   const action = await choose(ctx, roleMenu(name, wanted, fallback));
-  if (!action || !("pick" in action)) return action && "args" in action ? action.args : undefined;
+  if (!action || !("pick" in action)) return action && "change" in action ? action.change : undefined;
   const ref = install.roles.parseModelRef(wanted.model);
   const currentModel = ref && ctx.modelRegistry.find(ref.provider, ref.id);
   if (action.pick === "thinking") {
     const level = await pickLevel(ctx, name, currentModel, wanted.thinking, install.roles.THINKING_LEVELS);
-    return level ? ["set", name, level] : undefined;
+    return level ? { role: name, thinking: level } : undefined;
   }
   const model = await pickModel(ctx, name, wanted.model);
   if (!model) return undefined;
   const level = await pickLevel(ctx, name, model, wanted.thinking);
-  return level ? ["set", name, `${model.provider}/${model.id}`, level] : undefined;
+  return level ? { role: name, model: `${model.provider}/${model.id}`, thinking: level } : undefined;
 }
 
-async function presetArgs(ctx: ExtensionContext, presets: Presets, config: unknown, current: string) {
-  const custom = config && typeof config === "object" && (config as { presets?: unknown }).presets;
-  const names = [...Object.keys(presets), ...Object.keys(custom && typeof custom === "object" ? custom : {})];
+async function presetChange(ctx: ExtensionContext, presets: Presets, current: string): Promise<Change | undefined> {
+  const names = Object.keys(presets);
   const options = names.map((name) => {
-    const description = presets[name]?.description ?? (custom as Record<string, { description?: string }>)[name]?.description;
+    const description = presets[name].description;
     return `${name}${name === current ? " (đang dùng)" : ""}${description ? `: ${description}` : ""}`;
   });
   const choice = await ctx.ui.select("Preset", options);
-  return choice === undefined ? undefined : ["preset", names[options.indexOf(choice)]];
+  return choice === undefined ? undefined : { preset: names[options.indexOf(choice)] };
 }
 
 /** /models không tham số: bảng các vai làm menu; mỗi thay đổi được xem trước rồi mới ghi. */
@@ -312,7 +303,7 @@ async function openMenu(pi: ExtensionAPI, ctx: ExtensionCommandContext, install:
   const current = roles.readModelRoles(install.agentDir);
   const resolved = current.error ? undefined : roles.resolveModelRoles(presets, current.config);
   if (!resolved || resolved.errors.length) {
-    show(ctx, await capture(run, []));
+    show(ctx, await capture(run));
     return;
   }
   const effective = roles.effectiveModelRoles(install.agentDir);
@@ -322,21 +313,19 @@ async function openMenu(pi: ExtensionAPI, ctx: ExtensionCommandContext, install:
     session: sessionLabel(pi, ctx), roles: resolved.roles, names: roles.ROLES, drifted,
   }));
   if (!action) return;
-  const args = "args" in action ? action.args
-    : "preset" in action ? await presetArgs(ctx, presets, current.config, resolved.preset)
-    : "role" in action ? await roleArgs(ctx, install, action.role, current.config, resolved, presets) : undefined;
-  if (!args) return;
-  const preview = await capture(run, [...args, "--dry-run"]);
+  const change = "change" in action ? action.change
+    : "preset" in action ? await presetChange(ctx, presets, resolved.preset)
+    : "role" in action ? await roleChange(ctx, install, action.role, current.config, resolved, presets) : undefined;
+  if (!change) return;
+  const preview = await capture(run, change, true);
   if (preview.status) {
     show(ctx, preview);
     return;
   }
-  // Dòng đầu của bản xem trước là "Xem trước (--dry-run), chưa ghi file nào."
-  if (await ctx.ui.confirm(`/models ${args.join(" ")}`, preview.lines.slice(1).join("\n"))) show(ctx, await capture(run, args));
+  if (await ctx.ui.confirm("Ghi thay đổi này?", preview.lines.join("\n"))) show(ctx, await capture(run, change));
 }
 
 export default function modelRoles(pi: ExtensionAPI) {
-  let latest: ExtensionContext | undefined;
   let install: Promise<Install> | undefined;
   const getInstall = () => {
     install ??= loadInstall();
@@ -346,34 +335,9 @@ export default function modelRoles(pi: ExtensionAPI) {
     return install;
   };
 
-  pi.on("session_start", (_event, ctx) => {
-    latest = ctx;
-  });
-
   pi.registerCommand("models", {
     description: "Model và thinking của các vai (model-roles.json): xem, đổi, áp ngay",
-    getArgumentCompletions: async (prefix) => {
-      const ctx = latest;
-      if (!ctx) return null;
-      try {
-        const { roles, root, agentDir } = await getInstall();
-        const presets = roles.loadPresets(path.join(root, "assets", "configs", "model-presets.json"));
-        const config = roles.readModelRoles(agentDir).config as { presets?: Record<string, { description?: string }> } | undefined;
-        const custom = config?.presets && typeof config.presets === "object" ? config.presets : {};
-        const registry = ctx.modelRegistry;
-        return completions(prefix, {
-          roles: roles.ROLES,
-          presets: [...Object.entries(presets), ...Object.entries(custom)].map(([name, preset]) => ({ name, description: preset?.description })),
-          providers: [...new Set(registry.getAll().map((model) => model.provider))].sort(),
-          models: registry.getAvailable().map((model) => ({ ref: `${model.provider}/${model.id}`, description: model.name })),
-          levels: roles.THINKING_LEVELS,
-        }, fuzzyFilter);
-      } catch {
-        return null;
-      }
-    },
-    handler: async (text, ctx) => {
-      latest = ctx;
+    handler: async (_text, ctx) => {
       let loaded: Install;
       try {
         loaded = await getInstall();
@@ -381,18 +345,17 @@ export default function modelRoles(pi: ExtensionAPI) {
         ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
         return;
       }
-      const run: Run = (args, out) => loaded.models.runModels({
-        root: loaded.root, agentDir: loaded.agentDir, args, out, command: "/models", catalog: sessionCatalog(ctx, loaded.roles),
+      const run: Run = (change, dryRun, out) => loaded.models.runModels({
+        root: loaded.root, agentDir: loaded.agentDir, catalog: sessionCatalog(ctx, loaded.roles), change, dryRun, out,
         effects: (changed) => applyToSession(pi, ctx, loaded, changed),
       });
-      const args = splitArgs(text);
-      if (!args.length && ctx.hasUI) {
+      if (ctx.hasUI) {
         await openMenu(pi, ctx, loaded, run);
         return;
       }
-      const result = await capture(run, args);
+      const result = await capture(run);
       const session = sessionLabel(pi, ctx);
-      if ((!args.length || args[0] === "show") && session) result.lines.push(`Phiên này: ${session}`);
+      if (session) result.lines.push(`Phiên này: ${session}`);
       show(ctx, result);
     },
   });

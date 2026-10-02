@@ -1,22 +1,24 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
+import {writeAtomic} from './merge.mjs';
 
 /**
  * Model và mức thinking của mọi vai ở một chỗ:
  * - preset có sẵn trong assets/configs/model-presets.json (cập nhật theo bản phát hành);
- * - <agent-dir>/model-roles.json của người dùng: preset đang chọn, ghi đè theo vai, preset riêng.
+ * - <agent-dir>/model-roles.json của người dùng: preset đang chọn và ghi đè theo vai.
  * Installer sinh các file gốc (settings.json, agents/*.md, advisor.json, pi-goal-x-settings.json) từ kết quả resolve;
- * pi-models và pi-doctor so kết quả đó với giá trị đang có hiệu lực trong các file gốc.
+ * /models (runtime/models.mjs) đổi model-roles.json và áp ngay vào các file gốc; /models và pi-doctor so kết quả
+ * resolve với giá trị đang có hiệu lực trong các file gốc.
  */
 
 export const ROLES = ['main', 'researcher', 'worker', 'debugger', 'reviewer', 'advisor', 'auditor', 'oracle', 'autoMode'];
 export const SUBAGENT_ROLES = ['researcher', 'worker', 'debugger', 'reviewer'];
 export const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 const FIELDS = ['model', 'thinking'];
-export const DEFAULT_PRESET = 'default';
+const DEFAULT_PRESET = 'default';
 export const MODEL_ROLES_FILE = 'model-roles.json';
-export const defaultModelRoles = () => ({preset: DEFAULT_PRESET, roles: {}});
+const defaultModelRoles = () => ({preset: DEFAULT_PRESET, roles: {}});
 
 // Thứ tự suy ra enabledModels (Ctrl+P, scopeModels của pi-subagents) và thinking mặc định theo model:
 // model của phiên chính đứng đầu; model của auto mode không vào danh sách chọn model.
@@ -65,66 +67,27 @@ function checkRoles(where, roles, errors) {
   return result;
 }
 
-/** Lỗi của bộ preset có sẵn: mỗi preset phải đặt đủ model và thinking cho mọi vai. */
-export function presetErrors(presets) {
-  const errors = [];
-  if (!isObject(presets) || !isObject(presets[DEFAULT_PRESET])) return [`thiếu preset "${DEFAULT_PRESET}"`];
-  for (const [name, preset] of Object.entries(presets)) {
-    const roles = checkRoles(`${name}.roles`, preset?.roles, errors);
-    for (const role of ROLES) {
-      const missing = FIELDS.filter(field => roles[role]?.[field] === undefined);
-      if (missing.length) errors.push(`${name}: vai ${role} thiếu ${missing.join(', ')}`);
-    }
-  }
-  return errors;
-}
-
 /**
- * Model/thinking của từng vai: preset có sẵn → preset riêng (extends một preset có sẵn) → roles trong model-roles.json.
- * source của mỗi trường là "preset" hoặc "override". errors khác rỗng: cấu hình không dùng được; roles khi đó
- * vẫn đủ (lấy từ preset mặc định cho phần lỗi) để còn hiển thị.
+ * Model/thinking của từng vai: preset có sẵn → roles trong model-roles.json. source của mỗi trường là "preset" hoặc
+ * "override". errors khác rỗng: cấu hình không dùng được; roles khi đó vẫn đủ (lấy từ preset mặc định cho phần lỗi)
+ * để còn hiển thị.
  */
 export function resolveModelRoles(presets, config = defaultModelRoles()) {
   const errors = [];
-  // Tên preset riêng lấy từ JSON của người dùng: không để khóa như "__proto__" đổi prototype của bảng tra.
-  const custom = Object.create(null);
   let overrides = {};
   let preset = DEFAULT_PRESET;
   if (!isObject(config)) errors.push(`${MODEL_ROLES_FILE} phải là một object JSON`);
   else {
     for (const key of Object.keys(config)) {
-      if (!['preset', 'roles', 'presets'].includes(key)) errors.push(`không có khóa "${key}" (chỉ có preset, roles, presets)`);
-    }
-    if (config.presets !== undefined && !isObject(config.presets)) errors.push('presets phải là object theo tên preset');
-    for (const [name, value] of Object.entries(isObject(config.presets) ? config.presets : {})) {
-      if (Object.hasOwn(presets, name)) {
-        errors.push(`presets.${name}: trùng tên preset có sẵn, hãy đặt tên khác`);
-        continue;
-      }
-      if (!isObject(value)) {
-        errors.push(`presets.${name} phải là object dạng {"extends": "claude", "roles": {...}}`);
-        continue;
-      }
-      for (const key of Object.keys(value)) {
-        if (!['description', 'extends', 'roles'].includes(key)) errors.push(`presets.${name}: không có khóa "${key}" (chỉ có description, extends, roles)`);
-      }
-      const base = value.extends ?? DEFAULT_PRESET;
-      if (!Object.hasOwn(presets, base)) {
-        errors.push(`presets.${name}.extends phải là preset có sẵn (${Object.keys(presets).join(', ')}), đang là ${JSON.stringify(base)}`);
-        continue;
-      }
-      custom[name] = {base, roles: checkRoles(`presets.${name}.roles`, value.roles, errors)};
+      if (key === 'presets') errors.push('preset riêng ("presets") không còn được hỗ trợ: chọn preset có sẵn và ghi đè từng vai trong "roles"');
+      else if (!['preset', 'roles'].includes(key)) errors.push(`không có khóa "${key}" (chỉ có preset, roles)`);
     }
     if (config.preset !== undefined) preset = config.preset;
     overrides = checkRoles('roles', config.roles, errors);
   }
-  const base = Object.hasOwn(presets, preset) ? preset : custom[preset]?.base;
-  if (base === undefined) {
-    errors.push(`preset ${JSON.stringify(preset)} không có (có ${[...Object.keys(presets), ...Object.keys(custom)].join(', ')})`);
-  }
-  const layers = name => [
-    ['preset', presets[base ?? DEFAULT_PRESET].roles[name]], ['preset', custom[preset]?.roles[name]], ['override', overrides[name]],
-  ];
+  const known = typeof preset === 'string' && Object.hasOwn(presets, preset);
+  if (!known) errors.push(`preset ${JSON.stringify(preset)} không có (có ${Object.keys(presets).join(', ')})`);
+  const layers = name => [['preset', presets[known ? preset : DEFAULT_PRESET].roles[name]], ['override', overrides[name]]];
   const roles = {};
   for (const name of ROLES) {
     const role = {source: {}};
@@ -166,26 +129,12 @@ export function nativeValues(roles) {
 const FILE_ROLES = {settings: ['main', 'autoMode'], advisor: ['main', 'advisor'], goal: ['auditor', 'oracle']};
 
 /**
- * Loại file gốc theo đường dẫn: settings, advisor, goal, tên vai của file role; undefined nếu không chứa model.
- * paths: path.posix/path.win32 khi đường dẫn thuộc hệ điều hành khác (test).
- */
-export function nativeKind(file, agentDir, paths = path) {
-  const name = paths.basename(file);
-  if (paths.dirname(file) === paths.join(agentDir, 'agents') && name.endsWith('.md')) {
-    const role = name.slice(0, -3);
-    return SUBAGENT_ROLES.includes(role) ? role : undefined;
-  }
-  if (paths.dirname(file) !== agentDir) return undefined;
-  return {'settings.json': 'settings', 'advisor.json': 'advisor', 'pi-goal-x-settings.json': 'goal'}[name];
-}
-
-/**
  * Đặt model/thinking của các vai vào object của một file gốc JSON (sửa tại chỗ, giữ thứ tự khóa sẵn có).
  * only undefined: mọi giá trị do model-roles.json sinh ra, kể cả enabledModels và modelThinkingLevels (dựng mặc định
  * mới từ base). only là danh sách vai: chỉ các vai đó, và bỏ khóa khiến vai đó dùng giá trị khác (ép lại giá trị
  * người dùng đã đổi trong file gốc).
  */
-export function setNativeModels(kind, value, models, only) {
+function setNativeModels(kind, value, models, only) {
   const want = name => FILE_ROLES[kind].includes(name) && (!only || only.includes(name));
   if (kind === 'settings') {
     if (want('main')) Object.assign(value, {
@@ -193,11 +142,7 @@ export function setNativeModels(kind, value, models, only) {
       defaultThinkingLevel: models.settings.defaultThinkingLevel,
     });
     if (!only) Object.assign(value, {modelThinkingLevels: models.settings.modelThinkingLevels, enabledModels: models.settings.enabledModels});
-    if (want('autoMode')) {
-      value.autoMode = Object.assign(isObject(value.autoMode) ? value.autoMode : {}, models.autoMode);
-      // stage2Model (nếu có) thay model ở giai đoạn 2; ép vai autoMode thì bỏ để cả hai giai đoạn dùng model của vai.
-      if (only) delete value.autoMode.stage2Model;
-    }
+    if (want('autoMode')) value.autoMode = Object.assign(isObject(value.autoMode) ? value.autoMode : {}, models.autoMode);
   } else if (kind === 'advisor') {
     if (want('main')) Object.assign(value, {executor: models.advisor.executor, executorEffort: models.advisor.executorEffort});
     if (want('advisor')) {
@@ -324,14 +269,9 @@ export function readModelRoles(agentDir) {
 }
 
 /** Ghi model-roles.json (file của người dùng) qua file tạm rồi đổi tên, quyền 0600. */
-export function writeModelRoles(file, config) {
-  fs.mkdirSync(path.dirname(file), {recursive: true, mode: 0o700});
-  const temporary = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(temporary, `${JSON.stringify(config, null, 2)}\n`, {mode: 0o600});
-  fs.renameSync(temporary, file);
-}
+export const writeModelRoles = (file, config) => writeAtomic(file, Buffer.from(`${JSON.stringify(config, null, 2)}\n`), 0o600);
 
-// Các lệnh ghi của pi-models: trả bản sao đã sửa, không đổi object gốc. File hỏng dạng (không phải object) thì bắt
+// Các thay đổi của /models: trả bản sao đã sửa, không đổi object gốc. File hỏng dạng (không phải object) thì bắt
 // đầu lại từ cấu hình mặc định.
 const copyConfig = config => structuredClone(isObject(config) ? config : defaultModelRoles());
 
@@ -357,26 +297,6 @@ export function withoutRoles(config, roles) {
   const next = copyConfig(config);
   if (isObject(next.roles)) for (const role of roles) delete next.roles[role];
   return next;
-}
-
-/**
- * Ghi đè để model-roles.json khớp giá trị đang có hiệu lực của các vai (pi-models adopt): chỉ những trường khác
- * kết quả resolve. Giá trị không hợp lệ (model không dạng provider/id, mức thinking lạ) không được chép.
- */
-export function adoptRoles(config, roles, effective, names) {
-  let next = copyConfig(config);
-  const adopted = {};
-  for (const name of names) {
-    const fields = {};
-    const current = effective[name];
-    if (parseModelRef(current.model) && current.model !== roles[name].model) fields.model = current.model;
-    const wanted = name === 'auditor' || name === 'oracle' ? goalThinking(roles[name].thinking) : roles[name].thinking;
-    if (THINKING_LEVELS.includes(current.thinking) && current.thinking !== wanted) fields.thinking = current.thinking;
-    if (!Object.keys(fields).length) continue;
-    next = withRole(next, name, fields);
-    adopted[name] = fields;
-  }
-  return {config: next, adopted};
 }
 
 const read = file => {
@@ -411,9 +331,7 @@ export function effectiveModelRoles(agentDir) {
   });
   result.auditor = goalRole(goal);
   result.oracle = goalRole(goal?.oracle);
-  result.autoMode = {
-    model: settings.autoMode?.stage2Model ?? settings.autoMode?.model, thinking: settings.autoMode?.stage2Reasoning, file: 'settings.json',
-  };
+  result.autoMode = {model: settings.autoMode?.model, thinking: settings.autoMode?.stage2Reasoning, file: 'settings.json'};
   return result;
 }
 
@@ -453,23 +371,6 @@ async function withCatalog({modules, agentDir}, fn) {
 }
 
 /**
- * Trạng thái đăng nhập của provider: credential lưu trong auth.json (chỉ đọc tên provider và loại, không đọc giá trị)
- * hoặc key từ môi trường theo cách Pi kiểm, với kho credential rỗng: không chạy lệnh "!..." của key đã lưu, không làm
- * mới token. Trả nhãn nguồn (OAuth, API key đã lưu, tên biến môi trường...) hoặc undefined khi chưa đăng nhập.
- */
-async function providerLogin(runtime, stored, provider) {
-  const type = isObject(stored) && isObject(stored[provider]) ? stored[provider].type : undefined;
-  if (type === 'oauth') return 'OAuth';
-  if (type === 'api_key') return 'API key đã lưu';
-  try {
-    const ambient = await runtime.checkAuth(provider, {signal: AbortSignal.timeout(5000)});
-    return ambient ? ambient.source ?? 'key từ môi trường' : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
  * Kiểm model của mọi vai trong một catalog, không gọi mạng: model không có là lỗi (pi-subagents sẽ lặng lẽ dùng model
  * của parent), mức thinking model không hỗ trợ là ghi chú (Pi hạ về mức gần nhất). find(provider, id): model hoặc
  * undefined; clamp(model, level): mức Pi dùng; login(provider): nhãn đăng nhập hoặc undefined, không truyền thì không
@@ -498,60 +399,32 @@ export async function catalogReport({roles, find, clamp, login}) {
 }
 
 /**
- * catalogReport trên catalog của runtime đã cài. models.json và bộ nhớ catalog (models-store.json) của agent dir được
- * tính, để model tự khai báo cũng hợp lệ. logins: thêm trạng thái đăng nhập của provider các vai dùng (pi-models);
- * installer và pi-doctor không đọc auth.
+ * catalogReport trên catalog của runtime đã cài (installer, pi-doctor), không đọc auth. models.json và bộ nhớ catalog
+ * (models-store.json) của agent dir được tính, để model tự khai báo cũng hợp lệ.
  */
-export function checkCatalog({modules, agentDir, roles, logins = false}) {
-  return withCatalog({modules, agentDir}, ({runtime, pi}) => {
-    const stored = logins ? read(path.join(agentDir, 'auth.json')) : undefined;
-    return catalogReport({
-      roles, find: (provider, id) => runtime.getModel(provider, id), clamp: pi.clampThinkingLevel,
-      login: logins ? provider => providerLogin(runtime, stored, provider) : undefined,
-    });
-  });
-}
-
-/**
- * Catalog cho pi-models chạy ngoài phiên Pi: runtime đã cài, chế độ offline. /models trong phiên truyền catalog của
- * chính phiên đó (cùng dạng {check, list}).
- */
-export const offlineCatalog = ({modules, agentDir}) => ({
-  check: (roles, {logins = false} = {}) => checkCatalog({modules, agentDir, roles, logins}),
-  list: () => listCatalog({modules, agentDir}),
-});
-
-/** Provider trong catalog, trạng thái đăng nhập (như checkCatalog) và model kèm mức thinking hỗ trợ, cho pi-models list. */
-export function listCatalog({modules, agentDir}) {
-  const stored = read(path.join(agentDir, 'auth.json'));
-  return withCatalog({modules, agentDir}, async ({runtime, pi}) => {
-    const providers = await Promise.all(runtime.getProviders().map(async provider => ({
-      id: provider.id, name: provider.name ?? provider.id, login: await providerLogin(runtime, stored, provider.id),
-      models: runtime.getModels(provider.id).map(model => ({id: model.id, levels: pi.getSupportedThinkingLevels(model)})),
-    })));
-    return providers.sort((a, b) => a.id.localeCompare(b.id));
-  });
+export function checkCatalog({modules, agentDir, roles}) {
+  return withCatalog({modules, agentDir}, ({runtime, pi}) =>
+    catalogReport({roles, find: (provider, id) => runtime.getModel(provider, id), clamp: pi.clampThinkingLevel}));
 }
 
 export const roleLabel = role => `${role.model ?? '?'} (${role.thinking ?? '?'})`;
 
 /** Cảnh báo cho vai đang dùng giá trị khác model-roles.json, kèm cách giữ hoặc bỏ giá trị đó. */
-export const driftWarning = (name, effective, wanted, command = 'pi-models') =>
+export const driftWarning = (name, effective, wanted) =>
   `${name} đang dùng ${roleLabel(effective)} theo ${effective.file}, khác ${MODEL_ROLES_FILE} (${roleLabel(wanted)}). ` +
-  `Giữ giá trị này: ${command} adopt ${name}; dùng lại ${MODEL_ROLES_FILE}: ${command} apply --reset.`;
+  `Trong /models: đặt ${name} để giữ giá trị này, hoặc đưa các vai lệch về ${MODEL_ROLES_FILE}.`;
 
-/** Cảnh báo provider chưa đăng nhập của checkCatalog; trong phiên Pi (command "/models") đăng nhập bằng /login. */
-export const loginWarning = ({provider, roles}, command = 'pi-models') =>
-  `provider ${provider} (${roles.join(', ')}) chưa đăng nhập: ${command.startsWith('/') ? 'dùng /login' : 'chạy pi rồi /login'}.`;
+/** Cảnh báo provider chưa đăng nhập (catalog của phiên Pi trong /models). */
+export const loginWarning = ({provider, roles}) => `provider ${provider} (${roles.join(', ')}) chưa đăng nhập: dùng /login.`;
 
 /**
- * Bảng model của mọi vai cho pi-models và pi-doctor: giá trị theo model-roles.json, giá trị đang có hiệu lực khi
+ * Bảng model của mọi vai cho /models và pi-doctor: giá trị theo model-roles.json, giá trị đang có hiệu lực khi
  * khác (đổi qua /model, /goal-settings, /agents hoặc sửa tay file gốc), và kết quả kiểm catalog của cả hai.
- * logins: cảnh báo cả provider chưa đăng nhập (pi-models). catalog: như offlineCatalog (mặc định: runtime đã cài).
- * command: lệnh được gợi ý trong cảnh báo (pi-models, hoặc /models trong phiên Pi).
+ * catalog: {check(roles, {logins})}; mặc định là runtime đã cài (modules), không kiểm đăng nhập. logins: cảnh báo cả
+ * provider chưa đăng nhập (catalog của phiên Pi).
  */
 export async function modelRolesReport({
-  root, agentDir, modules, logins = false, catalog = offlineCatalog({modules, agentDir}), command = 'pi-models',
+  root, agentDir, modules, logins = false, catalog = {check: roles => checkCatalog({modules, agentDir, roles})},
 }) {
   const lines = [], warnings = [], errors = [];
   const current = readModelRoles(agentDir);
@@ -569,14 +442,14 @@ export async function modelRolesReport({
       continue;
     }
     lines.push(`  ${name}: ${roleLabel(effective[name])} theo ${effective[name].file}; ${MODEL_ROLES_FILE}: ${roleLabel(wanted)}${overridden}`);
-    warnings.push(driftWarning(name, effective[name], wanted, command));
+    warnings.push(driftWarning(name, effective[name], wanted));
   }
   // Giá trị đang có hiệu lực là thứ Pi dùng: model sai tên ở đó cũng bị thay lặng lẽ bằng model của parent.
   const checked = Object.fromEntries(ROLES.map(name => [name, drifted.has(name) && effective[name].model ? effective[name] : resolved.roles[name]]));
   try {
     const report = await catalog.check(checked, {logins});
     errors.push(...report.errors);
-    warnings.push(...report.notes, ...report.loggedOut.map(entry => loginWarning(entry, command)));
+    warnings.push(...report.notes, ...report.loggedOut.map(loginWarning));
   } catch (error) {
     warnings.push(`không kiểm được model trong catalog của Pi: ${error.message}`);
   }

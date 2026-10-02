@@ -1,5 +1,5 @@
 /**
- * Phần thuần của /models: tách tham số, gợi ý tham số và nhãn menu. Không import gói của Pi để test chạy bằng Node.
+ * Phần thuần của /models: nhãn và lựa chọn của menu. Không import gói của Pi để test chạy bằng Node.
  */
 
 export interface RoleValue {
@@ -11,68 +11,11 @@ export interface RoleValue {
   file?: string;
 }
 
-export interface Completion {
-  value: string;
-  label: string;
-  description?: string;
-}
-
-export interface CompletionData {
-  roles: string[];
-  presets: { name: string; description?: string }[];
-  providers: string[];
-  /** Model gợi ý cho /models set, dạng provider/id. */
-  models: { ref: string; description?: string }[];
-  levels: string[];
-}
-
-/** Lọc và xếp theo mức khớp (fuzzyFilter của pi-tui trong phiên Pi). */
-export type Filter = <T>(items: T[], query: string, text: (item: T) => string) => T[];
-
-export const COMMANDS: [string, string][] = [
-  ["show", "bảng model của mọi vai"],
-  ["list", "provider và model trong catalog"],
-  ["preset", "chọn preset"],
-  ["set", "ghi đè model/thinking của một vai"],
-  ["reset", "bỏ ghi đè của vai"],
-  ["adopt", "ghi giá trị đang chạy của vai lệch vào model-roles.json"],
-  ["apply", "áp model-roles.json vào file gốc"],
-  ["help", "hướng dẫn"],
-];
-
-const FLAGS: Record<string, string[]> = {
-  preset: ["--dry-run"], set: ["--dry-run"], reset: ["--all", "--dry-run"], adopt: ["--dry-run"], apply: ["--reset", "--dry-run"],
-};
-
-/** Tham số của /models: tên vai, provider/id, mức thinking và cờ đều không chứa khoảng trắng. */
-export const splitArgs = (text: string): string[] => text.trim().split(/\s+/u).filter(Boolean);
-
 /**
- * Gợi ý cho phần tham số đang gõ (prefix: mọi thứ sau "/models "). value là cả chuỗi tham số với từ cuối được thay,
- * vì Pi thay toàn bộ prefix bằng value.
+ * Một thay đổi chọn trong menu (runtime/models.mjs áp): chọn preset, ghi đè model/thinking của một vai, bỏ ghi đè của
+ * một vai, hoặc đưa mọi vai về model-roles.json (bỏ giá trị đổi ngoài file này).
  */
-export function completions(prefix: string, data: CompletionData, filter: Filter): Completion[] | null {
-  const tokens = prefix.split(/\s+/u);
-  const last = tokens.pop() ?? "";
-  const head = prefix.slice(0, prefix.length - last.length);
-  const [command, ...args] = tokens.filter(Boolean);
-  let candidates: [string, string?][] = [];
-  if (command === undefined) candidates = COMMANDS;
-  else if (last.startsWith("-")) candidates = (FLAGS[command] ?? []).filter((flag) => !args.includes(flag)).map((flag) => [flag]);
-  else {
-    const positional = args.filter((arg) => !arg.startsWith("--"));
-    if (command === "preset" && !positional.length) candidates = data.presets.map((preset) => [preset.name, preset.description]);
-    else if (command === "list" && !positional.length) candidates = data.providers.map((provider) => [provider]);
-    else if (command === "set" && !positional.length) candidates = data.roles.map((role) => [role]);
-    else if (command === "set" && positional.length < 3) {
-      const values = positional.slice(1);
-      if (!values.some((value) => value.includes("/"))) candidates.push(...data.models.map(({ ref, description }): [string, string?] => [ref, description]));
-      if (!values.some((value) => data.levels.includes(value))) candidates.push(...data.levels.map((level): [string, string?] => [level, "thinking"]));
-    } else if (command === "reset" || command === "adopt") candidates = data.roles.filter((role) => !positional.includes(role)).map((role) => [role]);
-  }
-  const matched = filter(candidates, last, ([value]) => value);
-  return matched.length ? matched.map(([value, description]) => ({ value: head + value, label: value, ...(description ? { description } : {}) })) : null;
-}
+export type Change = { preset: string } | { role: string; model?: string; thinking?: string } | { reset: string } | { apply: true };
 
 const pair = (value: RoleValue | undefined) => `${value?.model ?? "?"} · ${value?.thinking ?? "?"}`;
 
@@ -83,8 +26,8 @@ export function roleOption(name: string, wanted: RoleValue, effective?: RoleValu
   return `${name.padEnd(10)} ${pair(wanted)}${override}${drift}`;
 }
 
-/** Việc của một lựa chọn: mở menu của vai, chạy lệnh với args, chọn preset, chọn model hay mức thinking của vai. */
-export type Action = { role: string } | { args: string[] } | { preset: true } | { pick: "model" | "thinking" };
+/** Việc của một lựa chọn: mở menu của vai, áp một thay đổi, chọn preset, chọn model hay mức thinking của vai. */
+export type Action = { role: string } | { change: Change } | { preset: true } | { pick: "model" | "thinking" };
 
 export interface Menu {
   title: string;
@@ -93,7 +36,7 @@ export interface Menu {
 }
 
 /**
- * Menu chính của /models: mỗi vai một dòng, rồi chọn preset và (khi có vai lệch) giữ hoặc bỏ giá trị đang chạy.
+ * Menu chính của /models: mỗi vai một dòng, rồi chọn preset và (khi có vai lệch) đưa các vai lệch về model-roles.json.
  * drifted: giá trị đang chạy của các vai lệch với model-roles.json.
  */
 export function mainMenu(options: {
@@ -111,8 +54,8 @@ export function mainMenu(options: {
   menu.actions.push({ preset: true });
   const drifted = Object.keys(options.drifted);
   if (drifted.length) {
-    menu.options.push(`Giữ giá trị đang chạy của ${drifted.join(", ")} (adopt)`, `Đưa ${drifted.join(", ")} về model-roles.json (apply --reset)`);
-    menu.actions.push({ args: ["adopt"] }, { args: ["apply", "--reset"] });
+    menu.options.push(`Đưa ${drifted.join(", ")} về model-roles.json`);
+    menu.actions.push({ change: { apply: true } });
   }
   return menu;
 }
@@ -126,7 +69,7 @@ export function roleMenu(name: string, wanted: RoleValue, preset?: RoleValue): M
   };
   if (Object.values(wanted.source ?? {}).includes("override")) {
     menu.options.push(`Bỏ ghi đè, dùng preset (${pair(preset)})`);
-    menu.actions.push({ args: ["reset", name] });
+    menu.actions.push({ change: { reset: name } });
   }
   return menu;
 }

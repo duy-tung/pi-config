@@ -8,7 +8,7 @@ import {mergesConfig} from '../lib/resources.mjs';
 import {reconcileConfigFile} from '../runtime/merge.mjs';
 import {loadPresets, resolveModelRoles} from '../runtime/model-roles.mjs';
 
-// Bản cài giả cho test của pi-models và /models; không chạy installer, không cài runtime.
+// Bản cài giả cho test của /models; không chạy installer, không cài runtime.
 export const repoDir = fileURLToPath(new URL('../', import.meta.url));
 export const presets = loadPresets(path.join(repoDir, 'assets', 'configs', 'model-presets.json'));
 export const sha256 = data => crypto.createHash('sha256').update(data).digest('hex');
