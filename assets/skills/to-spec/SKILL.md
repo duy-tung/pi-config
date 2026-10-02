@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 This skill takes the current conversation context and codebase understanding and produces a spec. Do NOT interview the user; just synthesize what you already know.
 
-The issue tracker and triage label vocabulary should have been provided to you (the `## Agent skills` block in `AGENTS.md` points at them). If not, tell the user to run `/skill:setup` before you publish.
+The issue tracker should have been provided to you (the `## Agent skills` block in `AGENTS.md` points at them). If not, tell the user to run `/skill:setup` before you publish.
 
 ## Process
 
@@ -18,7 +18,7 @@ The issue tracker and triage label vocabulary should have been provided to you (
 
    Check with the user that these seams and this proof match their expectations.
 
-4. Write the spec using the template below, then publish it to the project issue tracker with the `spec` label. The `spec` label marks a parent to slice with `/skill:to-tickets`, so AFK runners skip it instead of building the whole spec in one run. Create the label first if the tracker lacks it, without touching an existing one (on GitHub: `gh label list --search spec --json name`, then `gh label create spec --description "Parent spec: slice with /skill:to-tickets"` only when it is missing). When `docs/agents/triage-labels.md` exists, also apply its `ready-for-agent` label so triage leaves the spec alone; without that file, apply no triage label. A local markdown tracker has no labels: the spec goes to the spec path its doc names.
+4. Write the spec using the template below, then publish it to the project issue tracker with the `spec` label. The `spec` label marks a parent to slice with `/skill:to-tickets`, so `/skill:implement` builds its tickets instead of the whole spec in one run. Create the label first if the tracker lacks it, without touching an existing one (on GitHub: `gh label list --search spec --json name`, then `gh label create spec --description "Parent spec: slice with /skill:to-tickets"` only when it is missing). A local markdown tracker has no labels: the spec goes to the spec path its doc names.
 
 5. Tell the user the next step is `/skill:to-tickets` in this same conversation, without clearing or compacting first: a large spec truncates when it is fetched back.
 

@@ -11,7 +11,7 @@ Skill nằm trong `assets/skills/` của repo và được cài vào `<root>/ass
 | Trụ cột | Trên Pi |
 |---|---|
 | **Căn chỉnh trước khi build** | `/skill:grill-with-docs` hỏi từng vòng, mỗi câu có đáp án đề xuất. Sự thật do agent tự tra (code giao `explorer`, docs/web giao `researcher`), quyết định là của người. Câu "cách nào tốt hơn" mà chạy thử trả lời được thì agent tự làm prototype. |
-| **Ở trong smart zone** | Giữ mỗi pha trong khoảng 150k token đầu; footer của Pi cho biết context đang dùng. `/skill:context-audit` đo và dọn phần luôn-bật. Việc đọc code rộng giao `explorer`, tra docs/web giao `researcher`. Hết một pha thì chọn: tiếp tục, `/clear`, handoff, subagent hoặc `/compact`. |
+| **Ở trong smart zone** | Giữ mỗi pha trong khoảng 150k token đầu; footer của Pi cho biết context đang dùng. Việc đọc code rộng giao `explorer`, tra docs/web giao `researcher`. Hết một pha thì chọn: tiếp tục, `/clear`, handoff, subagent hoặc `/compact`. |
 | **Chứng minh trên sản phẩm thật** | Chạy thay đổi theo đường người dùng đi (app, CLI, API) và đọc output thật; typecheck hay CI xanh không phải bằng chứng. Kết luận VERIFIED, NOT VERIFIED hoặc INCONCLUSIVE kèm bằng chứng. |
 | **Mã hoá bài học vào cấu trúc** | Thang ưu tiên, từ mạnh nhất: type và kiến trúc; lint, hook và CI; `CODING_STANDARDS.md`; skill; một dòng trong AGENTS.md. `/skill:reflect` đưa mỗi bài học lên nấc cao nhất có thể. |
 | **Tự chủ có hợp đồng** | Việc đảo ngược được thì cứ làm. Việc dài giao `/goal` của pi-goal-x. Git guard trong auto mode chặn tất định các lệnh git phá huỷ. |
@@ -49,11 +49,8 @@ Skill kỷ luật (grilling, tdd, diagnose, interrogate…) được model tự 
 |---|---|
 | Có bug hoặc chậm | Mô tả triệu chứng; agent tự nạp `diagnose`: tái hiện đỏ trước, sửa tận gốc |
 | Việc dài, chạy tiếp qua nhiều lượt | `/goal <mục tiêu>` |
-| Việc lớn, còn mù mờ | `/skill:wayfinder` |
-| Issue và PR người khác gửi | `/skill:triage` |
 | Chuyển việc sang phiên hoặc người khác | `/skill:handoff` |
 | Tin nhắn của agent khó hiểu | `/skill:wait-what` |
-| Phiên chậm, ồn, tốn token | `/skill:context-audit` |
 | Lúc rảnh | `/skill:improve-architecture` |
 
 ## Ranh giới pha và smart zone
@@ -120,16 +117,13 @@ Khi thật sự cần, bạn tự chạy lệnh bằng `!<lệnh>` trong editor 
 | `ship` | Mở PR (deslop, commit có thứ tự, body briefing), babysit, land khi được yêu cầu. |
 | `reflect` | Bài học lặp lại → nấc mạnh nhất của thang; chỉ áp dụng dòng bạn duyệt. |
 | `setup` | Cấu hình repo: tracker, domain docs, AGENTS.md gọn, `CODING_STANDARDS.md`, skill theo stack, hook commit. |
-| `context-audit` | Đo context luôn-bật và cắt tỉa với ba phép thử. |
 | `improve-architecture` | Khảo sát cơ hội "làm sâu module", báo cáo HTML, rồi grill phương án bạn chọn. |
-| `wayfinder` | Bản đồ ticket quyết định cho việc lớn hơn một spec. |
-| `triage` | Máy trạng thái triage cho issue và PR bên ngoài. |
 | `handoff` | Nén hội thoại thành tài liệu bàn giao. |
 | `wait-what` | Nói lại tin nhắn cuối bằng lời đơn giản. |
 
 ### 17 kỷ luật (model tự nạp; chỉ mô tả nằm trong context)
 
-grilling, domain-modeling, codebase-design, principles, tdd, diagnose, interrogate, how, why, prototype, research, unslop, writing-for-agents, resolving-merge-conflicts, wizard.
+grilling, domain-modeling, codebase-design, principles, tdd, diagnose, interrogate, how, why, prototype, research, unslop, writing-for-agents, resolving-merge-conflicts.
 
 ### Skill theo stack (chỉ trong repo dùng stack đó)
 
@@ -141,9 +135,8 @@ grilling, domain-modeling, codebase-design, principles, tdd, diagnose, interroga
 |---|---|
 | `AGENTS.md` | File hướng dẫn duy nhất; Pi đọc AGENTS.md trước CLAUDE.md. Đội còn dùng Claude Code thì giữ `CLAUDE.md` chỉ chứa `@AGENTS.md`. |
 | `CODING_STANDARDS.md` | Luật review; `reviewer` đọc, agent code không phải trả giá mỗi request. |
-| `docs/agents/*.md` | Tracker (GitHub, GitLab hoặc markdown cục bộ), cấu trúc domain, nhãn triage. |
+| `docs/agents/*.md` | Tracker (GitHub, GitLab hoặc markdown cục bộ) và cấu trúc domain. |
 | `CONTEXT.md`, `docs/adr/` | Từ điển domain và quyết định kiến trúc. |
-| `.tstack/` | Ghi chú và bằng chứng của từng lần chạy; được gitignore. |
 
 ## Tuỳ biến
 

@@ -15,9 +15,6 @@
 ### Issue tracker
 <Where issues live, in one line>. See `docs/agents/issue-tracker.md`.
 
-### Triage labels
-<Default or custom label names, in one line>. See `docs/agents/triage-labels.md`.
-
 ### Domain docs
 <Single-context or multi-context>. See `docs/agents/domain.md`.
 

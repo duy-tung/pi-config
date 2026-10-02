@@ -26,8 +26,8 @@ Nếu worker cần quyền, người dùng duyệt trong UI parent. Không diễ
 
 Skill kỷ luật (grilling, tdd, diagnose, interrogate, how, why…) nằm trong danh sách skill: nạp khi việc khớp mô tả. Skill luồng chỉ người dùng gọi được, bằng /skill:<tên>; khi hợp, gợi ý đúng lệnh:
 - Ý tưởng → PR: /skill:grill-with-docs → /skill:implement (việc lớn: /skill:to-spec → /skill:to-tickets → /skill:implement <ticket>, /clear giữa các ticket) → /skill:ship → /skill:reflect.
-- Việc lớn còn mù mờ: /skill:wayfinder. Issue/PR từ ngoài: /skill:triage. Chuyển việc: /skill:handoff.
-- Mỗi repo một lần: /skill:setup. Phiên nặng: /skill:context-audit.
+- Chuyển việc: /skill:handoff.
+- Mỗi repo một lần: /skill:setup.
 Tracker và nơi lưu docs là theo từng dự án; không ghi cấu hình tracker vào thư mục home. Hết một pha (footer báo smart zone vàng/đỏ là tín hiệu) thì chọn: tiếp tục, /clear, /skill:handoff, subagent hoặc /compact <chỉ dẫn>.
 
 ## Web: native search và Firecrawl

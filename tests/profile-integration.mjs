@@ -239,10 +239,10 @@ await check("single session exposes slash commands and only one model delegation
 await check("workflow skills (tstack) load in Pi without warnings; flows are user-invoked only", async () => {
   const { skills, diagnostics } = sdk.loadSkillsFromDir({ dir: path.join(installRoot, "assets", "skills"), source: "path" });
   assert.deepEqual(diagnostics, []);
-  assert.equal(skills.length, 35);
+  assert.equal(skills.length, 25);
   assert.deepEqual(skills.filter((skill) => skill.disableModelInvocation).map((skill) => skill.name).sort(), [
-    "context-audit", "grill-me", "grill-with-docs", "handoff", "implement", "improve-architecture",
-    "reflect", "setup", "ship", "to-spec", "to-tickets", "triage", "wait-what", "wayfinder",
+    "grill-me", "grill-with-docs", "handoff", "implement", "improve-architecture",
+    "reflect", "setup", "ship", "to-spec", "to-tickets", "wait-what",
   ]);
   // Skill kỷ luật vào danh sách của model; skill luồng chỉ gọi bằng /skill:<tên>.
   const listed = sdk.formatSkillsForPrompt(skills);
