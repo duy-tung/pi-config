@@ -2,7 +2,7 @@
 // Tính lại checksum bản vá sau khi đổi phiên bản package (xem docs/upgrade.md).
 // Cài manifests/current vào thư mục tạm (npm ci --ignore-scripts, không sửa repo), áp từng bản vá lên source mới,
 // báo neo không còn khớp. --write ghi phiên bản và checksum mới vào assets/patches.json khi mọi bản vá áp được.
-// --modules <dir> dùng node_modules có sẵn thay vì cài.
+// --modules <dir> dùng node_modules có sẵn, chưa vá, thay vì cài.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -52,12 +52,6 @@ data.patches.forEach((spec, index) => {
   }
   const source = fs.readFileSync(path.join(packageRoot, spec.file), "utf8").replace(/\r\n/g, "\n");
   const original = sourceHash(source);
-  if (original === spec.patchedSha256) {
-    // Runtime đã cài (đã vá) chỉ kiểm được là khớp manifest; nâng phiên bản thì dùng node_modules chưa vá.
-    if (version === spec.versions.current) console.log(`OK   ${label}@${version} (đã vá)`);
-    else { console.log(`FAIL ${label}: source đã vá nhưng phiên bản ${version} khác ${spec.versions.current}`); failed++; }
-    return;
-  }
   let patched;
   try {
     patched = sourceHash(applyEdits(source, spec));
