@@ -1,6 +1,6 @@
 import path from "node:path";
 import { insideAny, insideTemporary, resolveShellPath } from "./paths.ts";
-import { commandName, type ShellAnalysis, type SimpleCommand } from "./shell.ts";
+import { commandName, removeArgs, type ShellAnalysis, type SimpleCommand } from "./shell.ts";
 
 /**
  * Bộ nhận diện tất định cho những lệnh mà luật glob không diễn tả đúng (vừa bắt nhầm vừa bỏ lọt):
@@ -98,7 +98,10 @@ function writeTargets(command: SimpleCommand, ctx: RiskContext, cwd: string): Ta
   const name = commandName(command);
   const words = command.words;
   const args = positionals(command);
-  if (name === "tee" || name === "truncate" || name === "shred") {
+  const removal = removeArgs(words);
+  if (removal) {
+    for (const index of removal.targets) add(index, true);
+  } else if (name === "tee" || name === "truncate" || name === "shred") {
     for (const index of args) add(index, name === "shred");
   } else if (DEST_LAST.has(name)) {
     // Đích: -t DIR / --target-directory[=]DIR (cp, mv, install, ln), còn lại là đối số cuối (trừ đích rsync ở máy khác).
@@ -116,8 +119,6 @@ function writeTargets(command: SimpleCommand, ctx: RiskContext, cwd: string): Ta
     }
   } else if (name === "chmod" || name === "chown" || name === "chgrp") {
     for (const index of args.slice(1)) add(index);
-  } else if (name === "rm" || name === "unlink" || name === "rmdir") {
-    for (const index of args) add(index, true);
   } else if (name === "sed" && words.some((word) => /^-[nrEsuz]*i/u.test(word) || word.startsWith("--in-place"))) {
     // Script đứng trước file khi không có -e/-f; script (vd s/a/b/) không khớp đường dẫn nhạy cảm nào.
     for (const index of args) add(index);

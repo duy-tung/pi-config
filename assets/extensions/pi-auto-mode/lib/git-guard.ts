@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { realPath } from "./paths.ts";
+import { removeArgs } from "./shell.ts";
 
 /**
  * Guard git tất định, theo hooks/guard_git.py của tstack (cùng bảng ca kiểm thử), viết bằng built-in của Node.
@@ -595,7 +596,7 @@ function parseOpts(args: string[], shortValue = "", longValue: string[] = []): O
     positional.push(arg);
     i++;
   }
-  // git và GNU rm nhận tiền tố duy nhất của tùy chọn dài (--no-veri = --no-verify, --har = --hard). Tiền tố của
+  // git nhận tiền tố duy nhất của tùy chọn dài (--no-veri = --no-verify, --har = --hard). Tiền tố của
   // tùy chọn guard xét được tính như tùy chọn đó; tiền tố mơ hồ thì git báo lỗi, nên chặn cũng không hại.
   for (const name of [...longs]) {
     if (name.length < 4) continue;
@@ -606,7 +607,7 @@ function parseOpts(args: string[], shortValue = "", longValue: string[] = []): O
 
 const GUARDED_LONGS = [
   "--no-verify", "--force", "--mirror", "--prune", "--all", "--branches", "--delete", "--tags", "--hard", "--dry-run",
-  "--discard-changes", "--staged", "--worktree", "--cached", "--recursive",
+  "--discard-changes", "--staged", "--worktree", "--cached",
 ];
 
 /** [tùy chọn toàn cục, lệnh con, đối số] của một lời gọi git. */
@@ -795,9 +796,9 @@ function isCatastrophic(ctx: Context, target: string): boolean {
 }
 
 function checkRm(ctx: Context, words: string[]): void {
-  const { letters, longs, positional } = parseOpts(words.slice(1));
-  if (!(letters.has("r") || letters.has("R") || longs.has("--recursive"))) return;
-  for (const target of positional) {
+  const removal = removeArgs(words);
+  if (!removal?.recursive) return;
+  for (const target of removal.targets.map((index) => words[index])) {
     if (!target.includes(SUB) && isCatastrophic(ctx, target)) block(`rm -r ${target} would delete far more than intended`, "Delete named paths inside the project.");
   }
 }
