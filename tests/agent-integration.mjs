@@ -49,10 +49,9 @@ if (fs.existsSync(goalFile)) {
   writeJson(goalFile, { ...goal, ...defaults.goal, oracle: { ...goal.oracle, ...defaults.goal.oracle } });
 }
 const settings = readJson(path.join(agentDir, "settings.json"));
-// Jev của bản cài (settings.json người dùng đã sửa có thể không có mục này: dùng mặc định của extension). Phiên chính
-// tắt Jev (không dùng key của máy); phiên Jev riêng ở cuối dùng key và endpoint giả.
-const installedJev = typeof settings.autoMode?.jev === "object" ? settings.autoMode.jev : {};
-const jevModel = installedJev.model ?? "jev-1.13.0";
+// Model Jev của bản cài (settings.json người dùng đã sửa có thể không có mục này: dùng mặc định của extension). Phiên
+// chính tắt Jev (không dùng key của máy); phiên Jev riêng ở cuối dùng key giả và fetch giả.
+const jevModel = (typeof settings.autoMode?.jev === "object" ? settings.autoMode.jev.model : undefined) ?? "jev-1.13.0";
 settings.autoMode = { ...settings.autoMode, model: "config-test/parent", stateDir: path.join(fixture, "auto-mode"), jev: false };
 Object.assign(settings, {
   defaultProvider: "config-test", defaultModel: "parent", defaultThinkingLevel: "off",
