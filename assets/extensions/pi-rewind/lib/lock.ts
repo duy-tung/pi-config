@@ -11,9 +11,17 @@ export function alive(pid: number): boolean {
   }
 }
 
+const read = (file: string) => {
+  try {
+    return fs.readFileSync(file, "utf8");
+  } catch {
+    return undefined;
+  }
+};
+
 /**
  * Khóa giữa các process Pi dùng chung storageDir khi ghi code (rewind, Redo, Undo redo, phục hồi) và khi dọn kho:
- * file `lock` tạo bằng O_EXCL, chứa pid. Không reentrant: cùng process (kể cả bản nạp lại module sau /reload) thấy
+ * file `lock` tạo bằng O_EXCL, chứa pid và một token ngẫu nhiên. Không reentrant: cùng process (kể cả bản nạp lại module sau /reload) thấy
  * pid mình còn sống nên coi là bận. Khóa của process đã chết hoặc cũ hơn staleMs được gỡ.
  */
 export class StorageLock {
@@ -52,9 +60,10 @@ export class StorageLock {
       if (code === "EEXIST" || (process.platform === "win32" && code === "EPERM")) return undefined;
       throw error;
     }
-    const { ino } = fs.fstatSync(fd);
+    // Token: inode có thể được dùng lại ngay cho file mới cùng tên (Linux), nên nhận diện khóa bằng nội dung.
+    const content = `${process.pid}\n${randomUUID()}`;
     try {
-      fs.writeFileSync(fd, String(process.pid));
+      fs.writeFileSync(fd, content);
     } catch (error) {
       fs.closeSync(fd);
       fs.rmSync(this.file, { force: true });
@@ -62,15 +71,16 @@ export class StorageLock {
     }
     fs.closeSync(fd);
     // Chỉ gỡ đúng file mình tạo: khóa đã bị gỡ vì quá staleMs rồi thay bằng khóa khác thì để nguyên.
-    return () => void (fs.statSync(this.file, { throwIfNoEntry: false })?.ino === ino && fs.rmSync(this.file, { force: true }));
+    return () => void (read(this.file) === content && fs.rmSync(this.file, { force: true }));
   }
 
-  /** Gỡ khóa bỏ lại; true khi đã gỡ. Đổi tên (nguyên tử) rồi so inode nên hai process không cùng gỡ được một khóa. */
+  /** Gỡ khóa bỏ lại; true khi đã gỡ. Đổi tên (nguyên tử) rồi so inode và nội dung nên hai process không cùng gỡ được một khóa. */
   private takeOver(): boolean {
-    let stat: fs.Stats;
+    let stat: fs.Stats, text: string;
     try {
       stat = fs.statSync(this.file);
-      this.pid = Number.parseInt(fs.readFileSync(this.file, "utf8"), 10) || undefined; // chưa có pid (đang ghi): chỉ xét tuổi
+      text = fs.readFileSync(this.file, "utf8");
+      this.pid = Number.parseInt(text, 10) || undefined; // chưa có pid (đang ghi): chỉ xét tuổi
     } catch {
       return true; // vừa được gỡ: thử tạo lại
     }
@@ -81,7 +91,7 @@ export class StorageLock {
     } catch {
       return false; // process khác vừa gỡ
     }
-    const same = fs.statSync(aside).ino === stat.ino;
+    const same = fs.statSync(aside).ino === stat.ino && read(aside) === text;
     try {
       if (!same) fs.linkSync(aside, this.file); // lỡ lấy phải khóa mới của process khác: trả lại, không ghi đè
     } catch {

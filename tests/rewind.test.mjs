@@ -679,9 +679,9 @@ test("khóa kho giữa các process Pi: đang bận thì báo lỗi, khóa bỏ 
     const storage = path.join(dir, "store");
     const first = new StorageLock(storage, { waitMs: 300 });
     const second = new StorageLock(storage, { waitMs: 300 });
-    // Lấy và trả khóa: file chứa pid khi đang giữ, mất khi trả.
+    // Lấy và trả khóa: file chứa pid (và token) khi đang giữ, mất khi trả.
     const release = await first.acquire();
-    assert.equal(fs.readFileSync(first.file, "utf8"), String(process.pid));
+    assert.equal(Number.parseInt(fs.readFileSync(first.file, "utf8"), 10), process.pid);
     // Đang giữ (kể cả bản khác trong cùng process, như extension nạp lại sau /reload): tryAcquire trả undefined.
     assert.equal(second.tryAcquire(), undefined);
     const copy = await import(new URL("../assets/extensions/pi-rewind/lib/lock.ts?copy", import.meta.url).href);
@@ -713,7 +713,7 @@ test("khóa kho giữa các process Pi: đang bận thì báo lỗi, khóa bỏ 
     fs.writeFileSync(first.file, String(dead));
     const fromDead = second.tryAcquire();
     assert.ok(fromDead);
-    assert.equal(fs.readFileSync(first.file, "utf8"), String(process.pid));
+    assert.equal(Number.parseInt(fs.readFileSync(first.file, "utf8"), 10), process.pid);
     fromDead();
     assert.deepEqual(fs.readdirSync(storage), []);
     // Đang ghi pid (file rỗng) và còn mới: vẫn bận.
