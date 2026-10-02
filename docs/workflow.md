@@ -14,7 +14,7 @@ Skill nằm trong `assets/skills/` của repo và được cài vào `<root>/ass
 | **Ở trong smart zone** | Giữ mỗi pha trong khoảng 150k token đầu; footer của Pi cho biết context đang dùng. Việc đọc code rộng, tra docs/web giao `researcher`. Hết một pha thì chọn: tiếp tục, `/clear`, handoff, subagent hoặc `/compact`. |
 | **Chứng minh trên sản phẩm thật** | Chạy thay đổi theo đường người dùng đi (app, CLI, API) và đọc output thật; typecheck hay CI xanh không phải bằng chứng. Kết luận VERIFIED, NOT VERIFIED hoặc INCONCLUSIVE kèm bằng chứng. |
 | **Mã hoá bài học vào cấu trúc** | Thang ưu tiên, từ mạnh nhất: type và kiến trúc; lint, hook và CI; `CODING_STANDARDS.md`; skill; một dòng trong AGENTS.md. `/skill:reflect` đưa mỗi bài học lên nấc cao nhất có thể. |
-| **Tự chủ có hợp đồng** | Việc đảo ngược được thì cứ làm. Việc dài giao `/goal` của pi-goal-x. Git guard trong auto mode chặn tất định các lệnh git phá huỷ. |
+| **Tự chủ trong giới hạn** | Việc đảo ngược được thì cứ làm. Việc dài giao `/goal` của pi-goal-x. Git guard trong auto mode chặn tất định các lệnh git phá huỷ. |
 
 ## Bắt đầu
 
@@ -36,7 +36,7 @@ Skill kỷ luật (grilling, tdd, diagnose, interrogate…) được model tự 
 /skill:reflect                        sau task dài hoặc gập ghềnh: lỗi lặp → type, lint, hook, chuẩn
 ```
 
-`/skill:implement` theo build playbook, gồm bảy bước:
+`/skill:implement` theo build playbook ([BUILD.md](../assets/skills/implement/BUILD.md)), các bước chính:
 1. đặt tên hình dạng dữ liệu;
 2. kiểm thiết kế ở ranh giới module;
 3. TDD tại các seam đã thống nhất;
@@ -104,7 +104,7 @@ Khi thật sự cần, bạn tự chạy lệnh bằng `!<lệnh>` trong editor 
 
 ## Danh mục
 
-### 18 lệnh (skill chỉ người gọi, 0 token cho tới khi gọi)
+### 11 lệnh (skill chỉ người gọi, 0 token cho tới khi gọi)
 
 | Lệnh | Việc |
 |---|---|
@@ -119,7 +119,7 @@ Khi thật sự cần, bạn tự chạy lệnh bằng `!<lệnh>` trong editor 
 | `handoff` | Nén hội thoại thành tài liệu bàn giao. |
 | `wait-what` | Nói lại tin nhắn cuối bằng lời đơn giản. |
 
-### 17 kỷ luật (model tự nạp; chỉ mô tả nằm trong context)
+### 14 kỷ luật (model tự nạp; chỉ mô tả nằm trong context)
 
 grilling, domain-modeling, codebase-design, principles, tdd, diagnose, interrogate, how, why, prototype, research, unslop, writing-for-agents, resolving-merge-conflicts.
 

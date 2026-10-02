@@ -28,7 +28,7 @@ Skill kỷ luật (grilling, tdd, diagnose, interrogate, how, why…) nằm tron
 - Ý tưởng → PR: /skill:grill-with-docs → /skill:implement (việc lớn: /skill:to-spec → /skill:to-tickets → /skill:implement <ticket>, /clear giữa các ticket) → /skill:ship → /skill:reflect.
 - Chuyển việc: /skill:handoff.
 - Mỗi repo một lần: /skill:setup.
-Tracker và nơi lưu docs là theo từng dự án; không ghi cấu hình tracker vào thư mục home. Hết một pha (footer báo smart zone vàng/đỏ là tín hiệu) thì chọn: tiếp tục, /clear, /skill:handoff, subagent hoặc /compact <chỉ dẫn>.
+Tracker và nơi lưu docs là theo từng dự án; không ghi cấu hình tracker vào thư mục home. Hết một pha (context ở footer gần 150k token là tín hiệu) thì chọn: tiếp tục, /clear, /skill:handoff, subagent hoặc /compact <chỉ dẫn>.
 
 ## Web: native search và Firecrawl
 
