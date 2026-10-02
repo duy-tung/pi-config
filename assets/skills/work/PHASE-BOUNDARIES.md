@@ -2,7 +2,7 @@
 
 A **phase** is a chunk of work inside a session: the grilling, the implementation, the QA. A phase ends when you think "ok, we're done with that".
 
-The **phase boundary** is the gap between two phases, and it is the only place this decision belongs. Mid-phase there is no decision to make: continue, or split the work that's left into subagents. Compacting mid-phase makes the agent lose the thread. The smart zone is the signal (a `[smart-zone]` reminder arrives when it turns yellow or red): green is fine, yellow near the ~150k edge means claim the boundary, red past it means it went unclaimed. You see it as a one-line `[smart-zone]` note the first time the zone turns yellow or red. Auto-compaction on a 1M window fires far too late for that; a notice still fires if it happens.
+The **phase boundary** is the gap between two phases, and it is the only place this decision belongs. Mid-phase there is no decision to make: continue, or split the work that's left into subagents. Compacting mid-phase makes the agent lose the thread. The smart zone, roughly the first 150k tokens, is the budget: quality drops past it, so claim the boundary before a phase that would cross it. The context figure in Pi's footer shows where the session stands; ask the user for it when unsure. Auto-compaction on a 1M window fires far too late to be the signal.
 
 ## The five options
 

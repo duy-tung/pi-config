@@ -49,7 +49,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       // Skills quy trình đi cùng repo (assets/skills), không tải từ nguồn ngoài.
       assert.equal(settings.skills[0], p.join(options.root, "assets", "skills"));
       assert.ok(!settings.skills.some((entry) => entry.includes("mattpocock")));
-      assert.deepEqual(settings.extensions, [...["rose-pine-palette.ts", "pi-rewind", "claude-usage", "model-roles", "smart-zone", "pi-auto-mode"]
+      assert.deepEqual(settings.extensions, [...["rose-pine-palette.ts", "pi-rewind", "claude-usage", "model-roles", "pi-auto-mode"]
         .map((entry) => p.join(options.root, "assets", "extensions", entry)), "-builtin:mcp", "-builtin:codemode", "-builtin:tool-search"]);
       assert.equal(settings.doubleEscapeAction, "none");
       assert.deepEqual(settings.rewind, { storageDir: p.join(options.root, "state", "rewind"), retentionDays: 30 });

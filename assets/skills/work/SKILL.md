@@ -62,7 +62,7 @@ Answer `?` from this map. Name commands exactly as written.
 
 **On-ramps.** Something broken: `/skill:work <symptom>` (bug playbook). A huge, foggy effort: `/skill:wayfinder`. Incoming issues you did not write: `/skill:triage`. A spare moment: `/skill:improve-architecture`.
 
-**Setup and upkeep.** `/skill:setup` once per repo. `/skill:create-verify` once per app, `/skill:maintain-verify` when the app drifts from its feature map. `/context-budget` shows the always-on context by part; `/skill:context-audit` trims it when sessions feel slow, noisy or expensive.
+**Setup and upkeep.** `/skill:setup` once per repo. `/skill:create-verify` once per app, `/skill:maintain-verify` when the app drifts from its feature map. `/skill:context-audit` measures and trims the always-on context when sessions feel slow, noisy or expensive.
 
 **Anytime.** `/skill:handoff` moves work to another session, harness or person. `/skill:wait-what` when a message did not land. `/rewind` discards a failed approach, code and conversation both.
 

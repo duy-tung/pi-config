@@ -28,7 +28,7 @@ Skill kỷ luật (grilling, tdd, diagnose, prove, interrogate, how, why…) n�
 - Không rõ bắt đầu từ đâu: /skill:work <mô tả> hoặc /skill:work ?.
 - Ý tưởng → PR: /skill:grill-with-docs → /skill:implement (việc lớn: /skill:to-spec → /skill:to-tickets → /skill:implement <ticket>, /clear giữa các ticket) → /skill:ship → /skill:reflect.
 - Không giám sát: /skill:afk (hợp đồng viết, chạy như một goal). Việc lớn còn mù mờ: /skill:wayfinder. Issue/PR từ ngoài: /skill:triage. Chuyển việc: /skill:handoff.
-- Mỗi repo một lần: /skill:setup; mỗi app: /skill:create-verify (verify skill ở .agents/skills/verify-<app>/), /skill:maintain-verify khi app đổi. Phiên nặng: /context-budget rồi /skill:context-audit.
+- Mỗi repo một lần: /skill:setup; mỗi app: /skill:create-verify (verify skill ở .agents/skills/verify-<app>/), /skill:maintain-verify khi app đổi. Phiên nặng: /skill:context-audit.
 Trạng thái việc dài nằm ở .tstack/<slug>/ (gitignore). Tracker và nơi lưu docs là theo từng dự án; không ghi cấu hình tracker vào thư mục home. Hết một pha (footer báo smart zone vàng/đỏ là tín hiệu) thì chọn: tiếp tục, /clear, /skill:handoff, subagent hoặc /compact <chỉ dẫn>.
 
 ## Web: native search và Firecrawl
