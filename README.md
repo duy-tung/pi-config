@@ -40,7 +40,7 @@ Chạy `pi` để mở Claude Opus 5.5/high với toàn bộ công cụ. Các wo
 
 | Công việc | Lệnh |
 |---|---|
-| Quy trình làm việc (skills) | `/skill:work ?`, `/skill:grill-with-docs`, `/skill:implement`, `/skill:ship`, `/skill:afk`, `/skill:setup`… ([docs/workflow.md](docs/workflow.md)) |
+| Quy trình làm việc (skills) | `/skill:grill-with-docs`, `/skill:implement`, `/skill:ship`, `/skill:setup`… ([docs/workflow.md](docs/workflow.md)) |
 | Goal dài hạn | `/goal`, `/goal-status`, `/goal-pause`, `/goal-resume` |
 | Shell job nền | `/bg --name "Dev server" npm run dev`, `/jobs`, `/logs`, `/kill` |
 | Ý kiến cố vấn | `/advisor-manual`, `/advisor-settings`, `/advisor-off`, `/advisor` |

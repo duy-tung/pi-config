@@ -241,13 +241,13 @@ await check("workflow skills (tstack) load in Pi without warnings; flows are use
   assert.deepEqual(diagnostics, []);
   assert.equal(skills.length, 35);
   assert.deepEqual(skills.filter((skill) => skill.disableModelInvocation).map((skill) => skill.name).sort(), [
-    "afk", "context-audit", "create-verify", "grill-me", "grill-with-docs", "handoff", "implement", "improve-architecture",
-    "maintain-verify", "reflect", "setup", "ship", "to-spec", "to-tickets", "triage", "wait-what", "wayfinder", "work",
+    "context-audit", "create-verify", "grill-me", "grill-with-docs", "handoff", "implement", "improve-architecture",
+    "maintain-verify", "reflect", "setup", "ship", "to-spec", "to-tickets", "triage", "wait-what", "wayfinder",
   ]);
   // Skill kỷ luật vào danh sách của model; skill luồng chỉ gọi bằng /skill:<tên>.
   const listed = sdk.formatSkillsForPrompt(skills);
   for (const name of ["grilling", "interrogate", "prove", "tdd"]) assert.match(listed, new RegExp(`<name>${name}</name>`, "u"));
-  for (const name of ["afk", "work", "ship"]) assert.doesNotMatch(listed, new RegExp(`<name>${name}</name>`, "u"));
+  for (const name of ["implement", "ship"]) assert.doesNotMatch(listed, new RegExp(`<name>${name}</name>`, "u"));
   // Skill theo stack không nằm trong danh sách chung; bản /skill:setup chép vào .agents/skills/ của repo nạp không cảnh báo.
   for (const name of ["typescript", "python", "mobile"]) assert.doesNotMatch(listed, new RegExp(`<name>${name}</name>`, "u"));
   const stack = sdk.loadSkillsFromDir({ dir: path.join(installRoot, "assets", "stack-skills"), source: "path" });

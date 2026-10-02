@@ -1,6 +1,6 @@
 # Build
 
-The implementation loop for one ticket or one small spec. Used by `/skill:implement`, the feature playbook and `worker` agents briefed by `afk`.
+The implementation loop for one ticket or one small spec. Used by `/skill:implement`.
 
 **You own the diff and its proof.** A unit is done when it is proven on the real artifact, reviewed, committed and closed.
 
@@ -9,7 +9,7 @@ Inputs: a ticket or spec (fetch it with the workflow in the issue tracker doc wh
 1. **Read the work item and its parent spec.** An issue labelled `spec` that has tickets is a destination, not a buildable unit: build its tickets instead. A spec with no tickets is buildable only in an attended run and only when it fits one smart zone; its user stories are the acceptance criteria. List the acceptance criteria. Each must be observable; rewrite any that is not, and say so.
 2. **Name the data shape** and the structure it hangs on before writing logic (a state machine over scattered booleans, a registry over a growing if/else chain, a typed model over repeated shape assumptions). One or two lines on the `todo` list.
 3. **Design check.** If the change crosses a module boundary or adds a public interface, load the `codebase-design` skill and follow its ARCHITECT.md: caller usage first, then types. Skip it when the shape is already concrete.
-4. **Agree the seams.** Use the seams the spec or ticket names. Otherwise propose the highest existing seam and confirm it with the user. Unattended, never invent a seam: log the gap and rely on step 7. Steps 2 to 4 are the plan: when the advisor's plan gate is on, calls are left and the change is not trivial, send it (data shape, seams, slices, how you will prove it) as the `ask_advisor` draft before step 5. Advisor steps are the parent's; a `worker` agent has no `ask_advisor` and skips them.
+4. **Agree the seams.** Use the seams the spec or ticket names. Otherwise propose the highest existing seam and confirm it with the user. Steps 2 to 4 are the plan: when the advisor's plan gate is on, calls are left and the change is not trivial, send it (data shape, seams, slices, how you will prove it) as the `ask_advisor` draft before step 5. Advisor steps are the parent's; a `worker` agent has no `ask_advisor` and skips them.
 5. **Build one vertical slice at a time**, test first at the agreed seams: load the `tdd` skill. Red before green. Run the typechecker and the single affected test file often, the full suite once at the end.
 6. **Keep the diff honest.** No speculative code. No compatibility shims for callers you own. No narrating comments. No new lint or type suppressions. Use the existing helper instead of a second path. Follow `CODING_STANDARDS.md` when present.
 7. **Prove it.** Load the `prove` skill and run it with the acceptance criteria and the ticket's `Verify:` line. For work you wrote it spawns the `verifier` agent. NOT VERIFIED means not done: fix and prove again, or report it. INCONCLUSIVE is not a pass.

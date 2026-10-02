@@ -79,7 +79,7 @@ Work the **frontier**: any ticket whose blockers are all done. For a purely line
 
 Do NOT close or modify any parent issue. Linking a ticket to it as a sub-issue is fine.
 
-When the tickets are published, tell the user how to run them: `/skill:implement <ticket>` in a fresh session per ticket, or `/skill:afk` to work the frontier unattended.
+When the tickets are published, tell the user how to run them: `/skill:implement <ticket>` in a fresh session per ticket.
 
 <local-ticket-template>
 

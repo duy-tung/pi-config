@@ -189,7 +189,7 @@ assert.deepEqual(snapshot(),beforeThird);
 assert.doesNotMatch(third,/Đã gộp|Chưa có mặc định|xung đột|Giữ phần bạn đã sửa|Giữ nguyên các file/u);
 const state=readJson(path.join(root,'install-state.json'));assert.deepEqual(Object.keys(state.sources).sort(),['firecrawl-cli-source','firecrawl-workflows']);
 // Skills quy trình nằm trong assets của bản cài; Pi nạp chúng qua settings.skills.
-assert.ok(fs.existsSync(path.join(root,'assets','skills','work','SKILL.md')));
+assert.ok(fs.existsSync(path.join(root,'assets','skills','implement','SKILL.md')));
 assert.equal(fs.existsSync(path.join(root,'.install.lock')),false);
 console.log('PASS: cài sạch, một runtime Pi, slash workflows, auth/permission, type của bản vá; cài lại gộp mặc định mới, giữ tùy chỉnh và secret giả; model-roles.json: chuyển từ bản cũ, đổi preset, chặn model sai tên, --models, pi-models; lần cuối không đổi gì.');
 console.log(`Fixture: ${root}`);

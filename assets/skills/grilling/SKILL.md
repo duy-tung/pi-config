@@ -29,6 +29,6 @@ Classify each fork before asking. If the answer is a fact you could observe by r
 
 The _decisions_ are the user's: put each to them and wait for their answer, even when a surrounding task (a ticket to resolve, a build to start) pulls you to keep moving.
 
-If the user says they are going to be away, apply your recommended answer to each open decision, log each one (in the run's decision log if it has one, otherwise in your reply), and flag each default with the one word that reverses it. Their going away stands in for confirming those defaults only: irreversible actions still wait for them.
+If the user says they are going to be away, apply your recommended answer to each open decision, list each one in your reply, and flag each default with the one word that reverses it. Their going away stands in for confirming those defaults only: irreversible actions still wait for them.
 
 The session is done when the frontier is empty: every branch of the design tree visited, nothing left silently assumed. Do not act on it until the user confirms you have reached a shared understanding.

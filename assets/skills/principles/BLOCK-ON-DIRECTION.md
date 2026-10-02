@@ -11,7 +11,6 @@
 | Reversible execution | Write the code, split the task, run the tests, open a draft PR. | Proceed, then present. The human course-corrects after. |
 | Irreversible action | Force-push to a shared branch, deploy, delete data, message a person. | Stop and confirm, every time. |
 
-- In an unattended run, a call the contract covers proceeds and gets logged (the `decision-log` skill). A call only the human can make gets a sensible default, reported with its reasoning and the one word that reverses it.
 - No is an acceptable answer. When asked for a judgment, give your real one; agreement is not the default.
 
 **Test.** Is this question a fact you could observe, or a step you could undo? Then do not ask it.

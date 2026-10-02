@@ -24,8 +24,6 @@ A **seam** is where a module's interface lives: the place you observe behavior w
 
 **Test only at agreed seams.** A seam is agreed when the spec or ticket names it, the user confirmed it, or an existing test file already tests that public interface. Prefer those. Before the first test at any other seam, write the seam down and ask: "What is the public interface, and which seams should we test?" No test is written at an unconfirmed seam.
 
-In an unattended run, only the ticket's seams and existing ones count as agreed. If they cannot observe the behavior, do not invent a seam: record the gap in the run's decision log and prove the behavior with the `prove` skill instead.
-
 ## Tests worth keeping
 
 Tests verify behavior through public interfaces, not implementation details. A good test reads like a specification ("user can checkout with valid cart") and survives refactors. Examples: [TESTS.md](TESTS.md). Mocking: [MOCKING.md](MOCKING.md).

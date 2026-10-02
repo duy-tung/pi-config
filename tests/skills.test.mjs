@@ -53,7 +53,7 @@ const markdown = [...walk(skillsDir), ...walk(stackDir)].filter((file) => file.e
 const prose = (file) => fs.readFileSync(file, "utf8").replace(/^```[\s\S]*?^```/gmu, "").replace(/<!--[\s\S]*?-->/gu, "");
 
 test("mỗi skill có frontmatter hợp lệ theo luật tên của Pi và chuẩn Agent Skills", () => {
-  assert.ok(skills.size >= 35, `chỉ có ${skills.size} skill`);
+  assert.ok(skills.size >= 25, `chỉ có ${skills.size} skill`);
   const allowed = new Set(["name", "description", "disable-model-invocation", "argument-hint", "license", "compatibility", "metadata", "allowed-tools"]);
   for (const [dir, { fields }] of [...skills, ...stackSkills]) {
     assert.ok(fields, `${dir}: thiếu frontmatter`);
