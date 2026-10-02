@@ -679,55 +679,46 @@ test("khóa kho giữa các process Pi: đang bận thì báo lỗi, khóa bỏ 
     const storage = path.join(dir, "store");
     const first = new StorageLock(storage, { waitMs: 300 });
     const second = new StorageLock(storage, { waitMs: 300 });
+    // Lấy và trả khóa: file chứa pid khi đang giữ, mất khi trả.
     const release = await first.acquire();
-    const holder = JSON.parse(fs.readFileSync(first.file, "utf8"));
-    assert.deepEqual([holder.pid, holder.host, typeof holder.token, typeof holder.at], [process.pid, os.hostname(), "string", "number"]);
-    // Đang có lần khôi phục khác: chờ rồi báo lỗi, không lấy khóa; dọn kho thì bỏ qua lần chạy.
-    const started = Date.now();
-    await assert.rejects(second.acquire(), { message: `Another Pi process is restoring code (pid ${process.pid}); try again in a moment.` });
-    assert.ok(Date.now() - started >= 250);
+    assert.equal(fs.readFileSync(first.file, "utf8"), String(process.pid));
+    // Đang giữ (kể cả bản khác trong cùng process, như extension nạp lại sau /reload): tryAcquire trả undefined.
     assert.equal(second.tryAcquire(), undefined);
+    const copy = await import(new URL("../assets/extensions/pi-rewind/lib/lock.ts?copy", import.meta.url).href);
+    assert.equal(new copy.StorageLock(storage).tryAcquire(), undefined);
     release();
     assert.equal(fs.existsSync(first.file), false);
-    // Chỉ gỡ khóa đúng token: khóa đã về tay process khác thì để nguyên.
-    const releaseSecond = await second.acquire();
-    const remote = { pid: 4242, host: "another-host", token: "remote", at: Date.now() };
-    fs.writeFileSync(second.file, JSON.stringify(remote));
-    releaseSecond();
-    assert.deepEqual(JSON.parse(fs.readFileSync(second.file, "utf8")), remote);
-    // Máy khác, khóa còn mới: không kiểm được process nên vẫn bận.
-    await assert.rejects(first.acquire(), /Another Pi process is restoring code \(pid 4242\)/u);
-    // Cũ hơn 10 phút: khóa bị bỏ lại, được gỡ.
-    fs.writeFileSync(first.file, JSON.stringify({ ...remote, at: Date.now() - 11 * 60 * 1000 }));
+    // Process khác còn sống đang giữ: chờ rồi báo lỗi, không lấy khóa.
+    fs.writeFileSync(first.file, String(process.ppid));
+    const started = Date.now();
+    await assert.rejects(second.acquire(), { message: `Another Pi process is restoring code (pid ${process.ppid}); try again in a moment.` });
+    assert.ok(Date.now() - started >= 250);
+    assert.equal(second.tryAcquire(), undefined);
+    assert.equal(fs.readFileSync(first.file, "utf8"), String(process.ppid));
+    // Trả khóa đã bị process khác thay (quá staleMs rồi bị gỡ): khóa mới còn nguyên.
+    fs.rmSync(first.file);
+    const releaseReplaced = first.tryAcquire();
+    fs.rmSync(first.file);
+    fs.writeFileSync(first.file, String(process.ppid));
+    releaseReplaced();
+    assert.equal(fs.readFileSync(first.file, "utf8"), String(process.ppid));
+    // Cũ hơn 10 phút: coi như bị bỏ lại, được gỡ dù pid còn sống.
+    const old = new Date(Date.now() - 11 * 60 * 1000);
+    fs.utimesSync(first.file, old, old);
     const fromOld = first.tryAcquire();
     assert.ok(fromOld);
     fromOld();
-    // Process đã chết trên cùng máy: gỡ ngay.
+    // Process đã chết: gỡ ngay, không để sót file tạm.
     const dead = spawnSync(process.execPath, ["-e", ""]).pid;
-    fs.writeFileSync(first.file, JSON.stringify({ pid: dead, host: os.hostname(), token: "crashed", at: Date.now() }));
-    const fromDead = await first.acquire();
-    assert.notEqual(JSON.parse(fs.readFileSync(first.file, "utf8")).token, "crashed");
+    fs.writeFileSync(first.file, String(dead));
+    const fromDead = second.tryAcquire();
+    assert.ok(fromDead);
+    assert.equal(fs.readFileSync(first.file, "utf8"), String(process.pid));
     fromDead();
-    // Khóa của chính process mà không còn giữ (lần gỡ trước không xóa được file): gỡ ngay.
-    fs.writeFileSync(first.file, JSON.stringify({ pid: process.pid, host: os.hostname(), token: "leftover", at: Date.now() }));
-    const fromLeftover = first.tryAcquire();
-    assert.ok(fromLeftover);
-    fromLeftover();
-    // Bản nạp khác của module trong cùng process (Pi nạp extension không cache module) thấy khóa đang giữ.
-    const copy = await import(new URL("../assets/extensions/pi-rewind/lib/lock.ts?copy", import.meta.url).href);
-    const releaseFirst = await first.acquire();
-    assert.equal(new copy.StorageLock(storage).tryAcquire(), undefined);
-    releaseFirst();
-    assert.equal(fs.existsSync(first.file), false);
-    // Gỡ khóa bỏ lại mà process khác vừa thay bằng khóa mới: khóa mới còn nguyên, không sót file tạm.
-    fs.writeFileSync(first.file, JSON.stringify({ pid: dead, host: os.hostname(), token: "stale", at: Date.now() - 1000 }));
-    const staleHolder = first.holder();
-    fs.writeFileSync(first.file, JSON.stringify({ pid: process.pid, host: os.hostname(), token: "fresh", at: Date.now() }));
-    first.remove(staleHolder);
-    assert.equal(JSON.parse(fs.readFileSync(first.file, "utf8")).token, "fresh");
-    first.remove(first.holder());
-    assert.equal(fs.existsSync(first.file), false);
-    assert.deepEqual(fs.readdirSync(path.dirname(first.file)).filter((name) => name.endsWith(".stale")), []);
+    assert.deepEqual(fs.readdirSync(storage), []);
+    // Đang ghi pid (file rỗng) và còn mới: vẫn bận.
+    fs.writeFileSync(first.file, "");
+    assert.equal(first.tryAcquire(), undefined);
   } finally {
     cleanup();
   }
