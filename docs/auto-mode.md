@@ -57,7 +57,7 @@ Mỗi tool call đi qua các bước sau, dừng ở bước đầu tiên có k�
 
 ### Git guard
 
-Lớp chặn tất định cho lệnh git và `rm` phá huỷ (`lib/git-guard.ts`, chuyển từ `guard_git.py` của tstack, cùng quyết định trên hơn 5.000 lệnh so với bản gốc). Khác bộ phân loại, nó không đoán: luôn chặn cùng một tập lệnh, ở cả auto lẫn bypass, ở phiên chính, agent con và goal auditor, trước luật `ask`/`allow` và bộ phân loại. Chặn:
+Lớp chặn tất định cho lệnh git và `rm` phá huỷ (`lib/git-guard.ts`, theo `guard_git.py` của tstack, cùng bảng ca kiểm thử của bản gốc). Khác bộ phân loại, nó không đoán: luôn chặn cùng một tập lệnh, ở cả auto lẫn bypass, ở phiên chính, agent con và goal auditor, trước luật `ask`/`allow` và bộ phân loại. Chặn:
 
 - `git push --force`/`-f` (cho phép `--force-with-lease`), `--all`, `--mirror`, `--delete`, refspec `+x` hoặc `:x`;
 - push thẳng lên nhánh được bảo vệ, kể cả `git push origin HEAD`, tên nhánh tính lúc chạy (`$(git branch --show-current)`, `"$BRANCH"`) hay `git push` trơn khi đang đứng trên nhánh đó. Mặc định: `main`, `master`, `trunk`, `develop`, `production`, `prod`, `release`, `release/*`;
@@ -70,7 +70,7 @@ Guard đọc lệnh như shell: chữ trong nháy, trong heredoc có delimiter t
 
 Khi bị chặn, agent nhận lý do kèm cách an toàn hơn; bạn tự chạy lệnh bằng `!<lệnh>` trong editor của Pi (lệnh `!` của người dùng không qua cổng). Lần chặn hiện trong `/permissions` với luật `git guard` và không tính vào giới hạn chặn của bộ phân loại.
 
-Cấu hình duy nhất là `autoMode.gitGuard` trong `settings.json`: `false` hoặc `{"enabled": false}` tắt; `{"protectedBranches": ["main", "staging"]}` thay danh sách nhánh mặc định.
+Cấu hình duy nhất là `autoMode.gitGuard` trong `settings.json`: `false` hoặc `{"enabled": false}` tắt; `{"protectedBranches": ["main", "staging"]}` thay danh sách nhánh mặc định (mẫu chỉ hiểu `*` và `?`, vd `release/*`).
 
 ### Giới hạn đọc khi có deny đường dẫn
 
