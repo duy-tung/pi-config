@@ -829,7 +829,8 @@ test("bộ đánh giá: dữ liệu hợp lệ, quyết định tất định kh
   assert.ok(cases.length >= 40);
   assert.equal(new Set(cases.map((item) => item.name)).size, cases.length);
   const isObject = (value) => !!value && typeof value === "object" && !Array.isArray(value);
-  const context = { mode: "auto", cwd: "/home/dev/project", home: "/home/dev", roots: ["/home/dev/project"], rules: buildRuleSet([], [], []), selfPaths: [] };
+  // Đường dẫn giả ngoài /home: trên macOS /home là autofs, realpath mỗi lệnh mất vài chục ms.
+  const context = { mode: "auto", cwd: "/srv/dev/project", home: "/srv/dev", roots: ["/srv/dev/project"], rules: buildRuleSet([], [], []), selfPaths: [] };
   let decided = 0;
   for (const item of cases) {
     assert.ok(typeof item.name === "string" && item.name.trim() !== "");
