@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
-import { applyPatches, loadPatchData, patchSource, sourceHash } from "../lib/patches.mjs";
+import { loadPatchData, patchSource, sourceHash } from "../lib/patches.mjs";
 
 const fixtureSpec = {
   package: "fixture", file: "index.js", originalSha256: sourceHash("const value = 1;\n"),
@@ -63,5 +63,4 @@ test("metadata bản vá: hash ghim và file chèn khớp nguồn trong repo", a
   const insertion = webAccess.edits.find((edit) => edit.insertFile);
   assert.equal(insertion.insertFile, "pi-web-access/anthropic-search.js");
   assert.equal(insertion.insert, (await readFile(new URL("../assets/patches/pi-web-access/anthropic-search.js", import.meta.url), "utf8")).replace(/\r\n/g, "\n"));
-  await assert.rejects(applyPatches({ root: os.tmpdir(), runtimes: ["../escape"] }), /Runtime phải/);
 });

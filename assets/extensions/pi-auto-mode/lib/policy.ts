@@ -11,7 +11,8 @@ import { detectPowerShellRisks, detectRisks } from "./risks.ts";
 import { type DeniedPath, searchReadPaths, shellPathScope } from "./read-scope.ts";
 import { allowCoversShell, firstMatch, isPathRule, ruleAppliesTo, type RuleMatchTarget, type RuleSet } from "./rules.ts";
 import {
-  analyzeShell, commandName, commandText, isReadOnlyCommand, isReadOnlyShell, optionOutputs, type ShellAnalysis, type SimpleCommand,
+  analyzeShell, commandName, commandText, findRemoval, isReadOnlyCommand, isReadOnlyShell, optionOutputs, removeArgs, type ShellAnalysis,
+  type SimpleCommand,
 } from "./shell.ts";
 
 /**
@@ -125,25 +126,10 @@ function shellPaths(analysis: ShellAnalysis, cwd: string, home: string): string[
 function criticalRemoval(analysis: ShellAnalysis, cwd: string, home: string): string | undefined {
   for (const command of analysis.commands) {
     const name = commandName(command);
-    const args = command.words.slice(1);
-    let targets: { word: string; literal: boolean; glob: boolean }[] = [];
-    if (name === "rm" || name === "rmdir" || name === "unlink") {
-      let options = true;
-      args.forEach((word, i) => {
-        if (options && word === "--") {
-          options = false;
-          return;
-        }
-        if (options && word.startsWith("-") && word !== "-") return;
-        targets.push({ word, literal: command.literal[i + 1], glob: command.glob[i + 1] });
-      });
-    } else if (name === "find" && args.includes("-delete")) {
-      targets = args.filter((word, i) => i < args.findIndex((item) => item.startsWith("-")) || !args.some((item) => item.startsWith("-")))
-        .map((word) => ({ word, literal: true, glob: false }));
-    } else {
-      continue;
-    }
-    for (const target of targets) {
+    const find = findRemoval(command.words);
+    const indices = removeArgs(command.words)?.targets ?? (find?.deletes ? find.targets : undefined);
+    if (!indices) continue;
+    for (const target of indices.map((i) => targetAt(command, i))) {
       if (!target.literal) {
         // rm -rf "$DIR"/* hoặc "$DIR"/: không kiểm được đích thật.
         if (/\/\*?$/u.test(target.word) || target.word.endsWith("*")) return `${name} target cannot be verified (${target.word})`;
@@ -168,6 +154,9 @@ interface RemovalTarget {
   glob: boolean;
 }
 
+const targetAt = (command: SimpleCommand, index: number): RemovalTarget =>
+  ({ word: command.words[index], literal: command.literal[index], glob: command.glob[index] });
+
 interface Removal {
   label: string;
   targets: RemovalTarget[];
@@ -175,7 +164,6 @@ interface Removal {
   opaque?: boolean;
 }
 
-const FIND_EXEC = new Set(["-exec", "-execdir", "-ok", "-okdir"]);
 const PACKAGE_RUNNERS = new Set(["npx", "pnpx", "bunx"]);
 const CMD_RECURSIVE = /\b(?:rd|rmdir|del|erase)\b[^&|]*\s\/\/?s\b/iu;
 const POWERSHELL_RECURSIVE = /\b(?:Remove-Item|ri|rm|rmdir|rd|del|erase)\b[^;|\n]*\s-r(?:e(?:c(?:u(?:r(?:s(?:e)?)?)?)?)?)?\b/iu;
@@ -189,40 +177,19 @@ function recursiveRemovals(analysis: ShellAnalysis): Removal[] {
   for (const command of analysis.commands) {
     const name = commandName(command);
     const args = command.words.slice(1);
-    const at = (index: number): RemovalTarget => ({ word: args[index], literal: command.literal[index + 1], glob: command.glob[index + 1] });
-    if (name === "rm") {
-      let options = true;
-      let recursive = false;
-      const targets: RemovalTarget[] = [];
-      args.forEach((word, index) => {
-        if (options && word === "--") options = false;
-        // GNU getopt nhận tiền tố duy nhất của tùy chọn dài: --rec, --recur... đều là --recursive.
-        else if (options && word.startsWith("--")) recursive ||= word.length > 2 && "--recursive".startsWith(word);
-        else if (options && word.length > 1 && word.startsWith("-")) recursive ||= /[rR]/u.test(word);
-        else targets.push(at(index));
-      });
+    const at = (index: number): RemovalTarget => targetAt(command, index + 1);
+    const remove = removeArgs(command.words);
+    const find = findRemoval(command.words);
+    if (remove) {
+      const targets = remove.targets.map((index) => targetAt(command, index));
       // xargs lấy đích từ stdin.
-      if (recursive && (targets.length || command.wrapped === "xargs")) result.push({ label: "rm -r", targets, opaque: command.wrapped === "xargs" });
-    } else if (name === "find") {
-      let index = 0;
-      let follows = false;
-      // Tùy chọn đứng trước điểm bắt đầu: -H -L -P -D debugopts -Olevel.
-      while (index < args.length && /^-(?:[HLP]|D|O\d*)$/u.test(args[index])) {
-        follows ||= args[index] === "-L";
-        index += args[index] === "-D" ? 2 : 1;
-      }
-      const targets: RemovalTarget[] = [];
-      for (; index < args.length && !/^[-(!),]/u.test(args[index]); index++) targets.push(at(index));
-      const expression = args.slice(index);
-      const deletes = expression.includes("-delete");
-      const execRm = expression.some((word, i) => FIND_EXEC.has(word) && /(?:^|\/)rm$/u.test(expression[i + 1] ?? ""));
-      if (deletes || execRm) {
-        result.push({
-          label: deletes ? "find -delete" : "find -exec rm", targets: targets.length ? targets : [{ word: ".", literal: true, glob: false }],
-          // Theo symlink (-L, -follow) thì có thể xoá ra ngoài điểm bắt đầu.
-          opaque: follows || expression.includes("-follow"),
-        });
-      }
+      if (remove.recursive && (targets.length || command.wrapped === "xargs")) result.push({ label: "rm -r", targets, opaque: command.wrapped === "xargs" });
+    } else if (find) {
+      result.push({
+        label: find.deletes ? "find -delete" : "find -exec rm",
+        targets: find.targets.length ? find.targets.map((index) => targetAt(command, index)) : [{ word: ".", literal: true, glob: false }],
+        opaque: find.follows,
+      });
     } else if (name === "git") {
       let index = 0;
       let tree: RemovalTarget = { word: ".", literal: true, glob: false };

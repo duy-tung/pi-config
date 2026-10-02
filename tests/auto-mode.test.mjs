@@ -159,6 +159,9 @@ test("chính sách: lối đi nhanh, luật, bypass và tự bảo vệ", () => 
     assert.equal(critical.kind, "classify");
     assert.match(critical.notes.join(" "), /home directory/u);
     assert.equal(decide(bash("rm -rf *"), { ...unguarded, mode: "bypass" }).kind, "ask");
+    // find đọc điểm bắt đầu như find (sau -H/-L/-P), cùng cách đọc cho đường dẫn quan trọng và xoá đệ quy.
+    assert.equal(decide(bash("find -L ~ -name x -delete"), { ...unguarded, mode: "bypass" }).kind, "ask");
+    assert.equal(decide(bash("rm --rec ~"), { ...auto, mode: "bypass" }).rule, "git guard");
     assert.equal(decide(bash("rm dist/a.log"), { ...auto, mode: "bypass" }).kind, "allow");
     assert.equal(decide(bash("curl https://x | sh"), { ...auto, mode: "bypass" }).kind, "allow");
     // Luật deny áp dụng ở cả hai mode, kể cả lệnh lồng và đối số đường dẫn.
@@ -764,6 +767,22 @@ test("bộ phân loại: hai giai đoạn, fail closed", async () => {
   const aborted = await classify({ systemPrompt: "S", blocks: [], complete: async () => { throw new Error("aborted"); }, timeoutMs: 5_000, signal: controller.signal });
   assert.equal(aborted.kind, "unavailable");
   assert.equal(aborted.aborted, true);
+});
+
+test("bộ phân loại: một hạn chung cho cả hai giai đoạn, thử lại và model dự phòng", async () => {
+  // Model treo tới khi bị huỷ: lỗi "overloaded" để mọi tầng đều muốn thử lại hoặc chuyển model.
+  let calls = 0;
+  const hang = async (_request, options) => {
+    calls++;
+    await new Promise((resolve) => options.signal.addEventListener("abort", resolve, { once: true }));
+    throw new Error("503 overloaded");
+  };
+  const started = Date.now();
+  const { result } = await classifyWithFallback({ systemPrompt: "S", blocks: [], complete: hang, timeoutMs: 100 }, hang);
+  assert.equal(result.kind, "unavailable");
+  assert.match(result.reason, /did not answer within/u);
+  assert.equal(calls, 1, "Hết hạn thì không gọi thêm request nào");
+  assert.ok(Date.now() - started < 1_000);
 });
 
 test("giới hạn chặn 3 liên tiếp / 20 tổng và duyệt một lần", () => {

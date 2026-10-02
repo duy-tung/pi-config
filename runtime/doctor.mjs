@@ -47,20 +47,8 @@ if(fs.existsSync(webSearch)){
   const outside=Array.isArray(providers)&&Array.isArray(allowed)?providers.filter(item=>!allowed.includes(item)):[];
   if(outside.length)errors.push(`web-search.json: ${outside.join(', ')} có trong searchRouting.providers nhưng không có trong webSearch.allowedProviders; pi-web-access sẽ không nạp web tools. Thêm vào cả hai danh sách hoặc bỏ khỏi cả hai`);
 }
-{
-  // Role ngoài enabledModels vẫn chạy nhưng pi-subagents (scopeModels) sẽ cảnh báo.
-  const enabled=new Set(s.enabledModels??[]),edited=[];
-  for(const role of SUBAGENT_ROLES){
-    const file=path.join(state.agentDir,'agents',role+'.md');
-    if(!fs.existsSync(file)){errors.push(`thiếu role ${role}`);continue;}
-    const bytes=fs.readFileSync(file),text=bytes.toString('utf8');
-    const model=text.match(/^model:\s*(\S+)\s*$/m)?.[1],thinking=text.match(/^thinking:\s*(\S+)\s*$/m)?.[1];
-    if(state.files[file]&&sha256(bytes)!==state.files[file])edited.push(role);
-    if(!model||!thinking)errors.push(`role ${role} thiếu model hoặc thinking`);
-    else if(enabled.size&&!enabled.has(model))warnings.push(`role ${role} dùng ${model} ngoài enabledModels`);
-  }
-  if(edited.length)console.log(`  file role đã sửa so với bản cài: ${edited.join(', ')}`);
-}
+// Model/thinking của file role đã được kiểm ở bảng model phía trên (lệch so với model-roles.json, catalog).
+for(const role of SUBAGENT_ROLES)if(!fs.existsSync(path.join(state.agentDir,'agents',role+'.md')))errors.push(`thiếu role ${role}`);
 const advisorFile=path.join(state.agentDir,'advisor.json');
 if(fs.existsSync(advisorFile)){
   const advisor=read(advisorFile),main=`${s.defaultProvider}/${s.defaultModel}`;
@@ -76,7 +64,8 @@ if(fs.existsSync(goalFile)){
   console.log(`  goal auditor ${goal.disabled===true?'tắt':'bật'}; Oracle ${goal.oracle?.enabled===true?'bật':'tắt'}`);
 }
 const auto=s.autoMode??{},jev=auto.jev===false||auto.jev?.enabled===false?undefined:auto.jev??{};
-console.log(`  auto mode: bước 1 ${jev?`Jev ${jev.model??'jev-1.13.0'} (${jevKey})`:'LLM của vai autoMode (Jev tắt)'}; bước 2 LLM của vai autoMode`);for(const source of Object.keys(state.sources))if(!fs.existsSync(path.join(root,'sources',source)))errors.push(`Thiếu skills source: ${source}`);
+console.log(`  auto mode: bước 1 ${jev?`Jev ${jev.model??'jev-1.13.0'} (${jevKey})`:'LLM của vai autoMode (Jev tắt)'}; bước 2 LLM của vai autoMode`);
+for(const source of Object.keys(state.sources))if(!fs.existsSync(path.join(root,'sources',source)))errors.push(`Thiếu skills source: ${source}`);
 console.log('Đăng nhập bằng /login trong pi. Không kiểm tra token bằng mạng.');
 if(process.platform==='win32' && state.shellPath&&!fs.existsSync(state.shellPath))errors.push('Không tìm thấy Git Bash đã cấu hình');
 if(warnings.length)console.warn(warnings.join('\n'));

@@ -40,6 +40,7 @@ export interface ClassifyOptions {
   systemPrompt: string;
   blocks: string[];
   complete: Complete;
+  /** Hạn chung của cả lần kiểm: hai giai đoạn, thử lại và model dự phòng (Jev có hạn riêng, JEV_TUNING.timeoutMs). */
   timeoutMs: number;
   stage2Reasoning?: string;
   signal?: AbortSignal;
@@ -53,13 +54,18 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/**
+ * Một request tới model, thử lại một lần khi lỗi tạm thời. deadline là hạn chung của cả lần kiểm: mọi request
+ * (hai giai đoạn, thử lại, model dự phòng) dùng chung nó, nên một lời gọi tool chờ tối đa timeoutMs sau Jev.
+ */
 async function attempt(
-  options: ClassifyOptions, stage: 1 | 2, suffix: string, maxTokens: number, reasoning: string | undefined,
+  options: ClassifyOptions, deadline: AbortSignal, stage: 1 | 2, suffix: string, maxTokens: number, reasoning: string | undefined,
 ): Promise<{ text?: string; error?: string; aborted?: boolean }> {
-  const signals = [AbortSignal.timeout(options.timeoutMs)];
-  if (options.signal) signals.push(options.signal);
+  const signal = options.signal ? AbortSignal.any([options.signal, deadline]) : deadline;
+  const late = () => ({ error: `the classifier did not answer within ${Math.round(options.timeoutMs / 1000)}s` });
   for (let round = 0; round < 2; round++) {
-    const signal = AbortSignal.any(signals);
+    if (options.signal?.aborted) return { error: "the turn was interrupted", aborted: true };
+    if (deadline.aborted) return late();
     try {
       const text = await options.complete(
         { systemPrompt: options.systemPrompt, blocks: options.blocks, suffix },
@@ -68,8 +74,8 @@ async function attempt(
       return { text };
     } catch (error) {
       if (options.signal?.aborted) return { error: "the turn was interrupted", aborted: true };
+      if (deadline.aborted) return late();
       const text = message(error);
-      if (signal.aborted) return { error: `the classifier did not answer within ${Math.round(options.timeoutMs / 1000)}s` };
       if (round === 0 && TRANSIENT.test(text)) continue;
       return { error: text };
     }
@@ -86,25 +92,29 @@ export function modelUnavailable(result: ClassifierResult): boolean {
 
 /**
  * Như Claude Code: model phân loại không dùng được thì chuyển sang model dự phòng
- * (model của phiên). Không có dự phòng hoặc dự phòng cũng lỗi thì vẫn chặn.
+ * (model của phiên), trong cùng hạn thời gian. Không có dự phòng hoặc dự phòng cũng lỗi thì vẫn chặn.
  */
 export async function classifyWithFallback(
   options: ClassifyOptions, fallback: Complete | undefined,
 ): Promise<{ result: ClassifierResult; fellBack: boolean; primaryReason?: string }> {
-  const result = await classify(options);
+  const budget: Budget = {};
+  const result = await classify(options, budget);
   if (!fallback || !modelUnavailable(result)) return { result, fellBack: false };
   const primaryReason = result.kind === "unavailable" ? result.reason : undefined;
-  return { result: await classify({ ...options, complete: fallback }), fellBack: true, primaryReason };
+  return { result: await classify({ ...options, complete: fallback }, budget), fellBack: true, primaryReason };
 }
 
 /**
- * Giai đoạn 2 cho hành động giai đoạn 1 đã gắn cờ (hoặc trả lời không đọc được). Không có phán quyết: model không
- * dùng được → unavailable (để chuyển model dự phòng); lỗi khác → chặn theo cờ của giai đoạn 1.
+ * Giai đoạn 2: cho hành động đã bị gắn cờ, giai đoạn 1 trả lời không đọc được hoặc giai đoạn 1 lỗi hẳn. Trả lời
+ * không đọc được thì hỏi lại một lần. Không có phán quyết: model không dùng được → unavailable (để chuyển model dự
+ * phòng); có cờ → chặn theo cờ; không có cờ → unavailable.
  */
-async function review(options: ClassifyOptions, flagged: { rule?: string; reason: string } | undefined): Promise<ClassifierResult> {
+async function review(
+  options: ClassifyOptions, deadline: AbortSignal, flagged: { rule?: string; reason: string } | undefined, priorError?: string,
+): Promise<ClassifierResult> {
   let failure: string | undefined;
   for (let round = 0; round < 2; round++) {
-    const second = await attempt(options, 2, STAGE2_SUFFIX, 4096, options.stage2Reasoning);
+    const second = await attempt(options, deadline, 2, STAGE2_SUFFIX, 4096, options.stage2Reasoning);
     if (second.aborted) return { kind: "unavailable", reason: second.error ?? "interrupted", aborted: true };
     const verdict = second.text !== undefined ? parseVerdict(second.text) : undefined;
     if (verdict) {
@@ -118,33 +128,31 @@ async function review(options: ClassifyOptions, flagged: { rule?: string; reason
     }
   }
   if (failure && MODEL_UNAVAILABLE.test(failure)) return { kind: "unavailable", reason: failure };
-  if (!flagged) return { kind: "unavailable", reason: "the classifier returned no readable verdict" };
+  if (!flagged) return { kind: "unavailable", reason: failure ?? priorError ?? "the classifier returned no readable verdict" };
   return { kind: "block", stage: 1, rule: flagged.rule, fallback: true, reason: flagged.reason };
 }
 
-export async function classify(options: ClassifyOptions): Promise<ClassifierResult> {
-  if (options.screen) {
-    const screened = await options.screen();
-    if (screened.kind === "clear") return { kind: "allow", stage: 1, screen: "jev" };
-    if (screened.kind === "flag") return review(options, { reason: "The System One screen flagged this action and the careful review could not complete" });
-    if (screened.aborted) return { kind: "unavailable", reason: screened.reason, aborted: true };
+/** Hạn của các request LLM, bắt đầu sau Jev; model dự phòng dùng lại cùng hạn. */
+interface Budget {
+  deadline?: AbortSignal;
+}
+
+export async function classify(options: ClassifyOptions, budget: Budget = {}): Promise<ClassifierResult> {
+  const screened = options.screen ? await options.screen() : undefined;
+  if (screened?.kind === "clear") return { kind: "allow", stage: 1, screen: "jev" };
+  if (screened?.kind === "unavailable" && screened.aborted) return { kind: "unavailable", reason: screened.reason, aborted: true };
+  const deadline = (budget.deadline ??= AbortSignal.timeout(options.timeoutMs));
+  if (screened?.kind === "flag") {
+    return review(options, deadline, { reason: "The System One screen flagged this action and the careful review could not complete" });
   }
-  const first = await attempt(options, 1, STAGE1_SUFFIX, 48, "off");
+  const first = await attempt(options, deadline, 1, STAGE1_SUFFIX, 48, "off");
   if (first.aborted) return { kind: "unavailable", reason: first.error ?? "interrupted", aborted: true };
   const stage1 = first.text !== undefined ? parseVerdict(first.text) : undefined;
   if (stage1 && !stage1.block) return { kind: "allow", stage: 1 };
-  if (first.error !== undefined && stage1 === undefined) {
-    // Giai đoạn 1 lỗi hẳn: vẫn thử giai đoạn 2 một lần trước khi báo không khả dụng.
-    const retry = await attempt(options, 2, STAGE2_SUFFIX, 4096, options.stage2Reasoning);
-    if (retry.aborted) return { kind: "unavailable", reason: retry.error ?? "interrupted", aborted: true };
-    const verdict = retry.text !== undefined ? parseVerdict(retry.text) : undefined;
-    if (!verdict) return { kind: "unavailable", reason: retry.error ?? first.error ?? "the classifier returned no verdict" };
-    return verdict.block
-      ? { kind: "block", stage: 2, rule: verdict.rule, reason: verdict.reason ?? "Blocked by the auto mode classifier" }
-      : { kind: "allow", stage: 2 };
-  }
-  // Giai đoạn 1 gắn cờ (hoặc trả lời không đọc được): giai đoạn 2; không có phán quyết cẩn thận thì chặn theo cờ.
-  return review(options, stage1?.block
+  // Model không dùng được (hết quota, sai tên...): giai đoạn 2 cùng model cũng không chạy, để bên gọi chuyển model.
+  if (first.error !== undefined && MODEL_UNAVAILABLE.test(first.error)) return { kind: "unavailable", reason: first.error };
+  // Giai đoạn 1 gắn cờ, trả lời không đọc được hoặc lỗi hẳn: giai đoạn 2; không có phán quyết cẩn thận thì chặn theo cờ.
+  return review(options, deadline, stage1?.block
     ? { rule: stage1.rule, reason: "The fast screen flagged this action and the careful review could not complete" }
-    : undefined);
+    : undefined, first.error);
 }

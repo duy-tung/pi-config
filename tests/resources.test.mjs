@@ -76,13 +76,13 @@ test('resources remain recoverable when install directories use different volume
     assert.equal(saved.length,1);assert.equal(readJson(path.join(result.archive,saved[0])).fixture,'original');
   } finally {fs.renameSync=rename;}
 });
-test('reinstalling settings without a stored default keeps exclusions and user denials',t=>{
+test('reinstalling settings without a stored default takes new defaults if unedited, merges additively if edited',t=>{
   const f=fixture(t),settings=owned(f,'agent/settings.json',{extensions:['-/user/optional.ts','palette.ts'],permissions:{deny:['Path(/user/extra.key)']}});
   const content=JSON.stringify({extensions:['palette.ts'],permissions:{deny:['Bash(sudo *)']}});
   const before=fs.readFileSync(settings);
-  // Chưa sửa từ lần cài trước (checksum khớp): mặc định mới, giữ loại trừ và luật deny như trước khi có base.
+  // Chưa sửa từ lần cài trước (checksum khớp): nhận nguyên mặc định mới.
   const unedited=reconcileConfigFile({root:f.root,file:settings,content,recorded:f.state.files[settings]});
-  assert.deepEqual(readJson(settings),{extensions:['-/user/optional.ts','palette.ts'],permissions:{deny:['Bash(sudo *)','Path(/user/extra.key)']}});
+  assert.deepEqual(readJson(settings),JSON.parse(content));
   assert.deepEqual([unedited.written,unedited.changes,unedited.conflicts],[true,[],[]]);
   // Người dùng đã sửa và chưa có base: gộp cộng dồn, giữ thứ tự của người dùng.
   fs.writeFileSync(settings,before);fs.rmSync(defaultsFile(f.root,settings));

@@ -330,6 +330,54 @@ export function commandName(command: SimpleCommand): string {
   return command.words.length ? basename(command.words[0]) : "";
 }
 
+// ---------------------------------------------------------------------------
+// Lệnh xoá: một chỗ đọc đối số cho policy, risks và git guard
+// ---------------------------------------------------------------------------
+
+/**
+ * rm/rmdir/unlink: chỉ số (trong words) của các đích, đọc tùy chọn tới "--", và rm có đệ quy không (-r, -R, cụm
+ * như -rf, --recursive và tiền tố duy nhất của nó như GNU getopt nhận: --rec, --recur...). Lệnh khác: undefined.
+ */
+export function removeArgs(words: string[]): { recursive: boolean; targets: number[] } | undefined {
+  const name = basename(words[0] ?? "");
+  if (name !== "rm" && name !== "rmdir" && name !== "unlink") return undefined;
+  let options = true;
+  let recursive = false;
+  const targets: number[] = [];
+  for (let i = 1; i < words.length; i++) {
+    const word = words[i];
+    if (options && word === "--") options = false;
+    else if (options && word.startsWith("--")) recursive ||= name === "rm" && word.length > 2 && "--recursive".startsWith(word);
+    else if (options && word.length > 1 && word.startsWith("-")) recursive ||= name === "rm" && /[rR]/u.test(word);
+    else targets.push(i);
+  }
+  return { recursive, targets };
+}
+
+const FIND_EXEC = new Set(["-exec", "-execdir", "-ok", "-okdir"]);
+
+/**
+ * find xoá file (-delete hoặc -exec rm): chỉ số các điểm bắt đầu (rỗng khi không ghi, tức "."), có -delete không,
+ * và có theo symlink không (-L, -follow: có thể xoá ra ngoài điểm bắt đầu). find không xoá: undefined.
+ */
+export function findRemoval(words: string[]): { targets: number[]; deletes: boolean; follows: boolean } | undefined {
+  if (basename(words[0] ?? "") !== "find") return undefined;
+  let index = 1;
+  let follows = false;
+  // Tùy chọn đứng trước điểm bắt đầu: -H -L -P -D debugopts -Olevel.
+  while (index < words.length && /^-(?:[HLP]|D|O\d*)$/u.test(words[index])) {
+    follows ||= words[index] === "-L";
+    index += words[index] === "-D" ? 2 : 1;
+  }
+  const targets: number[] = [];
+  for (; index < words.length && !/^[-(!),]/u.test(words[index]); index++) targets.push(index);
+  const expression = words.slice(index);
+  const deletes = expression.includes("-delete");
+  const execRm = expression.some((word, i) => FIND_EXEC.has(word) && /(?:^|\/)rm$/u.test(expression[i + 1] ?? ""));
+  if (!deletes && !execRm) return undefined;
+  return { targets, deletes, follows: follows || expression.includes("-follow") };
+}
+
 /** Tìm lệnh bên trong các wrapper phổ biến; trả về chỉ số từ bắt đầu lệnh con. */
 function innerStart(words: string[]): number | undefined {
   const name = basename(words[0] ?? "");

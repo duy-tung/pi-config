@@ -1,102 +1,53 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 
 /** Process còn chạy (EPERM: còn, nhưng thuộc người dùng khác). */
 export function alive(pid: number): boolean {
-  if (pid === process.pid) return true;
   try {
-    process.kill(pid, 0);
-    return true;
+    return process.kill(pid, 0);
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === "EPERM";
   }
 }
 
-interface Holder {
-  pid?: number;
-  host?: string;
-  token?: string;
-  at: number;
-  /** Inode của file khóa lúc đọc: phân biệt khóa đã xét với khóa mới cùng tên. */
-  ino?: number;
-}
-
-/** Kết quả một lần thử: release khi đã lấy được khóa; removed khi đã gỡ một khóa bỏ lại. */
-interface Attempt {
-  release?: () => void;
-  holder?: Holder;
-  removed?: boolean;
-}
-
-export interface LockOptions {
-  /** Chờ khóa tối đa (ms) trước khi báo bận. */
-  waitMs?: number;
-  /** Khóa cũ hơn mức này coi như bị bỏ lại (ms). */
-  staleMs?: number;
-}
-
-/** Token khóa process này đang giữ. Pi nạp extension không cache module (mỗi phiên, /reload một bản): dùng chung qua globalThis. */
-const scope = globalThis as unknown as Record<symbol, Set<string> | undefined>;
-const held = (scope[Symbol.for("pi-rewind:held-locks")] ??= new Set<string>());
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const read = (file: string) => {
+  try {
+    return fs.readFileSync(file, "utf8");
+  } catch {
+    return undefined;
+  }
+};
 
 /**
- * Khóa giữa các process Pi dùng chung storageDir, giữ trong lúc ghi code (rewind, Redo, Undo redo,
- * phục hồi) và lúc dọn kho. File `lock` tạo bằng O_EXCL, chứa {pid, host, token, at}.
- * Khóa bỏ lại (process đã chết trên cùng máy, hoặc cũ hơn staleMs) được gỡ và thử lại một lần.
- * Chỉ gỡ khóa đúng token của mình.
+ * Khóa giữa các process Pi dùng chung storageDir khi ghi code (rewind, Redo, Undo redo, phục hồi) và khi dọn kho:
+ * file `lock` tạo bằng O_EXCL, chứa pid và một token ngẫu nhiên. Không reentrant: cùng process (kể cả bản nạp lại module sau /reload) thấy
+ * pid mình còn sống nên coi là bận. Khóa của process đã chết hoặc cũ hơn staleMs được gỡ.
  */
 export class StorageLock {
   readonly file: string;
-  private readonly waitMs: number;
-  private readonly staleMs: number;
+  private readonly options: { waitMs?: number; staleMs?: number };
+  private pid?: number;
 
-  constructor(storageDir: string, options: LockOptions = {}) {
+  constructor(storageDir: string, options: { waitMs?: number; staleMs?: number } = {}) {
     this.file = path.join(storageDir, "lock");
-    this.waitMs = options.waitMs ?? 5000;
-    this.staleMs = options.staleMs ?? 10 * 60 * 1000;
+    this.options = options;
   }
 
   /** Một lần thử, không chờ. undefined: process khác đang giữ. */
   tryAcquire(): (() => void) | undefined {
-    return this.attempt(true).release;
+    return this.create() ?? (this.takeOver() ? this.create() : undefined);
   }
 
   /** Chờ tối đa waitMs; vẫn bận thì báo lỗi và không làm gì. */
   async acquire(): Promise<() => void> {
-    const deadline = Date.now() + this.waitMs;
-    let removeStale = true;
+    const deadline = Date.now() + (this.options.waitMs ?? 5000);
     for (;;) {
-      let result: Attempt;
-      try {
-        result = this.attempt(removeStale);
-      } catch (error) {
-        // Windows: file khóa vừa bị xóa nhưng process khác còn mở (delete pending) báo EPERM trong chốc lát.
-        if (process.platform !== "win32" || (error as NodeJS.ErrnoException).code !== "EPERM" || Date.now() >= deadline) throw error;
-        await sleep(100);
-        continue;
-      }
-      if (result.release) return result.release;
-      if (result.removed) removeStale = false;
-      if (Date.now() >= deadline) {
-        const pid = result.holder?.pid;
-        throw new Error(`Another Pi process is restoring code${pid === undefined ? "" : ` (pid ${pid})`}; try again in a moment.`);
-      }
-      await sleep(100);
+      const release = this.tryAcquire();
+      if (release) return release;
+      if (Date.now() >= deadline) throw new Error(`Another Pi process is restoring code${this.pid ? ` (pid ${this.pid})` : ""}; try again in a moment.`);
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
-  }
-
-  private attempt(removeStale: boolean): Attempt {
-    const release = this.create();
-    if (release) return { release };
-    const holder = this.holder();
-    if (!removeStale || !holder || !this.stale(holder)) return { holder };
-    this.remove(holder);
-    const retried = this.create();
-    return retried ? { release: retried } : { holder: this.holder() ?? holder, removed: true };
   }
 
   private create(): (() => void) | undefined {
@@ -105,89 +56,48 @@ export class StorageLock {
     try {
       fd = fs.openSync(this.file, "wx", 0o600);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "EEXIST") return undefined;
+      const code = (error as NodeJS.ErrnoException).code; // Windows: khóa vừa xóa còn delete pending báo EPERM
+      if (code === "EEXIST" || (process.platform === "win32" && code === "EPERM")) return undefined;
       throw error;
     }
-    const token = randomUUID();
+    // Token: inode có thể được dùng lại ngay cho file mới cùng tên (Linux), nên nhận diện khóa bằng nội dung.
+    const content = `${process.pid}\n${randomUUID()}`;
     try {
-      fs.writeFileSync(fd, JSON.stringify({ pid: process.pid, host: os.hostname(), token, at: Date.now() }));
+      fs.writeFileSync(fd, content);
     } catch (error) {
       fs.closeSync(fd);
       fs.rmSync(this.file, { force: true });
       throw error;
     }
     fs.closeSync(fd);
-    held.add(token);
-    return () => this.release(token);
+    // Chỉ gỡ đúng file mình tạo: khóa đã bị gỡ vì quá staleMs rồi thay bằng khóa khác thì để nguyên.
+    return () => void (read(this.file) === content && fs.rmSync(this.file, { force: true }));
   }
 
-  private holder(file = this.file): Holder | undefined {
-    let text: string;
-    let mtimeMs: number;
-    let ino: number;
+  /** Gỡ khóa bỏ lại; true khi đã gỡ. Đổi tên (nguyên tử) rồi so inode và nội dung nên hai process không cùng gỡ được một khóa. */
+  private takeOver(): boolean {
+    let stat: fs.Stats, text: string;
     try {
-      text = fs.readFileSync(file, "utf8");
-      ({ mtimeMs, ino } = fs.statSync(file));
+      stat = fs.statSync(this.file);
+      text = fs.readFileSync(this.file, "utf8");
+      this.pid = Number.parseInt(text, 10) || undefined; // chưa có pid (đang ghi): chỉ xét tuổi
     } catch {
-      return undefined;
+      return true; // vừa được gỡ: thử tạo lại
     }
-    try {
-      const value = JSON.parse(text) as Record<string, unknown>;
-      if (value && typeof value.at === "number") {
-        return {
-          at: value.at, pid: typeof value.pid === "number" ? value.pid : undefined, ino,
-          host: typeof value.host === "string" ? value.host : undefined, token: typeof value.token === "string" ? value.token : undefined,
-        };
-      }
-    } catch {
-      /* đang được ghi hoặc hỏng */
-    }
-    return { at: mtimeMs, ino };
-  }
-
-  private stale(holder: Holder): boolean {
-    if (Date.now() - holder.at > this.staleMs) return true;
-    if (holder.host !== os.hostname() || holder.pid === undefined) return false;
-    // Khóa của chính process này mà không còn giữ: lần gỡ trước không xóa được file (Windows đang mở nó).
-    if (holder.pid === process.pid) return !holder.token || !held.has(holder.token);
-    return !alive(holder.pid);
-  }
-
-  /**
-   * Gỡ đúng khóa đã xét: process khác có thể vừa gỡ nó và tạo khóa mới. Đổi tên (nguyên tử) rồi mới kiểm nội dung,
-   * nên không có khoảng hở giữa lúc kiểm và lúc xoá; lỡ lấy phải khóa mới thì trả lại bằng hard link (không ghi đè).
-   */
-  private remove(holder: Holder): void {
-    // Khóa đã bị thay (inode khác) thì không đụng tới: tránh cả khoảng khóa vắng mặt khi phải trả lại.
-    try {
-      if (holder.ino !== undefined && fs.statSync(this.file).ino !== holder.ino) return;
-    } catch {
-      return;
-    }
+    if (Date.now() - stat.mtimeMs <= (this.options.staleMs ?? 10 * 60 * 1000) && (!this.pid || alive(this.pid))) return false;
     const aside = `${this.file}.${randomUUID()}.stale`;
     try {
       fs.renameSync(this.file, aside);
     } catch {
-      return; // process khác vừa gỡ, hoặc Windows còn mở file
+      return false; // process khác vừa gỡ
     }
-    const taken = this.holder(aside);
-    if (!taken || taken.token !== holder.token || taken.at !== holder.at || taken.ino !== holder.ino) {
-      try {
-        fs.linkSync(aside, this.file);
-      } catch {
-        /* đã có khóa mới hơn */
-      }
+    const same = fs.statSync(aside).ino === stat.ino && read(aside) === text;
+    try {
+      if (!same) fs.linkSync(aside, this.file); // lỡ lấy phải khóa mới của process khác: trả lại, không ghi đè
+    } catch {
+      /* đã có khóa khác nữa */
     }
     fs.rmSync(aside, { force: true });
-  }
-
-  private release(token: string): void {
-    held.delete(token);
-    try {
-      const value = JSON.parse(fs.readFileSync(this.file, "utf8")) as { token?: unknown };
-      if (value?.token === token) fs.unlinkSync(this.file);
-    } catch {
-      /* đã bị gỡ; không xóa được thì lần sau coi là khóa bỏ lại */
-    }
+    return same;
   }
 }

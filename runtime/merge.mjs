@@ -123,27 +123,12 @@ function mergeNode(path, base, next, current, context) {
 
 /**
  * base undefined: gộp cộng dồn cho bản cài trước khi có base (giữ mọi giá trị hiện có, thêm khóa và mục còn thiếu).
- * settings: áp các luật mảng tập hợp, luật deny đã bỏ và thứ tự extension của settings.json.
+ * settings: áp các luật mảng tập hợp và thứ tự extension của settings.json.
  */
 export function mergeConfig({base, next, current, settings = false}) {
   const context = {settings, changes: [], conflicts: []};
   const value = mergeNode([], base, next, current, context);
   return {value, changes: context.changes, conflicts: context.conflicts};
-}
-
-/**
- * Hành vi trước khi có base cho settings.json installer ghi mà người dùng chưa sửa: nhận mặc định mới
- * nhưng giữ các loại trừ extension "-" và mọi luật deny hiện có (deny chỉ thu hẹp quyền).
- */
-export function carryLocalControls(next, current) {
-  const value = structuredClone(next);
-  const strings = list => Array.isArray(list) ? list.filter(entry => typeof entry === 'string') : [];
-  const exclusions = strings(current?.extensions).filter(entry => entry.startsWith('-'));
-  if (exclusions.length) value.extensions = [...new Set([...exclusions, ...strings(value.extensions)])];
-  if (isObject(value.permissions)) {
-    value.permissions.deny = [...new Set([...strings(value.permissions.deny), ...strings(current?.permissions?.deny)])];
-  }
-  return value;
 }
 
 const stringify = value => `${JSON.stringify(value, null, 2)}\n`;
@@ -186,10 +171,7 @@ export function reconcileJson({next, current, base, unedited = false, settings =
   if (deepEqual(currentValue, nextValue)) return {changes: [], conflicts: []};
   // File chưa sửa so với lần cài trước: nhận nguyên mặc định mới, như file installer tự quản lý.
   if (baseValue !== undefined && deepEqual(currentValue, baseValue)) return {content: next, changes: [], conflicts: []};
-  if (baseValue === undefined && unedited) {
-    const value = settings ? carryLocalControls(nextValue, currentValue) : nextValue;
-    return {content: deepEqual(value, currentValue) ? undefined : settings ? stringify(value) : next, changes: [], conflicts: []};
-  }
+  if (baseValue === undefined && unedited) return {content: next, changes: [], conflicts: []};
   const merged = mergeConfig({base: baseValue, next: nextValue, current: currentValue, settings});
   return {
     content: deepEqual(merged.value, currentValue) ? undefined : stringify(merged.value),

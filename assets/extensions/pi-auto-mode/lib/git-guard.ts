@@ -3,15 +3,20 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { realPath } from "./paths.ts";
+import { removeArgs } from "./shell.ts";
 
 /**
- * Guard git tất định, port từ hooks/guard_git.py của tstack (cùng quyết định trên mọi ca kiểm thử của bản gốc).
+ * Guard git tất định, theo hooks/guard_git.py của tstack (cùng bảng ca kiểm thử), viết bằng built-in của Node.
  *
  * Chặn thao tác git làm mất việc, viết lại lịch sử chung, push thẳng lên nhánh được bảo vệ hoặc bỏ qua hook của
  * repo, cùng vài lệnh rm thảm hoạ; mọi thứ khác cho qua. Lệnh được tách như shell tách: nháy, escape, heredoc,
  * comment, pipeline, danh sách lệnh, subshell, thay thế lệnh và tiến trình, `bash -c`, `eval`, chữ được pipe hoặc
  * heredoc vào shell, và các wrapper phổ biến (sudo, env, timeout, nice, xargs, flock...). Chữ trong nháy, trong
  * heredoc có delimiter trong nháy hoặc trong comment là dữ liệu, không phải lệnh.
+ *
+ * Bộ tách lệnh riêng, không dùng lib/shell.ts: shell.ts cố ý bảo thủ cho lớp chính sách (cấu trúc lạ → bộ phân loại),
+ * đọc thân heredoc như lệnh và bỏ toán tử giữa các lệnh, nên không phân biệt được `| bash` với `| grep` hay commit
+ * message trong heredoc với lệnh thật. Guard cần đúng hai điều đó để vừa không chặn nhầm vừa không bỏ lọt.
  *
  * Nhánh được bảo vệ: autoMode.gitGuard.protectedBranches nếu có, không thì mặc định. Bật/tắt bằng autoMode.gitGuard
  * (lib/config.ts); bên gọi không gọi guard khi đã tắt.
@@ -90,140 +95,19 @@ function block(reason: string, alternative: string): never {
   throw new Blocked(reason, alternative);
 }
 
-// ---------------------------------------------------------------------------
-// Ngữ nghĩa chuỗi và đường dẫn của Python mà bản gốc dựa vào
-// ---------------------------------------------------------------------------
-
-// Khoảng trắng theo str.isspace() (cũng là \s của re) của Python.
-const PY_SPACE = "\\t\\n\\v\\f\\r\\x1c-\\x1f \\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000";
-const STRIP = new RegExp(`^[${PY_SPACE}]+|[${PY_SPACE}]+$`, "gu");
-// str.isdigit(): chữ số thập phân và chữ số khác (², ①...).
-const DIGITS = new RegExp("^[\\p{Nd}\\xb2\\xb3\\xb9\\u1369-\\u1371\\u19da\\u2070\\u2074-\\u2079\\u2080-\\u2089\\u2460-\\u2468"
-  + "\\u2474-\\u247c\\u2488-\\u2490\\u24ea\\u24f5-\\u24fd\\u24ff\\u2776-\\u277e\\u2780-\\u2788\\u278a-\\u2792"
-  + "\\u{10a40}-\\u{10a43}\\u{10e60}-\\u{10e68}\\u{11052}-\\u{1105a}\\u{1f100}-\\u{1f10a}]+$", "u");
-
-const strip = (value: string) => value.replace(STRIP, "");
-/** os.path.basename (POSIX): phần sau "/" cuối cùng. */
+/** Tên chương trình: phần sau "/" cuối cùng. */
 const basename = (word: string) => word.slice(word.lastIndexOf("/") + 1);
-/** Số ký tự như len() của Python (theo code point). */
-const length = (value: string) => [...value].length;
 
 function partition(word: string): [string, string] {
   const eq = word.indexOf("=");
   return [word.slice(0, eq), word.slice(eq + 1)];
 }
 
-/** os.path.join của Python cho hai thành phần (POSIX: không chuẩn hoá). */
-function joinPath(base: string, part: string): string {
-  if (process.platform === "win32") return path.resolve(base, part);
-  if (part.startsWith("/")) return part;
-  return !base || base.endsWith("/") ? base + part : `${base}/${part}`;
-}
+const homeDir = (env: Record<string, string | undefined>) => (env.HOME || os.homedir()).replace(/\/+$/u, "");
 
-function userHome(name: string): string | undefined {
-  try {
-    const me = os.userInfo();
-    if (me.username === name) return me.homedir;
-  } catch {
-    /* không có mục passwd cho người dùng hiện tại */
-  }
-  try {
-    for (const line of fs.readFileSync("/etc/passwd", "utf8").split("\n")) {
-      const fields = line.split(":");
-      if (fields.length >= 7 && fields[0] === name) return fields[5];
-    }
-  } catch {
-    /* không có /etc/passwd (Windows) */
-  }
-  return undefined;
-}
-
-/** os.path.expanduser: ~ theo HOME của môi trường, ~tên theo passwd; không tìm được thì giữ nguyên. */
-function expandUser(value: string, env: Record<string, string | undefined>): string {
-  if (!value.startsWith("~")) return value;
-  let slash = value.indexOf("/", 1);
-  if (slash < 0) slash = value.length;
-  let home: string | undefined;
-  if (slash === 1) {
-    try {
-      home = env.HOME ?? os.userInfo().homedir;
-    } catch {
-      return value;
-    }
-  } else {
-    home = userHome(value.slice(1, slash));
-    if (home === undefined) return value;
-  }
-  return home.replace(/\/+$/u, "") + value.slice(slash) || "/";
-}
-
-/** Lỗi hệ thống (OSError của Python), khác lỗi đối số như NUL trong đường dẫn. */
-const osError = (error: unknown) => {
-  const code = (error as { code?: unknown } | undefined)?.code;
-  return typeof code === "string" && !code.startsWith("ERR_");
-};
-
-/** posixpath.split: (thư mục, thành phần cuối). */
-function splitPath(value: string): [string, string] {
-  const at = value.lastIndexOf("/") + 1;
-  let head = value.slice(0, at);
-  if (head && head !== "/".repeat(head.length)) head = head.replace(/\/+$/u, "");
-  return [head, value.slice(at)];
-}
-
-function joinRealPath(base: string, rest: string, seen: Map<string, string | undefined>): [string, boolean] {
-  let current = base;
-  if (rest.startsWith("/")) {
-    rest = rest.slice(1);
-    current = "/";
-  }
-  while (rest) {
-    const slash = rest.indexOf("/");
-    const name = slash < 0 ? rest : rest.slice(0, slash);
-    rest = slash < 0 ? "" : rest.slice(slash + 1);
-    if (!name || name === ".") continue;
-    if (name === "..") {
-      if (current) {
-        const [head, tail] = splitPath(current);
-        current = tail === ".." ? joinPath(joinPath(head, ".."), "..") : head;
-      } else {
-        current = "..";
-      }
-      continue;
-    }
-    const next = joinPath(current, name);
-    let link = false;
-    try {
-      link = fs.lstatSync(next).isSymbolicLink();
-    } catch (error) {
-      if (!osError(error)) throw error;
-    }
-    if (!link) {
-      current = next;
-      continue;
-    }
-    if (seen.has(next)) {
-      const cached = seen.get(next);
-      if (cached !== undefined) {
-        current = cached;
-        continue;
-      }
-      // Vòng symlink: giữ phần đã resolve và phần còn lại.
-      return [joinPath(next, rest), false];
-    }
-    seen.set(next, undefined);
-    const [resolved, ok] = joinRealPath(current, fs.readlinkSync(next), seen);
-    current = resolved;
-    if (!ok) return [joinPath(current, rest), false];
-    seen.set(next, current);
-  }
-  return [current, true];
-}
-
-/** os.path.realpath (không strict): theo symlink của phần đã có, phần chưa có giữ nguyên chữ. */
-function realpath(file: string): string {
-  if (process.platform === "win32") return realPath(file);
-  return path.resolve(joinRealPath("", file, new Map())[0]);
+/** ~ và ~/… theo HOME của môi trường; ~tên giữ nguyên. */
+function expandHome(value: string, env: Record<string, string | undefined>): string {
+  return value === "~" || value.startsWith("~/") ? homeDir(env) + value.slice(1) || "/" : value;
 }
 
 function isDirectory(file: string): boolean {
@@ -234,79 +118,15 @@ function isDirectory(file: string): boolean {
   }
 }
 
-const REGEX_SYNTAX = /[\\^$.*+?()[\]{}|/]/gu;
-const patterns = new Map<string, RegExp>();
+const globs = new Map<string, RegExp>();
 
-/** fnmatch.translate: * và ? khớp cả "/", [...] là lớp ký tự ([!...] phủ định), không phân biệt hoa thường thì không. */
-function translate(pattern: string): RegExp {
-  let source = "";
-  let star = false;
-  let i = 0;
-  const n = pattern.length;
-  while (i < n) {
-    const c = pattern[i++];
-    if (c === "*") {
-      if (!star) source += "[\\s\\S]*";
-      star = true;
-      continue;
-    }
-    star = false;
-    if (c === "?") {
-      source += "[\\s\\S]";
-    } else if (c === "[") {
-      let j = i;
-      if (j < n && pattern[j] === "!") j++;
-      if (j < n && pattern[j] === "]") j++;
-      while (j < n && pattern[j] !== "]") j++;
-      if (j >= n) {
-        source += "\\[";
-        continue;
-      }
-      let stuff = pattern.slice(i, j);
-      if (!stuff.includes("-")) {
-        stuff = stuff.replaceAll("\\", "\\\\");
-      } else {
-        const chunks: string[] = [];
-        let k = pattern[i] === "!" ? i + 2 : i + 1;
-        for (;;) {
-          k = k < j ? pattern.indexOf("-", k) : -1;
-          if (k < 0 || k >= j) break;
-          chunks.push(pattern.slice(i, k));
-          i = k + 1;
-          k += 3;
-        }
-        const chunk = pattern.slice(i, j);
-        if (chunk) chunks.push(chunk);
-        else chunks[chunks.length - 1] += "-";
-        // Bỏ khoảng rỗng (a > b); đoạn rỗng là IndexError ở bản gốc.
-        for (let m = chunks.length - 1; m > 0; m--) {
-          if (!chunks[m - 1] || !chunks[m]) throw new Error("fnmatch: empty range chunk");
-          if (chunks[m - 1][chunks[m - 1].length - 1] > chunks[m][0]) {
-            chunks[m - 1] = chunks[m - 1].slice(0, -1) + chunks[m].slice(1);
-            chunks.splice(m, 1);
-          }
-        }
-        stuff = chunks.map((item) => item.replaceAll("\\", "\\\\").replaceAll("-", "\\-")).join("-");
-      }
-      i = j + 1;
-      if (!stuff) source += "(?!)";
-      else if (stuff === "!") source += "[\\s\\S]";
-      else {
-        if (stuff[0] === "!") stuff = `^${stuff.slice(1)}`;
-        else if (stuff[0] === "^" || stuff[0] === "[") stuff = `\\${stuff}`;
-        source += `[${stuff.replaceAll("]", "\\]")}]`;
-      }
-    } else {
-      source += c.replace(REGEX_SYNTAX, "\\$&");
-    }
+/** Khớp tên nhánh với mẫu: * khớp mọi chuỗi (kể cả "/"), ? một ký tự. */
+function globMatch(name: string, pattern: string): boolean {
+  let regex = globs.get(pattern);
+  if (!regex) {
+    const source = pattern.replace(/[\\^$.+()[\]{}|/]/gu, "\\$&").replaceAll("*", "[\\s\\S]*").replaceAll("?", "[\\s\\S]");
+    globs.set(pattern, regex = new RegExp(`^${source}$`, "u"));
   }
-  return new RegExp(`^(?:${source})$`, "u");
-}
-
-/** fnmatch.fnmatchcase. */
-function fnmatch(name: string, pattern: string): boolean {
-  let regex = patterns.get(pattern);
-  if (!regex) patterns.set(pattern, regex = translate(pattern));
   return regex.test(name);
 }
 
@@ -347,7 +167,7 @@ function skipHeredocBodies(text: string, i: number, pending: Heredoc[]): number 
   return i;
 }
 
-const HEREDOC_OP = new RegExp(`<<(-?)[ \\t]*(?:'([^']*)'|"([^"]*)"|(\\\\?)([^${PY_SPACE};&|()<>'"]+))`, "uy");
+const HEREDOC_OP = /<<(-?)[ \t]*(?:'([^']*)'|"([^"]*)"|(\\?)([^\s;&|()<>'"]+))/uy;
 
 /** Chỉ số của ")" đóng một "$(" hoặc "(" có thân bắt đầu tại i. */
 function findParenEnd(text: string, i: number): number {
@@ -430,33 +250,37 @@ function skipDouble(text: string, i: number): number {
   return n;
 }
 
+/**
+ * Phép thay thế bắt đầu tại i: $((...)), $(...), `...` và (khi process) <(...), >(...). Trả về [chỉ số sau nó,
+ * lệnh bên trong (undefined với số học)], hoặc undefined khi không phải phép thay thế.
+ */
+function substitution(text: string, i: number, process = false): [number, string | undefined] | undefined {
+  if (text.startsWith("$((", i)) return [findParenEnd(text, i + 3) + 2, undefined];
+  if (text.startsWith("$(", i) || (process && (text[i] === "<" || text[i] === ">") && text[i + 1] === "(")) {
+    const j = findParenEnd(text, i + 2);
+    return [j + 1, text.slice(i + 2, j)];
+  }
+  if (text[i] === "`") {
+    const j = findBacktickEnd(text, i + 1);
+    return [j + 1, text.slice(i + 1, j).replaceAll("\\`", "`")];
+  }
+  return undefined;
+}
+
 /** Phép thay thế lệnh mà shell mở rộng trong chữ (thân heredoc không có nháy). */
 function collectSubstitutions(text: string, nested: string[]): void {
-  let i = 0;
-  const n = text.length;
-  while (i < n) {
-    const c = text[i];
-    if (c === "\\") {
+  for (let i = 0; i < text.length;) {
+    if (text[i] === "\\") {
       i += 2;
       continue;
     }
-    if (c === "$" && text.startsWith("$((", i)) {
-      i += 3;
+    const sub = substitution(text, i);
+    if (!sub) {
+      i++;
       continue;
     }
-    if (c === "$" && text.startsWith("$(", i)) {
-      const j = findParenEnd(text, i + 2);
-      nested.push(text.slice(i + 2, j));
-      i = j + 1;
-      continue;
-    }
-    if (c === "`") {
-      const j = findBacktickEnd(text, i + 1);
-      nested.push(text.slice(i + 1, j).replaceAll("\\`", "`"));
-      i = j + 1;
-      continue;
-    }
-    i++;
+    if (sub[1] !== undefined) nested.push(sub[1]);
+    i = sub[0];
   }
 }
 
@@ -539,23 +363,11 @@ function parseCommands(text: string, depth = 0): Parsed[] {
           i += 2;
           continue;
         }
-        if (d === "$" && text.startsWith("$((", i)) {
+        const sub = substitution(text, i);
+        if (sub) {
+          if (sub[1] !== undefined) nested.push(sub[1]);
           out.push(SUB);
-          i = findParenEnd(text, i + 3) + 2;
-          continue;
-        }
-        if (d === "$" && text.startsWith("$(", i)) {
-          const j = findParenEnd(text, i + 2);
-          nested.push(text.slice(i + 2, j));
-          out.push(SUB);
-          i = j + 1;
-          continue;
-        }
-        if (d === "`") {
-          const j = findBacktickEnd(text, i + 1);
-          nested.push(text.slice(i + 1, j).replaceAll("\\`", "`"));
-          out.push(SUB);
-          i = j + 1;
+          i = sub[0];
           continue;
         }
         out.push(d);
@@ -565,35 +377,16 @@ function parseCommands(text: string, depth = 0): Parsed[] {
       i++;
       continue;
     }
-    if (c === "`") {
-      const j = findBacktickEnd(text, i + 1);
-      nested.push(text.slice(i + 1, j).replaceAll("\\`", "`"));
+    const sub = substitution(text, i, true);
+    if (sub) {
+      if (sub[1] !== undefined) nested.push(sub[1]);
       add(SUB);
-      i = j + 1;
-      continue;
-    }
-    if (c === "$" && text.startsWith("$((", i)) {
-      add(SUB);
-      i = findParenEnd(text, i + 3) + 2;
-      continue;
-    }
-    if (c === "$" && text.startsWith("$(", i)) {
-      const j = findParenEnd(text, i + 2);
-      nested.push(text.slice(i + 2, j));
-      add(SUB);
-      i = j + 1;
-      continue;
-    }
-    if ((c === "<" || c === ">") && text.startsWith("(", i + 1)) {
-      const j = findParenEnd(text, i + 2);
-      nested.push(text.slice(i + 2, j));
-      add(SUB);
-      i = j + 1;
+      i = sub[0];
       continue;
     }
     if (c === "<" || c === ">" || (c === "&" && text.startsWith(">", i + 1))) {
       // Số fd đứng liền trước (2>) thuộc về toán tử chuyển hướng.
-      if (inWord && DIGITS.test(buf.join("")) && !quoted) {
+      if (inWord && /^\d+$/u.test(buf.join("")) && !quoted) {
         buf = [];
         inWord = false;
       } else {
@@ -642,7 +435,7 @@ function parseCommands(text: string, depth = 0): Parsed[] {
     if ((ops[k - 1] === "|" || ops[k - 1] === "|&") && stdinShell(commands[k][0])) {
       const feeder = unwrap(commands[k - 1][0]);
       if (feeder && feeder.words.length && ["echo", "printf"].includes(basename(feeder.words[0]))) {
-        const args = feeder.words.slice(1).filter((arg) => !(arg.startsWith("-") && length(arg) <= 3));
+        const args = feeder.words.slice(1).filter((arg) => !(arg.startsWith("-") && arg.length <= 3));
         executed.push(args.join(" ").replaceAll("\\n", "\n"));
       }
     }
@@ -726,16 +519,14 @@ export function runGit(args: string[], cwd: string): string | undefined {
     return execFileSync("git", ["-C", cwd, ...args], {
       encoding: "utf8", timeout: 3_000, maxBuffer: 1024 * 1024, stdio: ["ignore", "pipe", "ignore"], windowsHide: true,
     });
-  } catch (error) {
-    // Đối số không hợp lệ (NUL) là lỗi của guard, không phải git thất bại: để lớp ngoài cho qua như bản gốc.
-    if (!osError(error) && (error as { code?: unknown }).code !== undefined) throw error;
+  } catch {
     return undefined;
   }
 }
 
 function gitOutput(ctx: Context, cwd: string, ...args: string[]): string {
   const out = ctx.git(args, cwd);
-  return typeof out === "string" ? strip(out) : "";
+  return typeof out === "string" ? out.trim() : "";
 }
 
 const VARIABLE = /\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))/gu;
@@ -759,7 +550,7 @@ const unknown = (word: string) => word.includes(SUB) || word.includes("$");
 
 function isProtected(branch: string, patterns: string[]): boolean {
   const name = branch.startsWith("refs/heads/") ? branch.slice("refs/heads/".length) : branch;
-  return patterns.some((pattern) => fnmatch(name, pattern));
+  return patterns.some((pattern) => globMatch(name, pattern));
 }
 
 interface Options {
@@ -805,7 +596,7 @@ function parseOpts(args: string[], shortValue = "", longValue: string[] = []): O
     positional.push(arg);
     i++;
   }
-  // git và GNU rm nhận tiền tố duy nhất của tùy chọn dài (--no-veri = --no-verify, --har = --hard). Tiền tố của
+  // git nhận tiền tố duy nhất của tùy chọn dài (--no-veri = --no-verify, --har = --hard). Tiền tố của
   // tùy chọn guard xét được tính như tùy chọn đó; tiền tố mơ hồ thì git báo lỗi, nên chặn cũng không hại.
   for (const name of [...longs]) {
     if (name.length < 4) continue;
@@ -816,7 +607,7 @@ function parseOpts(args: string[], shortValue = "", longValue: string[] = []): O
 
 const GUARDED_LONGS = [
   "--no-verify", "--force", "--mirror", "--prune", "--all", "--branches", "--delete", "--tags", "--hard", "--dry-run",
-  "--discard-changes", "--staged", "--worktree", "--cached", "--recursive",
+  "--discard-changes", "--staged", "--worktree", "--cached",
 ];
 
 /** [tùy chọn toàn cục, lệnh con, đối số] của một lời gọi git. */
@@ -840,7 +631,7 @@ function splitGit(words: string[]): [string[], string, string[]] {
 
 function repoDir(ctx: Context, globals: string[], cwd: string): string {
   const index = globals.indexOf("-C");
-  if (index >= 0 && index + 1 < globals.length) return joinPath(cwd, expandUser(globals[index + 1], ctx.env));
+  if (index >= 0 && index + 1 < globals.length) return path.resolve(cwd, expandHome(globals[index + 1], ctx.env));
   return cwd;
 }
 
@@ -895,8 +686,8 @@ function checkConfig(ctx: Context, args: string[], cwd: string): void {
   if (index + 1 >= args.length) return; // chỉ đọc
   const value = args[index + 1];
   if (has(before, "--global", "--system")) block("a global core.hooksPath changes hooks for every repo", "Set it per repo, or ask the user.");
-  const top = realpath(gitOutput(ctx, cwd, "rev-parse", "--show-toplevel") || cwd);
-  const target = value ? realpath(joinPath(top, expandUser(value, ctx.env))) : "";
+  const top = realPath(gitOutput(ctx, cwd, "rev-parse", "--show-toplevel") || cwd);
+  const target = value ? realPath(path.resolve(top, expandHome(value, ctx.env))) : "";
   const inside = !!value && !unknown(value) && (target === top || target.startsWith(top + path.sep));
   const hooks = inside && isDirectory(target) && fs.readdirSync(target).some((name) => GIT_HOOKS.has(name));
   if (!hooks) {
@@ -1001,13 +792,13 @@ function isCatastrophic(ctx: Context, target: string): boolean {
   }
   if (t.length > 1) t = t.replace(/\/+$/u, "") || "/";
   if (t.startsWith("./") && t.length > 2) t = t.slice(2);
-  return CATASTROPHIC.has(t) || t === expandUser("~", ctx.env).replace(/\/+$/u, "");
+  return CATASTROPHIC.has(t) || t === homeDir(ctx.env);
 }
 
 function checkRm(ctx: Context, words: string[]): void {
-  const { letters, longs, positional } = parseOpts(words.slice(1));
-  if (!(letters.has("r") || letters.has("R") || longs.has("--recursive"))) return;
-  for (const target of positional) {
+  const removal = removeArgs(words);
+  if (!removal?.recursive) return;
+  for (const target of removal.targets.map((index) => words[index])) {
     if (!target.includes(SUB) && isCatastrophic(ctx, target)) block(`rm -r ${target} would delete far more than intended`, "Delete named paths inside the project.");
   }
 }

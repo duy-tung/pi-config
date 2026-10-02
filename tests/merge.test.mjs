@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {carryLocalControls, deepEqual, describeMerge, mergeConfig, reconcileJson, reconcileRole} from '../runtime/merge.mjs';
+import {deepEqual, describeMerge, mergeConfig, reconcileJson, reconcileRole} from '../runtime/merge.mjs';
 
 const json = value => `${JSON.stringify(value, null, 2)}\n`;
 const merge = (base, next, current, settings = true) => mergeConfig({base, next, current, settings});
@@ -100,15 +100,11 @@ test('chưa có base: giữ mọi giá trị hiện có, thêm khóa và mục c
   assert.ok(report.includes('  - xung đột: giữ giá trị hiện có cho defaultModel; mặc định mới là "claude-opus-5-5"'), report.join('\n'));
 });
 
-test('chưa có base nhưng file chưa sửa: nhận mặc định mới, giữ loại trừ extension và luật deny như trước', () => {
-  const next = {defaultModel: 'new', extensions: ['/r/a', '/r/pi-auto-mode'], permissions: {deny: ['Bash(sudo *)']}};
-  const current = {defaultModel: 'old', extensions: ['-/user/x.ts', '/r/a', '/r/pi-auto-mode'], permissions: {deny: ['Path(/user/key)']}};
-  const carried = {defaultModel: 'new', extensions: ['-/user/x.ts', '/r/a', '/r/pi-auto-mode'], permissions: {deny: ['Bash(sudo *)', 'Path(/user/key)']}};
-  assert.deepEqual(carryLocalControls(next, current), carried);
-  const plan = reconcileJson({next: json(next), current: json(current), unedited: true, settings: true});
-  assert.deepEqual([JSON.parse(plan.content), plan.changes, plan.conflicts], [carried, [], []]);
-  // File khác settings.json nhận nguyên bản mới.
-  assert.equal(reconcileJson({next: json(next), current: json(current), unedited: true}).content, json(next));
+test('chưa có base nhưng file chưa sửa: nhận nguyên mặc định mới', () => {
+  const next = {defaultModel: 'new', permissions: {deny: ['Bash(sudo *)']}};
+  const current = {defaultModel: 'old', permissions: {deny: ['Path(/old/key)']}};
+  assert.deepEqual(reconcileJson({next: json(next), current: json(current), unedited: true, settings: true}),
+    {content: json(next), changes: [], conflicts: []});
 });
 
 test('reconcileJson: file mới, file khớp, file chưa sửa so với base, JSON hỏng', () => {
