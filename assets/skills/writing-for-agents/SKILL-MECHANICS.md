@@ -40,9 +40,9 @@ Shared reference that two user-invoked skills both need can live in neither: wit
 
 ## Subagents
 
-- Spawn a role with the `Agent` tool: `explorer`, `researcher`, `worker`, `debugger` or `reviewer`; the global AGENTS.md says what each is for. The role pins its model and thinking: never pass `model` or `thinking`.
+- Spawn a role with the `Agent` tool: `researcher`, `worker`, `debugger` or `reviewer`; the global AGENTS.md says what each is for. The role pins its model and thinking: never pass `model` or `thinking`.
 - A subagent does not see the conversation. Brief with pointers (absolute paths, SHAs, commands), not pasted dumps. Each brief stands alone: goal, scope, context pointers, acceptance, verify, forbidden, report format.
-- Several `Agent` calls in one response run in parallel (at most 4 in the background, 2 in the foreground; the rest queue). Collect background results (`explorer`, `researcher`, `reviewer`) with `get_subagent_result` (`wait: true`).
+- Several `Agent` calls in one response run in parallel (at most 4 in the background, 2 in the foreground; the rest queue). Collect background results (`researcher`, `reviewer`) with `get_subagent_result` (`wait: true`).
 - The main thread is the only spawner: subagents have no Agent tool. End every brief with: "Do not spawn agents or run user-invoked skills. Do the work directly."
 - You own each subagent's output: read its diff or file yourself, never pass its summary through.
 

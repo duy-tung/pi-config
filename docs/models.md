@@ -7,7 +7,7 @@ Model và mức thinking của mọi vai đặt ở một chỗ: `<agent-dir>/mo
 | Vai | Dùng ở | File gốc installer sinh ra |
 |---|---|---|
 | `main` | Phiên chính (parent) | `settings.json` (`defaultProvider`, `defaultModel`, `defaultThinkingLevel`) và `executor` trong `advisor.json` |
-| `researcher`, `explorer`, `worker`, `debugger`, `reviewer` | Agent của pi-subagents | dòng `model:`/`thinking:` trong `agents/<vai>.md` |
+| `researcher`, `worker`, `debugger`, `reviewer` | Agent của pi-subagents | dòng `model:`/`thinking:` trong `agents/<vai>.md` |
 | `advisor` | pi-advisor-flow | `advisor`, `advisorEffort`, gate (`advisorPlanGate`, `advisorFailureGate`, `advisorCompletionGate`) và `advisorMaxCallsPerSession` trong `advisor.json` |
 | `auditor`, `oracle` | Goal auditor và Oracle của pi-goal-x | `provider`/`model`/`thinkingLevel` và khối `oracle` trong `pi-goal-x-settings.json` |
 | `autoMode` | Bộ phân loại LLM của auto mode | `autoMode.model`, `autoMode.stage2Reasoning` trong `settings.json` |
@@ -48,7 +48,6 @@ Preset có sẵn nằm ở `assets/configs/model-presets.json` và cập nhật 
 |---|---|---|
 | `main` | Claude Opus 5.5 / high | Claude Opus 5.5 / high |
 | `researcher` | GLM-5.3-Flash / max | Claude Sonnet 5 / high |
-| `explorer` | GLM-5.3-Flash / high | Claude Sonnet 5 / medium |
 | `worker`, `debugger` | GPT-6 Sol / max | Claude Opus 5.5 / high |
 | `reviewer` | GPT-6 Astra / high | Claude Fable 5.1 / high |
 | `advisor` | GPT-6 Astra / high | Claude Fable 5.1 / high |
@@ -101,7 +100,7 @@ Trong Pi, `/models` làm đúng việc của `pi-models`: cùng lệnh con (`/mo
   |---|---|
   | `main` | Ngay: phiên này chuyển sang model và thinking mới. Nếu provider chưa đăng nhập thì phiên giữ model cũ và lệnh báo lại |
   | `autoMode` | Từ lần phân loại kế tiếp của auto mode |
-  | `researcher`, `explorer`, `worker`, `debugger`, `reviewer` | Từ lần gọi `Agent` kế tiếp |
+  | `researcher`, `worker`, `debugger`, `reviewer` | Từ lần gọi `Agent` kế tiếp |
   | `advisor` | Từ lần hỏi advisor kế tiếp |
   | `auditor`, `oracle` | Từ phiên mới (`/new`, `/resume`) hoặc phiên Pi mở sau |
 

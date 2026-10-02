@@ -10,8 +10,8 @@ Skill nằm trong `assets/skills/` của repo và được cài vào `<root>/ass
 
 | Trụ cột | Trên Pi |
 |---|---|
-| **Căn chỉnh trước khi build** | `/skill:grill-with-docs` hỏi từng vòng, mỗi câu có đáp án đề xuất. Sự thật do agent tự tra (code giao `explorer`, docs/web giao `researcher`), quyết định là của người. Câu "cách nào tốt hơn" mà chạy thử trả lời được thì agent tự làm prototype. |
-| **Ở trong smart zone** | Giữ mỗi pha trong khoảng 150k token đầu; footer của Pi cho biết context đang dùng. Việc đọc code rộng giao `explorer`, tra docs/web giao `researcher`. Hết một pha thì chọn: tiếp tục, `/clear`, handoff, subagent hoặc `/compact`. |
+| **Căn chỉnh trước khi build** | `/skill:grill-with-docs` hỏi từng vòng, mỗi câu có đáp án đề xuất. Sự thật do agent tự tra (giao `researcher`), quyết định là của người. Câu "cách nào tốt hơn" mà chạy thử trả lời được thì agent tự làm prototype. |
+| **Ở trong smart zone** | Giữ mỗi pha trong khoảng 150k token đầu; footer của Pi cho biết context đang dùng. Việc đọc code rộng, tra docs/web giao `researcher`. Hết một pha thì chọn: tiếp tục, `/clear`, handoff, subagent hoặc `/compact`. |
 | **Chứng minh trên sản phẩm thật** | Chạy thay đổi theo đường người dùng đi (app, CLI, API) và đọc output thật; typecheck hay CI xanh không phải bằng chứng. Kết luận VERIFIED, NOT VERIFIED hoặc INCONCLUSIVE kèm bằng chứng. |
 | **Mã hoá bài học vào cấu trúc** | Thang ưu tiên, từ mạnh nhất: type và kiến trúc; lint, hook và CI; `CODING_STANDARDS.md`; skill; một dòng trong AGENTS.md. `/skill:reflect` đưa mỗi bài học lên nấc cao nhất có thể. |
 | **Tự chủ có hợp đồng** | Việc đảo ngược được thì cứ làm. Việc dài giao `/goal` của pi-goal-x. Git guard trong auto mode chặn tất định các lệnh git phá huỷ. |
@@ -73,8 +73,7 @@ Skill không ghi tên model; chúng gọi **vai**, và `model-roles.json` quyế
 | Bước | Vai | Model (default) | Vì sao |
 |---|---|---|---|
 | Thiết kế, grill, nghiệm thu, điều phối | parent | Claude Opus 5.5/high | Giữ ngữ cảnh và quyết định |
-| Đọc code, bản đồ file/symbol/luồng gọi (`how`, `improve-architecture`, blast radius) | `explorer` | GLM-5.3-Flash/high | Chỉ đọc code, không web; chạy nền song song với researcher |
-| Git archaeology, tra docs và web (`why`, `research`, facts khi grill) | `researcher` | GLM-5.3-Flash/max | Rẻ, nhanh, chạy nền song song (tối đa 4); chỉ đọc, có bash cho lệnh đọc |
+| Đọc code, git archaeology, tra docs và web (`how`, `why`, `research`, `improve-architecture`, blast radius, facts khi grill) | `researcher` | GLM-5.3-Flash/max | Rẻ, nhanh, chạy nền song song (tối đa 4); chỉ đọc, có bash cho lệnh đọc |
 | Build một ticket hoặc unit, prototype, sửa danh sách Act-on | `worker` | GPT-6 Sol/max | Viết code; commit chỉ khi brief cho phép |
 | Tái hiện và sửa một bug đã khoanh | `debugger` | GPT-6 Sol/max | Test đỏ trước, sửa tận gốc |
 | Ba trục review của `interrogate`, giám khảo eval | `reviewer` | GPT-6 Astra/high | Khác họ model với parent nên điểm mù không trùng; chỉ đọc |
@@ -89,7 +88,6 @@ Skill quy trình (từ tstack) dùng các gate của advisor (`pi-models set adv
 - Gate `completion`: gọi sau bước chứng minh và `interrogate`, để bản nháp mang verdict và bằng chứng thật chứ không phải lời khẳng định.
 - Gate `failure` trùng luật "hai lần sửa cùng tiền đề thất bại" của `diagnose`.
 - Số lượt `calls` tính theo phiên. Advisor tắt, hết lượt hoặc đang ở subagent (worker, debugger không có `ask_advisor`) thì skill bỏ bước advisor và ghi rõ; subagent báo parent.
-- Đọc code giao `explorer`, tra docs/web/lịch sử git giao `researcher`.
 - `interrogate`, eval của `writing-for-agents` và design it twice nói rõ khi hai seat cùng model.
 
 ## Git guard

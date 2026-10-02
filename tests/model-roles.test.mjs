@@ -18,7 +18,7 @@ test('preset có sẵn đặt đủ model và thinking cho mọi vai; default l�
   assert.deepEqual(presetErrors(presets), []);
   assert.deepEqual(Object.keys(presets), ['default', 'claude']);
   assert.deepEqual(table(resolveModelRoles(presets).roles), {
-    main: 'anthropic/claude-opus-5-5 high', researcher: 'opencode-go/glm-5.3-flash max', explorer: 'opencode-go/glm-5.3-flash high',
+    main: 'anthropic/claude-opus-5-5 high', researcher: 'opencode-go/glm-5.3-flash max',
     worker: 'openai-codex/gpt-6-sol max', debugger: 'openai-codex/gpt-6-sol max', reviewer: 'openai-codex/gpt-6-astra high',
     advisor: 'openai-codex/gpt-6-astra high', auditor: 'openai-codex/gpt-6-astra high', oracle: 'openai-codex/gpt-6-astra high',
     autoMode: 'anthropic/claude-sonnet-5 low',
@@ -101,7 +101,7 @@ test('cấu hình sai: báo từng lỗi, vẫn trả đủ vai theo preset mặ
     'roles.worker.model phải có dạng "provider/id" (vd "anthropic/claude-opus-5-5"), đang là "opus"',
     'roles.worker.thinking phải là một trong off, minimal, low, medium, high, xhigh, max, đang là "ultra"',
     'roles.worker: không có khóa "effort" (chỉ có model, thinking)',
-    'roles: không có vai "coder" (có main, researcher, explorer, worker, debugger, reviewer, advisor, auditor, oracle, autoMode)',
+    'roles: không có vai "coder" (có main, researcher, worker, debugger, reviewer, advisor, auditor, oracle, autoMode)',
     'preset "claud" không có (có default, claude)',
   ]);
   assert.equal(resolved.roles.worker.model, 'openai-codex/gpt-6-sol');

@@ -4,7 +4,7 @@
 
 **Apply.**
 
-- Send verbose output, screenshots, traces, large documents and wide searches to subagents (`explorer` agents for bulk code reading, `researcher` agents for docs, logs and the web). The main thread gets the reduced finding.
+- Send verbose output, screenshots, traces, large documents and wide searches to subagents (`researcher` agents for bulk code reading, docs, logs and the web). The main thread gets the reduced finding.
 - Brief with file pointers, not pasted dumps. Each brief stands alone: goal, scope, pointers, acceptance, how to verify, what is forbidden, report format.
 - You own every subagent's output. Read the diff or artifact yourself; never pass its summary through.
 - Keep a template used on every invocation inline in the skill that uses it. Push the rest behind pointers.

@@ -1,10 +1,10 @@
 # Explainer template
 
-Write an architectural explanation for a senior engineer who is new to this area. The input is your own reading (simple path) or every explorer's findings (complex path). The reader should walk away with a solid mental model: enough to start working in the area with confidence.
+Write an architectural explanation for a senior engineer who is new to this area. The input is your own reading (simple path) or every researcher's findings (complex path). The reader should walk away with a solid mental model: enough to start working in the area with confidence.
 
 ## Reconcile the findings (complex path)
 
-The explorers each investigated a different angle of the same subsystem. Their findings overlap in places and may contradict. Merge overlapping descriptions, resolve contradictions by checking the code yourself, and combine the separate slices into a unified picture. Use `read`, `grep` and `find` to check anything, clarify a detail, or fill a gap. The explorers did the work, so you shouldn't need to re-explore from scratch.
+The researchers each investigated a different angle of the same subsystem. Their findings overlap in places and may contradict. Merge overlapping descriptions, resolve contradictions by checking the code yourself, and combine the separate slices into a unified picture. Use `read`, `grep` and `find` to check anything, clarify a detail, or fill a gap. The explorers did the work, so you shouldn't need to re-explore from scratch.
 
 ## Output format
 

@@ -63,7 +63,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.deepEqual(settings.enabledModels, ["anthropic/claude-opus-5-5", "openai-codex/gpt-6-sol", "openai-codex/gpt-6-astra", "opencode-go/glm-5.3-flash"]);
       if (name === "main") {
       const roles = {
-        researcher: ["opencode-go/glm-5.3-flash", "max"], explorer: ["opencode-go/glm-5.3-flash", "high"], worker: ["openai-codex/gpt-6-sol", "max"],
+        researcher: ["opencode-go/glm-5.3-flash", "max"], worker: ["openai-codex/gpt-6-sol", "max"],
         debugger: ["openai-codex/gpt-6-sol", "max"], reviewer: ["openai-codex/gpt-6-astra", "high"],
       };
       for (const [role, [model, thinking]] of Object.entries(roles)) {
@@ -84,7 +84,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       }
       const subagents = json(p.join(profile.agentDir, "subagents.json"));
       assert.deepEqual([subagents.maxConcurrent, subagents.maxConcurrentForeground, subagents.defaultMaxTurns, subagents.backgroundByDefault], [4, 2, 0, true]);
-      assert.equal(files.filter(file=>file.path.startsWith(p.join(profile.agentDir,"agents")+p.sep)).length,5);
+      assert.equal(files.filter(file=>file.path.startsWith(p.join(profile.agentDir,"agents")+p.sep)).length,4);
       } else {
         assert.ok(!files.some(file => file.path.startsWith(p.join(profile.agentDir,"agents")+p.sep)));
       }
@@ -292,10 +292,10 @@ test("pi-models dựng mặc định mới từ base của preset khác: giống
       kinds.push(kind);
       assert.equal(nextModelDefault(kind, entry.content, nativeValues(after)), fresh.get(entry.path), entry.path);
     }
-    assert.deepEqual(kinds.sort(), ["advisor", "debugger", "explorer", "goal", "researcher", "reviewer", "settings", "worker"]);
+    assert.deepEqual(kinds.sort(), ["advisor", "debugger", "goal", "researcher", "reviewer", "settings", "worker"]);
     const template = fs.readFileSync(path.join(repoDir, "assets", "AGENTS.md"), "utf8");
     assert.equal(fillRoleNames(template, after), fresh.get(p.join(options.agentDir, "AGENTS.md")));
-    assert.deepEqual(changedRoles(before, after), ["researcher", "explorer", "worker", "debugger", "reviewer", "advisor", "auditor", "oracle", "autoMode"]);
+    assert.deepEqual(changedRoles(before, after), ["researcher", "worker", "debugger", "reviewer", "advisor", "auditor", "oracle", "autoMode"]);
   }
 });
 

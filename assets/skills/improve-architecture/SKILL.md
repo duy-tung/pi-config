@@ -27,7 +27,7 @@ If the user passed `--no-grill` or asked for the report only, stop after step 2.
 
 Read the project's domain glossary (`CONTEXT.md`) and any ADRs in the area you're touching first.
 
-Then spawn an `explorer` agent to walk the codebase, and read its full report with `get_subagent_result`. It does not see this conversation: brief it with the scope you chose, the absolute paths of `CONTEXT.md` and the ADRs, these questions, and an instruction to load the `codebase-design` skill. Don't follow rigid heuristics; explore organically and note where you experience friction:
+Then spawn a `researcher` agent to walk the codebase, and read its full report with `get_subagent_result`. It does not see this conversation: brief it with the scope you chose, the absolute paths of `CONTEXT.md` and the ADRs, these questions, and an instruction to load the `codebase-design` skill. Don't follow rigid heuristics; explore organically and note where you experience friction:
 
 - Where does understanding one concept require bouncing between many small modules?
 - Where are modules **shallow**, with an interface nearly as complex as the implementation?
@@ -39,7 +39,7 @@ Apply the **deletion test** to anything you suspect is shallow: would deleting i
 
 ### 2. Present candidates as an HTML report
 
-Write a self-contained HTML file yourself (the explorer cannot write files) to the OS temp directory so nothing lands in the repo. Resolve the temp dir from `$TMPDIR`, falling back to `/tmp` (or `%TEMP%` on Windows), and write to `<tmpdir>/architecture-review-<timestamp>.html` so each run gets a fresh file. Open it for the user (`xdg-open <path>` on Linux, `open <path>` on macOS, `start <path>` on Windows) and tell them the absolute path. If the report's CDNs are unreachable from this machine, also write a Markdown version next to it (see [HTML-REPORT.md](HTML-REPORT.md)).
+Write a self-contained HTML file yourself (the researcher cannot write files) to the OS temp directory so nothing lands in the repo. Resolve the temp dir from `$TMPDIR`, falling back to `/tmp` (or `%TEMP%` on Windows), and write to `<tmpdir>/architecture-review-<timestamp>.html` so each run gets a fresh file. Open it for the user (`xdg-open <path>` on Linux, `open <path>` on macOS, `start <path>` on Windows) and tell them the absolute path. If the report's CDNs are unreachable from this machine, also write a Markdown version next to it (see [HTML-REPORT.md](HTML-REPORT.md)).
 
 The report uses **Tailwind via CDN** for layout and styling, and **Mermaid via CDN** for diagrams where a graph/flow/sequence reliably communicates the structure. Mix Mermaid with hand-crafted CSS/SVG visuals: use Mermaid when relationships are graph-shaped (call graphs, dependencies, sequences), and hand-built divs/SVG when you want something more editorial (mass diagrams, cross-sections, collapse animations). Each candidate gets a **before/after visualisation**. Be visual.
 
@@ -70,7 +70,7 @@ Side effects happen inline as decisions crystallize; load the `domain-modeling` 
 
 - **Naming a deepened module after a concept not in `CONTEXT.md`?** Add the term to `CONTEXT.md`. Create the file lazily if it doesn't exist.
 - **Sharpening a fuzzy term during the conversation?** Update `CONTEXT.md` right there.
-- **User rejects the candidate with a load-bearing reason?** Offer an ADR, framed as: _"Want me to record this as an ADR so future architecture reviews don't re-suggest it?"_ Only offer when the reason would actually be needed by a future explorer to avoid re-suggesting the same thing; skip ephemeral reasons ("not worth it right now") and self-evident ones.
+- **User rejects the candidate with a load-bearing reason?** Offer an ADR, framed as: _"Want me to record this as an ADR so future architecture reviews don't re-suggest it?"_ Only offer when the reason would actually be needed by a future reviewer to avoid re-suggesting the same thing; skip ephemeral reasons ("not worth it right now") and self-evident ones.
 - **Want to explore alternative interfaces for the deepened module?** Use the design-it-twice pattern from the codebase-design skill loaded above, [DESIGN-IT-TWICE.md](../codebase-design/DESIGN-IT-TWICE.md): a `researcher`, a `reviewer` and your own design, so the candidates come from different models where the preset allows (read the skill's SKILL.md again if it has left context).
 
 Take one candidate per session. When its decisions settle, tell the user the next step is `/skill:to-spec` for the change, not straight implementation.

@@ -83,8 +83,7 @@ Pi dùng `Agent` của **@tintinweb/pi-subagents**:
 
 | Role | Model/effort | Phạm vi |
 |---|---|---|
-| `researcher` | GLM-5.3-Flash/max | Khảo sát docs/log/web và lịch sử git (cả code khi cần kèm nguồn ngoài), thu thập bằng chứng; chỉ đọc (bash cho lệnh đọc) |
-| `explorer` | GLM-5.3-Flash/high | Đọc code trong workspace, trả bản đồ file/symbol/luồng gọi; chỉ đọc, không web |
+| `researcher` | GLM-5.3-Flash/max | Đọc code trong workspace, tra docs/log/web và lịch sử git, thu thập bằng chứng; chỉ đọc (bash cho lệnh đọc) |
 | `worker` | GPT-6 Sol/max | Triển khai và kiểm thử phần việc đã chốt |
 | `debugger` | GPT-6 Sol/max | Tái hiện lỗi, tìm nguyên nhân, sửa và kiểm hồi quy |
 | `reviewer` | GPT-6 Astra/high | Review độc lập (cả ba trục của `interrogate`); chỉ đọc, bash để chạy diff, test và script thử |
@@ -94,14 +93,14 @@ Parent Claude Opus 5.5/high giữ thiết kế, quyết định quan trọng và
 Bảng trên là preset `default`. Model và thinking của mọi vai (parent, các role, advisor, goal auditor, Oracle, auto mode) đặt trong `<agent-dir>/model-roles.json` và đổi bằng `pi-models`, ví dụ `pi-models preset claude` (chỉ cần đăng nhập Claude) hay `pi-models set worker anthropic/claude-opus-5-5 high`. Trong Pi, `/models` mở menu các vai và áp ngay cho phiên đang chạy. Xem [docs/models.md](docs/models.md).
 
 ```text
-@explorer Tìm luồng xử lý timeout và báo file/dòng.
+@researcher Tìm luồng xử lý timeout và báo file/dòng.
 @researcher Tra changelog của thư viện HTTP về timeout mặc định.
 @worker Triển khai phần đã chốt, chạy kiểm thử liên quan.
 @debugger Tái hiện lỗi và sửa với regression test.
 @reviewer Review diff, nêu lỗi có bằng chứng.
 ```
 
-Agent có context riêng và không giới hạn số lượt; dừng agent bằng `/agents` → chọn agent → `x` hai lần. Khi parent gọi, explorer/researcher/reviewer chạy nền theo mặc định (tối đa 4 cùng lúc), worker/debugger chạy foreground (tối đa 2); vượt giới hạn thì xếp hàng. Parent điều phối để tránh ghi chồng file. Gõ `@role nội dung` thì agent chạy nền và báo kết quả cho parent khi xong. Mặc định task là đúng nội dung bạn gõ; chế độ `model` (`/agents` → Settings → Agent mentions) cho một bản sao hội thoại viết task có context. Chi tiết cấu hình, quyền và vòng đời: [docs/subagents.md](docs/subagents.md).
+Agent có context riêng và không giới hạn số lượt; dừng agent bằng `/agents` → chọn agent → `x` hai lần. Khi parent gọi, researcher/reviewer chạy nền theo mặc định (tối đa 4 cùng lúc), worker/debugger chạy foreground (tối đa 2); vượt giới hạn thì xếp hàng. Parent điều phối để tránh ghi chồng file. Gõ `@role nội dung` thì agent chạy nền và báo kết quả cho parent khi xong. Mặc định task là đúng nội dung bạn gõ; chế độ `model` (`/agents` → Settings → Agent mentions) cho một bản sao hội thoại viết task có context. Chi tiết cấu hình, quyền và vòng đời: [docs/subagents.md](docs/subagents.md).
 
 ## Công cụ và mặc định
 
