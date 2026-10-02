@@ -14,8 +14,6 @@ import { analyzeShell, isReadOnlyShell } from "../assets/extensions/pi-auto-mode
 import { callKey, PermissionState } from "../assets/extensions/pi-auto-mode/lib/state.ts";
 import { isChild, linkChild, registerRoot, rootFor, unregisterRoot } from "../assets/extensions/pi-auto-mode/lib/subagents.ts";
 import { buildTranscript, ENTRY_TYPE, humanMessages } from "../assets/extensions/pi-auto-mode/lib/transcript.ts";
-import { caseEntries, formatReport, runEval } from "./auto-mode-eval/eval.ts";
-import { SAFE_TOOLS } from "../assets/extensions/pi-auto-mode/lib/policy.ts";
 import { buildConfiguration } from "../lib/config.mjs";
 
 function workspace() {
@@ -826,31 +824,27 @@ test("cấu hình: đọc settings người dùng, bỏ qua giá trị sai", () 
   }
 });
 
-test("bộ đánh giá: dữ liệu hợp lệ, chạy qua lối đi nhanh và bộ phân loại giả", async () => {
-  const file = new URL("./auto-mode-eval/cases.json", import.meta.url);
-  const { cases } = JSON.parse(fs.readFileSync(file, "utf8"));
+test("bộ đánh giá: dữ liệu hợp lệ, quyết định tất định khớp nhãn mong đợi", () => {
+  const { cases } = JSON.parse(fs.readFileSync(new URL("./auto-mode-eval/cases.json", import.meta.url), "utf8"));
   assert.ok(cases.length >= 40);
   assert.equal(new Set(cases.map((item) => item.name)).size, cases.length);
-  for (const item of cases) {
-    assert.ok(["block", "allow"].includes(item.expect), item.name);
-    assert.ok(item.user.length > 0 && typeof item.action.tool === "string", item.name);
-    const entries = caseEntries(item);
-    assert.equal(entries[0].message.role, "user");
-  }
+  const isObject = (value) => !!value && typeof value === "object" && !Array.isArray(value);
   const context = { mode: "auto", cwd: "/home/dev/project", home: "/home/dev", roots: ["/home/dev/project"], rules: buildRuleSet([], [], []), selfPaths: [] };
-  // Bộ phân loại giả: giai đoạn 1 gắn cờ mọi thứ, giai đoạn 2 trả đúng nhãn mong đợi.
-  const expected = new Map(cases.map((item) => [JSON.stringify(item.action.input), item.expect]));
-  const complete = async (request, options) => {
-    if (options.stage === 1) return "<block>yes</block>";
-    const match = [...expected.keys()].find((key) => request.blocks.at(-1).includes(JSON.stringify(JSON.parse(key).command ?? JSON.parse(key).prompt ?? JSON.parse(key).url ?? "").slice(1, -1)));
-    return expected.get(match) === "allow" ? "<block>no</block>" : "<block>yes</block><rule>Fixture</rule><reason>fixture</reason>";
-  };
-  const outcomes = await runEval(cases, { slots: resolveSlots({ environment: ["$defaults"], hardDeny: ["$defaults"], softDeny: ["$defaults"], allowRules: ["$defaults"], deny: [] }, []), complete, timeoutMs: 5_000, decide: (call) => decide(call, context), skipTools: SAFE_TOOLS });
-  assert.equal(outcomes.length, cases.length);
-  assert.ok(outcomes.every((item) => item.got !== "unavailable"));
-  const report = formatReport(outcomes, "fixture");
-  assert.match(report, /Missed \(dangerous allowed\): 0\//u);
-  assert.match(report, /Over-blocked \(benign blocked\): 0\//u);
+  let decided = 0;
+  for (const item of cases) {
+    assert.ok(typeof item.name === "string" && item.name.trim() !== "");
+    assert.ok(["block", "allow"].includes(item.expect), item.name);
+    assert.ok(Array.isArray(item.user) && item.user.length > 0 && item.user.every((text) => typeof text === "string"), item.name);
+    assert.ok(Array.isArray(item.history) && item.history.every((step) => typeof step.tool === "string" && isObject(step.input)), item.name);
+    assert.ok(typeof item.action?.tool === "string" && isObject(item.action.input), item.name);
+    assert.ok(item.meta === undefined || isObject(item.meta), item.name);
+    // Luật và lối đi nhanh quyết định không cần model thì phải ra đúng nhãn; phần còn lại thuộc bộ phân loại.
+    const decision = decide({ toolName: item.action.tool, input: item.action.input }, context);
+    if (decision.kind === "classify") continue;
+    decided++;
+    assert.equal(decision.kind === "allow" ? "allow" : "block", item.expect, `${item.name}: ${decision.kind}`);
+  }
+  assert.ok(decided > 0);
 });
 
 test("git guard: deny tất định ở cả auto và bypass, trước luật allow và bộ phân loại; tắt được bằng settings", () => {

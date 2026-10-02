@@ -16,7 +16,7 @@ import { clip } from "./transcript.ts";
 
 export interface Hazard {
   id: string;
-  /** Tên luật tương ứng trong prompt của bộ phân loại (để log và eval). */
+  /** Tên luật tương ứng trong prompt của bộ phân loại (cho log và `/auto-mode test`). */
   rule: string;
   question: NoulQuestion;
 }
@@ -278,9 +278,7 @@ export function readScript(file: string): string | undefined {
  * File mà lệnh chạy: `python3 x.py`, `node x.js`, `bash x.sh`, `./x.sh`. Lấy nội dung hiện tại (chỉ trong `roots`)
  * để Jev chấm đúng thứ sẽ chạy, như Claude Code chấm payload agent vừa ghi.
  */
-export function executedScripts(
-  command: string, cwd: string, roots: string[], read: (file: string) => string | undefined = readScript,
-): { path: string; content: string }[] {
+export function executedScripts(command: string, cwd: string, roots: string[]): { path: string; content: string }[] {
   const found = new Map<string, string>();
   let commands;
   try {
@@ -303,7 +301,7 @@ export function executedScripts(
     if (!target || found.size >= 3) continue;
     const file = path.resolve(cwd, target);
     if (!roots.some((root) => isInside(root, file)) || found.has(file)) continue;
-    const content = read(file);
+    const content = readScript(file);
     if (content !== undefined) found.set(file, content);
   }
   return [...found].map(([file, content]) => ({ path: path.relative(cwd, file) || file, content }));
@@ -314,9 +312,7 @@ function readPackageScripts(cwd: string): Record<string, unknown> {
 }
 
 /** `npm run build`, `npm test`, `pnpm lint`, `yarn dev` → lệnh trong package.json của thư mục làm việc. */
-export function packageScripts(
-  command: string, cwd: string, read: (cwd: string) => Record<string, unknown> = readPackageScripts,
-): { name: string; command: string }[] {
+export function packageScripts(command: string, cwd: string): { name: string; command: string }[] {
   let scripts: Record<string, unknown> | undefined;
   const result: { name: string; command: string }[] = [];
   let commands;
@@ -331,7 +327,7 @@ export function packageScripts(
     const name = ["run", "run-script"].includes(words[0] ?? "") ? words[1] : words[0];
     if (!name) continue;
     try {
-      scripts ??= read(cwd);
+      scripts ??= readPackageScripts(cwd);
     } catch {
       return result;
     }
@@ -399,7 +395,7 @@ export function judgeScreen(answers: Record<string, Answer>): ScreenVerdict {
   };
 }
 
-/** Một dòng tóm tắt cho log, `/auto-mode test` và eval. */
+/** Một dòng tóm tắt cho `/auto-mode test`. */
 export function describeVerdict(verdict: ScreenVerdict): string {
   const list = verdict.hazards.length
     ? verdict.hazards.slice(0, 3).map((item) => `${item.rule} ${item.p.toFixed(2)}`).join(", ")
