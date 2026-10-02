@@ -229,10 +229,11 @@ function actionJson(action: ScreenAction): Record<string, JsonValue> {
       return { removes: clip(str(item.oldText), 400), adds: clip(str(item.newText), 1_200) };
     });
   } else if (toolName.startsWith("mcp__")) {
+    // Tool MCP dựng sẵn của Pi: tên mcp__<server>__<tool>, tham số là cả input.
     const [, server, ...name] = toolName.split("__");
-    result.server = str(input.server) || server;
-    result.name = str(input.tool) || name.join("__");
-    result.arguments = clip(JSON.stringify(input.args ?? {}) ?? "{}", 4_000);
+    result.server = server;
+    result.name = name.join("__");
+    result.arguments = clip(JSON.stringify(input) ?? "{}", 4_000);
   } else {
     result.input = clip(JSON.stringify(input) ?? "{}", 4_000);
   }

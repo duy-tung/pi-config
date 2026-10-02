@@ -185,9 +185,9 @@ test("chính sách: lối đi nhanh, luật, bypass và tự bảo vệ", () => 
     assert.equal(decide({ toolName: "fetch_content", input: { url: "https://example.com" } }, auto).kind, "classify");
     // Tool MCP/extension: luật đường dẫn áp dụng cho tham số giống đường dẫn (kể cả args dạng chuỗi JSON).
     const secrets = context(ws, { rules: buildRuleSet([], [], ["Path(*.env)"]) });
-    const mcp = (args) => ({ toolName: "mcp__workspace__read_text_file", input: { server: "workspace", tool: "read_text_file", args } });
+    const mcp = (input) => ({ toolName: "mcp__workspace__read_text_file", input });
     assert.equal(decide(mcp({ path: ".env" }), secrets).kind, "deny");
-    assert.equal(decide(mcp(JSON.stringify({ path: `${ws.cwd}/.env` })), secrets).kind, "deny");
+    assert.equal(decide(mcp({ options: JSON.stringify({ path: `${ws.cwd}/.env` }) }), secrets).kind, "deny");
     assert.equal(decide(mcp({ path: "safe.txt" }), secrets).kind, "classify");
     // Đường dẫn có dấu cách vẫn phải khớp luật deny (tool và shell).
     assert.equal(decide(mcp({ path: `${ws.cwd}/My Project/.env` }), secrets).kind, "deny");

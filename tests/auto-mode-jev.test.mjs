@@ -149,8 +149,8 @@ test("giai đoạn 1 Jev: state chỉ có môi trường và hành động, câu
   assert.ok(!JSON.stringify(state).includes(fakeToken));
   const edit = screenState({ toolName: "edit", input: { path: "/w/a.ts", edits: [{ oldText: "a", newText: "b" }] } }, environment);
   assert.deepEqual(edit.action.changes, [{ removes: "a", adds: "b" }]);
-  const mcp = screenState({ toolName: "mcp__github__create_issue", input: { server: "github", tool: "create_issue", args: { title: "x" } } }, environment);
-  assert.deepEqual([mcp.action.tool, mcp.action.server, mcp.action.name], ["mcp", "github", "create_issue"]);
+  const mcp = screenState({ toolName: "mcp__github__create_issue", input: { title: "x" } }, environment);
+  assert.deepEqual([mcp.action.tool, mcp.action.server, mcp.action.name, mcp.action.arguments], ["mcp", "github", "create_issue", '{"title":"x"}']);
   assert.ok(screenable("bash") && screenable("write") && screenable("fetch_content") && screenable("mcp__a__b"));
   assert.ok(!screenable("Agent") && !screenable("SubagentWorkflow"));
 });
