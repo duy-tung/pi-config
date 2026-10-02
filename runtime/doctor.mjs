@@ -64,7 +64,7 @@ if(fs.existsSync(goalFile)){
   console.log(`  goal auditor ${goal.disabled===true?'tắt':'bật'}; Oracle ${goal.oracle?.enabled===true?'bật':'tắt'}`);
 }
 const auto=s.autoMode??{},jev=auto.jev===false||auto.jev?.enabled===false?undefined:auto.jev??{};
-console.log(`  auto mode: bước 1 ${jev?`Jev ${jev.model} (${jevKey})`:'LLM của vai autoMode (Jev tắt)'}; bước 2 LLM của vai autoMode`);
+console.log(`  auto mode: bước 1 ${jev?`Jev${jev.model?` ${jev.model}`:''} (${jevKey})`:'LLM của vai autoMode (Jev tắt)'}; bước 2 LLM của vai autoMode`);
 for(const source of Object.keys(state.sources))if(!fs.existsSync(path.join(root,'sources',source)))errors.push(`Thiếu skills source: ${source}`);
 console.log('Đăng nhập bằng /login trong pi. Không kiểm tra token bằng mạng.');
 if(process.platform==='win32' && state.shellPath&&!fs.existsSync(state.shellPath))errors.push('Không tìm thấy Git Bash đã cấu hình');

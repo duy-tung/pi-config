@@ -153,7 +153,7 @@ Role, subagents, goal settings, advisor settings và cấu hình công cụ cùn
 
 Khi chạy lại, installer dùng lockfile và checksum để kiểm tính nhất quán; runtime được cài lại khi lockfile hoặc kết quả bản vá đổi, để bản vá luôn áp lên file gốc. Bản runtime và nguồn cũ được chuyển vào `<root>/backups` trong lúc cài và xoá khi cài xong (muốn quay lại thì cài lại commit cũ của repo); 3 lần gỡ tài nguyên gần nhất và bản sao file cấu hình trước khi ghi đè thì giữ lại.
 
-File JSON cấu hình trong agent directory và `<root>/config`, kể cả `settings.json` mà Pi ghi lại khi đổi model hay thinking, được gộp ba chiều với mặc định của lần cài trước (lưu ở `<root>/state/defaults`):
+File JSON cấu hình trong agent directory, kể cả `settings.json` mà Pi ghi lại khi đổi model hay thinking, được gộp ba chiều với mặc định của lần cài trước (lưu ở `<root>/state/defaults`):
 - Giá trị bạn chưa đổi nhận mặc định mới; giá trị bạn đã đổi được giữ. Nếu mặc định mới cũng đổi chính giá trị đó, installer giữ của bạn và báo xung đột kèm mặc định mới.
 - Danh sách của `settings.json` (`permissions.allow/ask/deny`, `enabledModels`, `skills`, `themes`, `prompts`, `extensions`, `packages`) gộp theo từng mục: mục bạn thêm hoặc bỏ và loại trừ extension `-` được giữ, mục mặc định mới được thêm, `pi-auto-mode` luôn nạp sau cùng.
 - Bản cài chưa lưu mặc định (trước khi có cơ chế này): file chưa sửa nhận mặc định mới như trước; file đã sửa lần đầu chỉ được thêm khóa và mục còn thiếu, mọi giá trị hiện có được giữ và giá trị khác mặc định mới được báo.
