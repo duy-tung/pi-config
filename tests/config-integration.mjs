@@ -541,7 +541,8 @@ await check("clipboard image shortcut, attachment, deleted marker and size guard
   let bytes = png;
   const originalLoad = Module._load, originalSpawn = childProcess.spawnSync, display = process.env.DISPLAY;
   // Isolate the OS boundary: never inspect the user's clipboard in automated tests.
-  Module._load = function(name,...args) { return name === "@mariozechner/clipboard" ? {hasImage:()=>true,getImageBinary:async()=>bytes} : originalLoad.call(this,name,...args); };
+  // image-paste 2.9 đọc ảnh qua helper native của pi-tui (native/<os>/prebuilds/*-platform*.node).
+  Module._load = function(name,...args) { return /-platform(?:-x11)?\.node$/u.test(name) ? {getText:()=>"",getImage:async()=>bytes} : originalLoad.call(this,name,...args); };
   childProcess.spawnSync = function(command,...args) { return ["xclip","wl-paste"].includes(command) ? {error:Object.assign(new Error("fixture"),{code:"ENOENT"})} : originalSpawn.call(this,command,...args); };
   process.env.DISPLAY = ":fixture";
   syncBuiltinESMExports();
