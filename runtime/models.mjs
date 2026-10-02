@@ -88,8 +88,8 @@ const APPLIED_AT = {
 };
 
 /**
- * Câu báo các vai vừa đổi giá trị trong file gốc có hiệu lực khi nào (effects mặc định của runModels), gom các vai
- * cùng thời điểm. when: thời điểm riêng theo vai (vd /models trong phiên).
+ * Câu báo các vai vừa đổi giá trị trong file gốc có hiệu lực khi nào (extension dùng trong effects của runModels),
+ * gom các vai cùng thời điểm. when: thời điểm riêng theo vai (vd /models trong phiên).
  */
 export function whenApplied(changed, when = {}) {
   const groups = new Map();
@@ -183,7 +183,7 @@ async function applyChange({root, agentDir, catalog, effects, out, dryRun, chang
  * Có change (xem edit): áp thay đổi đó; dryRun chỉ in, không ghi. Trả exit code; lỗi được in ra, không ném.
  * catalog: catalog của phiên ({check}). effects(vai): các dòng báo khi nào vai có giá trị hiệu lực mới.
  */
-export async function runModels({root, agentDir, catalog, change, dryRun = false, out = console, effects = whenApplied}) {
+export async function runModels({root, agentDir, catalog, change, dryRun = false, out, effects}) {
   try {
     if (change) return await applyChange({root, agentDir, catalog, effects, out, dryRun, change});
     const report = await modelRolesReport({root, agentDir, logins: true, catalog});

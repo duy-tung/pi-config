@@ -58,10 +58,10 @@ function managed(file,content,mode=0o600){
   // Ghi state ngay sau mỗi file: cài bị ngắt giữa chừng thì lần sau vẫn nhận ra file này là của installer.
   writeJson(statePath,state);
 }
-// Cấu hình JSON (agent dir, <root>/config) và file role: gộp mặc định mới với phần người dùng và Pi đã sửa, báo mục đã gộp và xung đột.
-function managedJson(file,content,mode=0o600){
+// Cấu hình JSON của agent dir và file role: gộp mặc định mới với phần người dùng và Pi đã sửa, báo mục đã gộp và xung đột.
+function managedJson(file,content){
   wanted.add(file);
-  const result=reconcileConfigFile({root,file,content,mode,recorded:previous?.files[file],backup});
+  const result=reconcileConfigFile({root,file,content,recorded:previous?.files[file],backup});
   if(result.preserved){preserved.push(result.preserved==='invalid'?`${file} (không đọc được ${path.extname(file)==='.md'?'frontmatter':'JSON'} nên chưa gộp mặc định mới)`:file);return;}
   if(result.changes.length||result.conflicts.length)merged.push({file,...result});
   if(state.files[file]!==result.recorded){state.files[file]=result.recorded;writeJson(statePath,state);}
@@ -123,8 +123,8 @@ async function installSource(source){
   fs.renameSync(stage,dest);state.sources[source.name]=source.sha256;writeJson(statePath,state);
   fs.unlinkSync(archive);
 }
-// Nguồn đã cài nhưng không còn trong sources.lock.json (vd mattpocock-skills của bản cài cũ): chuyển
-// thư mục vào backups và bỏ khỏi state, để doctor và lần cài sau không còn coi là nguồn đang dùng.
+// Nguồn đã cài nhưng không còn trong sources.lock.json: chuyển thư mục vào backups và bỏ khỏi state, để doctor
+// và lần cài sau không còn coi là nguồn đang dùng.
 function retireSources(names){
   for(const name of Object.keys(state.sources)){
     if(names.has(name))continue;
@@ -177,8 +177,8 @@ try{
   // Model sai tên thì pi-subagents lặng lẽ dùng model của parent: kiểm trong catalog của runtime trước khi ghi cấu hình.
   const catalog=await checkCatalog({modules:path.join(root,'runtimes','current','node_modules'),agentDir,roles:models.roles});
   if(catalog.errors.length)throw new Error(`Model trong ${models.file} không dùng được:\n- ${catalog.errors.join('\n- ')}`);
-  const files=buildConfiguration({root,agentDir,binDir,nodePath,platform:process.platform,home,repoDir,shellPath:state.shellPath,modelRoles:models.roles});
-  for(const file of files)(mergesConfig(file.path,{root,agentDir})?managedJson:managed)(file.path,file.content,file.mode);
+  const files=buildConfiguration({root,agentDir,nodePath,platform:process.platform,home,repoDir,shellPath:state.shellPath,modelRoles:models.roles});
+  for(const file of files)(mergesConfig(file.path,{agentDir})?managedJson:managed)(file.path,file.content);
   // model-roles.json thuộc về người dùng: chỉ tạo khi chưa có, không nằm trong danh sách file installer quản lý.
   if(!models.exists)writeModelRoles(models.file,models.config);
   for(const [name,action] of Object.entries({'pi':'main','pi-doctor':'doctor','pi-test':'test','firecrawl':'firecrawl'}))launcher(name,action);

@@ -18,8 +18,3 @@ export function resolveToolPath(input: unknown, cwd: string): string | undefined
   else if (value.startsWith("file://")) value = fileURLToPath(value);
   return path.resolve(cwd, value);
 }
-
-export function displayPath(file: string, cwd: string): string {
-  const relative = path.relative(cwd, file);
-  return relative && !relative.startsWith("..") && !path.isAbsolute(relative) ? relative : file;
-}

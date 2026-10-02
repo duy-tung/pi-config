@@ -76,9 +76,7 @@ const openTui=readJson(openTuiPath);openTui.fullscreen.wheelScrollLines=8;delete
 const statePath=path.join(root,'install-state.json'),prior=readJson(statePath);
 const unused=path.join(root,'assets/unused-resource.json');
 writeJson(unused,{fixture:'managed resource'});prior.files[unused]=sha256(fs.readFileSync(unused));
-const custom=path.join(root,'config/optional.json');
-writeJson(custom,{fixture:'default'});prior.files[custom]=sha256(fs.readFileSync(custom));
-writeJson(custom,{fixture:'user edit'});writeJson(statePath,prior);
+writeJson(statePath,prior);
 const secret=path.join(root,'secrets/provider.env');
 fs.mkdirSync(path.dirname(secret),{recursive:true});fs.writeFileSync(secret,'PROVIDER_API_KEY=synthetic-preservation-fixture\n',{mode:0o600});
 const secretBefore=fs.readFileSync(secret);
@@ -108,7 +106,6 @@ assert.deepEqual([tui.fullscreen.wheelScrollLines,tui.thinkingPeek],[8,{lines:0}
 assert.ok(reinstall.includes('  - xung đột: giữ giá trị hiện có cho fullscreen.wheelScrollLines; mặc định mới là 4'),reinstall);
 assert.ok(fs.existsSync(defaultsOf(openTuiPath)));
 assert.equal(fs.existsSync(unused),false);
-assert.equal(readJson(custom).fixture,'user edit');
 assert.deepEqual(fs.readFileSync(secret),secretBefore);
 await run(process.execPath,[path.join(repo,'tests/agent-integration.mjs'),root]);
 assert.deepEqual(fs.readFileSync(auth),authBefore);
@@ -153,7 +150,7 @@ function snapshot(){
     const file=path.join(dir,entry.name);
     if(entry.isDirectory())walk(file);else files[file]=[sha256(fs.readFileSync(file)),fs.statSync(file).mtimeMs];
   }};
-  for(const dir of [agentDir,path.join(root,'config'),path.join(root,'state','defaults'),path.join(root,'backups')])walk(dir);
+  for(const dir of [agentDir,path.join(root,'state','defaults'),path.join(root,'backups')])walk(dir);
   return files;
 }
 // Nguồn không còn trong sources.lock.json (mattpocock-skills của bản cài cũ): lần cài
@@ -183,7 +180,7 @@ const state=readJson(path.join(root,'install-state.json'));assert.deepEqual(Obje
 assert.ok(!fs.existsSync(path.join(root,'assets','skills')));
 assert.ok(readJson(path.join(agentDir,'settings.json')).skills.every(entry=>entry.includes(path.join('sources','firecrawl-'))));
 assert.equal(fs.existsSync(path.join(root,'.install.lock')),false);
-console.log('PASS: cài sạch, một runtime Pi, slash workflows, auth/permission, type của bản vá; cài lại gộp mặc định mới, giữ tùy chỉnh và secret giả; model-roles.json: đổi preset, chặn model sai tên, báo vai lệch; lưu trữ launcher pi-models cũ; lần cuối không đổi gì.');
+console.log('PASS: cài sạch, một runtime Pi, skill Firecrawl, auth/permission, type của bản vá; cài lại gộp mặc định mới, giữ tùy chỉnh và secret giả; model-roles.json: đổi preset, chặn model sai tên, báo vai lệch; lưu trữ launcher pi-models cũ; lần cuối không đổi gì.');
 console.log(`Fixture: ${root}`);
 if(process.env.GITHUB_ENV){
   fs.appendFileSync(process.env.GITHUB_ENV,`PI_CONFIG_SMOKE_ROOT=${root}\nPI_CONFIG_SMOKE_AGENT_DIR=${agentDir}\nPI_CONFIG_SMOKE_BIN_DIR=${binDir}\n`);

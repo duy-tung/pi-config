@@ -57,7 +57,7 @@ test('cấu hình sai: báo từng lỗi, vẫn trả đủ vai theo preset mặ
   });
   assert.deepEqual(resolved.errors, [
     'không có khóa "extra" (chỉ có preset, roles)',
-    'preset riêng ("presets") không còn được hỗ trợ: chọn preset có sẵn và ghi đè từng vai trong "roles"',
+    'không có khóa "presets" (chỉ có preset, roles)',
     'roles.worker.model phải có dạng "provider/id" (vd "anthropic/claude-opus-5-5"), đang là "opus"',
     'roles.worker.thinking phải là một trong off, minimal, low, medium, high, xhigh, max, đang là "ultra"',
     'roles.worker: không có khóa "effort" (chỉ có model, thinking)',

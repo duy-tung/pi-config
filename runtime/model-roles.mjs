@@ -79,8 +79,7 @@ export function resolveModelRoles(presets, config = defaultModelRoles()) {
   if (!isObject(config)) errors.push(`${MODEL_ROLES_FILE} phải là một object JSON`);
   else {
     for (const key of Object.keys(config)) {
-      if (key === 'presets') errors.push('preset riêng ("presets") không còn được hỗ trợ: chọn preset có sẵn và ghi đè từng vai trong "roles"');
-      else if (!['preset', 'roles'].includes(key)) errors.push(`không có khóa "${key}" (chỉ có preset, roles)`);
+      if (!['preset', 'roles'].includes(key)) errors.push(`không có khóa "${key}" (chỉ có preset, roles)`);
     }
     if (config.preset !== undefined) preset = config.preset;
     overrides = checkRoles('roles', config.roles, errors);

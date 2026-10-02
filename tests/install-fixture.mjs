@@ -11,6 +11,8 @@ import {loadPresets, resolveModelRoles} from '../runtime/model-roles.mjs';
 // Bản cài giả cho test của /models; không chạy installer, không cài runtime.
 export const repoDir = fileURLToPath(new URL('../', import.meta.url));
 export const presets = loadPresets(path.join(repoDir, 'assets', 'configs', 'model-presets.json'));
+/** Model/thinking của mọi vai theo preset mặc định, như installer khi chưa có model-roles.json. */
+export const defaultRoles = resolveModelRoles(presets).roles;
 export const sha256 = data => crypto.createHash('sha256').update(data).digest('hex');
 export const readJson = file => JSON.parse(fs.readFileSync(file, 'utf8'));
 
@@ -18,11 +20,11 @@ export const readJson = file => JSON.parse(fs.readFileSync(file, 'utf8'));
  * File cấu hình, base và checksum như installer ghi, cùng bản mẫu AGENTS.md và preset trong <root>/assets.
  * full: chép cả assets và runtime/*.mjs (vào <root>/bin) như installer, để nạp extension của bản cài.
  */
-export function simulatedInstall(t, {roles = resolveModelRoles(presets).roles, full = false} = {}) {
+export function simulatedInstall(t, {roles = defaultRoles, full = false} = {}) {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-model-commands-'));
   t.after(() => fs.rmSync(temp, {recursive: true, force: true}));
   const root = path.join(temp, 'root'), agentDir = path.join(temp, 'agent');
-  const options = {root, agentDir, binDir: path.join(temp, 'bin'), nodePath: process.execPath, home: temp, repoDir};
+  const options = {root, agentDir, nodePath: process.execPath, home: temp, repoDir};
   const state = {agentDir, files: {}};
   if (full) {
     fs.cpSync(path.join(repoDir, 'assets'), path.join(root, 'assets'), {recursive: true});
@@ -30,7 +32,7 @@ export function simulatedInstall(t, {roles = resolveModelRoles(presets).roles, f
     for (const name of fs.readdirSync(path.join(repoDir, 'runtime'))) fs.copyFileSync(path.join(repoDir, 'runtime', name), path.join(root, 'bin', name));
   }
   for (const {path: file, content} of buildConfiguration({...options, modelRoles: roles})) {
-    if (mergesConfig(file, {root, agentDir})) {
+    if (mergesConfig(file, {agentDir})) {
       state.files[file] = reconcileConfigFile({root, file, content, recorded: state.files[file]}).recorded;
     } else {
       fs.mkdirSync(path.dirname(file), {recursive: true});

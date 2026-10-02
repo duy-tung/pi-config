@@ -9,15 +9,16 @@ import { buildConfiguration, PACKAGES } from "../lib/config.mjs";
 import { SUBAGENT_ROLES, changedRoles, fillRoleNames, forceNativeModels, loadPresets, nativeValues, nextModelDefault, resolveModelRoles } from "../runtime/model-roles.mjs";
 
 const repoDir = fileURLToPath(new URL("../", import.meta.url));
+const presets = loadPresets(path.join(repoDir, "assets", "configs", "model-presets.json"));
+const modelRoles = resolveModelRoles(presets).roles;
 function fixture(platform) {
   const p = platform === "win32" ? path.win32 : path.posix;
   const home = platform === "win32" ? "C:\\Users\\Dev Example" : "/home/dev example";
   const root = p.join(home, "Pi Runtime");
   const agentDir = p.join(home, "Custom Agent");
-  const binDir = p.join(home, "Local Tools");
   const nodePath = platform === "win32" ? "C:\\Program Files\\nodejs\\node.exe" : "/opt/node/bin/node";
   const shellPath = platform === "win32" ? "C:\\Program Files\\Git\\bin\\bash.exe" : "/bin/bash";
-  const options = { root, agentDir, binDir, nodePath, platform, home, repoDir, shellPath };
+  const options = { root, agentDir, nodePath, platform, home, repoDir, shellPath, modelRoles };
   const files = buildConfiguration(options);
   const read = (file) => {
     const found = files.find((entry) => entry.path === file);
@@ -154,7 +155,6 @@ for (const platform of ["darwin", "linux", "win32"]) {
     const { p, options, files, json, profile } = fixture(platform);
     assert.equal(new Set(files.map(({ path: file }) => file)).size, files.length);
     for (const file of files) {
-      assert.equal(file.mode, 0o600);
       assert.notEqual(p.basename(file.path), "auth.json");
       assert.doesNotMatch(file.path, /sessions|mcp-cache|models-store/u);
       assert.doesNotMatch(file.content, /\/Users\/tung|apikey_[a-z0-9]|fc-[a-f0-9]{20}|[A-Z_]*(?:API_KEY|ACCESS_TOKEN|REFRESH_TOKEN)=/u);
@@ -204,7 +204,7 @@ test("POSIX credential helper chạy đúng khi root chứa khoảng trắng, nh
     fs.mkdirSync(path.join(root, "bin"), { recursive: true });
     fs.writeFileSync(path.join(root, "bin", "firecrawl-key.cjs"), 'process.stdout.write("fixture-credential");\n');
     const agentDir = path.join(dir, "Agent");
-    const generated = buildConfiguration({ root, agentDir, binDir: path.join(dir, "bin"), nodePath: process.execPath, platform: "linux", home: dir, repoDir });
+    const generated = buildConfiguration({ root, agentDir, nodePath: process.execPath, platform: "linux", home: dir, repoDir, modelRoles });
     const config = JSON.parse(generated.find(({ path: file }) => file === path.join(agentDir, "web-search.json")).content);
     const output = execFileSync("/bin/sh", ["-c", config.firecrawlApiKey.slice(1)], { cwd: dir, encoding: "utf8" });
     assert.equal(output, "fixture-credential");
@@ -228,7 +228,7 @@ test("Windows credential helper chạy thật qua cmd với đường dẫn có 
     fs.mkdirSync(path.join(root, "bin"), { recursive: true });
     fs.writeFileSync(path.join(root, "bin", "firecrawl-key.cjs"), 'process.stdout.write("fixture-credential");\n');
     const agentDir = path.join(dir, "Agent");
-    const generated = buildConfiguration({ root, agentDir, binDir: path.join(dir, "bin"), nodePath: process.execPath, platform: "win32", home: dir, repoDir });
+    const generated = buildConfiguration({ root, agentDir, nodePath: process.execPath, platform: "win32", home: dir, repoDir, modelRoles });
     const config = JSON.parse(generated.find(({ path: file }) => file === path.join(agentDir, "web-search.json")).content);
     assert.equal(execSync(config.firecrawlApiKey.slice(1), { cwd: dir, encoding: "utf8", windowsHide: true }), "fixture-credential");
   } finally {
@@ -242,10 +242,9 @@ test("Đầu vào tương đối bị từ chối để không ghi nhầm worksp
 });
 
 test("model-roles: preset và ghi đè đi tới mọi file gốc (settings, file role, advisor, goal, auto mode)", () => {
-  const presets = loadPresets(path.join(repoDir, "assets", "configs", "model-presets.json"));
   const { roles } = resolveModelRoles(presets, { preset: "claude", roles: { worker: { thinking: "max" }, oracle: { thinking: "max" } } });
   const root = "/home/dev/pi", agentDir = "/home/dev/agent";
-  const files = buildConfiguration({ root, agentDir, binDir: "/home/dev/bin", nodePath: "/opt/node", platform: "linux", home: "/home/dev", repoDir, modelRoles: roles });
+  const files = buildConfiguration({ root, agentDir, nodePath: "/opt/node", platform: "linux", home: "/home/dev", repoDir, modelRoles: roles });
   const read = (name) => files.find((entry) => entry.path === path.posix.join(agentDir, name)).content;
   const settings = JSON.parse(read("settings.json"));
   assert.deepEqual([settings.defaultProvider, settings.defaultModel, settings.defaultThinkingLevel], ["anthropic", "claude-opus-5-5", "high"]);

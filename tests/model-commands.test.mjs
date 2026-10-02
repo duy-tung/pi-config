@@ -88,11 +88,11 @@ const fakeCatalog = {
 };
 
 /** runModels trên bản cài giả; trả {status, text}. */
-function runner(f, {catalog = fakeCatalog, effects} = {}) {
+function runner(f, {catalog = fakeCatalog, effects = whenApplied} = {}) {
   return async (change, dryRun = false) => {
     const lines = [];
     const out = {log: line => lines.push(line), warn: line => lines.push(line), error: line => lines.push(line)};
-    const status = await runModels({root: f.root, agentDir: f.agentDir, catalog, change, dryRun, out, ...(effects ? {effects} : {})});
+    const status = await runModels({root: f.root, agentDir: f.agentDir, catalog, change, dryRun, out, effects});
     return {status, text: lines.join('\n')};
   };
 }
