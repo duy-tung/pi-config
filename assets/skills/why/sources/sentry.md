@@ -15,7 +15,7 @@ The most valuable thing Sentry provides is **temporal correlation**: "issue X wa
 
 ## How to search it
 
-Use the Sentry MCP server through the `mcp` proxy: `mcp({connect: "<server>"})` once, then `mcp({tool: "<name>", args: {...}})` for each tool named below. Adapt the tool names for Rollbar, Bugsnag, or Airbrake.
+Use the Sentry MCP server (Pi's built-in MCP); its tools are called directly as `mcp__<server>__<tool>` for each tool named below. Adapt the tool names for Rollbar, Bugsnag, or Airbrake.
 
 1. **Orient.** If you don't know the project slug and organization:
 

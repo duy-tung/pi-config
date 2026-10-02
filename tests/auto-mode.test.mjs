@@ -182,16 +182,11 @@ test("chính sách: lối đi nhanh, luật, bypass và tự bảo vệ", () => 
     const ungated = context(ws, { agentIsUngated: (input) => input.isolated === true });
     assert.equal(decide({ toolName: "Agent", input: { subagent_type: "worker", prompt: "x", isolated: true } }, ungated).kind, "deny");
     assert.equal(decide({ toolName: "Agent", input: { subagent_type: "worker", prompt: "x" } }, ungated).kind, "classify");
-    // MCP: lời gọi đơn lẻ duyệt qua sự kiện của adapter; cài server thì phân loại.
-    assert.equal(decide({ toolName: "mcp", input: { tool: "x", args: {} } }, auto).kind, "classify");
-    assert.equal(decide({ toolName: "mcp", input: { search: "files" } }, auto).kind, "allow");
-    assert.equal(decide({ toolName: "mcp", input: { action: "install", url: "https://x" } }, auto).kind, "classify");
     assert.equal(decide({ toolName: "fetch_content", input: { url: "https://example.com" } }, auto).kind, "classify");
     // Tool MCP/extension: luật đường dẫn áp dụng cho tham số giống đường dẫn (kể cả args dạng chuỗi JSON).
     const secrets = context(ws, { rules: buildRuleSet([], [], ["Path(*.env)"]) });
     const mcp = (args) => ({ toolName: "mcp__workspace__read_text_file", input: { server: "workspace", tool: "read_text_file", args } });
     assert.equal(decide(mcp({ path: ".env" }), secrets).kind, "deny");
-    assert.equal(decide({ toolName: "mcp", input: { tool: "workspace_read_text_file", args: JSON.stringify({ path: ".env" }) } }, secrets).kind, "deny");
     assert.equal(decide(mcp(JSON.stringify({ path: `${ws.cwd}/.env` })), secrets).kind, "deny");
     assert.equal(decide(mcp({ path: "safe.txt" }), secrets).kind, "classify");
     // Đường dẫn có dấu cách vẫn phải khớp luật deny (tool và shell).

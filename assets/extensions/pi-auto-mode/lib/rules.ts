@@ -175,7 +175,7 @@ const DANGEROUS_PREFIXES = [
   "fish", "dash", "ssh", "eval", "exec", "env", "xargs", "sudo", "doas", "source", ".", "make", "just", "uv run",
   "uvx", "pipx run", "go run", "cargo run", "osascript", "open",
 ];
-const ALWAYS_CLASSIFY_TOOLS = new Set(["agent", "subagentworkflow", "mcpscript", "bg_run_pi_attested"]);
+const ALWAYS_CLASSIFY_TOOLS = new Set(["agent", "subagentworkflow", "bg_run_pi_attested"]);
 
 /** Luật allow cho phép chạy code tùy ý hoặc bỏ qua bộ phân loại cho thao tác nhạy cảm. */
 export function isDangerousAllow(rule: Rule): boolean {

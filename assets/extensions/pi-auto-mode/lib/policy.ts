@@ -70,7 +70,7 @@ const FS_WRITE_COMMANDS = new Set(["mkdir", "touch", "cp", "mv"]);
 const DIRECTORY_CHANGERS = new Set(["cd", "pushd", "popd"]);
 
 export interface CallFacts {
-  kind: "safe" | "read" | "write" | "shell" | "network" | "agent" | "workflow" | "mcp" | "other";
+  kind: "safe" | "read" | "write" | "shell" | "network" | "agent" | "workflow" | "other";
   target: RuleMatchTarget;
   analysis?: ShellAnalysis;
   readOnly?: boolean;
@@ -339,12 +339,7 @@ export function describeCall(call: ToolCall, pc: PolicyContext): CallFacts {
     return { kind: "network", paths: [], summary, target: { toolName, urls } };
   }
   if (toolName === "Agent") return { kind: "agent", paths: [], summary, target: { toolName } };
-  if (toolName === "SubagentWorkflow" || toolName === "mcpScript") return { kind: "workflow", paths: [], summary, target: { toolName } };
-  if (toolName === "mcp") {
-    // Proxy của pi-mcp-adapter: luật đường dẫn áp dụng cho tham số của tool MCP được gọi.
-    const paths = inputPaths(input, pc.cwd, home);
-    return { kind: "mcp", paths, summary, writesSelf: paths.some((file) => isSelfProtected(file, pc.selfPaths)), target: { toolName, paths } };
-  }
+  if (toolName === "SubagentWorkflow") return { kind: "workflow", paths: [], summary, target: { toolName } };
   if (SAFE_TOOLS.has(toolName)) return { kind: "safe", paths: [], summary, target: { toolName } };
   // Tool khác (MCP, extension): luật đường dẫn áp dụng cho tham số giống đường dẫn.
   const paths = inputPaths(input, pc.cwd, home);
@@ -596,16 +591,6 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
         };
       }
       return { kind: "classify", notes };
-    case "mcp": {
-      const action = call.input.action;
-      if (typeof action === "string" && ["install", "auth-start", "auth-complete"].includes(action)) {
-        notes.push(`MCP ${action}`);
-        return { kind: "classify", notes };
-      }
-      // Gọi một tool MCP: phân loại tại đây để model nhận đúng lý do; tìm kiếm/mô tả/trạng thái thì cho qua.
-      if (typeof call.input.tool === "string") return { kind: "classify", notes };
-      return { kind: "allow", via: "mcp discovery" };
-    }
     default: {
       const allow = firstMatch(pc.rules.allow, facts.target, pc.cwd, home);
       if (allow) return { kind: "allow", via: "allow rule" };

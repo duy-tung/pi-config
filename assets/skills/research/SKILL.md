@@ -7,7 +7,7 @@ Spin up a **`researcher` agent** to do the research (it runs in the background),
 
 Scope each question first: one API, one behaviour, one version claim. Split a broad topic into narrow questions.
 
-Researchers have no MCP tools. If the user configured Context7 or another documentation MCP server, query it yourself through the `mcp` proxy and put the relevant excerpt in the brief.
+Researchers have no MCP tools. If the user configured Context7 or another documentation MCP server, call its `mcp__<server>__<tool>` tools yourself and put the relevant excerpt in the brief.
 
 Brief each agent with its question and this job:
 

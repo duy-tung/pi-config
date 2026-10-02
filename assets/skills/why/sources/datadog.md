@@ -16,7 +16,7 @@ Datadog answers "what was the production reality around the time this code was w
 
 ## How to search it
 
-Use the Datadog MCP server through the `mcp` proxy: `mcp({connect: "<server>"})` once, then `mcp({tool: "<name>", args: {...}})` for each tool named below. Adapt the tool names for New Relic, Honeycomb, Grafana, or Splunk. Start broad, then narrow.
+Use the Datadog MCP server (Pi's built-in MCP); its tools are called directly as `mcp__<server>__<tool>` for each tool named below. Adapt the tool names for New Relic, Honeycomb, Grafana, or Splunk. Start broad, then narrow.
 
 1. **Identify the owning services.**
 

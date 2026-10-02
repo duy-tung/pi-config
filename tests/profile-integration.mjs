@@ -31,7 +31,7 @@ const fixture = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `pi-config
 const agentDir = path.join(fixture, "fixture agent");
 const cwd = path.join(fixture, "fixture workspace");
 for (const dir of [agentDir, cwd]) fs.mkdirSync(dir, { recursive: true });
-for (const name of ["settings.json", "keybindings.json", "models.json", "advisor.json", "subagents.json", "mcp-adapter.json", "open-tui.json", "pi-goal-x-settings.json"]) {
+for (const name of ["settings.json", "keybindings.json", "models.json", "advisor.json", "subagents.json", "open-tui.json", "pi-goal-x-settings.json"]) {
   if (fs.existsSync(path.join(configuration.agentDir, name))) fs.copyFileSync(path.join(configuration.agentDir, name), path.join(agentDir, name));
 }
 fs.mkdirSync(path.join(agentDir, "agents"));
@@ -45,7 +45,7 @@ const credentialFile = path.join(agentDir, 'auth.json');
 const settings = readJson(path.join(agentDir, "settings.json"));
 // Cổng permission của bản cài: thêm deny cho auth của fixture, bộ phân loại dùng model giả.
 settings.permissions.deny.push(`Path(${credentialFile.replaceAll("\\", "/")})`);
-// Jev cần key và mạng thật: tắt ở đây (không đọc keyring của máy); agent-integration kiểm Jev bằng fixture.
+// Jev cần key và mạng thật: tắt ở đây (không dùng key của máy); agent-integration kiểm Jev bằng fixture.
 settings.autoMode = { ...settings.autoMode, model: "config-test/worker", stateDir: path.join(fixture, "auto-mode"), jev: false };
 Object.assign(settings, {
   defaultProvider: "config-test", defaultModel: "parent", defaultThinkingLevel: "off",
@@ -228,10 +228,11 @@ await check("single session exposes slash commands and only one model delegation
   for (const name of ["bg_delegate", "bg_run_pi_attested", "fusion_reason", "fusion_investigate", "fusion_research", "fusion_validate"])
     assert.ok(!tools.includes(name), `Duplicate model workflow: ${name}`);
   assert.ok(!loader.getExtensions().extensions.some(extension => extension.path?.includes("anthropic-attribution")));
-  // pi-mcp-adapter lo MCP; MCP, codemode và tool_search dựng sẵn bị tắt, /mcp chỉ có một.
+  // Không dùng MCP: MCP, codemode và tool_search dựng sẵn bị tắt, không có /mcp hay tool MCP nào.
   const loaded = loader.getExtensions().extensions.map(extension => extension.path);
   for (const name of ["builtin:mcp", "builtin:codemode", "builtin:tool-search"]) assert.ok(!loaded.includes(name), `${name} must be disabled`);
-  assert.deepEqual(session.extensionRunner.getRegisteredCommands().filter(command => command.name === "mcp").map(command => command.invocationName), ["mcp"]);
+  assert.ok(!session.extensionRunner.getRegisteredCommands().some(command => command.name === "mcp"));
+  assert.ok(!tools.some(name => name === "mcp" || name.startsWith("mcp__")));
   assert.ok(!session.getActiveToolNames().includes("codemode"));
   assert.equal(control.seen.length, 0, "Startup must not call any model");
 });

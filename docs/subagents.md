@@ -9,7 +9,7 @@ Pi dùng tool `Agent` của `@tintinweb/pi-subagents` 0.19.0. Parent Claude Opus
 | `worker` | GPT-6 Sol/max | Triển khai phần việc đã chốt, sửa file và kiểm thử |
 | `debugger` | GPT-6 Sol/max | Tái hiện, xác định nguyên nhân, sửa và kiểm hồi quy |
 | `reviewer` | GPT-6 Astra/high | Review độc lập, chỉ đọc; bash để chạy `git diff`, test sẵn có và script thử trong `/tmp`. Chạy các trục review của skill `interrogate` |
-| `verifier` | GPT-6 Astra/high | Chứng minh thay đổi trên sản phẩm thật bằng verify skill của repo; trả VERIFIED, NOT VERIFIED hoặc INCONCLUSIVE kèm bằng chứng; không sửa code, chỉ ghi bằng chứng. Có proxy `mcp` khi người dùng đã cấu hình server trình duyệt |
+| `verifier` | GPT-6 Astra/high | Chứng minh thay đổi trên sản phẩm thật bằng verify skill của repo; trả VERIFIED, NOT VERIFIED hoặc INCONCLUSIVE kèm bằng chứng; không sửa code, chỉ ghi bằng chứng |
 
 GLM dùng provider `opencode-go` trực tiếp trong Pi. Opus 5.5 và GLM dùng context 1M của catalog; Astra/Sol nâng lên 872K. File role nằm trong `agents/` của Pi; model/thinking của chúng sinh từ `model-roles.json` ([models.md](models.md)). `pi-doctor` in model/thinking thật của từng role, cảnh báo role lệch so với `model-roles.json` và đánh dấu role đã sửa so với bản cài.
 

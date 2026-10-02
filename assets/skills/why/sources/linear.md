@@ -14,7 +14,7 @@ Linear is where the product and business context often lives: the "we're doing t
 
 ## How to search it
 
-Use the Linear MCP server through the `mcp` proxy: `mcp({connect: "<server>"})` once, then `mcp({tool: "<name>", args: {...}})` for each tool named below. Adapt the tool names for Jira, GitHub Issues, Plane, or Shortcut.
+Use the Linear MCP server (Pi's built-in MCP); its tools are called directly as `mcp__<server>__<tool>` for each tool named below. Adapt the tool names for Jira, GitHub Issues, Plane, or Shortcut.
 
 1. **Start with linked tickets.** If the seed commits or PRs reference ticket IDs (for example `ENG-1234` or `[BUG-567]`), fetch those first with `get_issue`. Read the full issue, including comments.
 2. **List related issues by keyword.** Use `list_issues` with text search for the feature name, key symbol, or business term. Try multiple phrasings.

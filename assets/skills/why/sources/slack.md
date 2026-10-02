@@ -13,7 +13,7 @@ Slack is frequently where the *real* decisions got made, especially for smaller 
 
 ## How to search it
 
-Slack MCP servers vary. Check which one is configured and inspect its tool schemas first (`mcp({server: "<server>"})`, `mcp({describe: "<tool>"})`), then call its tools through the `mcp` proxy: `mcp({tool: "<name>", args: {...}})`. Adapt for Discord, Microsoft Teams, or Mattermost. If the server needs authentication, the user signs in through `/mcp`. If authentication fails, stop and report the gap.
+Slack MCP servers vary. Check which one is configured and read its tool schemas first (`/mcp` lists each server's tools), then call them directly as `mcp__<server>__<tool>`. Adapt for Discord, Microsoft Teams, or Mattermost. If the server needs authentication, the user signs in through `/mcp`. If authentication fails, stop and report the gap.
 
 1. **Author-bounded search.** Messages from the PR author around the PR merge date. Limits scope dramatically and often hits gold.
 2. **Keyword search for the feature name and key symbols.** Include misspellings and casual phrasings.
