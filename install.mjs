@@ -8,8 +8,8 @@ import {applyPatches} from './lib/patches.mjs';
 import {pruneBackups} from './lib/backups.mjs';
 import {backupFile,describeMerge,reconcileConfigFile,writeAtomic} from './runtime/merge.mjs';
 import {acquireInstallLock} from './runtime/install-lock.mjs';
-import {localDefaults,mergesConfig,reconcileResources} from './lib/resources.mjs';
-import {SUBAGENT_ROLES,changedRoles,checkCatalog,forceNativeModels,legacyOverrides,loadPresets,nativeKind,nativeValues,readModelRoles,resolveModelRoles,withPreset,writeModelRoles} from './runtime/model-roles.mjs';
+import {mergesConfig,reconcileResources} from './lib/resources.mjs';
+import {SUBAGENT_ROLES,changedRoles,checkCatalog,forceNativeModels,loadPresets,nativeKind,nativeValues,readModelRoles,resolveModelRoles,withPreset,writeModelRoles} from './runtime/model-roles.mjs';
 import {run,download,npmCli,npmTimeout,readJson,writeJson,sha256,shellQuote,assertSafePath} from './lib/system.mjs';
 
 const repoDir=path.dirname(fileURLToPath(import.meta.url));
@@ -77,16 +77,7 @@ function modelRolesPlan(){
   const presets=loadPresets(path.join(repoDir,'assets','configs','model-presets.json'));
   const current=readModelRoles(agentDir);
   if(current.error)throw new Error(`${current.error}\nSửa file, hoặc xoá để dùng preset mặc định.`);
-  let config=current.config,imported={};
-  if(!current.exists&&previous){
-    const texts={};
-    for(const role of SUBAGENT_ROLES){
-      const file=path.join(agentDir,'agents',`${role}.md`);
-      if(fs.existsSync(file)&&previous.files[file]&&sha256(fs.readFileSync(file))!==previous.files[file])texts[role]=fs.readFileSync(file,'utf8');
-    }
-    imported=legacyOverrides(presets,texts);
-    config={...config,roles:imported};
-  }
+  let config=current.config;
   const preset=option('--models');
   const before=preset===undefined?undefined:resolveModelRoles(presets,config);
   if(preset!==undefined)config=withPreset(config,preset);
@@ -94,7 +85,7 @@ function modelRolesPlan(){
   if(resolved.errors.length)throw new Error(`${current.file} ${preset===undefined?'':`với --models ${preset} `}không hợp lệ:\n- ${resolved.errors.join('\n- ')}`);
   const forced=before&&previous?changedRoles(before.roles,resolved.roles):[];
   const write=!current.exists||JSON.stringify(config)!==JSON.stringify(current.config);
-  return {file:current.file,write,config,imported,preset,forced,roles:resolved.roles};
+  return {file:current.file,write,config,preset,forced,roles:resolved.roles};
 }
 function copyTree(from,to){
   for(const entry of fs.readdirSync(from,{withFileTypes:true})){
@@ -201,7 +192,7 @@ try{
   const files=buildConfiguration({root,agentDir,binDir,nodePath,platform:process.platform,home,repoDir,shellPath:state.shellPath,modelRoles:models.roles});
   const native=nativeValues(models.roles);
   for(const specification of files){
-    const file=localDefaults(specification);
+    const file=specification;
     const kind=models.forced.length?nativeKind(file.path,agentDir):undefined;
     const force=kind&&(text=>forceNativeModels(kind,text,native,models.forced));
     (mergesConfig(file.path,{root,agentDir})?managedJson:managed)(file.path,file.content,file.mode,force||undefined);
@@ -222,8 +213,6 @@ try{
   console.log(`Đăng nhập: pi → /login. Firecrawl: firecrawl login --browser. Jev cho auto mode: ${jevKey} (hoặc keyring: pi-mcp-adapter key set systemone).`);
   if(preserved.length)console.log('Giữ nguyên các file đã được bạn tùy chỉnh:\n'+preserved.join('\n'));
   for(const entry of merged)console.log(describeMerge(entry).join('\n'));
-  const imported=Object.entries(models.imported).map(([role,value])=>`${role}: ${[value.model,value.thinking&&`thinking ${value.thinking}`].filter(Boolean).join(', ')}`);
-  if(imported.length)console.log(`Đã chuyển model/thinking bạn sửa trong agents/*.md sang ${models.file}:\n  - ${imported.join('\n  - ')}`);
   if(models.preset!==undefined)console.log(`Đã chọn preset ${models.preset} trong ${models.file}.`);
   if(catalog.notes.length)console.log(`Mức thinking model không hỗ trợ (Pi dùng mức gần nhất):\n  - ${catalog.notes.join('\n  - ')}`);
   await run(nodePath,[path.join(root,'bin/launch.mjs'),'doctor']);

@@ -421,24 +421,6 @@ export function adoptRoles(config, roles, effective, names) {
   return {config: next, adopted};
 }
 
-/**
- * Bản cài trước khi có model-roles.json: model/thinking người dùng đã sửa trong agents/*.md trở thành ghi đè,
- * để lần sinh file role đầu tiên không đổi lại lựa chọn đó. texts: nội dung các file role người dùng đã sửa.
- */
-export function legacyOverrides(presets, texts) {
-  const defaults = presets[DEFAULT_PRESET].roles;
-  const roles = {};
-  for (const [name, text] of Object.entries(texts)) {
-    if (!SUBAGENT_ROLES.includes(name)) continue;
-    const current = roleModel(text);
-    const override = {};
-    if (parseModelRef(current.model) && current.model !== defaults[name].model) override.model = current.model;
-    if (THINKING_LEVELS.includes(current.thinking) && current.thinking !== defaults[name].thinking) override.thinking = current.thinking;
-    if (Object.keys(override).length) roles[name] = override;
-  }
-  return roles;
-}
-
 const read = file => {
   try {
     return JSON.parse(fs.readFileSync(file, 'utf8').replace(/^﻿/u, ''));

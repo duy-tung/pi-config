@@ -5,7 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import {fileURLToPath} from 'node:url';
 import {
-  ROLES, adoptRoles, changedRoles, checkCatalog, driftedRoles, effectiveModelRoles, fillRoleNames, legacyOverrides, listCatalog, loadPresets,
+  ROLES, adoptRoles, changedRoles, checkCatalog, driftedRoles, effectiveModelRoles, fillRoleNames, listCatalog, loadPresets,
   nativeValues, parseModelRef, presetErrors, readModelRoles, resolveModelRoles, roleModel, setRoleModel, splitRole, withPreset, withRole,
   withoutRoles, writeModelRoles,
 } from '../runtime/model-roles.mjs';
@@ -178,16 +178,6 @@ test('điền model/thinking của vai vào hướng dẫn cho parent; tên vai 
   const none = {...roles, advisor: {...roles.advisor, gates: [], calls: undefined}};
   assert.equal(fillRoleNames('{{advisor.gates}}; {{advisor.calls}}', none), 'không gate nào; không giới hạn');
   assert.throws(() => fillRoleNames('{{advisor.model}}', roles), /Không có trường model/u);
-});
-
-test('bản cài cũ: model/thinking đã sửa trong file role thành ghi đè, giá trị như mặc định thì bỏ qua', () => {
-  assert.deepEqual(legacyOverrides(presets, {
-    worker: role('anthropic/claude-opus-5-5', 'max'),
-    debugger: role('openai-codex/gpt-6-sol', 'high'),
-    reviewer: role('openai-codex/gpt-6-astra', 'high'),
-    researcher: role('không hợp lệ', 'ultra'),
-    main: role('anthropic/claude-sonnet-5', 'low'),
-  }), {worker: {model: 'anthropic/claude-opus-5-5'}, debugger: {thinking: 'high'}});
 });
 
 test('giá trị đang có hiệu lực theo file gốc và vai bị lệch so với cấu hình', t => {

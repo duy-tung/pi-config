@@ -164,7 +164,7 @@ Installer gộp file `agents/*.md` theo từng khóa của frontmatter. Phần p
 
 ## Nâng cấp từ bản cài trước
 
-Ở bản cài chưa có `model-roles.json`, installer chuyển model/thinking bạn đã sửa trong `agents/*.md` thành ghi đè trong `model-roles.json`. Việc này chỉ làm một lần và installer báo lại. Giá trị bạn đã đổi trong `settings.json`, `advisor.json` và `pi-goal-x-settings.json` được giữ theo cách gộp ở trên.
+Giá trị bạn đã đổi trong `settings.json`, `advisor.json` và `pi-goal-x-settings.json` được giữ theo cách gộp ở trên.
 
 ## Giới hạn
 

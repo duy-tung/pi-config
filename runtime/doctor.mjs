@@ -51,9 +51,6 @@ try{
   errors.push(...models.errors);warnings.push(...models.warnings);
   for(const pkg of s.packages)if(!fs.existsSync(typeof pkg==='string'?pkg:pkg.source))errors.push(`Thiếu package: ${typeof pkg==='string'?pkg:pkg.source}`);
   for(const entry of s.extensions??[])if(typeof entry==='string'&&!entry.startsWith('-')&&path.isAbsolute(entry)&&!fs.existsSync(entry))errors.push(`Thiếu extension: ${entry}`);
-  // Lần gộp đầu của bản cài chưa lưu mặc định giữ mục cũ trong file đã sửa; search Claude nay là provider anthropic của pi-web-access.
-  if((s.extensions??[]).some(entry=>typeof entry==='string'&&/[\\/]native-web-search[\\/]?$/u.test(entry)))
-    warnings.push(`settings.json còn extension native-web-search đã bỏ; xoá dòng này`);
   const webSearch=path.join(p.agentDir,'web-search.json');
   if(fs.existsSync(webSearch)){
     const config=read(webSearch),providers=config.searchRouting?.providers,allowed=config.webSearch?.allowedProviders;
