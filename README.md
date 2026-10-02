@@ -88,7 +88,6 @@ Pi dùng `Agent` của **@tintinweb/pi-subagents**:
 | `worker` | GPT-6 Sol/max | Triển khai và kiểm thử phần việc đã chốt |
 | `debugger` | GPT-6 Sol/max | Tái hiện lỗi, tìm nguyên nhân, sửa và kiểm hồi quy |
 | `reviewer` | GPT-6 Astra/high | Review độc lập (cả ba trục của `interrogate`); chỉ đọc, bash để chạy diff, test và script thử |
-| `verifier` | GPT-6 Astra/high | Chứng minh thay đổi trên sản phẩm thật bằng verify skill; VERIFIED / NOT VERIFIED / INCONCLUSIVE; không sửa code |
 
 Parent Claude Opus 5.5/high giữ thiết kế, quyết định quan trọng và nghiệm thu cuối. GLM chạy trực tiếp qua OpenCode Go trong Pi.
 
@@ -102,7 +101,7 @@ Bảng trên là preset `default`. Model và thinking của mọi vai (parent, c
 @reviewer Review diff, nêu lỗi có bằng chứng.
 ```
 
-Agent có context riêng và không giới hạn số lượt; dừng agent bằng `/agents` → chọn agent → `x` hai lần. Khi parent gọi, explorer/researcher/reviewer chạy nền theo mặc định (tối đa 4 cùng lúc), worker/debugger/verifier chạy foreground (tối đa 2); vượt giới hạn thì xếp hàng. Parent điều phối để tránh ghi chồng file. Gõ `@role nội dung` thì agent chạy nền và báo kết quả cho parent khi xong. Mặc định task là đúng nội dung bạn gõ; chế độ `model` (`/agents` → Settings → Agent mentions) cho một bản sao hội thoại viết task có context. Chi tiết cấu hình, quyền và vòng đời: [docs/subagents.md](docs/subagents.md).
+Agent có context riêng và không giới hạn số lượt; dừng agent bằng `/agents` → chọn agent → `x` hai lần. Khi parent gọi, explorer/researcher/reviewer chạy nền theo mặc định (tối đa 4 cùng lúc), worker/debugger chạy foreground (tối đa 2); vượt giới hạn thì xếp hàng. Parent điều phối để tránh ghi chồng file. Gõ `@role nội dung` thì agent chạy nền và báo kết quả cho parent khi xong. Mặc định task là đúng nội dung bạn gõ; chế độ `model` (`/agents` → Settings → Agent mentions) cho một bản sao hội thoại viết task có context. Chi tiết cấu hình, quyền và vòng đời: [docs/subagents.md](docs/subagents.md).
 
 ## Công cụ và mặc định
 

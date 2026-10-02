@@ -13,7 +13,7 @@ Read `CONTEXT.md` if it exists, so test names and interface words match the doma
 
 **Run it** when the user asks for TDD, a failing test or a regression test, when a spec or ticket names seams to test, or when the behavior has an obvious cheap local test target.
 
-**Skip it** when the test path is unclear, expensive, integration-heavy, or not requested. Prove the change on the real artifact instead (load the `prove` skill) and say in the reply why you skipped.
+**Skip it** when the test path is unclear, expensive, integration-heavy, or not requested. Prove the change on the real artifact instead (run it the way a user would and read the output) and say in the reply why you skipped.
 
 - **Pick the narrowest existing check** that reaches the behavior through a public interface: the unit, component or integration test file already used for that code path. Do not create one from scratch just to satisfy the workflow.
 - **Prefer no new test over a bad test.** A bad test mostly tests mocks, encodes the current implementation, depends on timing or global state, needs expensive infrastructure for a small fix, or would be deleted right after proving the fix.

@@ -69,10 +69,6 @@ Follow [STACK-HOOKS.md](STACK-HOOKS.md). Say its ladder line, then propose the t
 
 Draft the approved items, show the diffs, write, then run each proof STACK-HOOKS.md gives.
 
-## 5. Verification
+## 5. Report
 
-When the repo has a runnable surface and no `.agents/skills/verify-*/`, tell the user to run `/skill:create-verify` next. Do not call it.
-
-## 6. Report
-
-List every file as created, updated, unchanged or skipped (with the reason), the labels created, the stack skills copied, the hook entries added, and each proof with its result. Leave the changes uncommitted for the user to review. Tell the user they can edit `docs/agents/*.md` directly, and re-run `/skill:setup` to switch trackers or after upgrading pi-config. Name the next step: `/skill:create-verify` when step 5 applies, and `/skill:context-audit` when the instruction file runs past about 100 lines.
+List every file as created, updated, unchanged or skipped (with the reason), the labels created, the stack skills copied, the hook entries added, and each proof with its result. Leave the changes uncommitted for the user to review. Tell the user they can edit `docs/agents/*.md` directly, and re-run `/skill:setup` to switch trackers or after upgrading pi-config. Name the next step: `/skill:context-audit` when the instruction file runs past about 100 lines.

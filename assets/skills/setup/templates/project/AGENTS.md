@@ -22,7 +22,7 @@
 <Single-context or multi-context>. See `docs/agents/domain.md`.
 
 ### Verification
-Before calling a user-visible change done, prove it with `.agents/skills/verify-<app>/`.
+Before calling a user-visible change done, prove it: run it the way a user would and read the real output.
 
 ### Coding standards
 Review-time rules live in `CODING_STANDARDS.md`; read it when reviewing a diff.

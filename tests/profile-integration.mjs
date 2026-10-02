@@ -35,7 +35,7 @@ for (const name of ["settings.json", "keybindings.json", "models.json", "advisor
   if (fs.existsSync(path.join(configuration.agentDir, name))) fs.copyFileSync(path.join(configuration.agentDir, name), path.join(agentDir, name));
 }
 fs.mkdirSync(path.join(agentDir, "agents"));
-for (const name of ["researcher", "explorer", "worker", "debugger", "reviewer", "verifier"]) {
+for (const name of ["researcher", "explorer", "worker", "debugger", "reviewer"]) {
   const role = fs.readFileSync(path.join(configuration.agentDir, "agents", `${name}.md`), "utf8")
     .replace(/^model: .+$/m, "model: config-test/worker")
     .replace('"pi-auto-mode"', '"pi-auto-mode", "scripted-provider"');
@@ -241,12 +241,12 @@ await check("workflow skills (tstack) load in Pi without warnings; flows are use
   assert.deepEqual(diagnostics, []);
   assert.equal(skills.length, 35);
   assert.deepEqual(skills.filter((skill) => skill.disableModelInvocation).map((skill) => skill.name).sort(), [
-    "context-audit", "create-verify", "grill-me", "grill-with-docs", "handoff", "implement", "improve-architecture",
-    "maintain-verify", "reflect", "setup", "ship", "to-spec", "to-tickets", "triage", "wait-what", "wayfinder",
+    "context-audit", "grill-me", "grill-with-docs", "handoff", "implement", "improve-architecture",
+    "reflect", "setup", "ship", "to-spec", "to-tickets", "triage", "wait-what", "wayfinder",
   ]);
   // Skill kỷ luật vào danh sách của model; skill luồng chỉ gọi bằng /skill:<tên>.
   const listed = sdk.formatSkillsForPrompt(skills);
-  for (const name of ["grilling", "interrogate", "prove", "tdd"]) assert.match(listed, new RegExp(`<name>${name}</name>`, "u"));
+  for (const name of ["grilling", "interrogate", "tdd"]) assert.match(listed, new RegExp(`<name>${name}</name>`, "u"));
   for (const name of ["implement", "ship"]) assert.doesNotMatch(listed, new RegExp(`<name>${name}</name>`, "u"));
   // Skill theo stack không nằm trong danh sách chung; bản /skill:setup chép vào .agents/skills/ của repo nạp không cảnh báo.
   for (const name of ["typescript", "python", "mobile"]) assert.doesNotMatch(listed, new RegExp(`<name>${name}</name>`, "u"));

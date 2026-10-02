@@ -46,7 +46,7 @@ Order the tickets so each lands green before the next starts and the sequence pr
 **Every ticket carries a `Verify:` line** with two checks:
 
 - **Unit**: the test or check, named by behaviour, that is red at the starting commit and green when done.
-- **Live**: the feature of the repo's verify skill (`.agents/skills/verify-<app>/`) to drive and the result to observe. Without a verify skill, the command and its expected output.
+- **Live**: the command or user path to run and the result to observe.
 
 **Wide refactors are the exception to vertical slicing.** A **wide refactor** is one mechanical change (rename a column, retype a shared symbol) whose **blast radius** fans across the whole codebase, so a single edit breaks thousands of call sites at once and no vertical slice can land green. Don't force it into a tracer bullet; sequence it as **expand-contract**. First expand: add the new form beside the old so nothing breaks. Then migrate the call sites over in batches sized by blast radius (per package, per directory), each batch its own ticket blocked by the expand, keeping CI green batch to batch because the old form still exists. Finally contract: delete the old form once no caller remains, in a ticket blocked by every migrate batch. When even the batches can't stay green alone, keep the sequence but let them share an integration branch that all block a final integrate-and-verify ticket; green is promised only there.
 
@@ -98,7 +98,7 @@ When the tickets are published, tell the user how to run them: `/skill:implement
 
 **Verify:**
 - Unit: <the test or check that is red now and green when done>
-- Live: <the verify-<app> feature to drive and the result to observe, or the command and its expected output>
+- Live: <the command or user path to run and the result to observe>
 
 </local-ticket-template>
 
@@ -119,7 +119,7 @@ The end-to-end behaviour this ticket makes work, from the user's perspective, no
 
 **Verify:**
 - Unit: <the test or check that is red now and green when done>
-- Live: <the verify-<app> feature to drive and the result to observe, or the command and its expected output>
+- Live: <the command or user path to run and the result to observe>
 
 ## Blocked by
 

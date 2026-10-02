@@ -119,7 +119,7 @@ const debuggerPath=path.join(agentDir,'agents','debugger.md');
 fs.writeFileSync(debuggerPath,fs.readFileSync(debuggerPath,'utf8').replace(/^tools: .*$/mu,'tools: "read, grep, find, ls, bash"'));
 const switched=install();
 const frontmatter=role=>fs.readFileSync(path.join(agentDir,'agents',`${role}.md`),'utf8').split('\n---\n')[0];
-for(const [role,model,thinking] of [['worker','claude-opus-5-5','high'],['debugger','claude-opus-5-5','high'],['researcher','claude-sonnet-5','max'],['explorer','claude-sonnet-5','medium'],['reviewer','claude-fable-5-1','high'],['verifier','claude-fable-5-1','high']]){
+for(const [role,model,thinking] of [['worker','claude-opus-5-5','high'],['debugger','claude-opus-5-5','high'],['researcher','claude-sonnet-5','max'],['explorer','claude-sonnet-5','medium'],['reviewer','claude-fable-5-1','high']]){
   assert.match(frontmatter(role),new RegExp(`^model: anthropic/${model}\\nthinking: ${thinking}$`,'mu'),role);
 }
 assert.match(frontmatter('debugger'),/^tools: "read, grep, find, ls, bash"$/mu);
@@ -132,7 +132,7 @@ const models=spawnSync(process.execPath,[path.join(root,'bin/launch.mjs'),'model
 assert.equal(models.status,0,models.stdout+models.stderr);
 assert.match(models.stdout,/^preset claude /u);
 // auth.json của bản cài thử rỗng: chỉ có cảnh báo chưa đăng nhập, không vai nào lệch.
-assert.equal(models.stderr,'cảnh báo: provider anthropic (main, researcher, explorer, worker, debugger, reviewer, verifier, advisor, auditor, oracle, autoMode) chưa đăng nhập: chạy pi rồi /login.\n');
+assert.equal(models.stderr,'cảnh báo: provider anthropic (main, researcher, explorer, worker, debugger, reviewer, advisor, auditor, oracle, autoMode) chưa đăng nhập: chạy pi rồi /login.\n');
 // Model sai tên (pi-subagents sẽ lặng lẽ dùng model của parent): installer dừng trước khi ghi cấu hình.
 writeJson(modelRolesPath,{preset:'claude',roles:{researcher:{thinking:'max'},worker:{model:'anthropic/claude-opus-5-6'}}});
 const beforeFailure=snapshot();

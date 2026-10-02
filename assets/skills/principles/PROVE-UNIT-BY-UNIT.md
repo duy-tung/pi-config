@@ -10,7 +10,7 @@
 - **Check the real thing, not a proxy.** Read the actual value; observe the running app. File mtimes, cached state, self-reports and "it compiles" are proxies.
 - **Verdicts are VERIFIED, NOT VERIFIED or INCONCLUSIVE.** Inconclusive is not a pass. Do not hide a negative.
 - **Delivery order proves the work:** the failing test, then the fix; subtraction before reshape; baseline before treatment; scaffold before feature. Each commit lands on its own, and the sequence reads as an argument.
-- Script the check and keep its output. The procedure is the `prove` skill.
+- Script the check and keep its output.
 
 **Test.** At any moment, can you name the last green check and what it observed?
 

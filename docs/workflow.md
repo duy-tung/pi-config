@@ -12,7 +12,7 @@ Skill nằm trong `assets/skills/` của repo và được cài vào `<root>/ass
 |---|---|
 | **Căn chỉnh trước khi build** | `/skill:grill-with-docs` hỏi từng vòng, mỗi câu có đáp án đề xuất. Sự thật do agent tự tra (code giao `explorer`, docs/web giao `researcher`), quyết định là của người. Câu "cách nào tốt hơn" mà chạy thử trả lời được thì agent tự làm prototype. |
 | **Ở trong smart zone** | Giữ mỗi pha trong khoảng 150k token đầu; footer của Pi cho biết context đang dùng. `/skill:context-audit` đo và dọn phần luôn-bật. Việc đọc code rộng giao `explorer`, tra docs/web giao `researcher`. Hết một pha thì chọn: tiếp tục, `/clear`, handoff, subagent hoặc `/compact`. |
-| **Chứng minh trên sản phẩm thật** | Mỗi app có verify skill kèm feature map (`/skill:create-verify`). Vai `verifier`, context sạch và không sửa code, trả VERIFIED, NOT VERIFIED hoặc INCONCLUSIVE kèm bằng chứng. Người viết không tự chấm. |
+| **Chứng minh trên sản phẩm thật** | Chạy thay đổi theo đường người dùng đi (app, CLI, API) và đọc output thật; typecheck hay CI xanh không phải bằng chứng. Kết luận VERIFIED, NOT VERIFIED hoặc INCONCLUSIVE kèm bằng chứng. |
 | **Mã hoá bài học vào cấu trúc** | Thang ưu tiên, từ mạnh nhất: type và kiến trúc; lint, hook và CI; `CODING_STANDARDS.md`; skill; một dòng trong AGENTS.md. `/skill:reflect` đưa mỗi bài học lên nấc cao nhất có thể. |
 | **Tự chủ có hợp đồng** | Việc đảo ngược được thì cứ làm. Việc dài giao `/goal` của pi-goal-x. Git guard trong auto mode chặn tất định các lệnh git phá huỷ. |
 
@@ -20,10 +20,9 @@ Skill nằm trong `assets/skills/` của repo và được cài vào `<root>/ass
 
 ```text
 /skill:setup            một lần mỗi repo: tracker, AGENTS.md, CODING_STANDARDS.md, skill theo stack, format và hook
-/skill:create-verify    một lần mỗi app: verify skill + feature map trong .agents/skills/verify-<app>/
 ```
 
-Skill kỷ luật (grilling, tdd, diagnose, prove, interrogate…) được model tự nạp khi việc khớp mô tả; bạn cũng có thể gọi tên. Skill luồng chỉ người dùng gọi được, bằng `/skill:<tên> [tham số]`: gõ `/` rồi tìm tên trong danh sách lệnh.
+Skill kỷ luật (grilling, tdd, diagnose, interrogate…) được model tự nạp khi việc khớp mô tả; bạn cũng có thể gọi tên. Skill luồng chỉ người dùng gọi được, bằng `/skill:<tên> [tham số]`: gõ `/` rồi tìm tên trong danh sách lệnh.
 
 ## Luồng hằng ngày
 
@@ -41,7 +40,7 @@ Skill kỷ luật (grilling, tdd, diagnose, prove, interrogate…) được mode
 1. đặt tên hình dạng dữ liệu;
 2. kiểm thiết kế ở ranh giới module;
 3. TDD tại các seam đã thống nhất;
-4. `verifier` chứng minh trên sản phẩm thật;
+4. chạy thử trên sản phẩm thật và đọc output;
 5. commit nhỏ;
 6. `interrogate` review bằng các `reviewer` sạch, rồi sửa mục "Act on";
 7. đóng ticket kèm SHA, kết luận và bằng chứng.
@@ -55,7 +54,6 @@ Skill kỷ luật (grilling, tdd, diagnose, prove, interrogate…) được mode
 | Chuyển việc sang phiên hoặc người khác | `/skill:handoff` |
 | Tin nhắn của agent khó hiểu | `/skill:wait-what` |
 | Phiên chậm, ồn, tốn token | `/skill:context-audit` |
-| App đã đổi, verify skill lệch | `/skill:maintain-verify` |
 | Lúc rảnh | `/skill:improve-architecture` |
 
 ## Ranh giới pha và smart zone
@@ -78,21 +76,20 @@ Skill không ghi tên model; chúng gọi **vai**, và `model-roles.json` quyế
 | Bước | Vai | Model (default) | Vì sao |
 |---|---|---|---|
 | Thiết kế, grill, nghiệm thu, điều phối | parent | Claude Opus 5.5/high | Giữ ngữ cảnh và quyết định |
-| Đọc code, bản đồ file/symbol/luồng gọi (`how`, `improve-architecture`, `maintain-verify`, blast radius) | `explorer` | GLM-5.3-Flash/high | Chỉ đọc code, không web; chạy nền song song với researcher |
+| Đọc code, bản đồ file/symbol/luồng gọi (`how`, `improve-architecture`, blast radius) | `explorer` | GLM-5.3-Flash/high | Chỉ đọc code, không web; chạy nền song song với researcher |
 | Git archaeology, tra docs và web (`why`, `research`, facts khi grill) | `researcher` | GLM-5.3-Flash/max | Rẻ, nhanh, chạy nền song song (tối đa 4); chỉ đọc, có bash cho lệnh đọc |
 | Build một ticket hoặc unit, prototype, sửa danh sách Act-on | `worker` | GPT-6 Sol/max | Viết code; commit chỉ khi brief cho phép |
 | Tái hiện và sửa một bug đã khoanh | `debugger` | GPT-6 Sol/max | Test đỏ trước, sửa tận gốc |
 | Ba trục review của `interrogate`, giám khảo eval | `reviewer` | GPT-6 Astra/high | Khác họ model với parent nên điểm mù không trùng; chỉ đọc |
-| Chứng minh trên sản phẩm thật | `verifier` | GPT-6 Astra/high | Context sạch, khác model với worker, không sửa code |
 | Design it twice | `researcher`, `reviewer`, parent (+ `worker` khi cần chạy code) | GLM, Astra, Opus, Sol | Nhiều model cho các phương án thật sự khác nhau, không cần CLI ngoài |
 
-Preset `claude` dùng toàn Claude: reviewer và verifier chạy Fable 5.1, khác model với worker Opus. Khi reviewer cùng họ với parent, báo cáo `interrogate` nói rõ điểm mù có tương quan. Đổi vai bằng `/models` hoặc `pi-models`.
+Preset `claude` dùng toàn Claude: reviewer chạy Fable 5.1, khác model với worker Opus. Khi reviewer cùng họ với parent, báo cáo `interrogate` nói rõ điểm mù có tương quan. Đổi vai bằng `/models` hoặc `pi-models`.
 
 ## Advisor và skill quy trình
 
 Skill quy trình (từ tstack) dùng các gate của advisor (`pi-models set advisor gates=…`; preset có sẵn bật `failure` và `completion`):
 - Gate `plan`: trong build playbook của `/skill:implement`, plan là data shape, seam và các lát cắt chốt ở bước 2 đến 4; parent gửi advisor trước khi viết code.
-- Gate `completion`: gọi sau `prove` và `interrogate`, để bản nháp mang verdict và bằng chứng thật chứ không phải lời khẳng định.
+- Gate `completion`: gọi sau bước chứng minh và `interrogate`, để bản nháp mang verdict và bằng chứng thật chứ không phải lời khẳng định.
 - Gate `failure` trùng luật "hai lần sửa cùng tiền đề thất bại" của `diagnose`.
 - Số lượt `calls` tính theo phiên. Advisor tắt, hết lượt hoặc đang ở subagent (worker, debugger không có `ask_advisor`) thì skill bỏ bước advisor và ghi rõ; subagent báo parent.
 - Đọc code giao `explorer`, tra docs/web/lịch sử git giao `researcher`.
@@ -123,7 +120,6 @@ Khi thật sự cần, bạn tự chạy lệnh bằng `!<lệnh>` trong editor 
 | `ship` | Mở PR (deslop, commit có thứ tự, body briefing), babysit, land khi được yêu cầu. |
 | `reflect` | Bài học lặp lại → nấc mạnh nhất của thang; chỉ áp dụng dòng bạn duyệt. |
 | `setup` | Cấu hình repo: tracker, domain docs, AGENTS.md gọn, `CODING_STANDARDS.md`, skill theo stack, hook commit. |
-| `create-verify`, `maintain-verify` | Tạo và giữ verify skill kèm feature map cho từng app (web, CLI, API, mobile). |
 | `context-audit` | Đo context luôn-bật và cắt tỉa với ba phép thử. |
 | `improve-architecture` | Khảo sát cơ hội "làm sâu module", báo cáo HTML, rồi grill phương án bạn chọn. |
 | `wayfinder` | Bản đồ ticket quyết định cho việc lớn hơn một spec. |
@@ -133,7 +129,7 @@ Khi thật sự cần, bạn tự chạy lệnh bằng `!<lệnh>` trong editor 
 
 ### 17 kỷ luật (model tự nạp; chỉ mô tả nằm trong context)
 
-grilling, domain-modeling, codebase-design, principles, tdd, diagnose, prove, interrogate, how, why, prototype, research, unslop, writing-for-agents, resolving-merge-conflicts, wizard.
+grilling, domain-modeling, codebase-design, principles, tdd, diagnose, interrogate, how, why, prototype, research, unslop, writing-for-agents, resolving-merge-conflicts, wizard.
 
 ### Skill theo stack (chỉ trong repo dùng stack đó)
 
@@ -147,7 +143,6 @@ grilling, domain-modeling, codebase-design, principles, tdd, diagnose, prove, in
 | `CODING_STANDARDS.md` | Luật review; `reviewer` đọc, agent code không phải trả giá mỗi request. |
 | `docs/agents/*.md` | Tracker (GitHub, GitLab hoặc markdown cục bộ), cấu trúc domain, nhãn triage. |
 | `CONTEXT.md`, `docs/adr/` | Từ điển domain và quyết định kiến trúc. |
-| `.agents/skills/verify-<app>/` | Verify skill kèm `features/` của từng app. Pi nạp sau khi project được trust; `prove` và `verifier` đọc theo đường dẫn. |
 | `.tstack/` | Ghi chú và bằng chứng của từng lần chạy; được gitignore. |
 
 ## Tuỳ biến
@@ -163,11 +158,11 @@ grilling, domain-modeling, codebase-design, principles, tdd, diagnose, prove, in
 |---|---|
 | Lệnh `/tstack:<tên>` | `/skill:<tên>` (Pi không có namespace plugin) |
 | Skill tool | Model đọc SKILL.md theo danh sách skill của Pi |
-| `Explore`, `general-purpose`, `ticket-worker`, ba agent review | `researcher`, `worker`, `reviewer` + file trục trong `interrogate/axes/`, `verifier` |
+| `Explore`, `general-purpose`, `ticket-worker`, ba agent review | `researcher`, `worker`, `reviewer` + file trục trong `interrogate/axes/` |
 | Seat review ngoài qua `codex`/`gemini` CLI | Vai khác họ model trong preset |
 | `effort: high` theo skill | Parent đã chạy Opus/high; skill không đổi thinking giữa phiên (giữ prompt cache) |
 | Hook `guard_git.py`, PreCompact, status line | Git guard trong auto mode; context xem ở footer của Pi |
-| `.claude/skills/verify-<app>/`, hook format trong `.claude/settings.json` | `.agents/skills/verify-<app>/`, hook commit |
+| Hook format trong `.claude/settings.json` | Hook commit |
 | Background Bash, `/loop` | `bg_run` (phiên tự thức khi job xong) |
 
 ## Nguồn gốc và giấy phép

@@ -26,7 +26,7 @@ Redact every secret you show: write `<REDACTED>` in its place. Build loops again
 
 **This is the skill.** With a tight pass/fail signal that goes red on this bug, you will find the cause: bisection, hypotheses and instrumentation all consume it. Without one, reading code will not save you. Spend disproportionate effort here. Be aggressive, be creative, refuse to give up.
 
-**Reproduce on the surface the user saw it.** When the repo has a verify skill (`.agents/skills/verify-<app>/`), use its Launch and Drive steps. Reproduce it yourself. Ask the user to reproduce only with a specific reason your tools cannot reach the target, after driving as far as they go. If it will not fire, synthesize the trigger, tighten the conditions, or instrument until it does.
+**Reproduce on the surface the user saw it.** Reproduce it yourself. Ask the user to reproduce only with a specific reason your tools cannot reach the target, after driving as far as they go. If it will not fire, synthesize the trigger, tighten the conditions, or instrument until it does.
 
 Ways to build the loop, in rough order:
 
@@ -106,7 +106,7 @@ With a correct seam, follow the test rules in the `tdd` skill (load it if it is 
 3. Apply the fix and watch the test pass. The repo's typecheck or lint on the touched files is a faster first signal, not proof.
 4. Rerun the Phase 1 loop on the original, un-minimised scenario.
 
-**Verify on the surface the user saw the bug:** load the `prove` skill. Unit tests show branch behavior, not bug absence. Inconclusive or wrong-surface is not a pass.
+**Verify on the surface the user saw the bug:** run the user's path again and read the real output. Unit tests show branch behavior, not bug absence. Inconclusive or wrong-surface is not a pass.
 
 ### Two failed fixes: attack the premise
 

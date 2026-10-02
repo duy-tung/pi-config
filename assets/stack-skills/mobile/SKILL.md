@@ -172,4 +172,4 @@ Check these in every review. Types don't catch them.
 
 ## Prove it on a device
 
-Unit tests and previews don't prove a user-facing change. Prove it on a simulator or emulator through the repo's verify skill (`.agents/skills/verify-<app>/`): load the `prove` skill to run it and return a verdict. If the repo has no verify skill, tell the user to run `/skill:create-verify`. For a one-off drive, use the iOS, Android, or Flutter recipe in the `create-verify` skill's CONTROL-ADAPTERS.md.
+Unit tests and previews don't prove a user-facing change. Prove it on a simulator or emulator: drive the changed screen the way a user would, capture a screenshot or log as evidence, and return VERIFIED, NOT VERIFIED or INCONCLUSIVE.
