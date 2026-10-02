@@ -93,11 +93,6 @@ test('pi-models: tham số sai và khóa của installer báo lỗi, không ghi 
     [['set', 'worker'], /thiếu giá trị/u],
     [['set', 'worker', 'ultra'], /"ultra" không phải model dạng provider\/id hay mức thinking/u],
     [['set', 'worker', 'high', 'max'], /chỉ nêu một thinking/u],
-    [['set', 'worker', 'gates=plan'], /gates= chỉ dùng cho vai advisor/u],
-    [['set', 'advisor', 'gates=plan,soon'], /gates= nhận danh sách cách nhau bởi dấu phẩy gồm plan, failure, completion, hoặc none/u],
-    [['set', 'advisor', 'gates=plan,plan'], /gates= nhận danh sách/u],
-    [['set', 'advisor', 'calls=0'], /calls= nhận số nguyên từ 1 đến 100/u],
-    [['set', 'advisor', 'calls=7', 'calls=8'], /chỉ nêu một calls/u],
     [['reset'], /pi-models reset <vai>\.\.\. hoặc pi-models reset --all/u],
     [['reset', 'worker', '--all'], /pi-models reset <vai>\.\.\. hoặc pi-models reset --all/u],
     [['preset'], /pi-models preset <tên>/u],
@@ -173,20 +168,6 @@ test('catalog và effects truyền vào (như /models trong phiên): kiểm mode
   const shown = await run();
   assert.equal(shown.status, 0, shown.text);
   assert.match(shown.text, /Giữ giá trị này: \/models adopt reviewer; dùng lại model-roles\.json: \/models apply --reset\./u);
-  // Gate và số lượt của advisor: ghi đè trong model-roles.json, áp vào advisor.json như model.
-  const gates = await run('set', 'advisor', 'gates=completion,plan,failure', 'calls=7');
-  assert.equal(gates.status, 0, gates.text);
-  assert.match(gates.text, /^advisor: anthropic\/claude-fable-5-1 \(high; gate lỗi lặp, trước khi xong; 5 lượt\/phiên\) → anthropic\/claude-fable-5-1 \(high; gate trước plan, lỗi lặp, trước khi xong; 7 lượt\/phiên\)$/mu);
-  assert.deepEqual(readJson(f.file('model-roles.json')).roles.advisor, {gates: ['plan', 'failure', 'completion'], calls: 7});
-  const advisorFile = readJson(f.file('advisor.json'));
-  assert.deepEqual([advisorFile.advisorPlanGate, advisorFile.advisorFailureGate, advisorFile.advisorCompletionGate, advisorFile.advisorMaxCallsPerSession], [true, true, true, 7]);
-  assert.deepEqual(applied.at(-1), ['advisor']);
-  // AGENTS.md nói đúng gate và số lượt đang bật.
-  assert.match(fs.readFileSync(f.file('AGENTS.md'), 'utf8'), /gate đang bật \(trước plan, lỗi lặp, trước khi xong;.*Số lượt: 7 mỗi phiên/u);
-  assert.equal((await run('set', 'advisor', 'gates=none')).status, 0);
-  assert.deepEqual(readJson(f.file('model-roles.json')).roles.advisor, {gates: [], calls: 7});
-  assert.match(fs.readFileSync(f.file('AGENTS.md'), 'utf8'), /gate đang bật \(không gate nào;/u);
-  assert.equal(readJson(f.file('advisor.json')).advisorPlanGate, false);
   const listed = await run('list');
   assert.match(listed.text, /^anthropic: đã đăng nhập \(OAuth\), 1 model; vai: main, researcher, worker, debugger, reviewer, advisor, auditor, oracle, autoMode$/mu);
   assert.match(listed.text, /^Xem model của một provider: \/models list <provider>$/mu);

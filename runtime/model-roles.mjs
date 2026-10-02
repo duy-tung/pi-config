@@ -13,13 +13,7 @@ import {pathToFileURL} from 'node:url';
 export const ROLES = ['main', 'researcher', 'worker', 'debugger', 'reviewer', 'advisor', 'auditor', 'oracle', 'autoMode'];
 export const SUBAGENT_ROLES = ['researcher', 'worker', 'debugger', 'reviewer'];
 export const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
-// Gate của advisor (pi-advisor-flow): thời điểm system prompt dặn phiên chính gọi ask_advisor. plan: trước khi chốt
-// kế hoạch có hệ quả; failure: sau hai lần thất bại giống nhau hoặc không tiến triển; completion: trước khi báo xong.
-export const ADVISOR_GATES = ['plan', 'failure', 'completion'];
-const GATE_KEYS = {plan: 'advisorPlanGate', failure: 'advisorFailureGate', completion: 'advisorCompletionGate'};
-export const MAX_ADVISOR_CALLS = 100;
-// Trường của từng vai: advisor có thêm gates và calls (số lần gọi tối đa mỗi phiên).
-const fieldsOf = name => name === 'advisor' ? ['model', 'thinking', 'gates', 'calls'] : ['model', 'thinking'];
+const FIELDS = ['model', 'thinking'];
 export const DEFAULT_PRESET = 'default';
 export const MODEL_ROLES_FILE = 'model-roles.json';
 export const defaultModelRoles = () => ({preset: DEFAULT_PRESET, roles: {}});
@@ -39,16 +33,7 @@ export function parseModelRef(value) {
   return {provider: value.slice(0, slash), id: value.slice(slash + 1)};
 }
 
-/** Danh sách gate hợp lệ: mỗi gate một lần, xếp theo ADVISOR_GATES; undefined khi sai. */
-export function normalizeGates(value) {
-  if (!Array.isArray(value) || value.some(gate => !ADVISOR_GATES.includes(gate)) || new Set(value).size !== value.length) return undefined;
-  return ADVISOR_GATES.filter(gate => value.includes(gate));
-}
-
-const validCalls = value => Number.isInteger(value) && value >= 1 && value <= MAX_ADVISOR_CALLS;
-
-function checkRole(where, value, errors, name) {
-  const fields = fieldsOf(name);
+function checkRole(where, value, errors) {
   if (!isObject(value)) {
     errors.push(`${where} phải là object dạng {"model": "provider/id", "thinking": "high"}`);
     return {};
@@ -61,14 +46,7 @@ function checkRole(where, value, errors, name) {
     } else if (key === 'thinking') {
       if (THINKING_LEVELS.includes(value.thinking)) result.thinking = value.thinking;
       else errors.push(`${where}.thinking phải là một trong ${THINKING_LEVELS.join(', ')}, đang là ${JSON.stringify(value.thinking)}`);
-    } else if (key === 'gates' && fields.includes(key)) {
-      const gates = normalizeGates(value.gates);
-      if (gates) result.gates = gates;
-      else errors.push(`${where}.gates phải là danh sách không trùng gồm ${ADVISOR_GATES.join(', ')} (có thể rỗng), đang là ${JSON.stringify(value.gates)}`);
-    } else if (key === 'calls' && fields.includes(key)) {
-      if (validCalls(value.calls)) result.calls = value.calls;
-      else errors.push(`${where}.calls phải là số nguyên từ 1 đến ${MAX_ADVISOR_CALLS}, đang là ${JSON.stringify(value.calls)}`);
-    } else errors.push(`${where}: không có khóa "${key}" (chỉ có ${fields.join(', ')})`);
+    } else errors.push(`${where}: không có khóa "${key}" (chỉ có ${FIELDS.join(', ')})`);
   }
   return result;
 }
@@ -81,7 +59,7 @@ function checkRoles(where, roles, errors) {
   }
   const result = {};
   for (const [name, value] of Object.entries(roles)) {
-    if (ROLES.includes(name)) result[name] = checkRole(`${where}.${name}`, value, errors, name);
+    if (ROLES.includes(name)) result[name] = checkRole(`${where}.${name}`, value, errors);
     else errors.push(`${where}: không có vai "${name}" (có ${ROLES.join(', ')})`);
   }
   return result;
@@ -94,7 +72,7 @@ export function presetErrors(presets) {
   for (const [name, preset] of Object.entries(presets)) {
     const roles = checkRoles(`${name}.roles`, preset?.roles, errors);
     for (const role of ROLES) {
-      const missing = fieldsOf(role).filter(field => roles[role]?.[field] === undefined);
+      const missing = FIELDS.filter(field => roles[role]?.[field] === undefined);
       if (missing.length) errors.push(`${name}: vai ${role} thiếu ${missing.join(', ')}`);
     }
   }
@@ -150,7 +128,7 @@ export function resolveModelRoles(presets, config = defaultModelRoles()) {
   const roles = {};
   for (const name of ROLES) {
     const role = {source: {}};
-    for (const field of fieldsOf(name)) {
+    for (const field of FIELDS) {
       for (const [source, layer] of layers(name)) {
         if (layer?.[field] === undefined) continue;
         role[field] = layer[field];
@@ -179,8 +157,6 @@ export function nativeValues(roles) {
     // alwaysOn của advisor đặt model của phiên chính thành executor mỗi lần mở phiên: executor luôn là vai main.
     advisor: {
       executor: roles.main.model, executorEffort: roles.main.thinking, advisor: roles.advisor.model, advisorEffort: roles.advisor.thinking,
-      ...(roles.advisor.gates ? Object.fromEntries(ADVISOR_GATES.map(gate => [GATE_KEYS[gate], roles.advisor.gates.includes(gate)])) : {}),
-      ...(roles.advisor.calls === undefined ? {} : {advisorMaxCallsPerSession: roles.advisor.calls}),
     },
     goal: {...goal('auditor'), oracle: goal('oracle')},
   };
@@ -275,12 +251,9 @@ export function forceNativeModels(kind, text, models, roles) {
   return `${JSON.stringify(setNativeModels(kind, value, models, roles), null, 2)}\n`;
 }
 
-/** gates và calls của advisor giống nhau (vai khác không có hai trường này). */
-const sameWorkflow = (a, b) => String(a.gates) === String(b.gates) && a.calls === b.calls;
-
-/** Vai có model, thinking (hoặc gate, số lượt của advisor) khác nhau giữa hai kết quả resolve. */
+/** Vai có model hoặc thinking khác nhau giữa hai kết quả resolve. */
 export const changedRoles = (before, after) =>
-  ROLES.filter(name => before[name].model !== after[name].model || before[name].thinking !== after[name].thinking || !sameWorkflow(before[name], after[name]));
+  ROLES.filter(name => before[name].model !== after[name].model || before[name].thinking !== after[name].thinking);
 
 const FRONTMATTER = /^---\n([\s\S]*?)\n---(?:\n|$)/u;
 
@@ -327,21 +300,11 @@ export function roleModel(text) {
   return {model: fields?.model || undefined, thinking: fields?.thinking || undefined};
 }
 
-/**
- * Điền {{vai}} trong văn bản (AGENTS.md của agent dir) bằng id model/thinking của vai đó, vd claude-opus-5-5/high;
- * {{advisor.gates}} bằng các gate đang bật, {{advisor.calls}} bằng số lượt mỗi phiên.
- */
+/** Điền {{vai}} trong văn bản (AGENTS.md của agent dir) bằng id model/thinking của vai đó, vd claude-opus-5-5/high. */
 export function fillRoleNames(text, roles) {
-  return text.replace(/\{\{(\w+)(?:\.(\w+))?\}\}/gu, (match, name, field) => {
+  return text.replace(/\{\{(\w+)\}\}/gu, (match, name) => {
     if (!ROLES.includes(name)) throw new Error(`Không có vai ${name} cho ${match}`);
-    const role = roles[name];
-    if (field === undefined) return `${parseModelRef(role.model).id}/${role.thinking}`;
-    if (name === 'advisor' && field === 'gates') {
-      const gates = role.gates ?? ADVISOR_GATES;
-      return gates.length ? gates.map(gate => GATE_LABELS[gate]).join(', ') : 'không gate nào';
-    }
-    if (name === 'advisor' && field === 'calls') return role.calls === undefined ? 'không giới hạn' : String(role.calls);
-    throw new Error(`Không có trường ${field} của vai ${name} cho ${match}`);
+    return `${parseModelRef(roles[name].model).id}/${roles[name].thinking}`;
   });
 }
 
@@ -409,11 +372,6 @@ export function adoptRoles(config, roles, effective, names) {
     if (parseModelRef(current.model) && current.model !== roles[name].model) fields.model = current.model;
     const wanted = name === 'auditor' || name === 'oracle' ? goalThinking(roles[name].thinking) : roles[name].thinking;
     if (THINKING_LEVELS.includes(current.thinking) && current.thinking !== wanted) fields.thinking = current.thinking;
-    if (name === 'advisor') {
-      const gates = normalizeGates(current.gates);
-      if (gates && String(gates) !== String(roles.advisor.gates)) fields.gates = gates;
-      if (validCalls(current.calls) && current.calls !== roles.advisor.calls) fields.calls = current.calls;
-    }
     if (!Object.keys(fields).length) continue;
     next = withRole(next, name, fields);
     adopted[name] = fields;
@@ -446,11 +404,7 @@ export function effectiveModelRoles(agentDir) {
     const file = path.join(agentDir, 'agents', `${name}.md`);
     result[name] = {...(fs.existsSync(file) ? roleModel(fs.readFileSync(file, 'utf8')) : {}), file: `agents/${name}.md`};
   }
-  // Gate thiếu trong advisor.json: pi-advisor-flow mặc định bật; số lượt thiếu: không giới hạn.
-  result.advisor = {
-    model: advisor?.advisor, thinking: advisor?.advisorEffort,
-    gates: ADVISOR_GATES.filter(gate => advisor?.[GATE_KEYS[gate]] !== false), calls: advisor?.advisorMaxCallsPerSession, file: 'advisor.json',
-  };
+  result.advisor = {model: advisor?.advisor, thinking: advisor?.advisorEffort, file: 'advisor.json'};
   const goalRole = value => ({
     model: value?.provider && value?.model ? `${value.provider}/${value.model}` : undefined,
     thinking: value?.thinkingLevel ?? value?.thinking_level, file: 'pi-goal-x-settings.json',
@@ -467,7 +421,7 @@ export function effectiveModelRoles(agentDir) {
 export function driftedRoles(roles, effective) {
   return ROLES.filter(name => {
     const wanted = name === 'auditor' || name === 'oracle' ? goalThinking(roles[name].thinking) : roles[name].thinking;
-    return effective[name].model !== roles[name].model || effective[name].thinking !== wanted || !sameWorkflow(roles[name], effective[name]);
+    return effective[name].model !== roles[name].model || effective[name].thinking !== wanted;
   });
 }
 
@@ -579,19 +533,11 @@ export function listCatalog({modules, agentDir}) {
   });
 }
 
-/** Nhãn của gate trong bảng và menu. */
-export const GATE_LABELS = {plan: 'trước plan', failure: 'lỗi lặp', completion: 'trước khi xong'};
-
-/** Gate và số lượt của advisor dạng chữ, vd "gate trước plan, lỗi lặp, trước khi xong; 7 lượt/phiên". */
-export const workflowLabel = role => role.gates === undefined && role.calls === undefined ? '' :
-  `gate ${role.gates?.length ? role.gates.map(gate => GATE_LABELS[gate]).join(', ') : 'không (chỉ khi gọi)'}; ` +
-  `${role.calls === undefined ? 'không giới hạn lượt' : `${role.calls} lượt/phiên`}`;
-
-const label = role => `${role.model ?? '?'} (${role.thinking ?? '?'}${workflowLabel(role) ? `; ${workflowLabel(role)}` : ''})`;
+export const roleLabel = role => `${role.model ?? '?'} (${role.thinking ?? '?'})`;
 
 /** Cảnh báo cho vai đang dùng giá trị khác model-roles.json, kèm cách giữ hoặc bỏ giá trị đó. */
 export const driftWarning = (name, effective, wanted, command = 'pi-models') =>
-  `${name} đang dùng ${label(effective)} theo ${effective.file}, khác ${MODEL_ROLES_FILE} (${label(wanted)}). ` +
+  `${name} đang dùng ${roleLabel(effective)} theo ${effective.file}, khác ${MODEL_ROLES_FILE} (${roleLabel(wanted)}). ` +
   `Giữ giá trị này: ${command} adopt ${name}; dùng lại ${MODEL_ROLES_FILE}: ${command} apply --reset.`;
 
 /** Cảnh báo provider chưa đăng nhập của checkCatalog; trong phiên Pi (command "/models") đăng nhập bằng /login. */
@@ -619,10 +565,10 @@ export async function modelRolesReport({
     const wanted = resolved.roles[name];
     const overridden = wanted.source.model === 'override' || wanted.source.thinking === 'override' ? ', ghi đè' : '';
     if (!drifted.has(name)) {
-      lines.push(`  ${name}: ${label(wanted)}${overridden}`);
+      lines.push(`  ${name}: ${roleLabel(wanted)}${overridden}`);
       continue;
     }
-    lines.push(`  ${name}: ${label(effective[name])} theo ${effective[name].file}; ${MODEL_ROLES_FILE}: ${label(wanted)}${overridden}`);
+    lines.push(`  ${name}: ${roleLabel(effective[name])} theo ${effective[name].file}; ${MODEL_ROLES_FILE}: ${roleLabel(wanted)}${overridden}`);
     warnings.push(driftWarning(name, effective[name], wanted, command));
   }
   // Giá trị đang có hiệu lực là thứ Pi dùng: model sai tên ở đó cũng bị thay lặng lẽ bằng model của parent.

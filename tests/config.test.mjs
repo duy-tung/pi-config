@@ -169,7 +169,8 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.equal(advisor.executorEffort, settings.defaultThinkingLevel);
       assert.equal(advisor.advisor, "openai-codex/gpt-6-astra");
       assert.equal(advisor.advisorEffort, "high");
-      // Gate là hướng dẫn trong prompt: khi lỗi lặp lại và trước khi báo xong; không có gate cứng chặn phiên.
+      // Gate là hướng dẫn trong prompt: khi lỗi lặp lại và trước khi báo xong; không có gate cứng chặn phiên. Người dùng
+      // đổi gate và số lượt bằng /advisor-settings; cài lại giữ giá trị đó (gộp ba chiều).
       assert.deepEqual([advisor.advisorPlanGate, advisor.advisorFailureGate, advisor.advisorCompletionGate], [false, true, true]);
       assert.equal(advisor.advisorAutoLoopGate, false);
       assert.equal(advisor.gateFailureMode, "warn-and-continue");
@@ -266,8 +267,7 @@ test("model-roles: preset và ghi đè đi tới mọi file gốc (settings, fil
   const guide = read("AGENTS.md");
   assert.match(guide, /researcher dùng claude-sonnet-5\/high .*worker dùng claude-opus-5-5\/max; debugger dùng claude-opus-5-5\/high; reviewer dùng claude-fable-5-1\/high, chỉ đọc\./u);
   assert.match(guide, /Parent claude-opus-5-5\/high giữ thiết kế/u);
-  assert.match(guide, /Advisor claude-fable-5-1\/high: gọi ask_advisor đúng các gate đang bật \(lỗi lặp, trước khi xong;/u);
-  assert.match(guide, /Số lượt: 5 mỗi phiên/u);
+  assert.match(guide, /Advisor claude-fable-5-1\/high: gọi ask_advisor theo system prompt của advisor/u);
   assert.match(guide, /auditor claude-sonnet-5\/high kiểm tra độc lập/u);
   assert.doesNotMatch(guide, /\{\{/u);
 });

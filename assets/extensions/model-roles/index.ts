@@ -282,10 +282,6 @@ async function roleArgs(ctx: ExtensionContext, install: Install, name: string, c
   const fallback = install.roles.resolveModelRoles(presets, install.roles.withoutRoles(config, [name])).roles[name];
   const action = await choose(ctx, roleMenu(name, wanted, fallback));
   if (!action || !("pick" in action)) return action && "args" in action ? action.args : undefined;
-  if (action.pick === "calls") {
-    const typed = (await ctx.ui.input(`Số lần gọi ${name} tối đa mỗi phiên`, String(wanted.calls ?? "")))?.trim();
-    return typed ? ["set", name, `calls=${typed}`] : undefined;
-  }
   const ref = install.roles.parseModelRef(wanted.model);
   const currentModel = ref && ctx.modelRegistry.find(ref.provider, ref.id);
   if (action.pick === "thinking") {

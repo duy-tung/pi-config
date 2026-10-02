@@ -1,10 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  ADVISOR_GATES, MAX_ADVISOR_CALLS, MODEL_ROLES_FILE, ROLES, SUBAGENT_ROLES, THINKING_LEVELS, adoptRoles, changedRoles, driftWarning, driftedRoles,
+  MODEL_ROLES_FILE, ROLES, SUBAGENT_ROLES, THINKING_LEVELS, adoptRoles, changedRoles, driftWarning, driftedRoles,
   effectiveModelRoles, fillRoleNames, forceNativeModels, loadPresets, loginWarning, modelRolesReport, nativeValues,
-  nextModelDefault, normalizeGates, offlineCatalog, parseModelRef, readModelRoles, resolveModelRoles, withPreset, withRole, withoutRoles,
-  workflowLabel, writeModelRoles,
+  nextModelDefault, offlineCatalog, parseModelRef, readModelRoles, resolveModelRoles, roleLabel as label, withPreset, withRole, withoutRoles,
+  writeModelRoles,
 } from './model-roles.mjs';
 import {backupFile, defaultsFile, describeMerge, planConfigFile, sha256, writeAtomic, writeConfigPlan} from './merge.mjs';
 import {acquireInstallLock} from './install-lock.mjs';
@@ -19,7 +19,6 @@ const USAGE_LINES = [
   ['list [provider]', 'provider (đã đăng nhập chưa) và model trong catalog của Pi'],
   ['preset <tên>', `chọn preset (có sẵn hoặc preset riêng trong ${MODEL_ROLES_FILE})`],
   ['set <vai> [provider/id] [thinking]', 'ghi đè model và/hoặc thinking của một vai'],
-  ['set advisor gates=<...> calls=<N>', `gate của advisor (${ADVISOR_GATES.join(',')} hoặc none) và số lần gọi tối đa mỗi phiên`],
   ['reset <vai>... | --all', 'bỏ ghi đè, vai dùng lại giá trị của preset'],
   ['adopt [vai...]', `ghi giá trị đang chạy (đổi qua /model, /agents...) vào ${MODEL_ROLES_FILE}`],
   ['apply [--reset]', `áp ${MODEL_ROLES_FILE} vào file gốc; --reset ép cả vai đang lệch`],
@@ -39,7 +38,6 @@ export function usage(command = 'pi-models') {
 
 export const USAGE = usage();
 
-const label = role => `${role.model ?? '?'} (${role.thinking ?? '?'}${workflowLabel(role) ? `; ${workflowLabel(role)}` : ''})`;
 const relative = (agentDir, file) => path.relative(agentDir, file).split(path.sep).join('/');
 
 /**
@@ -112,28 +110,15 @@ function roleNames(names) {
   return [...new Set(names)];
 }
 
-/**
- * Giá trị của pi-models set: model dạng provider/id và/hoặc mức thinking, mỗi loại tối đa một lần; riêng advisor thêm
- * gates=plan,failure,completion (gates=none: chỉ khi được gọi) và calls=<số lần tối đa mỗi phiên>.
- */
-function roleFields(values, command, role) {
-  if (!values.length) throw new Error(`thiếu giá trị: ${command} set <vai> [provider/id] [thinking]${role === 'advisor' ? ' [gates=...] [calls=N]' : ''}`);
+/** Giá trị của pi-models set: model dạng provider/id và/hoặc mức thinking, mỗi loại tối đa một lần. */
+function roleFields(values, command) {
+  if (!values.length) throw new Error(`thiếu giá trị: ${command} set <vai> [provider/id] [thinking]`);
   const fields = {};
   for (const value of values) {
-    const [key, raw] = /^(gates|calls)=/u.test(value) ? [value.slice(0, 5), value.slice(6)] : [];
-    const field = key ?? (THINKING_LEVELS.includes(value) ? 'thinking' : parseModelRef(value) ? 'model' : undefined);
+    const field = THINKING_LEVELS.includes(value) ? 'thinking' : parseModelRef(value) ? 'model' : undefined;
     if (!field) throw new Error(`"${value}" không phải model dạng provider/id hay mức thinking (${THINKING_LEVELS.join(', ')})`);
-    if (key && role !== 'advisor') throw new Error(`${key}= chỉ dùng cho vai advisor`);
     if (Object.hasOwn(fields, field)) throw new Error(`chỉ nêu một ${field}`);
-    if (field === 'gates') {
-      const gates = raw === 'none' ? [] : normalizeGates(raw.split(','));
-      if (!gates) throw new Error(`gates= nhận danh sách cách nhau bởi dấu phẩy gồm ${ADVISOR_GATES.join(', ')}, hoặc none`);
-      fields.gates = gates;
-    } else if (field === 'calls') {
-      const calls = /^\d+$/u.test(raw) ? Number(raw) : NaN;
-      if (!(calls >= 1 && calls <= MAX_ADVISOR_CALLS)) throw new Error(`calls= nhận số nguyên từ 1 đến ${MAX_ADVISOR_CALLS}`);
-      fields.calls = calls;
-    } else fields[field] = value;
+    fields[field] = value;
   }
   return fields;
 }
@@ -294,7 +279,7 @@ export async function runModels({root, agentDir, args, out = console, command = 
     if (name === 'set') {
       if (!rest.length) throw new Error(`${command} set <vai> [provider/id] [thinking]`);
       const [role] = roleNames(rest.slice(0, 1));
-      const fields = roleFields(rest.slice(1), command, role);
+      const fields = roleFields(rest.slice(1), command);
       return await change({...context, edit: ({config}) => ({config: withRole(config, role, fields), force: () => [role]})});
     }
     if (name === 'reset') {
@@ -315,9 +300,7 @@ export async function runModels({root, agentDir, args, out = console, command = 
         const {config: next, adopted} = adoptRoles(config, before.roles, effective, targets);
         const entries = Object.entries(adopted);
         if (!entries.length) return {message: `Không vai nào lệch với ${MODEL_ROLES_FILE}${names.length ? ` trong ${names.join(', ')}` : ''}.`};
-        const message = `Ghi vào ${MODEL_ROLES_FILE}: ${entries.map(([role, fields]) => `${role} ${[
-          fields.model, fields.thinking, fields.gates && `gates=${fields.gates.join(',') || 'none'}`, fields.calls && `calls=${fields.calls}`,
-        ].filter(Boolean).join(' ')}`).join(', ')}`;
+        const message = `Ghi vào ${MODEL_ROLES_FILE}: ${entries.map(([role, fields]) => `${role} ${[fields.model, fields.thinking].filter(Boolean).join(' ')}`).join(', ')}`;
         return {config: next, force: () => [], message};
       }});
     }

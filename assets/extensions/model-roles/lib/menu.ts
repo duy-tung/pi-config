@@ -5,11 +5,8 @@
 export interface RoleValue {
   model?: string;
   thinking?: string;
-  /** Riêng advisor: gate đang bật (plan, failure, completion) và số lần gọi tối đa mỗi phiên. */
-  gates?: string[];
-  calls?: number;
   /** Nguồn của từng trường theo model-roles.json: "preset" hoặc "override". */
-  source?: { model?: string; thinking?: string; gates?: string; calls?: string };
+  source?: { model?: string; thinking?: string };
   /** File gốc quyết định giá trị đang có hiệu lực. */
   file?: string;
 }
@@ -67,34 +64,17 @@ export function completions(prefix: string, data: CompletionData, filter: Filter
     if (command === "preset" && !positional.length) candidates = data.presets.map((preset) => [preset.name, preset.description]);
     else if (command === "list" && !positional.length) candidates = data.providers.map((provider) => [provider]);
     else if (command === "set" && !positional.length) candidates = data.roles.map((role) => [role]);
-    else if (command === "set" && positional.length < (positional[0] === "advisor" ? 5 : 3)) {
+    else if (command === "set" && positional.length < 3) {
       const values = positional.slice(1);
-      if (!values.some((value) => value.includes("/") && !value.includes("="))) candidates.push(...data.models.map(({ ref, description }): [string, string?] => [ref, description]));
+      if (!values.some((value) => value.includes("/"))) candidates.push(...data.models.map(({ ref, description }): [string, string?] => [ref, description]));
       if (!values.some((value) => data.levels.includes(value))) candidates.push(...data.levels.map((level): [string, string?] => [level, "thinking"]));
-      if (positional[0] === "advisor") {
-        if (!values.some((value) => value.startsWith("gates="))) candidates.push(...GATE_SETS.map(([value, text]): [string, string?] => [`gates=${value}`, text]));
-        if (!values.some((value) => value.startsWith("calls="))) candidates.push(["calls=", "số lần gọi advisor tối đa mỗi phiên"]);
-      }
     } else if (command === "reset" || command === "adopt") candidates = data.roles.filter((role) => !positional.includes(role)).map((role) => [role]);
   }
   const matched = filter(candidates, last, ([value]) => value);
   return matched.length ? matched.map(([value, description]) => ({ value: head + value, label: value, ...(description ? { description } : {}) })) : null;
 }
 
-/** Nhãn của gate advisor; cùng nghĩa với GATE_LABELS của runtime/model-roles.mjs. */
-export const GATE_LABELS: Record<string, string> = { plan: "trước plan", failure: "lỗi lặp", completion: "trước khi xong" };
-export const GATES = Object.keys(GATE_LABELS);
-const GATE_SETS: [string, string][] = [
-  ["plan,failure,completion", "trước plan, lỗi lặp, trước khi xong"], ["failure,completion", "lỗi lặp, trước khi xong"],
-  ["completion", "trước khi xong"], ["none", "chỉ khi phiên chính tự gọi"],
-];
-
-/** Gate và số lượt của advisor dạng chữ; rỗng với vai khác. */
-export const workflowText = (value: RoleValue | undefined): string => value?.gates === undefined && value?.calls === undefined ? "" :
-  `gate ${value.gates?.length ? value.gates.map((gate) => GATE_LABELS[gate] ?? gate).join(", ") : "không"} · ${value.calls ?? "∞"} lượt`;
-
-const pair = (value: RoleValue | undefined) =>
-  `${value?.model ?? "?"} · ${value?.thinking ?? "?"}${workflowText(value) ? ` · ${workflowText(value)}` : ""}`;
+const pair = (value: RoleValue | undefined) => `${value?.model ?? "?"} · ${value?.thinking ?? "?"}`;
 
 /** Dòng của một vai trong menu /models: giá trị theo model-roles.json, và giá trị đang chạy khi lệch. */
 export function roleOption(name: string, wanted: RoleValue, effective?: RoleValue): string {
@@ -104,7 +84,7 @@ export function roleOption(name: string, wanted: RoleValue, effective?: RoleValu
 }
 
 /** Việc của một lựa chọn: mở menu của vai, chạy lệnh với args, chọn preset, chọn model hay mức thinking của vai. */
-export type Action = { role: string } | { args: string[] } | { preset: true } | { pick: "model" | "thinking" | "calls" };
+export type Action = { role: string } | { args: string[] } | { preset: true } | { pick: "model" | "thinking" };
 
 export interface Menu {
   title: string;
@@ -137,28 +117,13 @@ export function mainMenu(options: {
   return menu;
 }
 
-/**
- * Menu của một vai: đổi model, đổi thinking, bỏ ghi đè (khi vai có ghi đè). Advisor thêm một dòng bật/tắt cho từng gate
- * (chọn là đổi ngay trạng thái gate đó) và dòng đổi số lượt.
- */
+/** Menu của một vai: đổi model, đổi thinking, bỏ ghi đè (khi vai có ghi đè). */
 export function roleMenu(name: string, wanted: RoleValue, preset?: RoleValue): Menu {
   const menu: Menu = {
     title: `${name}: ${pair(wanted)}`,
     options: [`Đổi model… (đang dùng ${wanted.model ?? "?"})`, `Đổi thinking… (đang dùng ${wanted.thinking ?? "?"})`],
     actions: [{ pick: "model" }, { pick: "thinking" }],
   };
-  if (wanted.gates) {
-    for (const gate of GATES) {
-      const on = wanted.gates.includes(gate);
-      const next = on ? wanted.gates.filter((item) => item !== gate) : GATES.filter((item) => item === gate || wanted.gates?.includes(item));
-      menu.options.push(`${on ? "Tắt" : "Bật"} gate ${GATE_LABELS[gate]} (đang ${on ? "bật" : "tắt"})`);
-      menu.actions.push({ args: ["set", name, `gates=${next.join(",") || "none"}`] });
-    }
-  }
-  if (wanted.calls !== undefined) {
-    menu.options.push(`Đổi số lượt mỗi phiên… (đang ${wanted.calls})`);
-    menu.actions.push({ pick: "calls" });
-  }
   if (Object.values(wanted.source ?? {}).includes("override")) {
     menu.options.push(`Bỏ ghi đè, dùng preset (${pair(preset)})`);
     menu.actions.push({ args: ["reset", name] });
