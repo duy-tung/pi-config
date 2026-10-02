@@ -247,7 +247,8 @@ export function describeMerge({file, changes = [], conflicts = [], additive = fa
   return [header, ...changes.map(change => `  - ${formatChange(change)}`), ...conflicts.map(conflict => `  - ${formatConflict(conflict, additive)}`)];
 }
 
-const sha256 = data => crypto.createHash('sha256').update(data).digest('hex');
+/** SHA-256 hex; dùng chung cho installer, pi-models và doctor. */
+export const sha256 = data => crypto.createHash('sha256').update(data).digest('hex');
 
 /** Base (mặc định đã ghi lần cài trước) của một file được gộp, theo đường dẫn tuyệt đối; giữ đuôi của file. */
 export const defaultsFile = (root, file) => path.join(root, 'state', 'defaults', `${sha256(file).slice(0, 24)}${path.extname(file) || '.json'}`);

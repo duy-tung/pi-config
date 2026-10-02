@@ -36,10 +36,6 @@ interface Catalog {
   check(roles: Record<string, RoleValue>, options?: { logins?: boolean }): Promise<CatalogReport>;
   list(): Promise<{ id: string; name: string; login?: string; models: { id: string; levels: string[] }[] }[]>;
 }
-interface Profile {
-  agentDir: string;
-  runtime: string;
-}
 interface Resolved {
   preset: string;
   roles: Record<string, RoleValue>;
@@ -65,7 +61,7 @@ interface RolesModule {
 }
 interface ModelsModule {
   runModels(options: {
-    root: string; profiles: Record<string, Profile>; args: string[]; out: Out; command: string; catalog: Catalog;
+    root: string; agentDir: string; args: string[]; out: Out; command: string; catalog: Catalog;
     effects: (changed: string[]) => Promise<string[]>;
   }): Promise<number>;
   whenApplied(changed: string[], when?: Record<string, string>): string[];
@@ -73,7 +69,6 @@ interface ModelsModule {
 interface Install {
   root: string;
   agentDir: string;
-  profiles: Record<string, Profile>;
   roles: RolesModule;
   models: ModelsModule;
 }
@@ -92,17 +87,17 @@ const samePath = (a: string, b: string) => {
 /** Bản cài chứa extension này: <root>/assets/extensions/model-roles. */
 async function loadInstall(): Promise<Install> {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-  const profilesFile = path.join(root, "profiles.json");
-  for (const file of [path.join(root, "install-state.json"), path.join(root, "bin", "models.mjs"), profilesFile]) {
+  const stateFile = path.join(root, "install-state.json");
+  for (const file of [stateFile, path.join(root, "bin", "models.mjs")]) {
     if (!fs.existsSync(file)) throw new Error(`/models chỉ dùng được trong bản cài của pi-config (không có ${file}).`);
   }
-  const profiles = JSON.parse(fs.readFileSync(profilesFile, "utf8")) as Record<string, Profile>;
+  const installed = (JSON.parse(fs.readFileSync(stateFile, "utf8")) as { agentDir?: string }).agentDir;
   const agentDir = getAgentDir();
-  if (!profiles.main || !samePath(profiles.main.agentDir, agentDir)) {
-    throw new Error(`/models quản lý agent dir của bản cài (${profiles.main?.agentDir}); phiên này dùng ${agentDir}.`);
+  if (!installed || !samePath(installed, agentDir)) {
+    throw new Error(`/models quản lý agent dir của bản cài (${installed}); phiên này dùng ${agentDir}.`);
   }
   const load = (name: string) => import(pathToFileURL(path.join(root, "bin", name)).href);
-  return { root, agentDir, profiles, roles: await load("model-roles.mjs") as RolesModule, models: await load("models.mjs") as ModelsModule };
+  return { root, agentDir, roles: await load("model-roles.mjs") as RolesModule, models: await load("models.mjs") as ModelsModule };
 }
 
 /** Catalog và trạng thái đăng nhập của chính phiên này: không đọc auth.json, không chạy lệnh của key. */
@@ -391,7 +386,7 @@ export default function modelRoles(pi: ExtensionAPI) {
         return;
       }
       const run: Run = (args, out) => loaded.models.runModels({
-        root: loaded.root, profiles: loaded.profiles, args, out, command: "/models", catalog: sessionCatalog(ctx, loaded.roles),
+        root: loaded.root, agentDir: loaded.agentDir, args, out, command: "/models", catalog: sessionCatalog(ctx, loaded.roles),
         effects: (changed) => applyToSession(pi, ctx, loaded, changed),
       });
       const args = splitArgs(text);

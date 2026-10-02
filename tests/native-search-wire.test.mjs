@@ -16,7 +16,7 @@ test("web_search dùng native search theo model hiện tại, GLM dùng Exa rồ
   const agentDir = path.join(temp, "agent");
   fs.mkdirSync(agentDir);
   const modules = path.join(root, "runtimes", "current", "node_modules");
-  const installed = JSON.parse(fs.readFileSync(path.join(root, "profiles.json"), "utf8")).main.agentDir;
+  const installed = JSON.parse(fs.readFileSync(path.join(root, "install-state.json"), "utf8")).agentDir;
   const web = JSON.parse(fs.readFileSync(path.join(installed, "web-search.json"), "utf8"));
   web.firecrawlApiKey = "fixture-firecrawl-key"; // Không chạy credential helper của máy.
   fs.writeFileSync(path.join(agentDir, "web-search.json"), JSON.stringify(web));

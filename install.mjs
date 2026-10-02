@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {buildConfiguration} from './lib/config.mjs';
 import {applyPatches} from './lib/patches.mjs';
 import {pruneBackups} from './lib/backups.mjs';
-import {backupFile,describeMerge,reconcileConfigFile} from './runtime/merge.mjs';
+import {backupFile,describeMerge,reconcileConfigFile,writeAtomic} from './runtime/merge.mjs';
 import {acquireInstallLock} from './runtime/install-lock.mjs';
 import {localDefaults,mergesConfig,reconcileResources} from './lib/resources.mjs';
 import {SUBAGENT_ROLES,changedRoles,checkCatalog,forceNativeModels,legacyOverrides,loadPresets,nativeKind,nativeValues,readModelRoles,resolveModelRoles,withPreset,writeModelRoles} from './runtime/model-roles.mjs';
@@ -54,9 +54,7 @@ function managed(file,content,mode=0o600){
     if(!previous?.files[file] || actual!==previous.files[file]){preserved.push(file);return;}
     backup(file);
   }
-  fs.mkdirSync(path.dirname(file),{recursive:true,mode:0o700});
-  const temporary=file+`.${process.pid}.install-tmp`;fs.writeFileSync(temporary,bytes,{mode});fs.renameSync(temporary,file);
-  if(process.platform!=='win32')fs.chmodSync(file,mode);
+  writeAtomic(file,bytes,mode);
   state.files[file]=hash;
   // Ghi state ngay sau mỗi file: cài bị ngắt giữa chừng thì lần sau vẫn nhận ra file này là của installer.
   writeJson(statePath,state);
@@ -122,11 +120,15 @@ async function installRuntime(name,relative){
       cwd:stage,timeout:npmTimeout(),
       timeoutHint:'Tải package từ registry npm quá chậm. Chạy lại installer (gói đã tải nằm trong cache của npm), hoặc tăng giới hạn bằng PI_CONFIG_NPM_TIMEOUT_MINUTES (mặc định 30).',
     });
-    if(fs.existsSync(dest)){
-      const backup=path.join(root,'backups',`runtime-${name}-${Date.now()}`);fs.mkdirSync(path.dirname(backup),{recursive:true});fs.renameSync(dest,backup);
-    }
+    if(fs.existsSync(dest))moveToBackups(dest,`runtime-${name}`);
     fs.renameSync(stage,dest);state.runtimes[name]=manifestHash;writeJson(statePath,state);
   }catch(error){fs.rmSync(stage,{recursive:true,force:true});throw error;}
+}
+// Chuyển thư mục runtime/nguồn cũ vào backups/<label>-<thời điểm> (pruneBackups giữ bản gần nhất).
+function moveToBackups(dest,label){
+  const backup=path.join(root,'backups',`${label}-${Date.now()}`);
+  fs.mkdirSync(path.dirname(backup),{recursive:true});fs.renameSync(dest,backup);
+  return backup;
 }
 async function installSource(source){
   const dest=path.join(root,'sources',source.name);
@@ -138,9 +140,7 @@ async function installSource(source){
   const stage=dest+'.stage';fs.rmSync(stage,{recursive:true,force:true});fs.mkdirSync(stage,{recursive:true});
   try{await run(process.platform==='win32'?'tar.exe':'tar',['-xzf',archive,'--strip-components=1','-C',stage]);}
   catch(error){fs.rmSync(stage,{recursive:true,force:true});throw error;}
-  if(fs.existsSync(dest)){
-    const backup=path.join(root,'backups',`source-${source.name}-${Date.now()}`);fs.mkdirSync(path.dirname(backup),{recursive:true});fs.renameSync(dest,backup);
-  }
+  if(fs.existsSync(dest))moveToBackups(dest,`source-${source.name}`);
   fs.renameSync(stage,dest);state.sources[source.name]=source.sha256;writeJson(statePath,state);
   fs.unlinkSync(archive);
 }
@@ -150,10 +150,7 @@ function retireSources(names){
   for(const name of Object.keys(state.sources)){
     if(names.has(name))continue;
     const dest=path.join(root,'sources',name);
-    if(fs.existsSync(dest)){
-      const backup=path.join(root,'backups',`source-${name}-${Date.now()}`);fs.mkdirSync(path.dirname(backup),{recursive:true});fs.renameSync(dest,backup);
-      console.log(`Nguồn ${name} không còn dùng: đã chuyển vào ${backup}`);
-    }
+    if(fs.existsSync(dest))console.log(`Nguồn ${name} không còn dùng: đã chuyển vào ${moveToBackups(dest,`source-${name}`)}`);
     delete state.sources[name];writeJson(statePath,state);
   }
 }
@@ -212,7 +209,7 @@ try{
   // model-roles.json thuộc về người dùng: chỉ tạo khi chưa có hoặc ghi preset của --models, không nằm trong danh
   // sách file installer quản lý.
   if(models.write)writeModelRoles(models.file,models.config);
-  for(const [name,action] of Object.entries({'pi':'main','pi-login':'login','pi-doctor':'doctor','pi-test':'test','pi-config':'doctor','firecrawl':'firecrawl','pi-models':'models','pi-mcp-adapter':'mcp-adapter'}))launcher(name,action);
+  for(const [name,action] of Object.entries({'pi':'main','pi-doctor':'doctor','pi-test':'test','firecrawl':'firecrawl','pi-models':'models','pi-mcp-adapter':'mcp-adapter'}))launcher(name,action);
   const auth=path.join(agentDir,'auth.json');
   if(!fs.existsSync(auth)){fs.mkdirSync(agentDir,{recursive:true,mode:0o700});fs.writeFileSync(auth,'{}\n',{mode:0o600});}
   await addPath();
@@ -222,7 +219,7 @@ try{
   if(pruned.length)console.log(`Đã xoá ${pruned.length} bản runtime/nguồn/tài nguyên cũ trong ${path.join(root,'backups')} (giữ bản gần nhất).`);
   console.log(`\nĐã cài Pi vào ${root}. Mở terminal mới rồi chạy pi.`);
   const jevKey=process.platform==='win32'?'setx TYPESAFE_API_KEY "<key>"':'export TYPESAFE_API_KEY="<key>" trong ~/.zshrc hoặc ~/.bashrc';
-  console.log(`Đăng nhập: pi-login → /login. Firecrawl: firecrawl login --browser. Jev cho auto mode: ${jevKey} (hoặc keyring: pi-mcp-adapter key set systemone).`);
+  console.log(`Đăng nhập: pi → /login. Firecrawl: firecrawl login --browser. Jev cho auto mode: ${jevKey} (hoặc keyring: pi-mcp-adapter key set systemone).`);
   if(preserved.length)console.log('Giữ nguyên các file đã được bạn tùy chỉnh:\n'+preserved.join('\n'));
   for(const entry of merged)console.log(describeMerge(entry).join('\n'));
   const imported=Object.entries(models.imported).map(([role,value])=>`${role}: ${[value.model,value.thinking&&`thinking ${value.thinking}`].filter(Boolean).join(', ')}`);

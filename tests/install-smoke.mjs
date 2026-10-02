@@ -52,8 +52,8 @@ assert.equal(missing.status,1,missing.stdout+missing.stderr);
 assert.match(missing.stderr,/^current\/pi-goal-x: chưa cài \(thiếu /mu);
 assert.doesNotMatch(missing.stderr,/ENOENT|at file:/u);
 await run(process.execPath,['--test',...['patches','extensions-typecheck','models','glm-wire','native-search-wire','claude-effort-wire','rewind-session','subagent-markdown','patched-typecheck','model-roles','model-commands','models-command'].map(name=>path.join(repo,`tests/${name}.test.mjs`))],{env:{...process.env,PI_CONFIG_TEST_ROOT:root}});
-for(const profile of ['main'])await run(process.execPath,[path.join(repo,'tests/profile-integration.mjs'),root,profile]);
-for(const profile of ['main'])await run(process.execPath,[path.join(repo,'tests/agent-integration.mjs'),root,profile]);
+await run(process.execPath,[path.join(repo,'tests/profile-integration.mjs'),root]);
+await run(process.execPath,[path.join(repo,'tests/agent-integration.mjs'),root]);
 // Cài lại gộp ba chiều file JSON cấu hình: base là mặc định lần cài trước, lưu riêng trong <root>/state/defaults.
 const defaultsOf=file=>path.join(root,'state','defaults',`${sha256(file).slice(0,24)}${path.extname(file)}`);
 const settingsPath=path.join(agentDir,'settings.json'),settingsBase=defaultsOf(settingsPath);
@@ -77,7 +77,7 @@ const openTui=readJson(openTuiPath);openTui.fullscreen.wheelScrollLines=8;delete
 const statePath=path.join(root,'install-state.json'),prior=readJson(statePath);
 const unused=path.join(root,'assets/unused-resource.json');
 writeJson(unused,{fixture:'managed resource'});prior.files[unused]=sha256(fs.readFileSync(unused));
-const custom=path.join(root,'profiles/background/optional.json');
+const custom=path.join(root,'config/optional.json');
 writeJson(custom,{fixture:'default'});prior.files[custom]=sha256(fs.readFileSync(custom));
 writeJson(custom,{fixture:'user edit'});writeJson(statePath,prior);
 const secret=path.join(root,'secrets/provider.env');
@@ -119,7 +119,7 @@ assert.deepEqual(fs.readFileSync(secret),secretBefore);
 assert.deepEqual(readJson(modelRolesPath),{preset:'default',roles:{worker:{model:'anthropic/claude-opus-5-5'}}});
 assert.match(fs.readFileSync(workerPath,'utf8'),/^model: anthropic\/claude-opus-5-5\nthinking: max$/mu);
 assert.ok(reinstall.includes(`Đã chuyển model/thinking bạn sửa trong agents/*.md sang ${modelRolesPath}:\n  - worker: anthropic/claude-opus-5-5`),reinstall);
-await run(process.execPath,[path.join(repo,'tests/agent-integration.mjs'),root,'main']);
+await run(process.execPath,[path.join(repo,'tests/agent-integration.mjs'),root]);
 assert.deepEqual(fs.readFileSync(auth),authBefore);
 // Đổi preset trong model-roles.json: mọi file gốc nhận model mới; dòng tools người dùng sửa trong file role được giữ.
 writeJson(modelRolesPath,{preset:'claude',roles:{researcher:{thinking:'max'}}});
@@ -138,9 +138,9 @@ assert.deepEqual([goalNow.provider,goalNow.model,goalNow.thinkingLevel,goalNow.o
 assert.deepEqual(readJson(settingsPath).enabledModels,['anthropic/claude-opus-5-5','anthropic/claude-fable-5-1','anthropic/claude-sonnet-5']);
 const models=spawnSync(process.execPath,[path.join(root,'bin/launch.mjs'),'models'],{encoding:'utf8'});
 assert.equal(models.status,0,models.stdout+models.stderr);
-assert.match(models.stdout,/^main: preset claude /u);
+assert.match(models.stdout,/^preset claude /u);
 // auth.json của bản cài thử rỗng: chỉ có cảnh báo chưa đăng nhập, không vai nào lệch.
-assert.equal(models.stderr,'cảnh báo: provider anthropic (main, researcher, explorer, worker, debugger, reviewer, verifier, advisor, auditor, oracle, autoMode) chưa đăng nhập: chạy pi-login rồi /login.\n');
+assert.equal(models.stderr,'cảnh báo: provider anthropic (main, researcher, explorer, worker, debugger, reviewer, verifier, advisor, auditor, oracle, autoMode) chưa đăng nhập: chạy pi rồi /login.\n');
 // Model sai tên (pi-subagents sẽ lặng lẽ dùng model của parent): installer dừng trước khi ghi cấu hình.
 writeJson(modelRolesPath,{preset:'claude',roles:{researcher:{thinking:'max'},worker:{model:'anthropic/claude-opus-5-6'}}});
 const beforeFailure=snapshot();

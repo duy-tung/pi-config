@@ -142,7 +142,7 @@ Mức thinking mà model không hỗ trợ không làm dừng việc ghi; chỉ 
 
 `pi-models` và `pi-doctor` in bảng model của mọi vai và kiểm catalog, bằng cách đọc file và không gọi mạng. Model sai tên là lỗi, kể cả model nằm trong file gốc.
 
-`pi-models` còn cảnh báo provider của vai chưa đăng nhập (chạy `pi-login` rồi `/login`). Nó chỉ đọc tên provider và loại credential trong `auth.json`, không đọc giá trị; key từ biến môi trường được kiểm theo cách của Pi, không chạy lệnh `!…` của key đã lưu và không làm mới token.
+`pi-models` còn cảnh báo provider của vai chưa đăng nhập (chạy `pi` rồi `/login`). Nó chỉ đọc tên provider và loại credential trong `auth.json`, không đọc giá trị; key từ biến môi trường được kiểm theo cách của Pi, không chạy lệnh `!…` của key đã lưu và không làm mới token.
 
 ## Giá trị đổi ngoài model-roles.json
 

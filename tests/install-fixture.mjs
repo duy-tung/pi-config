@@ -23,7 +23,7 @@ export function simulatedInstall(t, {roles = resolveModelRoles(presets).roles, f
   t.after(() => fs.rmSync(temp, {recursive: true, force: true}));
   const root = path.join(temp, 'root'), agentDir = path.join(temp, 'agent');
   const options = {root, agentDir, binDir: path.join(temp, 'bin'), nodePath: process.execPath, home: temp, repoDir};
-  const state = {files: {}};
+  const state = {agentDir, files: {}};
   if (full) {
     fs.cpSync(path.join(repoDir, 'assets'), path.join(root, 'assets'), {recursive: true});
     fs.mkdirSync(path.join(root, 'bin'), {recursive: true});

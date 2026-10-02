@@ -614,7 +614,7 @@ export const driftWarning = (name, effective, wanted, command = 'pi-models') =>
 
 /** Cảnh báo provider chưa đăng nhập của checkCatalog; trong phiên Pi (command "/models") đăng nhập bằng /login. */
 export const loginWarning = ({provider, roles}, command = 'pi-models') =>
-  `provider ${provider} (${roles.join(', ')}) chưa đăng nhập: ${command.startsWith('/') ? 'dùng /login' : 'chạy pi-login rồi /login'}.`;
+  `provider ${provider} (${roles.join(', ')}) chưa đăng nhập: ${command.startsWith('/') ? 'dùng /login' : 'chạy pi rồi /login'}.`;
 
 /**
  * Bảng model của mọi vai cho pi-models và pi-doctor: giá trị theo model-roles.json, giá trị đang có hiệu lực khi
