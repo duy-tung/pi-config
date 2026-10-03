@@ -58,9 +58,12 @@ test('a removed skill inside the installer skills directory is archived; an expl
   // Thư mục của skill đã gỡ không còn lại rỗng; thư mục skills còn skill khác thì giữ.
   assert.ok(!fs.existsSync(path.dirname(old))&&fs.existsSync(path.dirname(path.dirname(old))));
 });
-test('registry entries outside managed directories cannot be removed',t=>{
-  const f=fixture(t),outside=owned(f,'personal-note.json');
-  reconcileResources(f);assert.ok(fs.existsSync(outside));
+test('registry entries outside managed directories are only dropped from state, never removed',t=>{
+  const f=fixture(t),outside=owned(f,'personal-note.json'),manifest=owned(f,'patches/manifest.json');
+  const result=reconcileResources(f);
+  assert.deepEqual([result.archived,result.preserved],[[],[]]);
+  assert.ok(fs.existsSync(outside)&&fs.existsSync(manifest));
+  assert.deepEqual(f.state.files,{});
 });
 test('resources remain recoverable when install directories use different volumes',t=>{
   const f=fixture(t),file=owned(f,'agent/optional.json');
@@ -156,10 +159,10 @@ test('managed JSON that is invalid or was never written by the installer is kept
     assert.throws(()=>reconcileConfigFile({root:f.root,file:link,content:'{}\n'}),/symlink/u);
   }
 });
-test('only JSON files in the agent directory and <root>/config, and role files, are merged',t=>{
-  const f=fixture(t),options={root:f.root,agentDir:f.agentDir};
+test('only JSON files in the agent directory, and role files, are merged',t=>{
+  const f=fixture(t),options={agentDir:f.agentDir};
   assert.equal(mergesConfig(path.join(f.agentDir,'settings.json'),options),true);
-  assert.equal(mergesConfig(path.join(f.root,'config','example.json'),options),true);
+  assert.equal(mergesConfig(path.join(f.root,'config','example.json'),options),false);
   assert.equal(mergesConfig(path.join(f.agentDir,'agents','worker.md'),options),true);
   assert.equal(mergesConfig(path.join(f.agentDir,'agents','nested','worker.md'),options),false);
   assert.equal(mergesConfig(path.join(f.agentDir,'AGENTS.md'),options),false);

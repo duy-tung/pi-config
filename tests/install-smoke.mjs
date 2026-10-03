@@ -12,13 +12,6 @@ const args=[path.join(repo,'install.mjs'),'--root',root,'--agent-dir',agentDir,'
 // Lần cài đầu chạy npm ci cho runtime và Firecrawl, mỗi lần tối đa npmTimeout() (registry chậm trên runner Windows).
 await run(process.execPath,args,{timeout:2*npmTimeout()+600000});
 await run(process.execPath,[path.join(root,'bin/launch.mjs'),'main','--version']);
-// scripts/rehash-patches.mjs chạy được trên runtime vừa cài: mọi bản vá khớp manifest.
-{
-  const rehash=spawnSync(process.execPath,[path.join(repo,'scripts/rehash-patches.mjs'),'--modules',path.join(root,'runtimes','current','node_modules')],{encoding:'utf8'});
-  assert.equal(rehash.status,0,rehash.stdout+rehash.stderr);
-  assert.match(rehash.stdout,/Mọi bản vá khớp manifest hiện tại\./u);
-  assert.doesNotMatch(rehash.stdout,/^(?:FAIL|NEW) /mu);
-}
 // Launcher trong bin-dir chạy được; Node ghim trong launcher bị gỡ thì báo cách sửa thay vì lỗi "not found".
 {
   const windows=process.platform==='win32';
@@ -50,7 +43,7 @@ fs.renameSync(goalAside,goalDir);
 assert.equal(missing.status,1,missing.stdout+missing.stderr);
 assert.match(missing.stderr,/^current\/pi-goal-x: chưa cài \(thiếu /mu);
 assert.doesNotMatch(missing.stderr,/ENOENT|at file:/u);
-await run(process.execPath,['--test',...['patches','extensions-typecheck','models','glm-wire','native-search-wire','claude-effort-wire','rewind-session','subagent-markdown','patched-typecheck','model-roles','model-commands','models-command'].map(name=>path.join(repo,`tests/${name}.test.mjs`))],{env:{...process.env,PI_CONFIG_TEST_ROOT:root}});
+await run(process.execPath,['--test',...['extensions-typecheck','models','glm-wire','native-search-wire','claude-effort-wire','rewind-session','subagent-markdown','patched-typecheck','model-roles','models-command'].map(name=>path.join(repo,`tests/${name}.test.mjs`))],{env:{...process.env,PI_CONFIG_TEST_ROOT:root}});
 await run(process.execPath,[path.join(repo,'tests/config-integration.mjs'),root]);
 await run(process.execPath,[path.join(repo,'tests/agent-integration.mjs'),root]);
 // Cài lại gộp ba chiều file JSON cấu hình: base là mặc định lần cài trước, lưu riêng trong <root>/state/defaults.
@@ -61,24 +54,25 @@ const settings=readJson(settingsPath),base=readJson(settingsBase);
 // Pi ghi lại settings.json khi người dùng đổi theme/model (không có newline cuối); người dùng thêm một luật deny.
 Object.assign(settings,{theme:'rose-pine-dawn',defaultProvider:'openai-codex',defaultModel:'gpt-6-sol'});
 settings.permissions.deny.push('Path(~/notes/private/**)');
-// Mặc định của bản cũ hơn: chưa có luật deny ~/.gnupg/**, keepRecentTokens 10000 và một khóa nay đã bỏ; người dùng
-// chưa đổi các mục này. defaultModel cũ khác cả giá trị người dùng lẫn mặc định mới: xung đột, giữ của người dùng.
+// Mặc định của bản cũ hơn: chưa có luật deny ~/.gnupg/**, Esc Esc mở /tree, còn compaction và defaultProjectTrust (nay
+// bỏ vì trùng mặc định của Pi). Người dùng chưa đổi các mục này nên nhận mặc định mới, khóa đã bỏ thì bỏ theo; riêng
+// defaultProjectTrust người dùng đã đổi nên được giữ. defaultModel cũ khác cả giá trị người dùng lẫn mặc định mới:
+// xung đột, giữ của người dùng.
 const gnupg='Path(~/.gnupg/**)';
 for(const value of [settings,base]){
   value.permissions.deny=value.permissions.deny.filter(rule=>rule!==gnupg);
-  value.compaction.keepRecentTokens=10000;value.retiredSetting=true;
+  Object.assign(value,{doubleEscapeAction:'tree',compaction:{enabled:true,keepRecentTokens:10000},defaultProjectTrust:'ask'});
 }
+settings.defaultProjectTrust='always';
 base.defaultModel='claude-opus-5';
 fs.writeFileSync(settingsPath,JSON.stringify(settings,null,2));writeJson(settingsBase,base);
 // Bản cài trước khi có base: open-tui.json người dùng đã sửa được gộp cộng dồn.
 const openTuiPath=path.join(agentDir,'open-tui.json');fs.rmSync(defaultsOf(openTuiPath));
-const openTui=readJson(openTuiPath);openTui.fullscreen.wheelScrollLines=8;delete openTui.thinkingPeek;writeJson(openTuiPath,openTui);
+const openTui=readJson(openTuiPath);openTui.thinkingPeek.lines=2;delete openTui.cursorStyle;writeJson(openTuiPath,openTui);
 const statePath=path.join(root,'install-state.json'),prior=readJson(statePath);
 const unused=path.join(root,'assets/unused-resource.json');
 writeJson(unused,{fixture:'managed resource'});prior.files[unused]=sha256(fs.readFileSync(unused));
-const custom=path.join(root,'config/optional.json');
-writeJson(custom,{fixture:'default'});prior.files[custom]=sha256(fs.readFileSync(custom));
-writeJson(custom,{fixture:'user edit'});writeJson(statePath,prior);
+writeJson(statePath,prior);
 const secret=path.join(root,'secrets/provider.env');
 fs.mkdirSync(path.dirname(secret),{recursive:true});fs.writeFileSync(secret,'PROVIDER_API_KEY=synthetic-preservation-fixture\n',{mode:0o600});
 const secretBefore=fs.readFileSync(secret);
@@ -94,21 +88,23 @@ const merged=readJson(settingsPath);
 assert.deepEqual([merged.theme,merged.defaultProvider,merged.defaultModel],['rose-pine-dawn','openai-codex','gpt-6-sol']);
 assert.ok(merged.permissions.deny.includes('Path(~/notes/private/**)'));
 assert.ok(merged.permissions.deny.includes(gnupg),'luật deny mới của mặc định vào được file người dùng đã sửa');
-assert.equal(merged.compaction.keepRecentTokens,20000);
-assert.equal(merged.retiredSetting,undefined);
+assert.deepEqual([merged.doubleEscapeAction,merged.compaction,merged.defaultProjectTrust],['none',undefined,'always']);
 assert.ok(merged.extensions.filter(entry=>!entry.startsWith('-')).at(-1).endsWith('pi-auto-mode'));
 for(const name of ['mcp','codemode','tool-search'])assert.ok(merged.extensions.includes(`-builtin:${name}`),`thiếu -builtin:${name}`);
 const settingsDefault=readJson(settingsBase);
-assert.deepEqual([settingsDefault.defaultModel,settingsDefault.compaction.keepRecentTokens,settingsDefault.permissions.deny.includes(gnupg)],['claude-opus-5-5',20000,true]);
+assert.deepEqual([settingsDefault.defaultModel,settingsDefault.compaction,settingsDefault.permissions.deny.includes(gnupg)],['claude-opus-5-5',undefined,true]);
 assert.ok(reinstall.includes(`Đã gộp mặc định mới vào ${settingsPath}, giữ phần bạn đã sửa:`),reinstall);
 assert.ok(reinstall.includes(`  - thêm vào permissions.deny: ${gnupg}`),reinstall);
 assert.ok(reinstall.includes('  - xung đột: giữ giá trị của bạn cho defaultModel; mặc định mới là "claude-opus-5-5"'),reinstall);
+assert.ok(reinstall.includes('  - doubleEscapeAction: "tree" → "none"'),reinstall);
+assert.ok(reinstall.includes('  - bỏ compaction (mặc định mới không còn khóa này)'),reinstall);
+assert.ok(reinstall.includes('  - xung đột: giữ giá trị của bạn cho defaultProjectTrust; mặc định mới đã bỏ khóa này'),reinstall);
 const tui=readJson(openTuiPath);
-assert.deepEqual([tui.fullscreen.wheelScrollLines,tui.thinkingPeek],[8,{lines:0}]);
-assert.ok(reinstall.includes('  - xung đột: giữ giá trị hiện có cho fullscreen.wheelScrollLines; mặc định mới là 4'),reinstall);
+assert.deepEqual([tui.thinkingPeek.lines,tui.cursorStyle],[2,'bar']);
+assert.ok(reinstall.includes('  - xung đột: giữ giá trị hiện có cho thinkingPeek.lines; mặc định mới là 0'),reinstall);
 assert.ok(fs.existsSync(defaultsOf(openTuiPath)));
 assert.equal(fs.existsSync(unused),false);
-assert.equal(readJson(custom).fixture,'user edit');
+assert.match(reinstall,/Đã lưu \d+ tài nguyên ngoài cấu hình hiện tại tại /u);
 assert.deepEqual(fs.readFileSync(secret),secretBefore);
 await run(process.execPath,[path.join(repo,'tests/agent-integration.mjs'),root]);
 assert.deepEqual(fs.readFileSync(auth),authBefore);
@@ -153,7 +149,7 @@ function snapshot(){
     const file=path.join(dir,entry.name);
     if(entry.isDirectory())walk(file);else files[file]=[sha256(fs.readFileSync(file)),fs.statSync(file).mtimeMs];
   }};
-  for(const dir of [agentDir,path.join(root,'config'),path.join(root,'state','defaults'),path.join(root,'backups')])walk(dir);
+  for(const dir of [agentDir,path.join(root,'state','defaults'),path.join(root,'backups')])walk(dir);
   return files;
 }
 // Nguồn không còn trong sources.lock.json (mattpocock-skills của bản cài cũ): lần cài
@@ -161,15 +157,9 @@ function snapshot(){
 const retiredSource=path.join(root,'sources','mattpocock-skills'),installState=path.join(root,'install-state.json');
 fs.mkdirSync(path.join(retiredSource,'skills','engineering','tdd'),{recursive:true});
 fs.writeFileSync(path.join(retiredSource,'skills','engineering','tdd','SKILL.md'),'---\nname: tdd\ndescription: old\n---\n');
-// Launcher pi-models của bản cài cũ (lệnh đã bỏ, đổi model bằng /models): installer không ghi nữa nên lưu trữ nó.
-const oldLauncher=path.join(binDir,process.platform==='win32'?'pi-models.cmd':'pi-models');
-fs.writeFileSync(oldLauncher,'#!/bin/sh\nexit 0\n',{mode:0o755});
-writeJson(installState,{...readJson(installState),sources:{...readJson(installState).sources,'mattpocock-skills':'0'.repeat(64)},
-  files:{...readJson(installState).files,[oldLauncher]:sha256(fs.readFileSync(oldLauncher))}});
+writeJson(installState,{...readJson(installState),sources:{...readJson(installState).sources,'mattpocock-skills':'0'.repeat(64)}});
 const retiring=install();
 assert.match(retiring,/Nguồn mattpocock-skills không còn dùng: đã chuyển vào /u);
-assert.equal(fs.existsSync(oldLauncher),false,'launcher pi-models cũ được lưu trữ');
-assert.match(retiring,/Đã lưu \d+ tài nguyên ngoài cấu hình hiện tại tại /u);
 // Cài lại giữ giá trị đổi qua /model và /advisor-settings (gộp ba chiều).
 assert.deepEqual([readJson(advisorPath).executor,readJson(advisorPath).advisorMaxCallsPerSession],['anthropic/claude-sonnet-5',9]);
 assert.equal(fs.existsSync(retiredSource),false);
@@ -183,7 +173,7 @@ const state=readJson(path.join(root,'install-state.json'));assert.deepEqual(Obje
 assert.ok(!fs.existsSync(path.join(root,'assets','skills')));
 assert.ok(readJson(path.join(agentDir,'settings.json')).skills.every(entry=>entry.includes(path.join('sources','firecrawl-'))));
 assert.equal(fs.existsSync(path.join(root,'.install.lock')),false);
-console.log('PASS: cài sạch, một runtime Pi, slash workflows, auth/permission, type của bản vá; cài lại gộp mặc định mới, giữ tùy chỉnh và secret giả; model-roles.json: đổi preset, chặn model sai tên, báo vai lệch; lưu trữ launcher pi-models cũ; lần cuối không đổi gì.');
+console.log('PASS: cài sạch, một runtime Pi, skill Firecrawl, auth/permission, type của bản vá; cài lại gộp mặc định mới, giữ tùy chỉnh và secret giả; model-roles.json: đổi preset, chặn model sai tên, báo vai lệch; bỏ nguồn skills cũ; lần cuối không đổi gì.');
 console.log(`Fixture: ${root}`);
 if(process.env.GITHUB_ENV){
   fs.appendFileSync(process.env.GITHUB_ENV,`PI_CONFIG_SMOKE_ROOT=${root}\nPI_CONFIG_SMOKE_AGENT_DIR=${agentDir}\nPI_CONFIG_SMOKE_BIN_DIR=${binDir}\n`);

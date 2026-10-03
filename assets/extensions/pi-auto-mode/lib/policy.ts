@@ -1,19 +1,19 @@
-import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { GitGuardConfig, PermissionMode } from "./config.ts";
 import { checkGitGuard, type GitGuardBlock, type GitRunner } from "./git-guard.ts";
 import { gitGuardDenial } from "./messages.ts";
 import {
-  criticalPathReason, insideAny, insideTemporary, isSelfProtected, protectedReason, resolveShellPath, resolveToolPath, temporaryRoots,
+  criticalPathReason, insideAny, insideTemporary, isSelfProtected, protectedReason, resolveShellPath, resolveToolPath, temporaryRoots, URL_LIKE,
 } from "./paths.ts";
 import { detectPowerShellRisks, detectRisks } from "./risks.ts";
-import { type DeniedPath, searchReadPaths, shellPathScope } from "./read-scope.ts";
-import { allowCoversShell, firstMatch, isPathRule, ruleAppliesTo, type RuleMatchTarget, type RuleSet } from "./rules.ts";
+import { type DeniedPath, denies, searchReadPaths, shellPathScope } from "./read-scope.ts";
+import { allowCoversShell, firstMatch, isPathRule, type RuleMatchTarget, type RuleSet } from "./rules.ts";
 import {
   analyzeShell, commandName, commandText, findRemoval, isReadOnlyCommand, isReadOnlyShell, optionOutputs, removeArgs, type ShellAnalysis,
   type SimpleCommand,
 } from "./shell.ts";
+import { READ_TOOLS, SHELL_TOOLS, WRITE_TOOLS } from "./tools.ts";
 
 /**
  * Quyết định tất định cho một lời gọi tool, trước khi cần tới bộ phân loại.
@@ -55,18 +55,16 @@ export interface ToolCall {
 }
 
 // Tool không đổi trạng thái bên ngoài phiên: đọc, tìm kiếm, todo, hỏi người dùng, xem subagent,
-// bật web tools, trạng thái goal và advisor. Tương tự danh sách safe-tool của Claude Code.
+// xem tiến trình nền, bật web tools, trạng thái goal và advisor. Tương tự danh sách safe-tool của Claude Code.
+// bg_kill dừng tiến trình nên không thuộc danh sách: đi qua bộ phân loại như tool khác.
 export const SAFE_TOOLS = new Set([
   "read", "grep", "find", "ls", "todo", "ask_user_question", "get_subagent_result", "steer_subagent",
-  "bg_status", "bg_logs", "bg_kill", "get_search_content", "web_enable",
+  "bg_status", "bg_logs", "get_search_content", "web_enable",
   "get_goal", "create_goal", "update_goal", "set_goal_tasks", "update_goal_task", "submit_goal_oracle_advice",
   "ask_advisor", "record_advisor_outcome",
   // Pi 0.99 (builtin:tool-search): chỉ khai báo tool đã đăng ký cho lượt sau; mỗi lời gọi tool đó vẫn qua cổng.
   "tool_search",
 ]);
-const READ_TOOLS = new Set(["read", "grep", "find", "ls"]);
-const WRITE_TOOLS = new Set(["edit", "write"]);
-const SHELL_TOOLS = new Set(["bash", "bg_run"]);
 const FS_WRITE_COMMANDS = new Set(["mkdir", "touch", "cp", "mv"]);
 const DIRECTORY_CHANGERS = new Set(["cd", "pushd", "popd"]);
 
@@ -87,7 +85,6 @@ export interface CallFacts {
   summary: string;
 }
 
-const URL_LIKE = /^[a-z][a-z0-9+.-]+:\/\//iu;
 // Đường dẫn tuyệt đối/tương đối rõ ràng: /, ~/, ./, ../, ổ đĩa Windows (C:\ hoặc C:/), UNC (\\server).
 const EXPLICIT_PATH = /^(?:\/|~[\/\\]|~$|\.\.?[\/\\]|[A-Za-z]:[\/\\]|\\\\)/u;
 
@@ -256,7 +253,7 @@ function removalOutsideTemp(removals: Removal[], cwd: string, home: string, temp
   return outside.length ? [...new Set(outside.map((item) => item.label))].join(", ") : undefined;
 }
 
-function summarize(toolName: string, input: Record<string, unknown>): string {
+function summarize(input: Record<string, unknown>): string {
   const pick = (value: unknown) => (typeof value === "string" ? value : undefined);
   const text = pick(input.command) ?? pick(input.path) ?? pick(input.url) ?? pick(input.query) ??
     (Array.isArray(input.urls) ? input.urls.join(" ") : undefined) ?? pick(input.prompt) ?? pick(input.tool) ?? JSON.stringify(input);
@@ -267,8 +264,8 @@ function summarize(toolName: string, input: Record<string, unknown>): string {
 export function describeCall(call: ToolCall, pc: PolicyContext): CallFacts {
   const home = pc.home ?? os.homedir();
   const { toolName, input } = call;
-  const summary = summarize(toolName, input);
-  if (SHELL_TOOLS.has(toolName) || toolName === "powershell") {
+  const summary = summarize(input);
+  if (SHELL_TOOLS.has(toolName)) {
     const command = typeof input.command === "string" ? input.command : "";
     // PowerShell không phân tích được bằng bộ lexer bash: chỉ khớp chuỗi gốc.
     const analysis = toolName === "powershell"
@@ -379,15 +376,6 @@ function allowCovers(facts: CallFacts, pc: PolicyContext): boolean {
     allowCoversShell(pc.rules.allow, analysis.commands.filter((command) => !isReadOnlyCommand(command)).map(commandText));
 }
 
-/**
- * Hành động có bằng chứng rủi ro từ lớp chính sách thì bỏ qua sàng lọc nhanh (Jev) và đi thẳng LLM
- * giai đoạn 2: rm vào đường dẫn quan trọng, edit/write vào đường dẫn được bảo vệ, lệnh có rủi ro nhận ra được.
- */
-export function escalates(call: ToolCall, facts: CallFacts, pc: PolicyContext): boolean {
-  return !!facts.critical || !!facts.risks?.length ||
-    (WRITE_TOOLS.has(call.toolName) && facts.paths.some((file) => !!protectedReason(file, pc.roots)));
-}
-
 /** Lệnh shell của bash/bg_run bị git guard chặn; PowerShell có cú pháp khác nên không qua bộ phân tích kiểu sh. */
 export function gitGuardBlock(call: ToolCall, pc: PolicyContext): GitGuardBlock | undefined {
   if (pc.gitGuard?.enabled === false) return undefined;
@@ -419,9 +407,7 @@ export function filterDeniedGrep(text: string, searchPath: string, pc: PolicyCon
     let hit = cache.get(relative);
     if (hit === undefined) {
       const candidates = [path.resolve(searchPath, relative), path.resolve(path.dirname(searchPath), relative)];
-      hit = candidates.some((file) => !!denied(file) || (() => {
-        try { return !!denied(fs.realpathSync.native(file)); } catch { return false; }
-      })());
+      hit = candidates.some((file) => !!denies(file, denied));
       cache.set(relative, hit);
     }
     return hit;
@@ -442,6 +428,12 @@ export function filterDeniedGrep(text: string, searchPath: string, pc: PolicyCon
 export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(call, pc)): Decision {
   const home = pc.home ?? os.homedir();
   const notes: string[] = [];
+  /**
+   * Hành động có bằng chứng rủi ro từ lớp chính sách thì bỏ qua sàng lọc nhanh (Jev) và đi thẳng LLM giai đoạn 2:
+   * rm vào đường dẫn quan trọng, lệnh có rủi ro nhận ra được, edit/write vào đường dẫn được bảo vệ (`guarded`).
+   */
+  const classify = (guarded = false): Decision =>
+    (facts.critical || facts.risks?.length || guarded ? { kind: "classify", notes, escalate: true } : { kind: "classify", notes });
 
   const deny = firstMatch(pc.rules.deny, facts.target, pc.cwd, home);
   if (deny) return { kind: "deny", rule: deny.raw, reason: `Permission to use ${call.toolName} has been denied by the rule ${deny.raw}.` };
@@ -488,7 +480,7 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
   }
 
   // Riêng pi-config: cơ chế tự chạy, tắt kiểm TLS, ghi đường dẫn hệ thống. Bypass hỏi người dùng (trừ khi
-  // luật allow phủ đúng lệnh); auto ghi chú cho bộ phân loại và bỏ qua Jev (xem escalates).
+  // luật allow phủ đúng lệnh); auto ghi chú cho bộ phân loại và bỏ qua Jev (xem classify ở trên).
   if (facts.risks?.length) {
     if (pc.mode === "bypass" && !allowCovers(facts, pc)) return { kind: "ask", reason: `This command ${facts.risks.join("; ")}.` };
     notes.push(...facts.risks.map((risk) => `this command ${risk}`));
@@ -515,16 +507,19 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
       // Đọc ngoài workspace (vd grep ~/ tìm token) qua bộ phân loại; Claude Code cũng không tự cho qua.
       if (facts.paths.every((file) => readable(file, pc))) return { kind: "allow", via: "safe tool" };
       notes.push("reads outside the working directory");
-      return { kind: "classify", notes };
+      return classify();
     }
     case "write": {
       const file = facts.paths[0];
-      if (!file) return { kind: "classify", notes: ["the target path is missing"] };
+      if (!file) {
+        notes.push("the target path is missing");
+        return classify();
+      }
       const guarded = protectedReason(file, pc.roots);
       if (guarded) notes.push(`writes ${guarded}`);
       else if (!insideAny(pc.roots, file)) notes.push("writes outside the working directory");
       else return { kind: "allow", via: "workspace edit" };
-      return { kind: "classify", notes };
+      return classify(!!guarded);
     }
     case "shell": {
       const analysis = facts.analysis as ShellAnalysis;
@@ -540,7 +535,7 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
         }
       }
       if (!analysis.plain && analysis.problems.length) notes.push(`shell constructs: ${analysis.problems.slice(0, 4).join(", ")}`);
-      return { kind: "classify", notes };
+      return classify();
     }
     case "network": {
       // Deny/ask khớp bất kỳ URL nào; allow phải phủ mọi URL, kể cả khi có cả url và urls.
@@ -548,7 +543,7 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
         ? facts.target.urls.map((url) => ({ toolName: call.toolName, urls: [url] }))
         : [facts.target];
       if (targets.every((target) => firstMatch(pc.rules.allow, target, pc.cwd, home))) return { kind: "allow", via: "allow rule" };
-      return { kind: "classify", notes };
+      return classify();
     }
     case "agent":
       if (pc.agentIsUngated?.(call.input)) {
@@ -557,11 +552,11 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
           reason: "This subagent would run without extensions (isolated), so auto mode could not check its actions. Spawn it without isolated/extensions:false, or ask the user to run it in bypass mode.",
         };
       }
-      return { kind: "classify", notes };
+      return classify();
     default: {
       const allow = firstMatch(pc.rules.allow, facts.target, pc.cwd, home);
       if (allow) return { kind: "allow", via: "allow rule" };
-      return { kind: "classify", notes };
+      return classify();
     }
   }
 }

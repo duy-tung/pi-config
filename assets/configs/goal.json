@@ -1,7 +1,5 @@
 {
   "maxAutonomousRuns": 10,
-  "disabled": false,
-  "auditorProjectResources": false,
   "oracle": {
     "enabled": true
   }

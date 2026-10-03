@@ -52,4 +52,4 @@ Project có thể override role. Với `scopeModels:true`, lựa chọn ngoài s
 
 ## Kiểm thử
 
-`pi-test` hoặc `tests/agent-integration.mjs <root> main` dùng provider giả và chặn mạng để kiểm model/effort thực, context, quyền, web tools của researcher, fast mode trong request của worker/debugger/reviewer, shell chỉ đọc của researcher, reviewer không ghi được file, advisor và goal auditor, agent chạy quá 14 lượt, role không tồn tại và completion. Các test request payload kiểm provider OpenCode Go trên SDK đã ghim. Nghiệm thu chất lượng model trên công việc thật là bước riêng với ngân sách cụ thể.
+`pi-test` hoặc `tests/agent-integration.mjs <root>` dùng provider giả và chặn mạng để kiểm model/effort thực, context, quyền, web tools của researcher, fast mode trong request của worker/debugger/reviewer, shell chỉ đọc của researcher, reviewer không ghi được file, advisor và goal auditor, agent chạy quá 14 lượt, role không tồn tại và completion. Các test request payload kiểm provider OpenCode Go trên SDK đã ghim. Nghiệm thu chất lượng model trên công việc thật là bước riêng với ngân sách cụ thể.

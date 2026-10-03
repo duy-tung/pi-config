@@ -4,17 +4,12 @@
   "advisorCompletionGate": true,
   "advisorMaxCallsPerSession": 5,
   "alwaysOn": true,
-  "simpleMode": false,
   "advisorAutoLoopGate": false,
   "gateFailureMode": "warn-and-continue",
-  "advisorScoutEnabled": false,
-  "advisorSessionSummary": false,
   "advisorRedactSecrets": true,
   "advisorTrackedFileContent": false,
   "advisorUntrackedContent": false,
-  "advisorOutcomeLogging": false,
   "advisorHerdrIntegration": false,
   "advisorGitContext": "full",
-  "advisorGitContextMaxChars": 20000,
   "contextMaxChars": 60000
 }

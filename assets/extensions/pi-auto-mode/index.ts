@@ -3,23 +3,24 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { type ExtensionAPI, type ExtensionContext, getAgentDir, getPackageDir, type ToolResultEventResult } from "@earendil-works/pi-coding-agent";
+import { type ExtensionAPI, type ExtensionContext, getAgentDir, getPackageDir, parseFrontmatter, type ToolResultEventResult } from "@earendil-works/pi-coding-agent";
 import { classifyWithFallback, type ClassifierResult, type Complete, type ScreenOutcome } from "./lib/classifier.ts";
-import { loadConfig, parseMode, type PermissionMode, readState, writeState } from "./lib/config.ts";
+import { JEV_MODEL, loadConfig, parseMode, type PermissionMode, readState, writeState } from "./lib/config.ts";
 import { evaluate, JEV_PRICE_PER_MTOK, JEV_TUNING, type JevAccess, JevError, resolveAccess } from "./lib/jev.ts";
 import * as text from "./lib/messages.ts";
-import { type CallFacts, decide, describeCall, escalates, filterDeniedGrep, type PolicyContext, SAFE_TOOLS, type ToolCall } from "./lib/policy.ts";
+import { type CallFacts, decide, describeCall, filterDeniedGrep, type PolicyContext, SAFE_TOOLS, type ToolCall } from "./lib/policy.ts";
 import { resolveToolPath, temporaryRoots } from "./lib/paths.ts";
-import { judgeProbe, PROBE_QUESTIONS, PROBE_WARNING, probeChunks, probeState, resultText, shouldProbe } from "./lib/probe.ts";
+import { judgeProbe, PROBE_QUESTIONS, PROBE_WARNING, probeChunks, probeState, shouldProbe } from "./lib/probe.ts";
 import { buildSystemPrompt, DEFAULT_ALLOW, DEFAULT_ENVIRONMENT, DEFAULT_HARD_DENY, DEFAULT_SOFT_DENY, resolveSlots } from "./lib/prompt.ts";
 import { buildRuleSet, isPathRule } from "./lib/rules.ts";
 import {
   describeVerdict, executedScripts, judgeScreen, localPackageFacts, packageScripts, type ScreenAction, type ScreenEnvironment,
   screenable, screenQuestions, screenState, type ScreenVerdict,
 } from "./lib/screen.ts";
+import { analyzeShell, type ShellAnalysis } from "./lib/shell.ts";
 import { callKey, LIMITS, PermissionState } from "./lib/state.ts";
-import { isChild, linkChild, registerRoot, rootFor, type RootHandle, unlinkChild, unregisterRoot } from "./lib/subagents.ts";
-import { buildTranscript, ENTRY_TYPE, humanMessages, type SessionEntryLike } from "./lib/transcript.ts";
+import { agentIsUngated, isChild, linkChild, registerRoot, rootFor, type RootHandle, unlinkChild, unregisterRoot } from "./lib/subagents.ts";
+import { buildTranscript, ENTRY_TYPE, humanMessages, type SessionEntryLike, textOf } from "./lib/transcript.ts";
 
 const WIDGET = "pi-auto-mode";
 // /models (extension model-roles) vừa ghi model của vai autoMode vào settings.json.
@@ -40,30 +41,6 @@ function run(command: string, args: string[], cwd: string, timeout = 2_000): Pro
   });
 }
 
-/** Frontmatter của agent tintinweb (đủ để biết agent có tải cổng permission hay không). */
-function agentFrontmatter(file: string): Record<string, string> | undefined {
-  let source: string;
-  try {
-    source = fs.readFileSync(file, "utf8");
-  } catch {
-    return undefined;
-  }
-  const match = /^---\r?\n([\s\S]*?)\r?\n---/u.exec(source);
-  if (!match) return {};
-  const result: Record<string, string> = {};
-  for (const line of match[1].split(/\r?\n/u)) {
-    const pair = /^([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$/u.exec(line);
-    if (pair) result[pair[1]] = pair[2].trim();
-  }
-  return result;
-}
-
-function listField(value: string | undefined): string[] | boolean | undefined {
-  if (value === undefined || value === "") return undefined;
-  if (value === "true" || value === "false") return value === "true";
-  return value.replace(/^\[|\]$/gu, "").split(",").map((item) => item.trim().replace(/^["']|["']$/gu, "").toLowerCase()).filter(Boolean);
-}
-
 export default function piAutoMode(pi: ExtensionAPI) {
   const agentDir = getAgentDir();
   let config = loadConfig(agentDir);
@@ -74,7 +51,6 @@ export default function piAutoMode(pi: ExtensionAPI) {
   let mode: PermissionMode = "auto";
   let sessionId = "";
   let child = false;
-  let latest: ExtensionContext | undefined;
   let contextFiles: { path: string; content: string }[] = [];
   let facts: string[] = [];
   let systemPrompt: { key: string; text: string } | undefined;
@@ -86,9 +62,8 @@ export default function piAutoMode(pi: ExtensionAPI) {
   /** Remote git lúc mở phiên ("origin git@github.com:org/repo.git"), cho state của Jev. */
   let remotes: string[] = [];
 
-  // Jev (System One của TypeSafe): giai đoạn 1 và probe prompt injection, khi có API key.
-  let jevAccess: Promise<JevAccess> | undefined;
-  let jevResolved: JevAccess | undefined;
+  // Jev (System One của TypeSafe): giai đoạn 1 và probe prompt injection, khi có API key; undefined khi tắt.
+  let jevAccess: JevAccess | undefined;
   /** Lý do tắt Jev tới hết phiên (key bị từ chối, API trả lỗi hoặc dữ liệu lạ). */
   let jevOff: string | undefined;
   let jevWarned = false;
@@ -125,7 +100,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
     }, { placement: "belowEditor" });
   }
 
-  function setMode(_ctx: ExtensionContext, next: PermissionMode): void {
+  function setMode(next: PermissionMode): void {
     mode = next;
     widgetTui?.requestRender?.();
     log({ event: "mode", mode: next });
@@ -153,9 +128,9 @@ export default function piAutoMode(pi: ExtensionAPI) {
   async function cycle(ctx: ExtensionContext): Promise<void> {
     if (child) return;
     if (mode === "auto") {
-      if (await canEnterBypass(ctx, false)) setMode(ctx, "bypass");
+      if (await canEnterBypass(ctx, false)) setMode("bypass");
     } else {
-      setMode(ctx, "auto");
+      setMode("auto");
     }
   }
 
@@ -191,42 +166,22 @@ export default function piAutoMode(pi: ExtensionAPI) {
     return [...new Set([path.resolve(cwd), ...extra, ...temporaryRoots()])];
   }
 
-  /** Subagent sẽ chạy không có cổng này (isolated, extensions:false hoặc danh sách extension thiếu pi-auto-mode). */
-  function agentIsUngated(cwd: string, input: Record<string, unknown>): boolean {
-    const type = typeof input.subagent_type === "string" ? input.subagent_type : "";
-    const file = [path.join(cwd, ".pi", "agents", `${type}.md`), path.join(agentDir, "agents", `${type}.md`)].find((item) => fs.existsSync(item));
-    const front = file ? agentFrontmatter(file) : undefined;
-    const isolated = front?.isolated !== undefined ? front.isolated === "true" : input.isolated === true;
-    if (isolated) return true;
-    const extensions = listField(front?.extensions ?? front?.inherit_extensions);
-    if (extensions === false) return true;
-    if (Array.isArray(extensions) && !extensions.includes("*") && !extensions.includes("pi-auto-mode")) return true;
-    const excluded = listField(front?.exclude_extensions);
-    return Array.isArray(excluded) && excluded.includes("pi-auto-mode");
-  }
-
   /** Nơi đọc không cần bộ phân loại: workspace, skill đã cấu hình, tài liệu Pi, agent dir. */
   function readRoots(cwd: string): string[] {
-    let skills: string[] = [];
-    try {
-      const settings = JSON.parse(fs.readFileSync(path.join(agentDir, "settings.json"), "utf8")) as { skills?: unknown };
-      skills = Array.isArray(settings.skills) ? settings.skills.filter((item): item is string => typeof item === "string") : [];
-    } catch {
-      /* không có settings */
-    }
     const docs: string[] = [];
     try {
       docs.push(getPackageDir());
     } catch {
       /* không xác định được thư mục package */
     }
-    return [...roots(cwd), ...skills.map((dir) => resolveToolPath(dir, agentDir)).filter((dir): dir is string => !!dir), ...docs, agentDir];
+    return [...roots(cwd), ...config.skills.map((dir) => resolveToolPath(dir, agentDir)).filter((dir): dir is string => !!dir), ...docs, agentDir];
   }
 
   function policyContext(ctx: ExtensionContext): PolicyContext {
     return {
       mode: currentMode(), cwd: ctx.cwd, roots: roots(ctx.cwd), readRoots: readRoots(ctx.cwd), rules: rules(), selfPaths: selfPaths(),
-      agentIsUngated: (input) => agentIsUngated(ctx.cwd, input), tempRoots: temporaryRoots(), gitGuard: config.gitGuard,
+      agentIsUngated: (input) => agentIsUngated(input, { cwd: ctx.cwd, agentDir, parse: (source) => parseFrontmatter(source).frontmatter }),
+      tempRoots: temporaryRoots(), gitGuard: config.gitGuard,
     };
   }
 
@@ -321,14 +276,8 @@ export default function piAutoMode(pi: ExtensionAPI) {
   // Jev (System One): giai đoạn 1 và probe prompt injection
   // ---------------------------------------------------------------------------
 
-  async function resolveJev(): Promise<JevAccess> {
-    const access = resolveAccess(process.env);
-    jevResolved = access;
-    return access;
-  }
-
-  /** Có key (hoặc đang đọc key) và Jev chưa bị tắt trong phiên. */
-  const jevReady = () => config.jev.enabled && !!jevAccess && !jevOff && (!jevResolved || jevResolved.status === "ready");
+  /** Có key và Jev chưa bị tắt trong phiên. */
+  const jevReady = () => config.jev.enabled && jevAccess?.status === "ready" && !jevOff;
 
   function jevEnvironment(cwd: string): ScreenEnvironment {
     return {
@@ -363,14 +312,16 @@ export default function piAutoMode(pi: ExtensionAPI) {
     return { kind: "unavailable", reason: failure.message };
   }
 
-  async function runScreen(ctx: ExtensionContext, call: ToolCall, notes: string[]): Promise<ScreenOutcome> {
-    const access = await jevAccess;
+  async function runScreen(ctx: ExtensionContext, call: ToolCall, notes: string[], analysis: ShellAnalysis | undefined): Promise<ScreenOutcome> {
+    const access = jevAccess;
     if (access?.status !== "ready") return { kind: "unavailable", reason: access?.status === "unavailable" ? access.message : "no Jev API key" };
     const command = typeof call.input.command === "string" ? call.input.command : "";
+    // Lớp chính sách đã phân tích lệnh của bash/bg_run; powershell và tool khác có `command` thì phân tích ở đây.
+    const commands = !command ? [] : analysis && call.toolName !== "powershell" ? analysis.commands : analyzeShell(command).commands;
     const action: ScreenAction = {
-      toolName: call.toolName, input: call.input, notes: command ? [...notes, ...localPackageFacts(command, ctx.cwd)] : notes,
-      scripts: command ? executedScripts(command, ctx.cwd, roots(ctx.cwd)) : [],
-      packageScripts: command ? packageScripts(command, ctx.cwd) : [],
+      toolName: call.toolName, input: call.input, notes: [...notes, ...localPackageFacts(commands, ctx.cwd)],
+      scripts: executedScripts(commands, ctx.cwd, roots(ctx.cwd)),
+      packageScripts: packageScripts(commands, ctx.cwd),
     };
     try {
       const result = await evaluate(access, { model: config.jev.model, state: screenState(action, jevEnvironment(ctx.cwd)), questions: screenQuestions() },
@@ -395,31 +346,31 @@ export default function piAutoMode(pi: ExtensionAPI) {
    * quan trọng, ghi file được bảo vệ) hoặc vừa đọc nội dung nghi prompt injection (tới tin nhắn tiếp theo của
    * người dùng) thì coi như bị gắn cờ: thẳng tới giai đoạn 2.
    */
-  function makeScreen(ctx: ExtensionContext, call: ToolCall, notes: string[], escalate: boolean): (() => Promise<ScreenOutcome>) | undefined {
+  function makeScreen(
+    ctx: ExtensionContext, call: ToolCall, notes: string[], escalate: boolean, analysis: ShellAnalysis | undefined,
+  ): (() => Promise<ScreenOutcome>) | undefined {
     if (!jevReady() || !screenable(call.toolName)) return undefined;
     if (escalate || injectionSuspect) return async () => ({ kind: "flag" });
     let memo: Promise<ScreenOutcome> | undefined;
-    return () => (memo ??= runScreen(ctx, call, notes));
+    return () => (memo ??= runScreen(ctx, call, notes, analysis));
   }
 
   function jevLabel(): string {
     if (!config.jev.enabled) return "off (autoMode.jev is false)";
     if (jevOff) return `off for this session (${jevOff})`;
-    const access = jevResolved;
-    if (!access) return "starting";
-    if (access.status === "missing") return "no API key — set TYPESAFE_API_KEY";
-    if (access.status === "unavailable") return `unavailable (${access.message})`;
+    if (jevAccess?.status === "unavailable") return `unavailable (${jevAccess.message})`;
+    if (jevAccess?.status !== "ready") return "no API key — set TYPESAFE_API_KEY";
     return `${config.jev.model} (key from TYPESAFE_API_KEY)`;
   }
 
   function jevUsage(): string {
-    const cost = config.jev.model === "jev-1.13.0" ? ` ≈ $${(jevStats.inputTokens * JEV_PRICE_PER_MTOK / 1e6).toFixed(4)}` : "";
+    const cost = config.jev.model === JEV_MODEL ? ` ≈ $${(jevStats.inputTokens * JEV_PRICE_PER_MTOK / 1e6).toFixed(4)}` : "";
     return `${jevStats.calls} calls, ${jevStats.inputTokens} input tokens${cost} · screened ${jevStats.cleared + jevStats.flagged} (${jevStats.flagged} to stage 2)`
       + ` · probed ${jevStats.probes} results (${jevStats.injections} flagged)${jevStats.failures ? ` · ${jevStats.failures} failures` : ""}`;
   }
 
   async function runClassifier(
-    ctx: ExtensionContext, call: ToolCall, toolCallId: string | undefined, notes: string[], escalate = false,
+    ctx: ExtensionContext, call: ToolCall, toolCallId: string | undefined, notes: string[], escalate: boolean, analysis: ShellAnalysis | undefined,
   ): Promise<ClassifierResult> {
     const session = ctx.model;
     const model = demoted ? session : resolveModel(ctx, config.model);
@@ -455,7 +406,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
     try {
       const { result, fellBack, primaryReason } = await classifyWithFallback({
         systemPrompt: promptText(), blocks, complete, timeoutMs: config.timeoutMs,
-        stage2Reasoning: config.stage2Reasoning, signal: ctx.signal, screen: makeScreen(ctx, call, notes, escalate),
+        stage2Reasoning: config.stage2Reasoning, signal: ctx.signal, screen: makeScreen(ctx, call, notes, escalate, analysis),
       }, fallback);
       if (fellBack && result.kind !== "unavailable" && session) {
         demoted = true;
@@ -502,7 +453,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
     if (state.consumeApproval(key)) {
       return allowed(call, "user approval");
     }
-    const result = await runClassifier(ctx, call, toolCallId, decision.notes, decision.escalate || escalates(call, facts, pc));
+    const result = await runClassifier(ctx, call, toolCallId, decision.notes, !!decision.escalate, facts.analysis);
     if (result.kind === "allow") return allowed(call, result.screen === "jev" ? "jev" : `classifier stage ${result.stage}`);
     if (result.kind === "unavailable") {
       log({ event: "unavailable", tool: call.toolName, reason: result.reason });
@@ -526,7 +477,6 @@ export default function piAutoMode(pi: ExtensionAPI) {
   }
 
   pi.on("tool_call", async (event, ctx) => {
-    latest = ctx;
     // Pi 0.99: lời gọi lồng (codemode, ctx.executeTool) cũng phát tool_call, có parentToolCallId và id "<cha>/<n>" không
     // có trong transcript; mỗi lời gọi được duyệt riêng như lời gọi của model.
     if (event.parentToolCallId) log({ event: "nested", tool: event.toolName, parent: event.parentToolCallId });
@@ -559,9 +509,9 @@ export default function piAutoMode(pi: ExtensionAPI) {
     const changed = content !== event.content ? { content } : undefined;
     if (currentMode() !== "auto" || !jevReady()) return changed;
     if (!shouldProbe(event.toolName, event.input as Record<string, unknown>)) return changed;
-    const body = resultText(content);
+    const body = textOf(content);
     if (body.trim().length < 100) return changed;
-    const access = await jevAccess;
+    const access = jevAccess;
     if (access?.status !== "ready") return changed;
     const chunks = probeChunks(body);
     const started = Date.now();
@@ -590,10 +540,6 @@ export default function piAutoMode(pi: ExtensionAPI) {
   // ---------------------------------------------------------------------------
   // Nguồn gốc tin nhắn: extension gửi thay người dùng thì không phải ý định của người dùng
   // ---------------------------------------------------------------------------
-
-  const textOf = (content: unknown) => (typeof content === "string" ? content : Array.isArray(content)
-    ? content.map((part) => (part && typeof part === "object" && (part as { type?: string }).type === "text" ? (part as { text: string }).text : "")).join("\n")
-    : "");
 
   pi.on("input", (event) => {
     if (event.source !== "extension") {
@@ -648,7 +594,6 @@ export default function piAutoMode(pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event, ctx) => {
     config = loadConfig(agentDir);
-    latest = ctx;
     sessionId = ctx.sessionManager.getSessionId();
     child = isChild(sessionId);
     state = new PermissionState();
@@ -663,10 +608,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
     jevStats ={ calls: 0, inputTokens: 0, flagged: 0, cleared: 0, failures: 0, probes: 0, injections: 0 };
     injectionSuspect = undefined;
     lastScreen = undefined;
-    jevResolved = undefined;
-    jevAccess = config.jev.enabled
-      ? resolveJev().catch((error): JevAccess => ({ status: "unavailable", message: error instanceof Error ? error.message : String(error) }))
-      : undefined;
+    jevAccess = config.jev.enabled ? resolveAccess(process.env) : undefined;
     void loadFacts(ctx.cwd);
     if (child) return;
     const handle: RootHandle = {
@@ -679,11 +621,11 @@ export default function piAutoMode(pi: ExtensionAPI) {
     // Không bao giờ khôi phục bypass từ phiên cũ; chỉ cờ dòng lệnh hoặc settings người dùng.
     const flagBypass = pi.getFlag("dangerously-skip-permissions") === true;
     const wanted = flagBypass ? "bypass" : parseMode(pi.getFlag("permission-mode")) ?? config.defaultMode;
-    setMode(ctx, "auto");
+    setMode("auto");
     installWidget(ctx);
     if (wanted === "bypass") {
       void canEnterBypass(ctx, true).then((ok) => {
-        if (ok) setMode(ctx, "bypass");
+        if (ok) setMode("bypass");
       });
     } else if (ctx.hasUI && ctx.mode === "tui") {
       const persisted = readState(config.stateDir);
@@ -693,14 +635,12 @@ export default function piAutoMode(pi: ExtensionAPI) {
       }
     }
     // Một lần cho mỗi bản cài: chưa có key Jev (hoặc không đọc được) thì giai đoạn 1 vẫn là LLM.
-    if (ctx.hasUI && ctx.mode === "tui") {
-      void jevAccess?.then((access) => {
-        if (access.status === "ready") return;
-        const persisted = readState(config.stateDir);
-        if (persisted.jevNoticeShown) return;
-        notify(ctx, access.status === "missing" ? text.JEV_NOTICE : `${text.JEV_NOTICE}\n\nNow: ${access.message}`, "info");
+    if (ctx.hasUI && ctx.mode === "tui" && jevAccess && jevAccess.status !== "ready") {
+      const persisted = readState(config.stateDir);
+      if (!persisted.jevNoticeShown) {
+        notify(ctx, jevAccess.status === "missing" ? text.JEV_NOTICE : `${text.JEV_NOTICE}\n\nNow: ${jevAccess.message}`, "info");
         writeState(config.stateDir, { ...persisted, jevNoticeShown: true });
-      });
+      }
     }
   });
 
@@ -722,7 +662,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
 
   function modelLabel(): string {
     const llm = config.model ?? "session model";
-    return jevReady() && jevResolved?.status === "ready" ? `Jev ${config.jev.model} → ${llm}` : llm;
+    return jevReady() ? `Jev ${config.jev.model} → ${llm}` : llm;
   }
 
   pi.registerCommand("permissions", {
@@ -800,7 +740,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
           return;
         }
         notify(ctx, "Asking the classifier…", "info");
-        const result = await runClassifier(ctx, call, undefined, decision.notes, decision.escalate || escalates(call, facts, pc));
+        const result = await runClassifier(ctx, call, undefined, decision.notes, !!decision.escalate, facts.analysis);
         const summary = result.kind === "allow" ? `allow (${result.screen === "jev" ? "Jev" : `stage ${result.stage}`})`
           : result.kind === "block" ? `block (stage ${result.stage}) — ${result.rule ? `[${result.rule}] ` : ""}${result.reason}`
             : `unavailable — ${result.reason}`;

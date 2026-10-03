@@ -5,7 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import {fileURLToPath} from 'node:url';
 import {
-  ROLES, changedRoles, checkCatalog, driftedRoles, effectiveModelRoles, fillRoleNames, loadPresets, nativeValues, parseModelRef,
+  ROLES, changedRoles, checkCatalog, driftedRoles, effectiveModelRoles, loadPresets, nativeValues, parseModelRef,
   readModelRoles, resolveModelRoles, roleModel, setRoleModel, splitRole, withPreset, withRole, withoutRoles, writeModelRoles,
 } from '../runtime/model-roles.mjs';
 
@@ -57,7 +57,7 @@ test('cấu hình sai: báo từng lỗi, vẫn trả đủ vai theo preset mặ
   });
   assert.deepEqual(resolved.errors, [
     'không có khóa "extra" (chỉ có preset, roles)',
-    'preset riêng ("presets") không còn được hỗ trợ: chọn preset có sẵn và ghi đè từng vai trong "roles"',
+    'không có khóa "presets" (chỉ có preset, roles)',
     'roles.worker.model phải có dạng "provider/id" (vd "anthropic/claude-opus-5-5"), đang là "opus"',
     'roles.worker.thinking phải là một trong off, minimal, low, medium, high, xhigh, max, đang là "ultra"',
     'roles.worker: không có khóa "effort" (chỉ có model, thinking)',
@@ -115,12 +115,6 @@ test('frontmatter của file role: đặt model/thinking, giữ phần còn lạ
     assert.equal(splitRole(bad), undefined);
     assert.throws(() => setRoleModel(bad, {model: 'a/b', thinking: 'high'}), /frontmatter/u);
   }
-});
-
-test('điền model/thinking của vai vào hướng dẫn cho parent; tên vai lạ là lỗi', () => {
-  const {roles} = resolveModelRoles(presets);
-  assert.equal(fillRoleNames('Parent {{main}}; reviewer {{reviewer}}.', roles), 'Parent claude-opus-5-5/high; reviewer gpt-6-astra/high.');
-  assert.throws(() => fillRoleNames('{{coder}}', roles), /Không có vai coder/u);
 });
 
 test('giá trị đang có hiệu lực theo file gốc và vai bị lệch so với cấu hình', t => {

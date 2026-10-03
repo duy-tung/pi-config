@@ -193,9 +193,10 @@ export interface EvaluateOptions {
   timeoutMs: number;
   /** Cho kiểm thử; mặc định globalThis.fetch lúc gọi. */
   fetch?: typeof fetch;
-  /** Số lần thử lại khi lỗi tạm thời (mặc định 1). */
-  retries?: number;
 }
+
+/** Số lần thử lại khi lỗi tạm thời. */
+const RETRIES = 1;
 
 /** Một request System One. Thử lại một lần khi lỗi tạm thời; không theo redirect (key không bị chuyển đi nơi khác). */
 export async function evaluate(
@@ -205,7 +206,6 @@ export async function evaluate(
 ): Promise<JevResult> {
   const body = JSON.stringify({ model: request.model, state: request.state, questions: request.questions });
   const started = Date.now();
-  const retries = options.retries ?? 1;
   for (let attempt = 0; ; attempt++) {
     if (options.signal?.aborted) throw new JevError("aborted", "the turn was interrupted");
     const timeout = AbortSignal.timeout(options.timeoutMs);
@@ -227,7 +227,7 @@ export async function evaluate(
       }
       failure = statusError(response.status, response.headers.get("retry-after"));
       await response.body?.cancel().catch(() => {});
-      if (!failure.transient || attempt >= retries) throw failure;
+      if (!failure.transient || attempt >= RETRIES) throw failure;
       const after = Number(response.headers.get("retry-after"));
       await sleep(Number.isFinite(after) && after > 0 ? Math.min(after * 1_000, 2_000) : 400, options.signal);
       continue;
@@ -237,7 +237,7 @@ export async function evaluate(
       failure = timeout.aborted
         ? new JevError("timeout", `Jev did not answer within ${Math.round(options.timeoutMs / 1000)}s`)
         : new JevError("network", "Jev could not be reached");
-      if (attempt >= retries) throw failure;
+      if (attempt >= RETRIES) throw failure;
     }
     await sleep(400, options.signal);
   }

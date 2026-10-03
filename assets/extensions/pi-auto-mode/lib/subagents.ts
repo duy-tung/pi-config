@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import type { PermissionMode } from "./config.ts";
 
 /**
@@ -58,4 +60,77 @@ export function rootFor(sessionId: string): RootHandle | undefined {
     current = parent;
   }
   return undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Định nghĩa agent: subagent có chạy kèm cổng này không
+// ---------------------------------------------------------------------------
+
+/** Frontmatter YAML của một file agent (parseFrontmatter của Pi); ném lỗi khi YAML hỏng. */
+export type FrontmatterParser = (source: string) => Record<string, unknown>;
+
+/** Thư mục pi-subagents nạp agent (loadCustomAgents), ưu tiên thấp tới cao: agent dir, `.agents/agents`, `.pi/agents`. */
+export function agentDirectories(cwd: string, agentDir: string): string[] {
+  return [path.join(agentDir, "agents"), path.join(cwd, ".agents", "agents"), path.join(cwd, ".pi", "agents")];
+}
+
+/**
+ * Frontmatter của agent mang tên `type`, nạp như pi-subagents: tên là `name:` (không có thì tên file), file ở thư
+ * mục ưu tiên cao đè file trước, file YAML hỏng bị bỏ qua. Tên khớp không phân biệt hoa thường; nhiều agent chỉ
+ * khác hoa thường thì trả về tất cả.
+ */
+function agentDefinitions(type: string, directories: string[], parse: FrontmatterParser): Record<string, unknown>[] {
+  const agents = new Map<string, Record<string, unknown>>();
+  for (const dir of directories) {
+    let files: string[];
+    try {
+      files = fs.readdirSync(dir).filter((file) => file.endsWith(".md"));
+    } catch {
+      continue;
+    }
+    for (const file of files) {
+      let front: Record<string, unknown>;
+      try {
+        front = parse(fs.readFileSync(path.join(dir, file), "utf8")) ?? {};
+      } catch {
+        continue;
+      }
+      const declared = typeof front.name === "string" ? front.name.trim() : "";
+      // pi-subagents không nạp file có ":" trong name (dành cho tên theo plugin).
+      if (declared.includes(":")) continue;
+      agents.set(declared || path.basename(file, ".md"), front);
+    }
+  }
+  const exact = agents.get(type);
+  if (exact) return [exact];
+  return [...agents].filter(([name]) => name.toLowerCase() === type.toLowerCase()).map(([, front]) => front);
+}
+
+/** Giá trị CSV của pi-subagents (chuỗi "a, b" hoặc mảng YAML); bỏ trống hoặc "none" là danh sách rỗng. */
+function csvField(value: unknown): string[] {
+  if (value === undefined || value === null) return [];
+  const text = String(value).trim();
+  if (!text || text === "none") return [];
+  return text.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
+}
+
+function ungated(front: Record<string, unknown>, input: Record<string, unknown>): boolean {
+  // Frontmatter thắng tham số của lời gọi; chỉ boolean true của YAML mới là isolated (chuỗi "true" thì không).
+  const isolated = front.isolated != null ? front.isolated === true : input.isolated === true;
+  if (isolated) return true;
+  // extensions/inherit_extensions (inheritField): bỏ trống hoặc true = mọi extension; false, "none" hoặc rỗng = không có.
+  const extensions = front.extensions ?? front.inherit_extensions;
+  if (extensions === false) return true;
+  if (extensions !== undefined && extensions !== null && extensions !== true) {
+    const names = csvField(extensions);
+    if (!names.includes("*") && !names.includes("pi-auto-mode")) return true;
+  }
+  return csvField(front.exclude_extensions).includes("pi-auto-mode");
+}
+
+/** Subagent sẽ chạy không có cổng này: isolated, extensions:false hoặc danh sách extension thiếu pi-auto-mode. */
+export function agentIsUngated(input: Record<string, unknown>, options: { cwd: string; agentDir: string; parse: FrontmatterParser }): boolean {
+  const type = typeof input.subagent_type === "string" ? input.subagent_type.trim() : "";
+  const found = type ? agentDefinitions(type, agentDirectories(options.cwd, options.agentDir), options.parse) : [];
+  return (found.length ? found : [{}]).some((front) => ungated(front, input));
 }

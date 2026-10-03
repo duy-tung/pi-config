@@ -46,14 +46,14 @@ Mỗi tool call đi qua các bước sau, dừng ở bước đầu tiên có k�
 
    Đích ghi lấy từ chuyển hướng, `tee`, đích cuối của `cp`/`mv`/`install`/`ln`/`rsync`, `sed -i`, `perl -i`, `dd of=`, `curl -o`, `wget -O`, `chmod`/`chown`, `truncate`, `rm`. File nguồn (`cp ~/.bashrc backup`) và lệnh chỉ đọc không tính.
 6. **Bypass** → cho chạy.
-7. **Tự bảo vệ**: ghi vào `settings.json`, `keybindings.json`, `extensions/` của agent, thư mục trạng thái hoặc mã của chính extension → hỏi người dùng.
+7. **Tự bảo vệ**: ghi vào `settings.json`, `keybindings.json`, `mcp.json`, `extensions/` của agent, thư mục trạng thái hoặc mã của chính extension → hỏi người dùng.
 8. **Lối đi nhanh** (không gọi model):
-   - `read`, `grep`, `find`, `ls` trong thư mục làm việc, `additionalDirectories`, thư mục tạm, thư mục skill đã cấu hình, tài liệu của Pi và agent dir; todo, `ask_user_question`, `web_enable`, `get_search_content`, goal, advisor, trạng thái `bg_*`;
+   - `read`, `grep`, `find`, `ls` trong thư mục làm việc, `additionalDirectories`, thư mục tạm, thư mục skill đã cấu hình, tài liệu của Pi và agent dir; todo, `ask_user_question`, `web_enable`, `get_search_content`, goal, advisor, xem tiến trình nền (`bg_status`, `bg_logs`);
    - `edit`/`write` trong thư mục làm việc, `additionalDirectories` hoặc thư mục tạm, trừ đường dẫn được bảo vệ (`.git/`, `.pi/`, `.claude/`, `.github/`, `.vscode/`, file rc của shell, `.npmrc`, `AGENTS.md`, `CLAUDE.md`…);
    - lệnh shell chứng minh được là chỉ đọc: toàn chữ thuần (không biến, `$()`, subshell, heredoc, gán biến môi trường), mọi lệnh con nằm trong danh sách đọc (`ls`, `cat`, `rg`, `git status/log/diff/show`, `gh pr view`…, `sed -n 1,20p`, `find` không `-exec/-delete`) và không có cờ ghi file (`sort -o`, `base64 -o`, `tree -o`, `yq -i`/`-s`, kể cả cụm cờ `-uoFILE` và tên dài viết tắt `--out=`), chuyển hướng chỉ tới `/dev/null`, và mọi đường dẫn nằm trong các thư mục đọc tự do ở trên;
    - `mkdir`/`touch`/`cp`/`mv` với mọi đích trong workspace (không có `cd` trong chuỗi lệnh);
    - luật `allow` hẹp. Khi ở auto mode, luật allow cho phép chạy code tùy ý bị bỏ qua (`Bash(*)`, `python *`, `node *`, `npm run *`, `bash`, `sudo`, `Agent`…), như Claude Code.
-9. **Bộ phân loại** cho mọi thứ khác: đọc ngoài workspace (vd `grep` token trong `~/` — tool `grep` của Pi tìm cả file ẩn), lệnh shell còn lại, `bg_run`, `fetch_content` (trừ domain trong allow), spawn `Agent`, từng lời gọi tool MCP (`mcp__<server>__<tool>`, khi bạn bật MCP dựng sẵn của Pi), sửa file ngoài workspace hoặc vào đường dẫn được bảo vệ, tool lạ.
+9. **Bộ phân loại** cho mọi thứ khác: đọc ngoài workspace (vd `grep` token trong `~/` — tool `grep` của Pi tìm cả file ẩn), lệnh shell còn lại, `bg_run`, `bg_kill` (dừng tiến trình nền), `fetch_content` (trừ domain trong allow), spawn `Agent`, từng lời gọi tool MCP (`mcp__<server>__<tool>`, khi bạn bật MCP dựng sẵn của Pi), sửa file ngoài workspace hoặc vào đường dẫn được bảo vệ, tool lạ.
 
 ### Git guard
 
@@ -164,7 +164,7 @@ LLM mặc định là **Claude Sonnet 5** (`anthropic/claude-sonnet-5`), như Cl
 - bộ phân loại của child lấy tin nhắn của người dùng ở phiên gốc làm ý định, coi task và `steer_subagent` là lời của agent;
 - câu hỏi (luật ask, chạm giới hạn) hiện ở UI của phiên gốc, gắn nhãn `[subagent]`.
 
-Spawn `Agent` luôn qua bộ phân loại (xét nội dung task). Trong auto mode, agent `isolated: true`, `extensions: false` hoặc danh sách extension thiếu `pi-auto-mode` bị chặn vì child sẽ chạy không có cổng. Liên kết cha–con dùng sự kiện `subagents:child:session-created` do bản vá runtime của pi-subagents phát.
+Spawn `Agent` luôn qua bộ phân loại (xét nội dung task). Trong auto mode, agent `isolated: true`, `extensions: false` hoặc danh sách extension thiếu `pi-auto-mode` bị chặn vì child sẽ chạy không có cổng. Định nghĩa agent được đọc như pi-subagents nạp: `.pi/agents/`, `.agents/agents/` của thư mục làm việc và `agents/` của agent dir (theo thứ tự ưu tiên đó), tên agent là `name:` trong frontmatter (không có thì tên file), không phân biệt hoa thường; `isolated` của frontmatter thắng tham số của lời gọi. Liên kết cha–con dùng sự kiện `subagents:child:session-created` do bản vá runtime của pi-subagents phát.
 
 Completion auditor của goal (pi-goal-x) cũng là phiên con: bản vá nạp riêng pi-auto-mode đã cấu hình trong `settings.json` vào phiên auditor và phát cùng sự kiện, nên lệnh `bash` của auditor được duyệt như của subagent. Nếu `settings.json` không có pi-auto-mode, auditor chạy như upstream.
 
@@ -202,7 +202,7 @@ Completion auditor của goal (pi-goal-x) cũng là phiên con: bản vá nạp 
 - Với `fetch_content`, xét mọi URL trong cả `url` và `urls`: deny/ask chỉ cần khớp một URL; auto chỉ dùng luật allow khi mọi URL đều được phủ. Ngoại lệ `!` áp dụng riêng từng URL.
 - Các ô `environment`, `soft_deny`, `hard_deny`, `allow` của `autoMode` là câu chữ đưa vào prompt; `"$defaults"` chèn bộ mặc định (xem `/auto-mode defaults`), bỏ nó đi là thay hẳn. Mỗi luật dạng `Tên: mô tả`.
 - `model` không dùng được thì dùng model của phiên và báo một lần: chưa đăng nhập hoặc không có trong catalog (ngay từ đầu), hay hết quota, rate limit, model bị từ chối (lúc chạy; chuyển luôn tới hết phiên như Claude Code). Model của phiên cũng lỗi thì chặn.
-- `log: true` (hoặc `PI_AUTO_MODE_LOG=1`) ghi quyết định vào `<stateDir>/decisions.jsonl` (có tóm tắt lệnh; tắt khi không cần). `PI_AUTO_MODE_DISABLE=1` tắt extension trong một lần chạy.
+- `log: true` (hoặc `PI_AUTO_MODE_LOG=1`) ghi quyết định vào `<stateDir>/decisions.jsonl` (tên tool, cách quyết định, luật, lý do và điểm của Jev; không ghi input của tool). `PI_AUTO_MODE_DISABLE=1` tắt extension trong một lần chạy.
 - Installer đặt luật deny cho file bí mật (`.env`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube/config`, `~/.netrc`, `~/.git-credentials`, token của `gh`/docker, `id_rsa*`, `*.pem`, auth của Pi/Claude/Codex, credential Firecrawl, backups), `sudo` và helper khóa Firecrawl. Cài lại giữ luật deny bạn đã thêm và thêm luật mới của installer, kể cả khi `settings.json` đã được Pi hoặc bạn sửa.
   - Thư mục chỉ chứa bí mật (`~/.ssh`, `~/.aws`, `~/.config/gcloud`, `~/.gnupg`, credential Firecrawl, backups) bị chặn cả chính thư mục và mọi cấp bên trong, vd `Path(~/.aws)` và `Path(~/.aws/**)`. Nhờ vậy lệnh đọc cả thư mục (`tar czf k.tgz ~/.ssh`, `cp -r ~/.aws`, `grep -r … ~/.ssh`) và file lồng nhiều cấp (token SSO trong `~/.aws/sso/cache/`) không lọt qua luật theo từng file. Đổi lại, `ls ~/.ssh` cũng bị chặn.
   - Bản cài trước dùng `~/.ssh/*`, `~/.aws/*`, `~/.config/gcloud/*` (chỉ khớp một cấp). Cài lại tự thêm các luật mới; luật mặc định cũ mà bản mới bỏ được xoá khỏi file, trừ lần cài đầu từ bản chưa lưu mặc định (`<root>/state/defaults`): khi đó luật cũ được giữ cạnh luật mới, vì deny chỉ thu hẹp quyền.

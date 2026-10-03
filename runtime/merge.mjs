@@ -272,18 +272,18 @@ export function planConfigFile({root, file, content, recorded, force}) {
 }
 
 /** Ghi kế hoạch của planConfigFile: backup file cũ trước khi ghi đè, rồi lưu mặc định mới làm base. */
-export function writeConfigPlan(plan, {mode = 0o600, backup = () => {}} = {}) {
+export function writeConfigPlan(plan, {backup = () => {}} = {}) {
   if (plan.content !== undefined) {
     if (fs.existsSync(plan.file)) backup(plan.file);
-    writeAtomic(plan.file, Buffer.from(plan.content), mode);
+    writeAtomic(plan.file, Buffer.from(plan.content), 0o600);
   }
   if (plan.base !== undefined) writeAtomic(plan.baseFile, Buffer.from(plan.base), 0o600);
 }
 
 /** planConfigFile rồi writeConfigPlan (installer). */
-export function reconcileConfigFile({root, file, content, mode = 0o600, recorded, backup = () => {}}) {
+export function reconcileConfigFile({root, file, content, recorded, backup = () => {}}) {
   const plan = planConfigFile({root, file, content, recorded});
   if (plan.preserved) return {preserved: plan.preserved, written: false, changes: [], conflicts: []};
-  writeConfigPlan(plan, {mode, backup});
+  writeConfigPlan(plan, {backup});
   return {recorded: plan.recorded, written: plan.content !== undefined, changes: plan.changes, conflicts: plan.conflicts, additive: plan.additive};
 }

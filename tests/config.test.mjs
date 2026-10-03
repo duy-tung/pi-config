@@ -6,18 +6,19 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { buildConfiguration, PACKAGES } from "../lib/config.mjs";
-import { SUBAGENT_ROLES, changedRoles, fillRoleNames, forceNativeModels, loadPresets, nativeValues, nextModelDefault, resolveModelRoles } from "../runtime/model-roles.mjs";
+import { SUBAGENT_ROLES, changedRoles, forceNativeModels, loadPresets, nativeValues, nextModelDefault, resolveModelRoles } from "../runtime/model-roles.mjs";
 
 const repoDir = fileURLToPath(new URL("../", import.meta.url));
+const presets = loadPresets(path.join(repoDir, "assets", "configs", "model-presets.json"));
+const modelRoles = resolveModelRoles(presets).roles;
 function fixture(platform) {
   const p = platform === "win32" ? path.win32 : path.posix;
   const home = platform === "win32" ? "C:\\Users\\Dev Example" : "/home/dev example";
   const root = p.join(home, "Pi Runtime");
   const agentDir = p.join(home, "Custom Agent");
-  const binDir = p.join(home, "Local Tools");
   const nodePath = platform === "win32" ? "C:\\Program Files\\nodejs\\node.exe" : "/opt/node/bin/node";
   const shellPath = platform === "win32" ? "C:\\Program Files\\Git\\bin\\bash.exe" : "/bin/bash";
-  const options = { root, agentDir, binDir, nodePath, platform, home, repoDir, shellPath };
+  const options = { root, agentDir, nodePath, platform, home, repoDir, shellPath, modelRoles };
   const files = buildConfiguration(options);
   const read = (file) => {
     const found = files.find((entry) => entry.path === file);
@@ -51,7 +52,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.deepEqual(settings.extensions, [...["rose-pine-palette.ts", "pi-rewind", "claude-usage", "model-roles", "pi-auto-mode"]
         .map((entry) => p.join(options.root, "assets", "extensions", entry)), "-builtin:mcp", "-builtin:codemode", "-builtin:tool-search"]);
       assert.equal(settings.doubleEscapeAction, "none");
-      assert.deepEqual(settings.rewind, { storageDir: p.join(options.root, "state", "rewind"), retentionDays: 30 });
+      assert.deepEqual(settings.rewind, { storageDir: p.join(options.root, "state", "rewind") }, "retentionDays theo mặc định 30 ngày của pi-rewind");
       assert.equal(settings.workspaceHistory, undefined);
       const manifest = JSON.parse(fs.readFileSync(path.join(repoDir, "manifests", "current", "package.json"), "utf8"));
       assert.equal(settings.lastChangelogVersion, manifest.dependencies["@earendil-works/pi-coding-agent"]);
@@ -82,7 +83,9 @@ for (const platform of ["darwin", "linux", "win32"]) {
         assert.equal(JSON.parse(field("extensions")).includes("pi-web-access"), role === "researcher", role);
       }
       const subagents = json(p.join(profile.agentDir, "subagents.json"));
-      assert.deepEqual([subagents.maxConcurrent, subagents.maxConcurrentForeground, subagents.defaultMaxTurns, subagents.backgroundByDefault], [4, 2, 0, true]);
+      assert.deepEqual([subagents.maxConcurrent, subagents.maxConcurrentForeground], [4, 2]);
+      // Mặc định của pi-subagents: không giới hạn lượt, chạy nền, nhớ agent giữa các lần gọi.
+      assert.deepEqual([subagents.defaultMaxTurns, subagents.backgroundByDefault, subagents.rememberAgents], [undefined, undefined, undefined]);
       assert.equal(files.filter(file=>file.path.startsWith(p.join(profile.agentDir,"agents")+p.sep)).length,4);
       } else {
         assert.ok(!files.some(file => file.path.startsWith(p.join(profile.agentDir,"agents")+p.sep)));
@@ -133,7 +136,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.deepEqual(settings.permissions.ask, ["Edit(**/.pi/pi-goal-x-settings.json)"]);
       assert.deepEqual(firecrawl.fetchRouting.providers, ["firecrawl"]);
       assert.ok(settings.permissions.allow.includes("web_search"));
-      assert.equal(firecrawl.allowBrowserCookies, false);
+      assert.equal(firecrawl.allowBrowserCookies, undefined, "pi-web-access chỉ đọc cookie trình duyệt khi bật rõ (true)");
       assert.match(firecrawl.firecrawlApiKey, /^!/u);
       assert.ok(firecrawl.firecrawlApiKey.includes(options.nodePath));
       assert.ok(firecrawl.firecrawlApiKey.includes(p.join(options.root, "bin", "firecrawl-key.cjs")));
@@ -154,7 +157,6 @@ for (const platform of ["darwin", "linux", "win32"]) {
     const { p, options, files, json, profile } = fixture(platform);
     assert.equal(new Set(files.map(({ path: file }) => file)).size, files.length);
     for (const file of files) {
-      assert.equal(file.mode, 0o600);
       assert.notEqual(p.basename(file.path), "auth.json");
       assert.doesNotMatch(file.path, /sessions|mcp-cache|models-store/u);
       assert.doesNotMatch(file.content, /\/Users\/tung|apikey_[a-z0-9]|fc-[a-f0-9]{20}|[A-Z_]*(?:API_KEY|ACCESS_TOKEN|REFRESH_TOKEN)=/u);
@@ -177,16 +179,17 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.equal(advisor.advisorMaxCallsPerSession, 5);
       // Diff đầy đủ chiếm tối đa một nửa contextMaxChars: 20.000 ký tự diff, còn ít nhất 40.000 cho hội thoại.
       assert.equal(advisor.advisorGitContext, "full");
-      assert.ok(advisor.contextMaxChars >= 2 * advisor.advisorGitContextMaxChars);
+      assert.equal(advisor.advisorGitContextMaxChars, undefined, "mặc định 20.000 của pi-advisor-flow");
+      assert.ok(advisor.contextMaxChars >= 2 * 20000);
       assert.equal(advisor.advisorRedactSecrets, true);
       assert.equal(advisor.advisorTrackedFileContent, false);
       assert.equal(advisor.advisorUntrackedContent, false);
       } else assert.ok(!files.some(file => file.path === p.join(profile.agentDir,"advisor.json")));
       if (profile.packages.includes("pi-goal-x")) {
       const goal = json(p.join(profile.agentDir, "pi-goal-x-settings.json"));
-      assert.equal(goal.disabled, false);
       assert.deepEqual([goal.provider, goal.model, goal.thinkingLevel], ["openai-codex", "gpt-6-astra", "high"]);
-      assert.equal(goal.auditorProjectResources, false);
+      // Mặc định của pi-goal-x: auditor bật, không nạp tài nguyên của project.
+      assert.deepEqual([goal.disabled, goal.auditorProjectResources], [undefined, undefined]);
       assert.deepEqual(goal.oracle, { enabled: true, provider: "openai-codex", model: "gpt-6-astra", thinkingLevel: "high" });
       assert.equal(goal.maxAutonomousRuns, 10);
       } else assert.ok(!files.some(file => file.path === p.join(profile.agentDir,"pi-goal-x-settings.json")));
@@ -204,7 +207,7 @@ test("POSIX credential helper chạy đúng khi root chứa khoảng trắng, nh
     fs.mkdirSync(path.join(root, "bin"), { recursive: true });
     fs.writeFileSync(path.join(root, "bin", "firecrawl-key.cjs"), 'process.stdout.write("fixture-credential");\n');
     const agentDir = path.join(dir, "Agent");
-    const generated = buildConfiguration({ root, agentDir, binDir: path.join(dir, "bin"), nodePath: process.execPath, platform: "linux", home: dir, repoDir });
+    const generated = buildConfiguration({ root, agentDir, nodePath: process.execPath, platform: "linux", home: dir, repoDir, modelRoles });
     const config = JSON.parse(generated.find(({ path: file }) => file === path.join(agentDir, "web-search.json")).content);
     const output = execFileSync("/bin/sh", ["-c", config.firecrawlApiKey.slice(1)], { cwd: dir, encoding: "utf8" });
     assert.equal(output, "fixture-credential");
@@ -228,7 +231,7 @@ test("Windows credential helper chạy thật qua cmd với đường dẫn có 
     fs.mkdirSync(path.join(root, "bin"), { recursive: true });
     fs.writeFileSync(path.join(root, "bin", "firecrawl-key.cjs"), 'process.stdout.write("fixture-credential");\n');
     const agentDir = path.join(dir, "Agent");
-    const generated = buildConfiguration({ root, agentDir, binDir: path.join(dir, "bin"), nodePath: process.execPath, platform: "win32", home: dir, repoDir });
+    const generated = buildConfiguration({ root, agentDir, nodePath: process.execPath, platform: "win32", home: dir, repoDir, modelRoles });
     const config = JSON.parse(generated.find(({ path: file }) => file === path.join(agentDir, "web-search.json")).content);
     assert.equal(execSync(config.firecrawlApiKey.slice(1), { cwd: dir, encoding: "utf8", windowsHide: true }), "fixture-credential");
   } finally {
@@ -242,10 +245,9 @@ test("Đầu vào tương đối bị từ chối để không ghi nhầm worksp
 });
 
 test("model-roles: preset và ghi đè đi tới mọi file gốc (settings, file role, advisor, goal, auto mode)", () => {
-  const presets = loadPresets(path.join(repoDir, "assets", "configs", "model-presets.json"));
   const { roles } = resolveModelRoles(presets, { preset: "claude", roles: { worker: { thinking: "max" }, oracle: { thinking: "max" } } });
   const root = "/home/dev/pi", agentDir = "/home/dev/agent";
-  const files = buildConfiguration({ root, agentDir, binDir: "/home/dev/bin", nodePath: "/opt/node", platform: "linux", home: "/home/dev", repoDir, modelRoles: roles });
+  const files = buildConfiguration({ root, agentDir, nodePath: "/opt/node", platform: "linux", home: "/home/dev", repoDir, modelRoles: roles });
   const read = (name) => files.find((entry) => entry.path === path.posix.join(agentDir, name)).content;
   const settings = JSON.parse(read("settings.json"));
   assert.deepEqual([settings.defaultProvider, settings.defaultModel, settings.defaultThinkingLevel], ["anthropic", "claude-opus-5-5", "high"]);
@@ -263,13 +265,6 @@ test("model-roles: preset và ghi đè đi tới mọi file gốc (settings, fil
   const goal = JSON.parse(read("pi-goal-x-settings.json"));
   assert.deepEqual([goal.provider, goal.model, goal.thinkingLevel, goal.maxAutonomousRuns], ["anthropic", "claude-sonnet-5", "high", 10]);
   assert.deepEqual(goal.oracle, { enabled: true, provider: "anthropic", model: "claude-fable-5-1", thinkingLevel: "xhigh" });
-  // Hướng dẫn cho parent nêu đúng model/thinking của từng vai.
-  const guide = read("AGENTS.md");
-  assert.match(guide, /researcher dùng claude-sonnet-5\/high .*worker dùng claude-opus-5-5\/max; debugger dùng claude-opus-5-5\/high; reviewer dùng claude-fable-5-1\/high, chỉ đọc\./u);
-  assert.match(guide, /Parent claude-opus-5-5\/high giữ thiết kế/u);
-  assert.match(guide, /Advisor claude-fable-5-1\/high: gọi ask_advisor theo system prompt của advisor/u);
-  assert.match(guide, /auditor claude-sonnet-5\/high kiểm tra độc lập/u);
-  assert.doesNotMatch(guide, /\{\{/u);
 });
 
 test("/models dựng mặc định mới từ base của preset khác: giống hệt file installer sinh cho preset đó", () => {
@@ -289,16 +284,14 @@ test("/models dựng mặc định mới từ base của preset khác: giống h
     for (const entry of old) {
       const kind = kindOf.get(entry.path);
       if (!kind) {
-        // File không chứa model thì không đổi theo preset (trừ AGENTS.md, sinh lại từ bản mẫu).
-        if (p.basename(entry.path) !== "AGENTS.md") assert.equal(fresh.get(entry.path), entry.content, entry.path);
+        // File không chứa model thì không đổi theo preset.
+        assert.equal(fresh.get(entry.path), entry.content, entry.path);
         continue;
       }
       kinds.push(kind);
       assert.equal(nextModelDefault(kind, entry.content, nativeValues(after)), fresh.get(entry.path), entry.path);
     }
     assert.deepEqual(kinds.sort(), ["advisor", "debugger", "goal", "researcher", "reviewer", "settings", "worker"]);
-    const template = fs.readFileSync(path.join(repoDir, "assets", "AGENTS.md"), "utf8");
-    assert.equal(fillRoleNames(template, after), fresh.get(p.join(options.agentDir, "AGENTS.md")));
     assert.deepEqual(changedRoles(before, after), ["researcher", "worker", "debugger", "reviewer", "advisor", "auditor", "oracle", "autoMode"]);
   }
 });
