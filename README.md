@@ -2,7 +2,7 @@
 
 [![Kiểm thử cài đặt](https://github.com/duy-tung/pi-config/actions/workflows/test.yml/badge.svg)](https://github.com/duy-tung/pi-config/actions/workflows/test.yml)
 
-Bộ cài **Pi 0.99.2** cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, native web search theo model (Codex, Claude) với Exa và Firecrawl dự phòng, quota Claude trong footer, permission kiểu Claude Code (auto mode và bypass, kèm git guard) và giao diện Rosé Pine. Chỉ cài skill của công cụ (Firecrawl); không kèm bộ skill quy trình. Dependency, nguồn skills và bản vá được ghim để tái lập cấu hình.
+Bộ cài **Pi 1.0.0** cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, native web search theo model (Codex, Claude) với Exa và Firecrawl dự phòng, quota Claude trong footer, permission kiểu Claude Code (auto mode và bypass, kèm git guard) và giao diện Rosé Pine. Chỉ cài skill của công cụ (Firecrawl); không kèm bộ skill quy trình. Dependency, nguồn skills và bản vá được ghim để tái lập cấu hình.
 
 ## Cài đặt
 
@@ -104,13 +104,14 @@ Agent có context riêng và không giới hạn số lượt; dừng agent bằ
 ## Công cụ và mặc định
 
 - Web: `web_search` dùng native search của model hiện tại: provider `openai` cho Codex/OpenAI (Astra, Sol), `anthropic` cho Claude (bản vá pi-web-access); model khác (GLM) dùng Exa (endpoint MCP miễn phí, không cần key) rồi Firecrawl; lỗi mạng, quota, phản hồi hỏng chuyển sang provider kế tiếp. `fetch_content`, `get_search_content` dùng Firecrawl và kho kết quả. Phiên mới hiện `web_enable` để model bật web tools. CLI và skills hỗ trợ workflow bổ sung. Chi tiết: [docs/claude-setup.md](docs/claude-setup.md).
-- MCP: không cài. MCP, codemode và `tool_search` dựng sẵn của Pi 0.99 được tắt trong `extensions` của settings (`-builtin:mcp`, `-builtin:codemode`, `-builtin:tool-search`). Khi cần một server, bật MCP trong `pi config` (Built-in), thêm server bằng `pi mcp add` (ghi `<agent-dir>/mcp.json`) với `"exposure": "direct"`; mỗi tool là `mcp__<server>__<tool>` và đi qua cổng permission như tool khác.
+- MCP: không cài. MCP, codemode và `tool_search` dựng sẵn của Pi được tắt trong `extensions` của settings (`-builtin:mcp`, `-builtin:codemode`, `-builtin:tool-search`). Khi cần một server, bật MCP trong `pi config` (Built-in), thêm server bằng `pi mcp add` (ghi `<agent-dir>/mcp.json`) với `"exposure": "direct"`; mỗi tool là `mcp__<server>__<tool>` và đi qua cổng permission như tool khác.
+- Giao diện fullscreen (mặc định từ Pi 1.0): cuộn bằng chuột/trackpad trong Pi, khi thoát in lại transcript. Muốn giữ scrollback bình thường của terminal thì đặt `"tuiMode": "regular"` trong `settings.json` (cài lại vẫn giữ).
 - Native compaction bật: reserve 16.384, giữ gần nhất 20.000 token. Với cửa sổ 1M, auto-compaction chạy rất muộn; xem context ở footer và chọn ranh giới pha quanh mép 150k.
 - Cache warming tắt. Advisor, goal auditor và Oracle bật như mô tả ở trên. Jev của auto mode chỉ chạy khi bạn đã lưu key TypeSafe (tính theo token đầu vào, khoảng $0,0001 mỗi lần sàng lọc). Goal và background follow-up chỉ chạy theo thao tác/cấu hình đã chọn.
 - Codex fast mode bật mặc định (`codexFastMode:true`): mọi request tới GPT-6 Sol (worker, debugger) và GPT-6 Astra (reviewer, advisor, goal auditor, Oracle) đi hàng `priority`; GPT-6.1 Sol cũng vậy khi bạn đặt một vai sang model này. Theo catalog của Codex, Sol nhanh khoảng 1,5 lần, Astra khoảng 2 lần; đổi lại tốn quota Codex nhiều hơn (Pi tính chi phí gấp đôi). Tắt bằng `/fast` khi phiên đang dùng model Codex, hoặc `/usage` → Settings → Codex Fast mode khi đang dùng Opus. Footer hiện `fast` khi phiên đang dùng model Codex có fast.
 - Header/footer/editor do pi-open-tui quản lý. Footer hiển thị model, thinking, quota (Codex qua pi-usage; Claude từ header phản hồi và `/api/oauth/usage` khi mở phiên, 15 phút một lần nếu header đã cũ; chi tiết bằng `/claude-usage`), context % kèm token/cửa sổ, token/cost và trạng thái công cụ liên quan. Palette terminal theo theme của phiên và được phục hồi khi thoát.
 - Dán ảnh: `@pi-archimedes/image-paste`, dùng **Ctrl+V** trên macOS/Linux hoặc **Alt+V** trên Windows. Copy ảnh vào clipboard, dán để có marker `[Image #1]`, rồi gửi cùng prompt. Xóa marker để bỏ ảnh; giới hạn 20 MiB/ảnh. Preview chỉ hiện trong UI, ảnh được gửi tới model đúng một lần. Phím dán ảnh tích hợp của Pi được tắt trong `keybindings.json` để tránh xử lý trùng.
-- Clipboard native `@mariozechner/clipboard` được ghim và cài bên cạnh extension. Linux cần desktop X11/Wayland; `wl-clipboard`/`xclip` là các reader thay thế. Terminal không hỗ trợ ảnh inline vẫn gửi được ảnh, chỉ thiếu preview. Chỉ nạp image-paste; phần giao diện của bộ Archimedes không được nạp.
+- Ảnh đọc qua clipboard native của pi-tui. Linux cần desktop X11/Wayland; `wl-clipboard`/`xclip` là các reader thay thế. Terminal không hỗ trợ ảnh inline vẫn gửi được ảnh, chỉ thiếu preview. Chỉ nạp image-paste; phần giao diện của bộ Archimedes không được nạp.
 - Hàng đợi tin nhắn: `Enter` khi Pi đang chạy để chỉnh hướng, `Alt+Enter` hoặc **Ctrl+Enter** để xếp follow-up, `Alt+Up` để lấy lại tin đang chờ. Ctrl+Enter được thêm vì terminal của Orca gửi Alt+Enter thành Shift+Enter.
 - Nhiều phiên song song, mỗi task một worktree: dùng Orca. Cài đặt, phím và các giới hạn xem [docs/orca.md](docs/orca.md).
 
@@ -122,22 +123,21 @@ Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều
 
 | Thành phần | Phiên bản |
 |---|---|
-| Pi (`@earendil-works/pi-coding-agent`, `pi-ai`, `pi-agent-core`, `pi-tui`) | 0.99.2 |
+| Pi (`@earendil-works/pi-coding-agent`, `pi-ai`, `pi-agent-core`, `pi-tui`) | 1.0.0 |
 | `@tintinweb/pi-subagents` | 0.19.0 |
-| `@gotgenes/pi-anthropic-auth` | 3.4.1 |
+| `@gotgenes/pi-anthropic-auth` | 3.4.2 |
 | `pi-web-access` | 0.35.0 |
 | `@juicesharp/rpiv-ask-user-question`, `rpiv-todo` | 2.12.0 |
-| `@narumitw/pi-usage` | 0.61.1 |
+| `@narumitw/pi-usage` | 0.61.2 |
 | `pi-background-tasks` | 2.6.9 |
-| `pi-goal-x` | 0.32.1 |
+| `pi-goal-x` | 0.32.3 |
 | `pi-advisor-flow` | 0.9.1 |
 | `pi-open-tui` | 0.3.10 |
-| `@pi-archimedes/image-paste` | 2.8.0 |
-| `@mariozechner/clipboard` | 0.3.9 |
+| `@pi-archimedes/image-paste` | 2.9.0 |
 | Firecrawl CLI | 1.25.1 |
 | Firecrawl skills | Commit trong [sources.lock.json](sources.lock.json) |
 
-Các manifest và lockfile nằm trong [manifests](manifests). `pi-background-tasks` có peer range chưa gồm Pi 0.99.2 nên được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json). Quy trình nâng phiên bản (vendor, lockfile, tính lại checksum bản vá): [docs/upgrade.md](docs/upgrade.md).
+Các manifest và lockfile nằm trong [manifests](manifests). Hai package có peer range chưa gồm Pi 1.0.0 (pi-background-tasks, pi-advisor-flow) được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json). Quy trình nâng phiên bản (vendor, lockfile, tính lại checksum bản vá): [docs/upgrade.md](docs/upgrade.md).
 
 ## Quản lý cấu hình
 

@@ -4,34 +4,41 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@earendil-works/pi-agent-core": "0.99.2",
-    "@earendil-works/pi-ai": "0.99.2",
-    "@earendil-works/pi-coding-agent": "0.99.2",
-    "@earendil-works/pi-tui": "0.99.2",
-    "@gotgenes/pi-anthropic-auth": "3.4.1",
+    "@earendil-works/pi-agent-core": "1.0.0",
+    "@earendil-works/pi-ai": "1.0.0",
+    "@earendil-works/pi-coding-agent": "1.0.0",
+    "@earendil-works/pi-tui": "1.0.0",
+    "@gotgenes/pi-anthropic-auth": "3.4.2",
     "@juicesharp/rpiv-ask-user-question": "2.12.0",
     "@juicesharp/rpiv-todo": "2.12.0",
-    "@narumitw/pi-usage": "0.61.1",
+    "@narumitw/pi-usage": "0.61.2",
     "@tintinweb/pi-subagents": "0.19.0",
-    "pi-advisor-flow": "0.9.1",
+    "pi-advisor-flow": "file:../../vendor/pi-advisor-flow-0.9.1-pi100.tgz",
     "pi-open-tui": "0.3.10",
     "pi-web-access": "0.35.0",
     "typescript": "5.9.3",
-    "pi-goal-x": "0.32.1",
-    "pi-background-tasks": "file:../../vendor/pi-background-tasks-2.6.9-pi0992.tgz",
-    "@pi-archimedes/image-paste": "2.8.0",
-    "@mariozechner/clipboard": "0.3.9"
+    "pi-goal-x": "0.32.3",
+    "pi-background-tasks": "file:../../vendor/pi-background-tasks-2.6.9-pi100.tgz",
+    "@pi-archimedes/image-paste": "2.9.0"
   },
   "overrides": {},
   "piPlatform": {
     "localPackages": {
       "pi-background-tasks": {
         "version": "2.6.9",
-        "source": "../../vendor/pi-background-tasks-2.6.9-pi0992.tgz",
-        "sha256": "00423ed5a7bea3aa3b31b7703bbf9b141cf59c35e9f97145e14a2236fa681319",
+        "source": "../../vendor/pi-background-tasks-2.6.9-pi100.tgz",
+        "sha256": "0b5a59451d02fe29d35f53c0654381afe3cbe437ca686bd116e472479cefc562",
         "upstreamIntegrity": "sha512-5dma6xvO7jeAimRaCNCzfe5y+b4bVBYPxnJ/0RnGS+mj6B6SzgA4FcORKuAtZaoGvC29dlyof3NtX7/QD4Ywew==",
         "upstreamTarball": "https://registry.npmjs.org/pi-background-tasks/-/pi-background-tasks-2.6.9.tgz",
-        "reason": "Peer metadata adds exactly Pi 0.99.2; runtime changes are tracked separately in assets/patches.json."
+        "reason": "Peer metadata adds exactly Pi 1.0.0; runtime changes are tracked separately in assets/patches.json."
+      },
+      "pi-advisor-flow": {
+        "version": "0.9.1",
+        "source": "../../vendor/pi-advisor-flow-0.9.1-pi100.tgz",
+        "sha256": "72ac013310db88fb88f94451723d91d9d21599bce143af5f5f056458791fc055",
+        "upstreamIntegrity": "sha512-drRWMtaAZAvTi6OCsJMtMJ6b77UVE9MgMw61EQIFl82Rg5ZtrgIi+3NjoH3e2uTqdTNAGqxLGQZudvzV9rdb4Q==",
+        "upstreamTarball": "https://registry.npmjs.org/pi-advisor-flow/-/pi-advisor-flow-0.9.1.tgz",
+        "reason": "Peer metadata adds exactly Pi 1.0.0; runtime changes are tracked separately in assets/patches.json."
       }
     }
   }

@@ -6,7 +6,7 @@ Parent mặc định là **Claude Opus 5.5/high** (`anthropic/claude-opus-5-5`, 
 
 Tài liệu Claude Code ghi OAuth của gói Pro/Max dành cho Claude Code và ứng dụng native của Anthropic, và Anthropic có thể thực thi giới hạn này không báo trước. Nếu Claude không dùng được, chọn model khác bằng `/model`; role của Agent không phụ thuộc Claude. Bộ phân loại của auto mode chạy Claude Sonnet 5 qua cùng đăng nhập; khi Sonnet 5 lỗi, nó dùng model của phiên, nên sau khi đổi `/model` sang model Codex thì auto mode duyệt được tiếp.
 
-`@gotgenes/pi-anthropic-auth` 3.4.1 shape request OAuth (billing header, system prompt) cho mọi request đi qua provider `anthropic`, và tự thử lại khi Anthropic yêu cầu phiên bản Claude Code mới hơn. Cảnh báo extra usage của Pi vẫn bật (`warnings.anthropicExtraUsage`): request Claude không qua shaping có thể bị tính vào extra usage.
+`@gotgenes/pi-anthropic-auth` 3.4.2 shape request OAuth (billing header, system prompt) cho mọi request đi qua provider `anthropic`, và tự thử lại khi Anthropic yêu cầu phiên bản Claude Code mới hơn. Cảnh báo extra usage của Pi vẫn bật (`warnings.anthropicExtraUsage`): request Claude không qua shaping có thể bị tính vào extra usage.
 
 ## Mức thinking (effort)
 
