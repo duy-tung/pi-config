@@ -147,7 +147,7 @@ test('catalog và effects của phiên: kiểm model, xem trước, ghi đè, pr
   const preset = await run({preset: 'claude'});
   assert.equal(preset.status, 0, preset.text);
   assert.match(preset.text, /^preset: default → claude$/mu);
-  assert.deepEqual(applied[1], ['researcher', 'worker', 'debugger', 'reviewer', 'advisor']);
+  assert.deepEqual(applied[1], ['researcher', 'worker', 'reviewer', 'advisor']);
   {
     const advisor = readJson(f.file('advisor.json'));
     assert.deepEqual([advisor.advisorMaxCallsPerSession, advisor.advisorFallbackModel, advisor.advisorDisableSameModel, advisor.advisorAgentsMdContext],

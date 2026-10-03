@@ -64,7 +64,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       if (name === "main") {
       const roles = {
         researcher: ["opencode-go/glm-5.3-flash", "max"], worker: ["openai-codex/gpt-6.1-sol", "max"],
-        debugger: ["openai-codex/gpt-6.1-sol", "max"], reviewer: ["openai-codex/gpt-6-astra", "high"],
+        reviewer: ["openai-codex/gpt-6-astra", "high"],
       };
       for (const [role, [model, thinking]] of Object.entries(roles)) {
         const agent = read(p.join(profile.agentDir, "agents", `${role}.md`)).replaceAll("\r\n", "\n");
@@ -75,9 +75,9 @@ for (const platform of ["darwin", "linux", "win32"]) {
         assert.equal(field("inherit_context"), "false");
         assert.equal(field("isolated"), "false");
         assert.equal(field("max_turns"), "0", "Không giới hạn số lượt");
-        // Worker/debugger ghi file: chạy foreground. Role Codex (Sol, Astra) nạp
+        // Worker ghi file: chạy foreground. Role Codex (Sol, Astra) nạp
         // pi-usage để request fast có chi phí đúng.
-        const foreground = role === "worker" || role === "debugger";
+        const foreground = role === "worker";
         assert.equal(field("run_in_background"), foreground ? "false" : undefined, role);
         assert.equal(JSON.parse(field("extensions")).includes("pi-usage"), model.startsWith("openai-codex/"), role);
         assert.equal(JSON.parse(field("extensions")).includes("pi-web-access"), role === "researcher", role);
@@ -86,7 +86,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.deepEqual([subagents.maxConcurrent, subagents.maxConcurrentForeground], [4, 2]);
       // Mặc định của pi-subagents: không giới hạn lượt, chạy nền, nhớ agent giữa các lần gọi.
       assert.deepEqual([subagents.defaultMaxTurns, subagents.backgroundByDefault, subagents.rememberAgents], [undefined, undefined, undefined]);
-      assert.equal(files.filter(file=>file.path.startsWith(p.join(profile.agentDir,"agents")+p.sep)).length,4);
+      assert.equal(files.filter(file=>file.path.startsWith(p.join(profile.agentDir,"agents")+p.sep)).length,3);
       } else {
         assert.ok(!files.some(file => file.path.startsWith(p.join(profile.agentDir,"agents")+p.sep)));
       }
@@ -287,8 +287,8 @@ test("/models dựng mặc định mới từ base của preset khác: giống h
       kinds.push(kind);
       assert.equal(nextModelDefault(kind, entry.content, nativeValues(after)), fresh.get(entry.path), entry.path);
     }
-    assert.deepEqual(kinds.sort(), ["advisor", "debugger", "researcher", "reviewer", "settings", "worker"]);
-    assert.deepEqual(changedRoles(before, after), ["researcher", "worker", "debugger", "reviewer", "advisor", "autoMode"]);
+    assert.deepEqual(kinds.sort(), ["advisor", "researcher", "reviewer", "settings", "worker"]);
+    assert.deepEqual(changedRoles(before, after), ["researcher", "worker", "reviewer", "advisor", "autoMode"]);
   }
 });
 

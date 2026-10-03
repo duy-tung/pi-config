@@ -66,7 +66,7 @@ test('/models trong phiên Pi thật: menu đổi thinking, model, preset, bỏ 
       const services = await sdk.createAgentSessionServices({cwd: target, agentDir: f.agentDir, modelRuntime});
       return {...(await sdk.createAgentSessionFromServices({services, sessionManager, sessionStartEvent})), services, diagnostics: services.diagnostics};
     }, {cwd, agentDir: f.agentDir, sessionManager: sdk.SessionManager.inMemory(cwd)});
-    const answers = [], keystrokes = [], notices = [], confirms = [], decisions = [], titles = [], missing = [], errors = [];
+    const answers = [], keystrokes = [], notices = [], confirms = [], decisions = [], titles = [], menus = [], missing = [], errors = [];
     const ui = {
       ...Object.fromEntries(['setStatus', 'setWorkingMessage', 'setWorkingVisible', 'setWorkingIndicator', 'setHiddenThinkingLabel', 'setWidget', 'setFooter', 'setHeader', 'setTitle', 'pasteToEditor', 'setEditorText', 'addAutocompleteProvider', 'setEditorComponent', 'setToolsExpanded'].map(key => [key, () => {}])),
       onTerminalInput: () => () => {}, input: async () => undefined, editor: async () => undefined,
@@ -75,6 +75,7 @@ test('/models trong phiên Pi thật: menu đổi thinking, model, preset, bỏ 
       // Mỗi câu trả lời là regex của lựa chọn; hết câu trả lời thì huỷ.
       select: async (title, options) => {
         titles.push(title);
+        menus.push(options);
         const wanted = answers.shift();
         const found = wanted && options.find(option => wanted.test(option));
         if (wanted && !found) missing.push(`${wanted} không có trong: ${options.join(' | ')}`);
@@ -121,6 +122,7 @@ test('/models trong phiên Pi thật: menu đổi thinking, model, preset, bỏ 
     // worker → đổi thinking → high, xem trước rồi xác nhận.
     await menu(/^worker +openai-codex\/gpt-6.1-sol · max$/u, /^Đổi thinking/u, /^high$/u);
     assert.match(titles[0], /^Model của các vai: preset default \(.*model-roles\.json\)\nPhiên này: anthropic\/claude-opus-5-5 · high$/u);
+    assert.deepEqual(menus[0].map(option => option.split(' ')[0]), ['main', 'researcher', 'worker', 'reviewer', 'advisor', 'autoMode', 'Chọn']);
     assert.match(confirms[0], /^Ghi thay đổi này\?\nworker: openai-codex\/gpt-6.1-sol \(max\) → openai-codex\/gpt-6.1-sol \(high\)$/mu);
     assert.match(confirms[0], /^Sẽ cập nhật: .*agents\/worker\.md/mu);
     assert.match(frontmatter('worker'), /^thinking: high$/mu);
@@ -164,11 +166,19 @@ test('/models trong phiên Pi thật: menu đổi thinking, model, preset, bỏ 
     assert.equal(readJson(f.file('model-roles.json')).roles.worker, undefined);
     assert.match(frontmatter('worker'), /^thinking: max$/mu);
 
-    // debugger lệch qua /agents: menu có mục đưa vai lệch về model-roles.json.
-    fs.writeFileSync(f.file('agents/debugger.md'), fs.readFileSync(f.file('agents/debugger.md'), 'utf8').replace('thinking: max', 'thinking: low'));
-    await menu(/^Đưa .*debugger.* về model-roles\.json$/u);
-    assert.match(confirms.at(-1), /^Sẽ ghi đè giá trị đổi ngoài model-roles\.json: debugger \(agents\/debugger\.md: openai-codex\/gpt-6.1-sol \(low\)\)$/mu);
-    assert.match(frontmatter('debugger'), /^thinking: max$/mu);
+    // worker lệch qua /agents: menu có mục đưa vai lệch về model-roles.json.
+    fs.writeFileSync(f.file('agents/worker.md'), fs.readFileSync(f.file('agents/worker.md'), 'utf8').replace('thinking: max', 'thinking: low'));
+    await menu(/^Đưa .*worker.* về model-roles\.json$/u);
+    assert.match(confirms.at(-1), /^Sẽ ghi đè giá trị đổi ngoài model-roles\.json: worker \(agents\/worker\.md: openai-codex\/gpt-6.1-sol \(low\)\)$/mu);
+    assert.match(frontmatter('worker'), /^thinking: max$/mu);
+
+    // Ghi đè còn sót của vai đã gỡ: menu vẫn mở, kèm một dòng cảnh báo.
+    const config = readJson(f.file('model-roles.json'));
+    fs.writeFileSync(f.file('model-roles.json'), JSON.stringify({...config, roles: {...config.roles, debugger: {thinking: 'low'}}}));
+    await menu();
+    assert.deepEqual([last().type, last().message.split('\n').length], ['warning', 1]);
+    assert.match(last().message, /^cảnh báo: .*model-roles\.json: roles: bỏ qua debugger \(vai đã gỡ khỏi pi-config\)/u);
+    assert.match(titles.at(-1), /^Model của các vai: preset /u);
     assert.equal(fs.existsSync(path.join(f.root, '.install.lock')), false);
     assert.deepEqual(errors, []);
   } finally {

@@ -27,7 +27,7 @@ Chi tiết kiến trúc CPU, công cụ hệ thống và tùy chọn đường d
 ## Đăng nhập dịch vụ
 
 1. Chạy `pi`, dùng `/login` và chọn **Anthropic** cho parent Claude Opus 5.5 (gói Pro/Max) và bộ phân loại của auto mode (Claude Sonnet 5.5), hoặc đặt `ANTHROPIC_API_KEY`. Xem [docs/claude-setup.md](docs/claude-setup.md).
-2. Trong `/login`, chọn **OpenAI Codex (legacy)** cho worker/debugger (GPT-6.1 Sol) và reviewer (GPT-6 Astra). Pi 0.99 đổi tên hiển thị; provider vẫn là `openai-codex`. "Sign in with ChatGPT" của provider **OpenAI** là provider khác (`openai`), preset không dùng.
+2. Trong `/login`, chọn **OpenAI Codex (legacy)** cho worker (GPT-6.1 Sol) và reviewer (GPT-6 Astra). Pi 0.99 đổi tên hiển thị; provider vẫn là `openai-codex`. "Sign in with ChatGPT" của provider **OpenAI** là provider khác (`openai`), preset không dùng.
 3. Trong `/login`, chọn **OpenCode Go** và nhập API key cho GLM. Pi cũng nhận biến môi trường `OPENCODE_API_KEY`.
 4. Chạy `firecrawl login --browser` để đăng nhập dịch vụ web.
 5. Tuỳ chọn: tạo API key TypeSafe tại [console.typesafe.ai](https://console.typesafe.ai), thêm `export TYPESAFE_API_KEY="<key>"` vào `~/.zshrc` hoặc `~/.bashrc` (Windows: `setx TYPESAFE_API_KEY "<key>"`) rồi mở terminal mới, để auto mode sàng lọc bằng Jev. Đây là cách tài liệu TypeSafe và đa số package Jev hướng dẫn. Chưa có key thì bộ phân loại LLM làm cả hai giai đoạn như trước.
@@ -78,8 +78,7 @@ Pi dùng `Agent` của **@tintinweb/pi-subagents**:
 | Role | Model/effort | Phạm vi |
 |---|---|---|
 | `researcher` | GLM-5.3-Flash/max | Đọc code trong workspace, tra docs/log/web và lịch sử git, thu thập bằng chứng; chỉ đọc (bash cho lệnh đọc) |
-| `worker` | GPT-6.1 Sol/max | Triển khai và kiểm thử phần việc đã chốt |
-| `debugger` | GPT-6.1 Sol/max | Tái hiện lỗi, tìm nguyên nhân, sửa và kiểm hồi quy |
+| `worker` | GPT-6.1 Sol/max | Triển khai và kiểm thử phần việc đã chốt; sửa lỗi: tái hiện, tìm nguyên nhân, sửa và kiểm hồi quy |
 | `reviewer` | GPT-6 Astra/high | Review độc lập; chỉ đọc, bash để chạy diff, test và script thử |
 
 Parent Claude Opus 5.5/high giữ thiết kế, quyết định quan trọng và nghiệm thu cuối. GLM chạy trực tiếp qua OpenCode Go trong Pi.
@@ -90,11 +89,11 @@ Bảng trên là preset `default`. Model và thinking của mọi vai (parent, c
 @researcher Tìm luồng xử lý timeout và báo file/dòng.
 @researcher Tra changelog của thư viện HTTP về timeout mặc định.
 @worker Triển khai phần đã chốt, chạy kiểm thử liên quan.
-@debugger Tái hiện lỗi và sửa với regression test.
+@worker Tái hiện lỗi và sửa với regression test.
 @reviewer Review diff, nêu lỗi có bằng chứng.
 ```
 
-Agent có context riêng và không giới hạn số lượt; dừng agent bằng `/agents` → chọn agent → `x` hai lần. Khi parent gọi, researcher/reviewer chạy nền theo mặc định (tối đa 4 cùng lúc), worker/debugger chạy foreground (tối đa 2); vượt giới hạn thì xếp hàng. Parent điều phối để tránh ghi chồng file. Gõ `@role nội dung` thì agent chạy nền và báo kết quả cho parent khi xong. Task là đúng nội dung bạn gõ. Chi tiết cấu hình, quyền và vòng đời: [docs/subagents.md](docs/subagents.md).
+Agent có context riêng và không giới hạn số lượt; dừng agent bằng `/agents` → chọn agent → `x` hai lần. Khi parent gọi, researcher/reviewer chạy nền theo mặc định (tối đa 4 cùng lúc), worker chạy foreground (tối đa 2); vượt giới hạn thì xếp hàng. Parent điều phối để tránh ghi chồng file. Gõ `@role nội dung` thì agent chạy nền và báo kết quả cho parent khi xong. Task là đúng nội dung bạn gõ. Chi tiết cấu hình, quyền và vòng đời: [docs/subagents.md](docs/subagents.md).
 
 ## Công cụ và mặc định
 
@@ -103,7 +102,7 @@ Agent có context riêng và không giới hạn số lượt; dừng agent bằ
 - Giao diện fullscreen (mặc định từ Pi 1.0): cuộn bằng chuột/trackpad trong Pi (số dòng mỗi nấc theo `fullscreenWheelScrollLines` của Pi, mặc định `auto`), tìm trong transcript bằng **Alt+S** (Ctrl+Shift+F là ô tìm của WezTerm), khi thoát in lại transcript. Muốn giữ scrollback bình thường của terminal thì đặt `"tuiMode": "regular"` trong `settings.json` (cài lại vẫn giữ).
 - Native compaction bật: reserve 16.384, giữ gần nhất 20.000 token. Với cửa sổ 1M, auto-compaction chạy rất muộn; xem context ở footer và chọn ranh giới pha quanh mép 150k.
 - Cache warming tắt. Advisor bật như mô tả ở trên. Jev của auto mode chỉ chạy khi bạn đã lưu key TypeSafe (tính theo token đầu vào, khoảng $0,0001 mỗi lần sàng lọc). Background follow-up chỉ chạy theo thao tác/cấu hình đã chọn.
-- Codex fast mode bật mặc định (`codexFastMode:true`): mọi request tới GPT-6.1 Sol (worker, debugger) và GPT-6 Astra (reviewer, advisor) đi hàng `priority`; GPT-6 Sol cũng vậy khi bạn đặt một vai sang model này. Theo catalog của Codex, Sol nhanh khoảng 1,5 lần, Astra khoảng 2 lần; đổi lại tốn quota Codex nhiều hơn (Pi tính chi phí gấp đôi). Tắt bằng `/fast` khi phiên đang dùng model Codex, hoặc `/usage` → Settings → Codex Fast mode khi đang dùng Opus. Footer hiện `fast` khi phiên đang dùng model Codex có fast.
+- Codex fast mode bật mặc định (`codexFastMode:true`): mọi request tới GPT-6.1 Sol (worker) và GPT-6 Astra (reviewer, advisor) đi hàng `priority`; GPT-6 Sol cũng vậy khi bạn đặt một vai sang model này. Theo catalog của Codex, Sol nhanh khoảng 1,5 lần, Astra khoảng 2 lần; đổi lại tốn quota Codex nhiều hơn (Pi tính chi phí gấp đôi). Tắt bằng `/fast` khi phiên đang dùng model Codex, hoặc `/usage` → Settings → Codex Fast mode khi đang dùng Opus. Footer hiện `fast` khi phiên đang dùng model Codex có fast.
 - Header/footer/editor do pi-open-tui quản lý. Footer hiển thị model, thinking, quota (Codex qua pi-usage; Claude từ header phản hồi và `/api/oauth/usage` khi mở phiên, 15 phút một lần nếu header đã cũ; chi tiết bằng `/claude-usage`), context % kèm token/cửa sổ, token/cost và trạng thái công cụ liên quan (giữ màu extension đặt cho trạng thái). Palette terminal theo theme của phiên và được phục hồi khi thoát.
 - Dán ảnh: `@pi-archimedes/image-paste`, dùng **Ctrl+V** trên macOS/Linux hoặc **Alt+V** trên Windows. Copy ảnh vào clipboard, dán để có marker `[Image #1]`, rồi gửi cùng prompt. Xóa marker để bỏ ảnh; giới hạn 20 MiB/ảnh. Preview chỉ hiện trong UI, ảnh được gửi tới model đúng một lần. Phím dán ảnh tích hợp của Pi được tắt trong `keybindings.json` để tránh xử lý trùng.
 - Ảnh đọc qua clipboard native của pi-tui. Linux cần desktop X11/Wayland; `wl-clipboard`/`xclip` là các reader thay thế. Terminal không hỗ trợ ảnh inline vẫn gửi được ảnh, chỉ thiếu preview. Chỉ nạp image-paste; phần giao diện của bộ Archimedes không được nạp.

@@ -72,9 +72,11 @@ const openTui=readJson(openTuiPath);openTui.thinkingPeek.lines=2;delete openTui.
 const statePath=path.join(root,'install-state.json'),prior=readJson(statePath);
 const unused=path.join(root,'assets/unused-resource.json');
 writeJson(unused,{fixture:'managed resource'});prior.files[unused]=sha256(fs.readFileSync(unused));
-// File cấu hình bản cũ ghi mà bản này không ghi nữa (pi-goal-x đã gỡ): chưa sửa thì được lưu vào backups.
-const retiredConfig=path.join(agentDir,'pi-goal-x-settings.json');
-writeJson(retiredConfig,{maxAutonomousRuns:10,oracle:{enabled:true}});prior.files[retiredConfig]=sha256(fs.readFileSync(retiredConfig));
+// File cấu hình bản cũ ghi mà bản này không ghi nữa (pi-goal-x và role debugger đã gỡ): chưa sửa thì được lưu vào backups.
+const retiredConfig=path.join(agentDir,'pi-goal-x-settings.json'),retiredRole=path.join(agentDir,'agents','debugger.md');
+writeJson(retiredConfig,{maxAutonomousRuns:10,oracle:{enabled:true}});
+fs.writeFileSync(retiredRole,fs.readFileSync(path.join(agentDir,'agents','worker.md'),'utf8').replace(/^name: worker$/mu,'name: debugger'));
+for(const file of [retiredConfig,retiredRole])prior.files[file]=sha256(fs.readFileSync(file));
 writeJson(statePath,prior);
 const secret=path.join(root,'secrets/provider.env');
 fs.mkdirSync(path.dirname(secret),{recursive:true});fs.writeFileSync(secret,'PROVIDER_API_KEY=synthetic-preservation-fixture\n',{mode:0o600});
@@ -107,24 +109,27 @@ assert.deepEqual([tui.thinkingPeek.lines,tui.cursorStyle],[2,'bar']);
 assert.ok(reinstall.includes('  - xung đột: giữ giá trị hiện có cho thinkingPeek.lines; mặc định mới là 0'),reinstall);
 assert.ok(fs.existsSync(defaultsOf(openTuiPath)));
 assert.equal(fs.existsSync(unused),false);
-assert.equal(fs.existsSync(retiredConfig),false);
-assert.ok(!Object.hasOwn(readJson(statePath).files,retiredConfig));
-assert.ok(fs.readdirSync(path.join(root,'backups')).some(name=>name.startsWith('resources-')&&fs.existsSync(path.join(root,'backups',name,'4','pi-goal-x-settings.json'))),'pi-goal-x-settings.json nằm trong backups');
+for(const [file,archived] of [[retiredConfig,'pi-goal-x-settings.json'],[retiredRole,path.join('agents','debugger.md')]]){
+  assert.equal(fs.existsSync(file),false,file);
+  assert.ok(!Object.hasOwn(readJson(statePath).files,file),file);
+  assert.ok(fs.readdirSync(path.join(root,'backups')).some(name=>name.startsWith('resources-')&&fs.existsSync(path.join(root,'backups',name,'4',archived))),`${archived} nằm trong backups`);
+}
 assert.match(reinstall,/Đã lưu \d+ tài nguyên ngoài cấu hình hiện tại tại /u);
 assert.deepEqual(fs.readFileSync(secret),secretBefore);
 await run(process.execPath,[path.join(repo,'tests/agent-integration.mjs'),root]);
 assert.deepEqual(fs.readFileSync(auth),authBefore);
 // Đổi preset trong model-roles.json: mọi file gốc nhận model mới; dòng tools người dùng sửa trong file role được giữ.
-writeJson(modelRolesPath,{preset:'claude',roles:{researcher:{thinking:'max'}}});
-const debuggerPath=path.join(agentDir,'agents','debugger.md');
-fs.writeFileSync(debuggerPath,fs.readFileSync(debuggerPath,'utf8').replace(/^tools: .*$/mu,'tools: "read, grep, find, ls, bash"'));
+// Ghi đè của vai đã gỡ (debugger) còn sót: installer và pi-doctor chỉ cảnh báo.
+writeJson(modelRolesPath,{preset:'claude',roles:{researcher:{thinking:'max'},debugger:{thinking:'low'}}});
+const workerPath=path.join(agentDir,'agents','worker.md');
+fs.writeFileSync(workerPath,fs.readFileSync(workerPath,'utf8').replace(/^tools: .*$/mu,'tools: "read, grep, find, ls, bash"'));
 const switched=install();
 const frontmatter=role=>fs.readFileSync(path.join(agentDir,'agents',`${role}.md`),'utf8').split('\n---\n')[0];
-for(const [role,model,thinking] of [['worker','claude-opus-5-5','high'],['debugger','claude-opus-5-5','high'],['researcher','claude-sonnet-5-5','max'],['reviewer','claude-fable-5-1','high']]){
+for(const [role,model,thinking] of [['worker','claude-opus-5-5','high'],['researcher','claude-sonnet-5-5','max'],['reviewer','claude-fable-5-1','high']]){
   assert.match(frontmatter(role),new RegExp(`^model: anthropic/${model}\\nthinking: ${thinking}$`,'mu'),role);
 }
-assert.match(frontmatter('debugger'),/^tools: "read, grep, find, ls, bash"$/mu);
-assert.ok(switched.includes(`Đã gộp mặc định mới vào ${debuggerPath}, giữ phần bạn đã sửa:`),switched);
+assert.match(frontmatter('worker'),/^tools: "read, grep, find, ls, bash"$/mu);
+assert.ok(switched.includes(`Đã gộp mặc định mới vào ${workerPath}, giữ phần bạn đã sửa:`),switched);
 const advisorNow=readJson(path.join(agentDir,'advisor.json'));
 assert.deepEqual([advisorNow.executor,advisorNow.advisor],['anthropic/claude-opus-5-5','anthropic/claude-fable-5-1']);
 assert.deepEqual(readJson(settingsPath).enabledModels,['anthropic/claude-opus-5-5','anthropic/claude-fable-5-1','anthropic/claude-sonnet-5-5']);
@@ -132,6 +137,8 @@ const doctorModels=spawnSync(process.execPath,[path.join(root,'bin/launch.mjs'),
 assert.equal(doctorModels.status,0,doctorModels.stdout+doctorModels.stderr);
 assert.match(doctorModels.stdout,/^preset claude \(/mu);
 assert.doesNotMatch(doctorModels.stderr,/đang dùng/u,'không vai nào lệch');
+assert.match(doctorModels.stderr,/model-roles\.json: roles: bỏ qua debugger \(vai đã gỡ khỏi pi-config\)/u);
+assert.ok(!fs.existsSync(path.join(agentDir,'agents','debugger.md')));
 // Model sai tên (pi-subagents sẽ lặng lẽ dùng model của parent): installer dừng trước khi ghi cấu hình.
 writeJson(modelRolesPath,{preset:'claude',roles:{researcher:{thinking:'max'},worker:{model:'anthropic/claude-opus-5-6'}}});
 const beforeFailure=snapshot();

@@ -23,7 +23,7 @@ test('preset có sẵn đặt đủ model và thinking cho mọi vai; default l�
   assert.deepEqual(Object.keys(presets), ['default', 'claude']);
   assert.deepEqual(table(resolveModelRoles(presets).roles), {
     main: 'anthropic/claude-opus-5-5 high', researcher: 'opencode-go/glm-5.3-flash max',
-    worker: 'openai-codex/gpt-6.1-sol max', debugger: 'openai-codex/gpt-6.1-sol max', reviewer: 'openai-codex/gpt-6-astra high',
+    worker: 'openai-codex/gpt-6.1-sol max', reviewer: 'openai-codex/gpt-6-astra high',
     advisor: 'openai-codex/gpt-6-astra high', autoMode: 'anthropic/claude-sonnet-5-5 low',
   });
   // Preset claude chỉ cần đăng nhập Claude; reviewer khác model với worker.
@@ -60,7 +60,7 @@ test('cấu hình sai: báo từng lỗi, vẫn trả đủ vai theo preset mặ
     'roles.worker.model phải có dạng "provider/id" (vd "anthropic/claude-opus-5-5"), đang là "opus"',
     'roles.worker.thinking phải là một trong off, minimal, low, medium, high, xhigh, max, đang là "ultra"',
     'roles.worker: không có khóa "effort" (chỉ có model, thinking)',
-    'roles: không có vai "coder" (có main, researcher, worker, debugger, reviewer, advisor, autoMode)',
+    'roles: không có vai "coder" (có main, researcher, worker, reviewer, advisor, autoMode)',
     'preset "claud" không có (có default, claude)',
   ]);
   assert.equal(resolved.roles.worker.model, 'openai-codex/gpt-6.1-sol');
@@ -74,10 +74,10 @@ test('cấu hình sai: báo từng lỗi, vẫn trả đủ vai theo preset mặ
   for (const bad of ['opus', '/x', 'x/', 'a /b', 42]) assert.equal(parseModelRef(bad), undefined);
 });
 
-test('ghi đè còn sót của vai đã gỡ (auditor, oracle): bỏ qua kèm một dòng cảnh báo, cấu hình vẫn dùng được', () => {
-  const resolved = resolveModelRoles(presets, {preset: 'claude', roles: {auditor: {thinking: 'max'}, oracle: {model: 'x'}, worker: {thinking: 'max'}}});
+test('ghi đè còn sót của vai đã gỡ (auditor, oracle, debugger): bỏ qua kèm một dòng cảnh báo, cấu hình vẫn dùng được', () => {
+  const resolved = resolveModelRoles(presets, {preset: 'claude', roles: {auditor: {thinking: 'max'}, oracle: {model: 'x'}, debugger: {thinking: 'low'}, worker: {thinking: 'max'}}});
   assert.deepEqual(resolved.errors, []);
-  assert.deepEqual(resolved.warnings, ['roles: bỏ qua auditor, oracle (vai đã gỡ khỏi pi-config); xoá khỏi model-roles.json để hết cảnh báo']);
+  assert.deepEqual(resolved.warnings, ['roles: bỏ qua auditor, oracle, debugger (vai đã gỡ khỏi pi-config); xoá khỏi model-roles.json để hết cảnh báo']);
   assert.deepEqual(Object.keys(resolved.roles), ROLES);
   assert.deepEqual(resolved.roles, resolveModelRoles(presets, {preset: 'claude', roles: {worker: {thinking: 'max'}}}).roles);
 });

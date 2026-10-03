@@ -12,10 +12,10 @@ import {writeAtomic} from './merge.mjs';
  * resolve với giá trị đang có hiệu lực trong các file gốc.
  */
 
-export const ROLES = ['main', 'researcher', 'worker', 'debugger', 'reviewer', 'advisor', 'autoMode'];
+export const ROLES = ['main', 'researcher', 'worker', 'reviewer', 'advisor', 'autoMode'];
 // Vai đã gỡ khỏi pi-config: ghi đè còn sót trong model-roles.json bị bỏ qua kèm cảnh báo, không làm hỏng cấu hình.
-export const REMOVED_ROLES = ['auditor', 'oracle'];
-export const SUBAGENT_ROLES = ['researcher', 'worker', 'debugger', 'reviewer'];
+export const REMOVED_ROLES = ['auditor', 'oracle', 'debugger'];
+export const SUBAGENT_ROLES = ['researcher', 'worker', 'reviewer'];
 export const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 const FIELDS = ['model', 'thinking'];
 const DEFAULT_PRESET = 'default';
@@ -24,7 +24,7 @@ const defaultModelRoles = () => ({preset: DEFAULT_PRESET, roles: {}});
 
 // Thứ tự suy ra enabledModels (Ctrl+P, scopeModels của pi-subagents) và thinking mặc định theo model:
 // model của phiên chính đứng đầu; model của auto mode không vào danh sách chọn model.
-const MODEL_ORDER = ['main', 'worker', 'debugger', 'reviewer', 'researcher', 'advisor'];
+const MODEL_ORDER = ['main', 'worker', 'reviewer', 'researcher', 'advisor'];
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 /** "provider/id" → {provider, id}; id có thể chứa "/" (vd model của OpenRouter). */

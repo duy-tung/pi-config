@@ -165,11 +165,11 @@ async function check(name,fn) {
   activePhase=name;console.log(`Agent: ${name}`);
   try {await fn();results.push({name,status:'PASS'});}catch(error){results.push({name,status:'FAIL',error:error.stack});}
 }
-await check('native delegation tools and six task roles are available',async()=>{
+await check('native delegation tools and three task roles are available',async()=>{
   const names=session.getAllTools().map(tool=>tool.name);
   assert.ok(names.includes('Agent'));
   for(const name of ['get_subagent_result','steer_subagent'])assert.ok(names.includes(name));
-  assert.deepEqual(fs.readdirSync(path.join(agentDir,'agents')).sort(),['debugger.md','researcher.md','reviewer.md','worker.md']);
+  assert.deepEqual(fs.readdirSync(path.join(agentDir,'agents')).sort(),['researcher.md','reviewer.md','worker.md']);
 });
 await check('researcher uses GLM/max and separate context',async()=>{
   const out=await run('sol',invocation('sol'),[[tool('read',{path:'safe.txt'})],final('CHILD_OK')]);
@@ -180,7 +180,7 @@ await check('researcher uses GLM/max and separate context',async()=>{
   assert.match(JSON.stringify(child.at(-1).messages),/SAFE_CONTENT/);
 });
 const configured=Object.fromEntries(modelRoles.SUBAGENT_ROLES.map(role=>[role,[modelId(defaults.subagents[role].model),defaults.subagents[role].thinking]]));
-for(const role of ['researcher','worker','debugger','reviewer']) {
+for(const role of ['researcher','worker','reviewer']) {
   await check(`native ${role} keeps its configured model/effort despite conflicting tool parameters`,async()=>{
     const id='configured-'+role;
     const [expectedModel,expectedEffort]=configured[role];
@@ -208,7 +208,7 @@ await check('Codex fast mode reaches Sol, Astra and GPT-6.1 Sol role requests; o
   const sol61=path.join(agentDir,'agents','sol61.md');
   fs.writeFileSync(sol61,fs.readFileSync(path.join(agentDir,'agents','worker.md'),'utf8').replace(/^name: .*$/mu,'name: sol61').replace(/^model: .*$/mu,'model: openai-codex/gpt-6.1-sol'));
   try{
-    for(const [role,tier,model] of [['worker','priority'],['debugger','priority'],['reviewer','priority'],['researcher',undefined],['sol61','priority','gpt-6.1-sol']]){
+    for(const [role,tier,model] of [['worker','priority'],['reviewer','priority'],['researcher',undefined],['sol61','priority','gpt-6.1-sol']]){
       const id='fast-'+role;
       const out=await run(id,invocation(id,{subagent_type:role}));
       assert.equal(out[0]?.isError,false,JSON.stringify(out));

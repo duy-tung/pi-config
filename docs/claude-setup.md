@@ -2,7 +2,7 @@
 
 ## Đăng nhập và model
 
-Parent mặc định là **Claude Opus 5.5/high** (`anthropic/claude-opus-5-5`, context 1M của catalog). Chạy `pi`, dùng `/login` và chọn **Anthropic** để đăng nhập gói Claude Pro/Max (OAuth), hoặc cung cấp `ANTHROPIC_API_KEY`. Vòng `Ctrl+P` gồm Opus 5.5, GPT-6 Sol, GPT-6 Astra và GLM; worker/debugger/reviewer vẫn cần đăng nhập OpenAI Codex.
+Parent mặc định là **Claude Opus 5.5/high** (`anthropic/claude-opus-5-5`, context 1M của catalog). Chạy `pi`, dùng `/login` và chọn **Anthropic** để đăng nhập gói Claude Pro/Max (OAuth), hoặc cung cấp `ANTHROPIC_API_KEY`. Vòng `Ctrl+P` gồm Opus 5.5, GPT-6 Sol, GPT-6 Astra và GLM; worker/reviewer vẫn cần đăng nhập OpenAI Codex.
 
 Tài liệu Claude Code ghi OAuth của gói Pro/Max dành cho Claude Code và ứng dụng native của Anthropic, và Anthropic có thể thực thi giới hạn này không báo trước. Nếu Claude không dùng được, chọn model khác bằng `/model`; role của Agent không phụ thuộc Claude. Bộ phân loại của auto mode chạy Claude Sonnet 5 qua cùng đăng nhập; khi Sonnet 5 lỗi, nó dùng model của phiên, nên sau khi đổi `/model` sang model Codex thì auto mode duyệt được tiếp.
 

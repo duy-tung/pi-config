@@ -7,7 +7,7 @@ Model và mức thinking của mọi vai đặt ở một chỗ: `<agent-dir>/mo
 | Vai | Dùng ở | File gốc installer sinh ra |
 |---|---|---|
 | `main` | Phiên chính (parent) | `settings.json` (`defaultProvider`, `defaultModel`, `defaultThinkingLevel`) và `executor` trong `advisor.json` |
-| `researcher`, `worker`, `debugger`, `reviewer` | Agent của pi-subagents | dòng `model:`/`thinking:` trong `agents/<vai>.md` |
+| `researcher`, `worker`, `reviewer` | Agent của pi-subagents | dòng `model:`/`thinking:` trong `agents/<vai>.md` |
 | `advisor` | pi-advisor-flow | `advisor`, `advisorEffort` trong `advisor.json` |
 | `autoMode` | Bộ phân loại LLM của auto mode | `autoMode.model`, `autoMode.stage2Reasoning` trong `settings.json` |
 
@@ -29,7 +29,7 @@ Preset có sẵn nằm ở `assets/configs/model-presets.json` và cập nhật 
 |---|---|---|
 | `main` | Claude Opus 5.5 / high | Claude Opus 5.5 / high |
 | `researcher` | GLM-5.3-Flash / max | Claude Sonnet 5.5 / high |
-| `worker`, `debugger` | GPT-6.1 Sol / max | Claude Opus 5.5 / high |
+| `worker` | GPT-6.1 Sol / max | Claude Opus 5.5 / high |
 | `reviewer` | GPT-6 Astra / high | Claude Fable 5.1 / high |
 | `advisor` | GPT-6 Astra / high | Claude Fable 5.1 / high |
 | `autoMode` | Claude Sonnet 5.5 / low | Claude Sonnet 5.5 / low |
@@ -58,7 +58,7 @@ Menu còn có mục chọn preset, và khi có vai lệch, mục đưa các vai 
   |---|---|---|
   | `main` | Ngay: phiên này chuyển sang model và thinking mới. Nếu provider chưa đăng nhập thì phiên giữ model cũ và `/models` báo lại | Phiên Pi mở sau |
   | `autoMode` | Từ lần phân loại kế tiếp của auto mode | Phiên Pi mở sau |
-  | `researcher`, `worker`, `debugger`, `reviewer` | Từ lần gọi `Agent` kế tiếp | Từ lần gọi `Agent` kế tiếp |
+  | `researcher`, `worker`, `reviewer` | Từ lần gọi `Agent` kế tiếp | Từ lần gọi `Agent` kế tiếp |
   | `advisor` | Từ lần hỏi advisor kế tiếp | Từ lần hỏi advisor kế tiếp |
 
   `/models` không tự chạy `/reload`, vì reload dừng các subagent đang chạy.
@@ -79,7 +79,7 @@ Installer tạo file này ở lần cài đầu với `{"preset": "default", "ro
 
 - **`preset`:** tên preset có sẵn (`default` hoặc `claude`). Preset riêng (khóa `presets`) không còn được hỗ trợ: installer và `/models` báo lỗi; chuyển các vai của preset riêng vào `roles`.
 - **`roles.<vai>`:** `model` dạng `provider/id` (xem `/model` hoặc `pi --list-models`), `thinking` là một trong `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Có thể đặt riêng từng trường.
-- Ghi đè của vai đã gỡ (`auditor`, `oracle`) không phải lỗi: installer, `/models` và `pi-doctor` bỏ qua và in một dòng cảnh báo; xoá khỏi file để hết cảnh báo.
+- Ghi đè của vai đã gỡ (`auditor`, `oracle`, `debugger`; worker nay gồm cả sửa lỗi) không phải lỗi: installer, `/models` và `pi-doctor` bỏ qua và in một dòng cảnh báo; xoá khỏi file để hết cảnh báo.
 
 Sửa tay file này xong thì chạy lại installer, hoặc mở `/models`: vai bạn sửa hiện là vai lệch, và mục đưa vai lệch về `model-roles.json` áp file vào các file gốc.
 
