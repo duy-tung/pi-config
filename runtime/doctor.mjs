@@ -51,12 +51,10 @@ if(fs.existsSync(webSearch)){
 for(const role of SUBAGENT_ROLES)if(!fs.existsSync(path.join(state.agentDir,'agents',role+'.md')))errors.push(`thiếu role ${role}`);
 const advisorFile=path.join(state.agentDir,'advisor.json');
 if(fs.existsSync(advisorFile)){
-  const advisor=read(advisorFile),main=`${s.defaultProvider}/${s.defaultModel}`;
+  // executor (model của phiên chính mà /model lưu khi advisor luôn bật) đã nằm trong bảng model ở trên.
+  const advisor=read(advisorFile);
   const gates=[['advisorPlanGate','trước plan'],['advisorFailureGate','lỗi lặp'],['advisorCompletionGate','trước khi xong']].filter(([key])=>advisor[key]!==false).map(([,text])=>text);
   console.log(`  advisor ${advisor.alwaysOn===true?`luôn bật, gate: ${gates.join(', ')||'không (chỉ khi được gọi)'}; tối đa ${advisor.advisorMaxCallsPerSession??'∞'} lần/phiên`:'tắt'}`);
-  // alwaysOn đặt model của phiên thành executor mỗi lần mở phiên.
-  if(advisor.alwaysOn===true&&advisor.executor&&advisor.executor!==main)
-    warnings.push(`advisor.json bật alwaysOn với executor ${advisor.executor}; mỗi phiên sẽ chuyển từ ${main} sang model này`);
 }
 const auto=s.autoMode??{},jev=auto.jev===false||auto.jev?.enabled===false?undefined:auto.jev??{};
 // Model phân loại đặt trong /permissions → Classifier (autoMode.model của settings.json), không phải một vai.
