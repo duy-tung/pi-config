@@ -20,6 +20,8 @@ export interface RootHandle {
   setMode?(mode: PermissionMode): void;
   /** Lời gọi được cho phép tới hết phiên ở manual mode, dùng chung cho phiên gốc và mọi child. */
   sessionApprovals(): Set<string>;
+  /** Thư mục cho đọc tới hết phiên, dùng chung cho phiên gốc và mọi child. */
+  sessionReadRoots(): Set<string>;
   /** Model phân loại và mức suy luận của phiên gốc: đổi trong /permissions thì child dùng ngay. */
   classifier(): { model?: string; stage2Reasoning: string };
 }

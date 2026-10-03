@@ -33,10 +33,6 @@ Các manifest `manifests/current`, `manifests/firecrawl` liệt kê phiên bản
 
 Các skill của [firecrawl/cli](https://github.com/firecrawl/cli) (ISC theo package manifest) được tải từ commit ghim cùng repository và thông tin giấy phép gốc.
 
-## Git guard
-
-Git guard của pi-auto-mode (`lib/git-guard.ts`) chuyển từ `hooks/guard_git.py` của tstack (mã riêng, MIT).
-
 ## Màu giao diện
 
 Theme Pi và extension đồng bộ màu terminal là cấu hình local dựa trên bảng màu [Rosé Pine](https://rosepinetheme.com/palette/). Nguồn tham khảo về màu và độ tương phản gồm [zed-rose-pine-recast](https://github.com/ng-hai/zed-rose-pine-recast), [rose-pine-blinksh](https://github.com/ng-hai/rose-pine-blinksh), [hyper-rose-pine-next](https://github.com/ng-hai/hyper-rose-pine-next), [rose-pine-doom-emacs](https://github.com/tamnd/rose-pine-doom-emacs) và [typora](https://github.com/tamnd/typora). Các ứng dụng/theme repository đó không được đóng gói trong installer.

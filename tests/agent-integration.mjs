@@ -443,7 +443,7 @@ await check('three Jev outages in a row turn Jev off for the session instead of 
     assert.ok(notices.slice(before.notices).some(n=>/Jev is unavailable \(3 failures in a row/.test(n.message)));
   }finally{jevControl.failures.length=0;await closeSession(outage);}
 });
-await check('manual mode asks like Claude Code: edits ask, No with a message, saved project rule, allow all edits',async()=>{
+await check('manual mode asks like Claude Code: edits ask, No with a message, reading a directory, saved project rule, allow all edits',async()=>{
   const permissions=async(...steps)=>{selectAnswers.push(...steps);await session.prompt('/permissions');assert.equal(selectAnswers.length,0);};
   await permissions(/^Mode: /u,/^⏸ manual mode on$/u);
   const asked=()=>prompts.filter(p=>p.kind==='select'&&/^Allow /u.test(p.title));
@@ -456,6 +456,14 @@ await check('manual mode asks like Claude Code: edits ask, No with a message, sa
   const editPrompt=asked().at(-1);
   assert.equal(asked().length-before,1);
   assert.deepEqual(editPrompt.options,['Yes','Yes, allow all edits during this session','Yes, and switch to auto mode','No','No, and tell Pi what to do differently…']);
+  // Đọc ngoài workspace: "allow reading from <thư mục>/ during this session"; lần sau trong thư mục đó không hỏi.
+  const outsideDir=path.join(fixture,'outside');fs.mkdirSync(outsideDir,{recursive:true});
+  for(const name of ['a.txt','b.txt'])fs.writeFileSync(path.join(outsideDir,name),name);
+  before=asked().length;
+  selectAnswers.push(/^Yes, allow reading from .*outside.* during this session$/u);
+  out=await turn('manual-read',[[tool('read',{path:path.join(outsideDir,'a.txt')})],[tool('read',{path:path.join(outsideDir,'b.txt')})],final('DONE')]);
+  assert.ok(out.length===2&&out.every(m=>!m.isError),JSON.stringify(out));
+  assert.equal(asked().length-before,1,'chỉ hỏi lần đọc đầu');
   // mkdir/touch trong workspace hỏi ở manual; "don't ask again" lưu Bash(touch *) cho project, lần sau không hỏi.
   before=asked().length;
   selectAnswers.push(/^Yes, and don't ask again for `touch` commands in fixture workspace$/u);

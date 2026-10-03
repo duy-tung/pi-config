@@ -1,14 +1,12 @@
 import os from "node:os";
 import path from "node:path";
-import type { GitGuardConfig, PermissionMode } from "./config.ts";
-import { checkGitGuard, type GitGuardBlock, type GitRunner } from "./git-guard.ts";
-import { gitGuardDenial } from "./messages.ts";
+import type { PermissionMode } from "./config.ts";
 import {
-  criticalPathReason, insideAny, insideTemporary, isSelfProtected, protectedReason, resolveShellPath, resolveToolPath, temporaryRoots, URL_LIKE,
+  criticalPathReason, insideAny, isSelfProtected, protectedReason, resolveShellPath, resolveToolPath, temporaryRoots, URL_LIKE,
 } from "./paths.ts";
 import { detectPowerShellRisks, detectRisks } from "./risks.ts";
-import { type DeniedPath, denies, searchReadPaths, shellPathScope } from "./read-scope.ts";
-import { allowCoversShell, firstMatch, isPathRule, type RuleMatchTarget, type RuleSet } from "./rules.ts";
+import { type DeniedPath, denies, searchReadPaths } from "./read-scope.ts";
+import { allowCoversShell, firstMatch, type RuleMatchTarget, type RuleSet } from "./rules.ts";
 import {
   analyzeShell, commandName, commandText, findRemoval, isReadOnlyCommand, isReadOnlyShell, optionOutputs, removeArgs, type ShellAnalysis,
   type SimpleCommand,
@@ -17,9 +15,9 @@ import { READ_TOOLS, SHELL_TOOLS, WRITE_TOOLS } from "./tools.ts";
 
 /**
  * Quyết định tất định cho một lời gọi tool, trước khi cần tới bộ phân loại.
- * Thứ tự theo Claude Code: deny → ask → rm vào đường dẫn quan trọng → (bypass: xoá đệ quy, lệnh rủi ro)
- * → bypass → tự bảo vệ → lối đi nhanh (chỉ bao giờ nói "an toàn") → bộ phân loại.
- * Manual quyết định như auto; "classify" ở manual là hỏi người dùng (index.ts, lib/manual.ts).
+ * Thứ tự theo Claude Code: deny → ask → rm vào đường dẫn quan trọng (bypass hỏi) → bypass → cấu hình của Pi
+ * → lối đi nhanh (chỉ bao giờ nói "an toàn") → bộ phân loại.
+ * Manual/acceptEdits quyết định như auto; "classify" ở hai mode này là hỏi người dùng (index.ts, lib/manual.ts).
  */
 export type Decision =
   | { kind: "allow"; via: string }
@@ -40,14 +38,8 @@ export interface PolicyContext {
   selfPaths: string[];
   /** Agent (tintinweb) sẽ chạy không có extension, tức là không có cổng permission. */
   agentIsUngated?: (input: Record<string, unknown>) => boolean;
-  /** Thư mục tạm: xoá đệ quy bên trong không cần hỏi khi bypass; mặc định temporaryRoots(). */
+  /** Thư mục tạm (cho lib/risks.ts); mặc định temporaryRoots(). */
   tempRoots?: string[];
-  /** Git guard tất định; undefined = bật với danh sách nhánh mặc định. */
-  gitGuard?: GitGuardConfig;
-  /** Môi trường của tiến trình Pi cho git guard (HOME cho `~`); mặc định process.env. */
-  env?: Record<string, string | undefined>;
-  /** Chạy git cho git guard (test); mặc định git thật. */
-  git?: GitRunner;
 }
 
 export interface ToolCall {
@@ -76,8 +68,6 @@ export interface CallFacts {
   /** Đường dẫn ghi (edit/write) hoặc đối số đường dẫn của lệnh shell. */
   paths: string[];
   critical?: string;
-  /** Lệnh xoá đệ quy có đích ngoài thư mục tạm (hoặc không kiểm được), vd "rm -r". */
-  removal?: string;
   /** Rủi ro nhận ra tất định (lib/risks.ts): cơ chế tự chạy, tắt kiểm TLS, ghi đường dẫn hệ thống. */
   risks?: string[];
   writesSelf?: boolean;
@@ -119,6 +109,9 @@ function shellPaths(analysis: ShellAnalysis, cwd: string, home: string): string[
   return [...result];
 }
 
+const targetAt = (command: SimpleCommand, index: number) =>
+  ({ word: command.words[index], literal: command.literal[index], glob: command.glob[index] });
+
 /** rm/rmdir/unlink hoặc find -delete nhắm vào đường dẫn quan trọng. */
 function criticalRemoval(analysis: ShellAnalysis, cwd: string, home: string): string | undefined {
   for (const command of analysis.commands) {
@@ -145,114 +138,6 @@ function criticalRemoval(analysis: ShellAnalysis, cwd: string, home: string): st
   return undefined;
 }
 
-interface RemovalTarget {
-  word: string;
-  literal: boolean;
-  glob: boolean;
-}
-
-const targetAt = (command: SimpleCommand, index: number): RemovalTarget =>
-  ({ word: command.words[index], literal: command.literal[index], glob: command.glob[index] });
-
-interface Removal {
-  label: string;
-  targets: RemovalTarget[];
-  /** Đích đến từ stdin hoặc script lồng (xargs, cmd /c, PowerShell): không kiểm được. */
-  opaque?: boolean;
-}
-
-const PACKAGE_RUNNERS = new Set(["npx", "pnpx", "bunx"]);
-const CMD_RECURSIVE = /\b(?:rd|rmdir|del|erase)\b[^&|]*\s\/\/?s\b/iu;
-const POWERSHELL_RECURSIVE = /\b(?:Remove-Item|ri|rm|rmdir|rd|del|erase)\b[^;|\n]*\s-r(?:e(?:c(?:u(?:r(?:s(?:e)?)?)?)?)?)?\b/iu;
-
-/**
- * Lệnh xoá đệ quy: rm -r với mọi thứ tự/cách viết cờ, find -delete hoặc -exec rm, git clean
- * (trừ -n), rimraf, rd /s của cmd và Remove-Item -Recurse của PowerShell.
- */
-function recursiveRemovals(analysis: ShellAnalysis): Removal[] {
-  const result: Removal[] = [];
-  for (const command of analysis.commands) {
-    const name = commandName(command);
-    const args = command.words.slice(1);
-    const at = (index: number): RemovalTarget => targetAt(command, index + 1);
-    const remove = removeArgs(command.words);
-    const find = findRemoval(command.words);
-    if (remove) {
-      const targets = remove.targets.map((index) => targetAt(command, index));
-      // xargs lấy đích từ stdin.
-      if (remove.recursive && (targets.length || command.wrapped === "xargs")) result.push({ label: "rm -r", targets, opaque: command.wrapped === "xargs" });
-    } else if (find) {
-      result.push({
-        label: find.deletes ? "find -delete" : "find -exec rm",
-        targets: find.targets.length ? find.targets.map((index) => targetAt(command, index)) : [{ word: ".", literal: true, glob: false }],
-        opaque: find.follows,
-      });
-    } else if (name === "git") {
-      let index = 0;
-      let tree: RemovalTarget = { word: ".", literal: true, glob: false };
-      while (index < args.length && args[index].startsWith("-")) {
-        const option = args[index];
-        if (option === "-C" || option === "--work-tree") {
-          if (index + 1 < args.length) tree = at(index + 1);
-          index += 2;
-        } else if (option.startsWith("--work-tree=")) {
-          tree = { word: option.slice("--work-tree=".length), literal: command.literal[index + 1], glob: false };
-          index++;
-        } else {
-          index += ["-c", "--git-dir", "--namespace", "--config-env", "--super-prefix"].includes(option) ? 2 : 1;
-        }
-      }
-      if (args[index] !== "clean") continue;
-      let dryRun = false;
-      for (let i = index + 1; i < args.length; i++) {
-        const word = args[i];
-        if (word === "--") break;
-        if (word === "--dry-run") dryRun = true;
-        else if (word === "--exclude") i++;
-        else if (/^-[^-]/u.test(word)) {
-          // Cụm cờ ngắn; -e nhận giá trị (dính liền hoặc là từ kế tiếp).
-          const cluster = word.slice(1);
-          const exclude = cluster.indexOf("e");
-          if ((exclude < 0 ? cluster : cluster.slice(0, exclude)).includes("n")) dryRun = true;
-          if (exclude === cluster.length - 1) i++;
-        }
-      }
-      // Pathspec chỉ thu hẹp phạm vi: xét cả cây làm việc (git clean bắt đầu từ thư mục hiện tại hoặc -C).
-      if (!dryRun) result.push({ label: "git clean", targets: [tree] });
-    } else if (name === "rimraf" || (PACKAGE_RUNNERS.has(name) && /^rimraf(?:@|$)/u.test(args.find((word) => !word.startsWith("-")) ?? ""))) {
-      const start = name === "rimraf" ? 0 : args.findIndex((word) => !word.startsWith("-")) + 1;
-      const targets: RemovalTarget[] = [];
-      for (let index = start; index < args.length; index++) if (!args[index].startsWith("-")) targets.push(at(index));
-      if (targets.length) result.push({ label: "rimraf", targets });
-    } else if (/^cmd(?:\.exe)?$/iu.test(name)) {
-      const script = args.findIndex((word) => /^\/\/?[ck]$/iu.test(word));
-      if (script >= 0 && CMD_RECURSIVE.test(args.slice(script + 1).join(" "))) result.push({ label: "rd /s", targets: [], opaque: true });
-    } else if (/^(?:powershell|pwsh)(?:\.exe)?$/iu.test(name) && POWERSHELL_RECURSIVE.test(args.join(" "))) {
-      result.push({ label: "Remove-Item -Recurse", targets: [], opaque: true });
-    }
-  }
-  return result;
-}
-
-/**
- * Đích nằm hẳn trong thư mục tạm: chữ thuần, không có "..", đường dẫn thật (sau symlink) ở bên trong.
- * Glob chỉ được ở thành phần cuối (rm không theo symlink của mục khớp, trừ khi có "/" phía sau), và
- * glob ngay dưới thư mục tạm phải có tiền tố: /tmp/pi-test-* được, /tmp/* thì không.
- */
-function temporaryTarget(target: RemovalTarget, cwd: string, home: string, temp: string[]): boolean {
-  if (!target.literal || /(?:^|[\\/])\.\.(?:[\\/]|$)/u.test(target.word)) return false;
-  if (!target.glob) return insideTemporary(resolveShellPath(target.word, cwd, home), temp);
-  const first = target.word.search(/[*?[]/u);
-  if (/[\\/]/u.test(target.word.slice(first))) return false;
-  const head = `${target.word.slice(0, first)}x`;
-  return insideTemporary(resolveShellPath(path.dirname(head), cwd, home), temp, path.basename(head) === "x");
-}
-
-function removalOutsideTemp(removals: Removal[], cwd: string, home: string, temp: string[]): string | undefined {
-  const outside = removals.filter((item) => item.opaque || !item.targets.length || !item.targets.every((target) => temporaryTarget(target, cwd, home, temp)));
-  return outside.length ? [...new Set(outside.map((item) => item.label))].join(", ") : undefined;
-}
-
 function summarize(input: Record<string, unknown>): string {
   const pick = (value: unknown) => (typeof value === "string" ? value : undefined);
   const text = pick(input.command) ?? pick(input.path) ?? pick(input.url) ?? pick(input.query) ??
@@ -273,14 +158,10 @@ export function describeCall(call: ToolCall, pc: PolicyContext): CallFacts {
       : analyzeShell(command);
     const readOnly = isReadOnlyShell(analysis);
     const paths = shellPaths(analysis, pc.cwd, home);
-    const removals = toolName === "powershell"
-      ? (POWERSHELL_RECURSIVE.test(command) || CMD_RECURSIVE.test(command) ? [{ label: "Remove-Item -Recurse", targets: [], opaque: true }] : [])
-      : recursiveRemovals(analysis);
     const tempRoots = pc.tempRoots ?? temporaryRoots();
     return {
       kind: "shell", analysis, readOnly, paths, summary,
       critical: criticalRemoval(analysis, pc.cwd, home),
-      removal: removalOutsideTemp(removals, pc.cwd, home, tempRoots),
       risks: toolName === "powershell" ? detectPowerShellRisks(command) : detectRisks(analysis, { cwd: pc.cwd, home, roots: pc.roots, tempRoots }),
       writesSelf: !readOnly && paths.some((file) => isSelfProtected(file, pc.selfPaths)),
       target: { toolName, commands: analysis.commands.map(commandText), raw: command, paths, writes: !readOnly },
@@ -369,30 +250,9 @@ function workspaceFileOps(commands: SimpleCommand[], pc: PolicyContext, home: st
   return sawWrite;
 }
 
-/** Luật allow phủ mọi lệnh con ghi của một chuỗi lệnh plain (vd Bash(rm -rf node_modules)). */
-function allowCovers(facts: CallFacts, pc: PolicyContext): boolean {
-  const analysis = facts.analysis;
-  return !!analysis?.plain &&
-    allowCoversShell(pc.rules.allow, analysis.commands.filter((command) => !isReadOnlyCommand(command)).map(commandText));
-}
-
-/** Lệnh shell của bash/bg_run bị git guard chặn; PowerShell có cú pháp khác nên không qua bộ phân tích kiểu sh. */
-export function gitGuardBlock(call: ToolCall, pc: PolicyContext): GitGuardBlock | undefined {
-  if (pc.gitGuard?.enabled === false) return undefined;
-  if (call.toolName !== "bash" && call.toolName !== "bg_run") return undefined;
-  const command = call.input.command;
-  if (typeof command !== "string") return undefined;
-  return checkGitGuard(command, { cwd: pc.cwd, env: pc.env, protectedBranches: pc.gitGuard?.protectedBranches, git: pc.git });
-}
-
 /** Luật deny đường dẫn chặn đọc một file (có tính ngoại lệ !Path). */
 export function deniedPath(toolName: string, pc: PolicyContext, home = pc.home ?? os.homedir(), writes = false): DeniedPath {
   return (file) => firstMatch(pc.rules.deny, { toolName, paths: [file], writes }, pc.cwd, home)?.raw;
-}
-
-function pathRuleList(pc: PolicyContext): string {
-  const rules = pc.rules.deny.filter((rule) => !rule.negate && isPathRule(rule)).map((rule) => rule.raw);
-  return rules.length > 4 ? `${rules.slice(0, 4).join(", ")}…` : rules.join(", ");
 }
 
 /**
@@ -438,32 +298,6 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
   const deny = firstMatch(pc.rules.deny, facts.target, pc.cwd, home);
   if (deny) return { kind: "deny", rule: deny.raw, reason: `Permission to use ${call.toolName} has been denied by the rule ${deny.raw}.` };
 
-  // Git guard: tất định như luật deny, ở cả auto và bypass; không giao cho bộ phân loại hay bypass quyết định lại.
-  const guard = gitGuardBlock(call, pc);
-  if (guard) return { kind: "deny", rule: "git guard", reason: guard.reason, message: gitGuardDenial(guard) };
-
-  // Luật deny đường dẫn với lệnh shell có tập đích không đọc được từ argv (glob, cây thư mục, biến...):
-  // chặn khi thấy file thật khớp luật; không kiểm được thì auto giao bộ phân loại, bypass hỏi người dùng.
-  // Tool grep của Pi được lọc ở kết quả (filterDeniedGrep); find/ls chỉ liệt kê tên.
-  let unverified: string | undefined;
-  const pathDeny = facts.kind === "shell" && pc.rules.deny.some((rule) => !rule.negate && isPathRule(rule) &&
-    (["read", "path"].includes(rule.tool.toLowerCase()) || facts.target.writes !== false));
-  if (pathDeny) {
-    const denied = deniedPath(call.toolName, pc, home, facts.target.writes !== false);
-    const scope = call.toolName === "powershell"
-      ? { uncertain: "PowerShell commands are not parsed for paths" }
-      : shellPathScope(facts.analysis as ShellAnalysis, pc.cwd, home, denied);
-    if (scope.evidence) {
-      const shown = path.relative(pc.cwd, scope.evidence.file) || scope.evidence.file;
-      return {
-        kind: "deny", rule: scope.evidence.rule,
-        reason: `Permission to use ${call.toolName} has been denied by the rule ${scope.evidence.rule}: the command would read ${shown}. ` +
-          "Name the permitted files explicitly, or use the grep tool, which leaves out denied files.",
-      };
-    }
-    unverified = scope.uncertain;
-  }
-
   const ask = firstMatch(pc.rules.ask, facts.target, pc.cwd, home);
   if (ask) return { kind: "ask", reason: `The rule ${ask.raw} requires your confirmation.` };
 
@@ -473,30 +307,16 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
     notes.push(`this command ${facts.critical}`);
   }
 
-  // Riêng pi-config: bypass hỏi trước mọi lệnh xoá đệ quy ra ngoài thư mục tạm, trừ khi luật allow phủ
-  // đúng lệnh (vd Bash(rm -rf node_modules)). Auto mode đã gửi các lệnh này cho bộ phân loại.
-  if (pc.mode === "bypass" && facts.removal && !allowCovers(facts, pc)) {
-    return { kind: "ask", reason: `This command deletes recursively (${facts.removal}).` };
-  }
+  // Riêng pi-config: cơ chế tự chạy, tắt kiểm TLS, ghi đường dẫn hệ thống: ghi chú cho bộ phân loại (bỏ qua Jev, xem
+  // classify ở trên); manual/acceptEdits hỏi kèm ghi chú. Bypass cho chạy như Claude Code.
+  if (facts.risks?.length) notes.push(...facts.risks.map((risk) => `this command ${risk}`));
 
-  // Riêng pi-config: cơ chế tự chạy, tắt kiểm TLS, ghi đường dẫn hệ thống. Bypass hỏi người dùng (trừ khi
-  // luật allow phủ đúng lệnh); auto ghi chú cho bộ phân loại và bỏ qua Jev (xem classify ở trên).
-  if (facts.risks?.length) {
-    if (pc.mode === "bypass" && !allowCovers(facts, pc)) return { kind: "ask", reason: `This command ${facts.risks.join("; ")}.` };
-    notes.push(...facts.risks.map((risk) => `this command ${risk}`));
-  }
+  if (pc.mode === "bypass") return { kind: "allow", via: "bypass" };
 
-  if (pc.mode === "bypass") {
-    if (unverified) return { kind: "ask", reason: `The path deny rules cannot be checked for this command (${unverified}).` };
-    return { kind: "allow", via: "bypass" };
-  }
-
+  // Cấu hình của chính Pi và cổng permission (như .claude/ của Claude Code): auto gửi bộ phân loại (giai đoạn 2),
+  // manual/acceptEdits hỏi; không có lựa chọn "don't ask again".
   if (facts.writesSelf) {
-    return { kind: "ask", reason: "This changes Pi's permission configuration, which only you can approve." };
-  }
-
-  if (unverified) {
-    notes.push(`the path deny rules (${pathRuleList(pc)}) cannot be checked because ${unverified}; block it if it may read such a file`);
+    notes.push("changes Pi's permission configuration (settings, extensions, permission state)");
     return { kind: "classify", notes, escalate: true };
   }
 

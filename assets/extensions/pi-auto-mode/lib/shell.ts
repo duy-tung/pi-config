@@ -331,7 +331,7 @@ export function commandName(command: SimpleCommand): string {
 }
 
 // ---------------------------------------------------------------------------
-// Lệnh xoá: một chỗ đọc đối số cho policy, risks và git guard
+// Lệnh xoá: một chỗ đọc đối số cho policy và risks
 // ---------------------------------------------------------------------------
 
 /**

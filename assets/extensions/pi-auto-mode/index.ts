@@ -43,6 +43,14 @@ function ownDirectory(): string | undefined {
   }
 }
 
+function isDirectory(file: string): boolean {
+  try {
+    return fs.statSync(file).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 function run(command: string, args: string[], cwd: string, timeout = 2_000): Promise<string> {
   return new Promise((resolve) => {
     execFile(command, args, { cwd, timeout, maxBuffer: 256 * 1024 }, (error, stdout) => resolve(error ? "" : String(stdout)));
@@ -206,14 +214,15 @@ export default function piAutoMode(pi: ExtensionAPI) {
     } catch {
       /* không xác định được thư mục package */
     }
-    return [...roots(cwd), ...config.skills.map((dir) => resolveToolPath(dir, agentDir)).filter((dir): dir is string => !!dir), ...docs, agentDir];
+    const approved = (child ? rootFor(sessionId)?.sessionReadRoots() : undefined) ?? state.sessionReadRoots;
+    return [...roots(cwd), ...config.skills.map((dir) => resolveToolPath(dir, agentDir)).filter((dir): dir is string => !!dir), ...docs, agentDir, ...approved];
   }
 
   function policyContext(ctx: ExtensionContext): PolicyContext {
     return {
       mode: currentMode(), cwd: ctx.cwd, roots: roots(ctx.cwd), readRoots: readRoots(ctx.cwd), rules: rules(ctx.cwd), selfPaths: selfPaths(),
       agentIsUngated: (input) => agentIsUngated(input, { cwd: ctx.cwd, agentDir, parse: (source) => parseFrontmatter(source).frontmatter }),
-      tempRoots: temporaryRoots(), gitGuard: config.gitGuard,
+      tempRoots: temporaryRoots(),
     };
   }
 
@@ -274,6 +283,14 @@ export default function piAutoMode(pi: ExtensionAPI) {
             notify(ctx, `Could not save the rule: ${error instanceof Error ? error.message : String(error)}`, "warning");
           }
           log({ event: "rule saved", rules: saved });
+        };
+      } else if (facts.kind === "read") {
+        // Như Claude Code: cho đọc thư mục đó (thư mục chứa file) tới hết phiên.
+        const dirs = [...new Set(facts.paths.map((file) => (isDirectory(file) ? file : path.dirname(file))))];
+        const approved = (child ? rootFor(sessionId)?.sessionReadRoots() : undefined) ?? state.sessionReadRoots;
+        always = `Yes, allow reading from ${dirs.map((dir) => `${dir}${path.sep}`).join(", ")} during this session`;
+        remember = () => {
+          for (const dir of dirs) approved.add(dir);
         };
       } else if (WRITE_TOOL_NAMES.has(call.toolName) && currentMode() === "manual" && setModeFromPrompt) {
         always = "Yes, allow all edits during this session";
@@ -722,6 +739,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
         if (next !== "bypass") setMode(next);
       },
       sessionApprovals: () => state.sessionApprovals,
+      sessionReadRoots: () => state.sessionReadRoots,
       classifier: () => ({ model: config.model, stage2Reasoning: config.stage2Reasoning }),
     };
     registerRoot(handle);

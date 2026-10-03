@@ -2,7 +2,7 @@ import * as text from "./messages.ts";
 
 /**
  * Hộp hỏi của manual và acceptEdits (như mode default của Claude Code): lời gọi mà auto mode gửi bộ phân loại thì hỏi
- * người dùng, không gọi model nào. Luật deny, git guard, luật ask và lối đi nhanh vẫn do lớp chính sách quyết định.
+ * người dùng, không gọi model nào. Luật deny, luật ask và lối đi nhanh vẫn do lớp chính sách quyết định.
  * Lựa chọn như Claude Code: Yes; Yes, and don't ask again (luật theo tiền tố lệnh hoặc domain lưu cho project; sửa file
  * thì chuyển sang acceptEdits tới hết phiên; tool khác thì nhớ đúng lời gọi tới hết phiên); Yes, and switch to auto
  * mode; No; No, and tell Pi what to do differently.

@@ -1,15 +1,6 @@
 import type { PermissionMode } from "./config.ts";
-import type { GitGuardBlock } from "./git-guard.ts";
 
 /** Câu chữ gửi cho model và hiển thị cho người dùng (tiếng Anh, như Claude Code/Codex). */
-
-/** Lệnh bị git guard chặn: lý do, cách an toàn hơn, và cách người dùng tự chạy (`!` trong ô nhập của Pi). */
-export function gitGuardDenial(block: GitGuardBlock): string {
-  const note = block.substitution
-    ? " Note: that command sits inside backticks or $(...), which the shell runs. For literal text use single quotes, or write it to a file (for example gh pr create --body-file)."
-    : "";
-  return `BLOCKED by git guard: ${block.reason}. ${block.alternative} If the user really wants this, they can run it themselves in Pi's editor with !<command>.${note}`;
-}
 
 export function classifierDenial(rule: string | undefined, reason: string): string {
   const label = rule ? `[${rule}] ` : "";
@@ -68,7 +59,7 @@ export function modeInstructions(mode: PermissionMode): string {
     ].join(" ");
   }
   if (mode === "bypass") {
-    return "Bypass permissions mode is active: tool calls run without permission checks, except the user's deny and ask rules; the user is asked before recursive deletes outside the system temp directory. Take extra care with destructive, irreversible or external actions, and confirm with the user when their intent is unclear.";
+    return "Bypass permissions mode is active: tool calls run without permission checks, except the user's deny and ask rules; the user is asked before removing the root, home or working directory. Take extra care with destructive, irreversible or external actions, and confirm with the user when their intent is unclear.";
   }
   return [
     "Auto mode is active: an automatic permission classifier checks riskier tool calls before they run, and there are no approval prompts. Keep working without asking for routine confirmations.",
@@ -80,7 +71,7 @@ export function modeInstructions(mode: PermissionMode): string {
 export const BYPASS_WARNING = [
   "WARNING: Pi running in Bypass Permissions mode",
   "",
-  "In Bypass Permissions mode, Pi will not check or ask before running potentially dangerous commands. Only your deny and ask rules still apply, and Pi still asks before recursive deletes outside the temp directory.",
+  "In Bypass Permissions mode, Pi will not check or ask before running potentially dangerous commands. Only your deny and ask rules still apply, and Pi still asks before removing the root, home or working directory.",
   "Use it only in a sandboxed container or VM with restricted internet access that can easily be restored if damaged.",
   "By proceeding, you accept all responsibility for actions taken in Bypass Permissions mode.",
 ].join("\n");
