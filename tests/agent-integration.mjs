@@ -189,7 +189,7 @@ for(const role of ['researcher','worker','debugger','reviewer']) {
   await check(`native ${role} keeps its configured model/effort despite conflicting tool parameters`,async()=>{
     const id='configured-'+role;
     const [expectedModel,expectedEffort]=configured[role];
-    const opposite=role==='researcher'?'openai-codex/gpt-6-sol':'opencode-go/glm-5.3-flash';
+    const opposite=role==='researcher'?'openai-codex/gpt-6.1-sol':'opencode-go/glm-5.3-flash';
     const out=await run(id,invocation(id,{subagent_type:role,model:opposite,thinking:'off',inherit_context:true,isolated:true,max_turns:999}));
     assert.equal(out[0]?.isError,false,JSON.stringify(out));
     const seen=control.seen.filter(x=>x.key==='child_'+id);

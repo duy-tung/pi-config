@@ -45,7 +45,7 @@ test('Pi: Opus 5.5/high 1M mặc định, Codex Sol/Astra 872K và advisor paylo
       assert.equal(model.maxTokens, 128000);
       assert.equal(model.api, 'anthropic-messages');
       assert.ok(getSupportedThinkingLevels(model).includes(settings.defaultThinkingLevel));
-      for (const [id, level] of [['gpt-6-sol', 'max'], ['gpt-6-astra', 'high']]) {
+      for (const [id, level] of [['gpt-6.1-sol', 'max'], ['gpt-6-astra', 'high']]) {
         const codex = runtime.getModel('openai-codex', id);
         assert.equal(codex.contextWindow, 872000);
         assert.equal(settings.modelThinkingLevels[`openai-codex/${id}`], level);

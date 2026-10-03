@@ -39,7 +39,7 @@ pi-usage chưa hỗ trợ Anthropic nên pi-config có extension `claude-usage`:
 Muốn phiên chạy model khác (ví dụ researcher GLM) cũng tìm bằng Claude, thêm vào `web-search.json` rồi mở lại Pi. Tuỳ chọn này tắt mặc định vì tốn quota Claude:
 
 ```json
-"anthropicSearch": { "modelForNonClaude": "anthropic/claude-sonnet-5" }
+"anthropicSearch": { "modelForNonClaude": "anthropic/claude-sonnet-5-5" }
 ```
 
 Model phải là Claude chính thức và đã đăng nhập Anthropic; phiên đang dùng Claude vẫn tìm bằng chính model đó.

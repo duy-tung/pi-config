@@ -5,7 +5,7 @@ import * as ai from "@earendil-works/pi-ai";
 // (pi-usage thêm service_tier khi fast mode bật); request vẫn chỉ đi qua streamSimple giả.
 const codex = { api: "openai-codex-responses", baseUrl: "https://chatgpt.com/backend-api" };
 export default function (pi) {
-  for (const [provider,ids,wire] of [["config-test",["parent"]],["openai-codex",["gpt-6-sol","gpt-6-astra","gpt-6.1-sol"],codex],["opencode-go",["glm-5.3-flash"]]]) pi.registerProvider(provider, {
+  for (const [provider,ids,wire] of [["config-test",["parent"]],["openai-codex",["gpt-6.1-sol","gpt-6-astra","gpt-6-sol"],codex],["opencode-go",["glm-5.3-flash"]]]) pi.registerProvider(provider, {
     api: wire?.api ?? "anthropic-messages",
     baseUrl: wire?.baseUrl ?? "http://127.0.0.1:9",
     apiKey: "local-fixture-no-network",

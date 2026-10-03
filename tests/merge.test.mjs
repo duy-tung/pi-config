@@ -81,17 +81,17 @@ test('chưa có base: giữ mọi giá trị hiện có, thêm khóa và mục c
     extensions: ['/r/palette.ts', '/r/claude-usage', '/r/pi-auto-mode'], rewind: {retentionDays: 30},
   };
   const current = {
-    defaultModel: 'gpt-6-sol', compaction: {enabled: true},
+    defaultModel: 'gpt-6.1-sol', compaction: {enabled: true},
     permissions: {deny: ['Path(~/.ssh/*)', 'Bash(sudo *)', 'Path(~/mine)']},
     extensions: ['-/r/palette.ts', '/r/palette.ts', '/r/pi-auto-mode', '/home/u/x.ts'],
   };
   const result = merge(undefined, next, current);
   assert.deepEqual(result.value, {
-    defaultModel: 'gpt-6-sol', compaction: {enabled: true, keepRecentTokens: 20000},
+    defaultModel: 'gpt-6.1-sol', compaction: {enabled: true, keepRecentTokens: 20000},
     permissions: {deny: ['Path(~/.ssh/*)', 'Bash(sudo *)', 'Path(~/mine)', 'Path(~/.ssh)', 'Path(~/.ssh/**)'], ask: ['Edit(x)']},
     extensions: ['-/r/palette.ts', '/r/palette.ts', '/home/u/x.ts', '/r/claude-usage', '/r/pi-auto-mode'], rewind: {retentionDays: 30},
   });
-  assert.deepEqual(result.conflicts, [{path: ['defaultModel'], current: 'gpt-6-sol', next: 'claude-opus-5-5'}]);
+  assert.deepEqual(result.conflicts, [{path: ['defaultModel'], current: 'gpt-6.1-sol', next: 'claude-opus-5-5'}]);
   const plan = reconcileJson({next: json(next), current: json(current), settings: true});
   assert.equal(plan.additive, true);
   assert.deepEqual(JSON.parse(plan.content), result.value);
@@ -156,7 +156,7 @@ test('khóa "__proto__" trong JSON không đổi prototype của kết quả', (
   assert.equal({}.polluted, undefined);
 });
 
-const role = ({model = 'openai-codex/gpt-6-sol', thinking = 'max', tools = '"read, bash"', prompt = 'Prompt v1.'} = {}) =>
+const role = ({model = 'openai-codex/gpt-6.1-sol', thinking = 'max', tools = '"read, bash"', prompt = 'Prompt v1.'} = {}) =>
   `---\nname: worker\ndescription: Viết code.\nmodel: ${model}\nthinking: ${thinking}\ntools: ${tools}\n---\n\n${prompt}\n`;
 
 test('file role: sửa dòng model không giữ cả file; prompt và khóa khác của bản mới vẫn vào', () => {
@@ -168,7 +168,7 @@ test('file role: sửa dòng model không giữ cả file; prompt và khóa khá
   assert.deepEqual(plan.conflicts, []);
   assert.deepEqual(describeMerge({file: 'agents/worker.md', ...plan}), [
     'Đã gộp mặc định mới vào agents/worker.md, giữ phần bạn đã sửa:',
-    '  - model: "openai-codex/gpt-6-sol" → "anthropic/claude-opus-5-5"',
+    '  - model: "openai-codex/gpt-6.1-sol" → "anthropic/claude-opus-5-5"',
     '  - cập nhật phần prompt theo bản mới',
   ]);
   // Người dùng sửa prompt, bản mới cũng đổi prompt: giữ prompt của người dùng và báo; khóa khác vẫn gộp.

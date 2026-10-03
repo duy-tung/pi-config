@@ -42,7 +42,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       const settings = json(p.join(profile.agentDir, "settings.json"));
       assert.deepEqual([profile.runtime, settings.defaultProvider, settings.defaultModel, settings.defaultThinkingLevel, settings.theme], expected[name]);
       assert.deepEqual(settings.modelThinkingLevels, {
-        "anthropic/claude-opus-5-5": "high", "openai-codex/gpt-6-sol": "max",
+        "anthropic/claude-opus-5-5": "high", "openai-codex/gpt-6.1-sol": "max",
         "openai-codex/gpt-6-astra": "high", "opencode-go/glm-5.3-flash": "max",
       });
       assert.equal(settings.shellPath, options.shellPath);
@@ -60,11 +60,11 @@ for (const platform of ["darwin", "linux", "win32"]) {
       const providers = json(p.join(profile.agentDir, "models.json")).providers;
       assert.deepEqual(Object.keys(providers), ["openai-codex"], "Opus 5.5 dùng context 1M của catalog");
       assert.deepEqual(providers["openai-codex"].modelOverrides, { "gpt-6-sol": { contextWindow: 872000 }, "gpt-6.1-sol": { contextWindow: 872000 }, "gpt-6-astra": { contextWindow: 872000 } });
-      assert.deepEqual(settings.enabledModels, ["anthropic/claude-opus-5-5", "openai-codex/gpt-6-sol", "openai-codex/gpt-6-astra", "opencode-go/glm-5.3-flash"]);
+      assert.deepEqual(settings.enabledModels, ["anthropic/claude-opus-5-5", "openai-codex/gpt-6.1-sol", "openai-codex/gpt-6-astra", "opencode-go/glm-5.3-flash"]);
       if (name === "main") {
       const roles = {
-        researcher: ["opencode-go/glm-5.3-flash", "max"], worker: ["openai-codex/gpt-6-sol", "max"],
-        debugger: ["openai-codex/gpt-6-sol", "max"], reviewer: ["openai-codex/gpt-6-astra", "high"],
+        researcher: ["opencode-go/glm-5.3-flash", "max"], worker: ["openai-codex/gpt-6.1-sol", "max"],
+        debugger: ["openai-codex/gpt-6.1-sol", "max"], reviewer: ["openai-codex/gpt-6-astra", "high"],
       };
       for (const [role, [model, thinking]] of Object.entries(roles)) {
         const agent = read(p.join(profile.agentDir, "agents", `${role}.md`)).replaceAll("\r\n", "\n");
@@ -114,7 +114,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       // Xoá đệ quy do pi-auto-mode hỏi (bypass) hoặc phân loại (auto), không chặn cứng theo một cách viết cờ.
       assert.ok(!deny.some((rule) => rule.startsWith("Bash(rm ")));
       assert.equal(settings.permissions.defaultMode, "auto");
-      assert.equal(settings.autoMode.model, "anthropic/claude-sonnet-5");
+      assert.equal(settings.autoMode.model, "anthropic/claude-sonnet-5-5");
       // Giai đoạn 1 là Jev khi có key, model ghim phiên bản (ngưỡng trong code, chỉnh theo phiên bản).
       assert.deepEqual(settings.autoMode.jev, { model: "jev-1.13.0" });
       assert.ok(settings.extensions.filter((entry) => !entry.startsWith("-")).at(-1).endsWith("pi-auto-mode"), "pi-auto-mode phải nạp sau cùng");
@@ -252,19 +252,19 @@ test("model-roles: preset và ghi đè đi tới mọi file gốc (settings, fil
   const read = (name) => files.find((entry) => entry.path === path.posix.join(agentDir, name)).content;
   const settings = JSON.parse(read("settings.json"));
   assert.deepEqual([settings.defaultProvider, settings.defaultModel, settings.defaultThinkingLevel], ["anthropic", "claude-opus-5-5", "high"]);
-  assert.deepEqual(settings.enabledModels, ["anthropic/claude-opus-5-5", "anthropic/claude-fable-5-1", "anthropic/claude-sonnet-5"]);
-  assert.deepEqual(settings.modelThinkingLevels, { "anthropic/claude-opus-5-5": "high", "anthropic/claude-fable-5-1": "high", "anthropic/claude-sonnet-5": "high" });
-  assert.deepEqual([settings.autoMode.model, settings.autoMode.stage2Reasoning, settings.autoMode.jev.model], ["anthropic/claude-sonnet-5", "low", "jev-1.13.0"]);
+  assert.deepEqual(settings.enabledModels, ["anthropic/claude-opus-5-5", "anthropic/claude-fable-5-1", "anthropic/claude-sonnet-5-5"]);
+  assert.deepEqual(settings.modelThinkingLevels, { "anthropic/claude-opus-5-5": "high", "anthropic/claude-fable-5-1": "high", "anthropic/claude-sonnet-5-5": "high" });
+  assert.deepEqual([settings.autoMode.model, settings.autoMode.stage2Reasoning, settings.autoMode.jev.model], ["anthropic/claude-sonnet-5-5", "low", "jev-1.13.0"]);
   const frontmatter = (role) => read(`agents/${role}.md`).split("\n---\n")[0];
   assert.match(frontmatter("worker"), /^model: anthropic\/claude-opus-5-5\nthinking: max$/mu);
   assert.match(frontmatter("reviewer"), /^model: anthropic\/claude-fable-5-1\nthinking: high$/mu);
-  assert.match(frontmatter("researcher"), /^model: anthropic\/claude-sonnet-5\nthinking: high$/mu);
+  assert.match(frontmatter("researcher"), /^model: anthropic\/claude-sonnet-5-5\nthinking: high$/mu);
   const advisor = JSON.parse(read("advisor.json"));
   assert.deepEqual([advisor.executor, advisor.executorEffort, advisor.advisor, advisor.advisorEffort, advisor.alwaysOn],
     ["anthropic/claude-opus-5-5", "high", "anthropic/claude-fable-5-1", "high", true]);
   // pi-goal-x chỉ nhận tới xhigh.
   const goal = JSON.parse(read("pi-goal-x-settings.json"));
-  assert.deepEqual([goal.provider, goal.model, goal.thinkingLevel, goal.maxAutonomousRuns], ["anthropic", "claude-sonnet-5", "high", 10]);
+  assert.deepEqual([goal.provider, goal.model, goal.thinkingLevel, goal.maxAutonomousRuns], ["anthropic", "claude-sonnet-5-5", "high", 10]);
   assert.deepEqual(goal.oracle, { enabled: true, provider: "anthropic", model: "claude-fable-5-1", thinkingLevel: "xhigh" });
 });
 
@@ -300,23 +300,23 @@ test("/models dựng mặc định mới từ base của preset khác: giống h
 test("ép giá trị của vai trong file gốc người dùng đã đổi: chỉ vai được nêu, bỏ khóa khiến vai dùng giá trị khác", () => {
   const presets = loadPresets(path.join(repoDir, "assets", "configs", "model-presets.json"));
   const models = nativeValues(resolveModelRoles(presets, { preset: "claude" }).roles);
-  const settings = JSON.stringify({ theme: "rose-pine-dawn", defaultProvider: "openai-codex", defaultModel: "gpt-6-sol", defaultThinkingLevel: "max",
-    enabledModels: ["user/model"], autoMode: { model: "openai-codex/gpt-6-sol", stage2Reasoning: "high", log: true } });
+  const settings = JSON.stringify({ theme: "rose-pine-dawn", defaultProvider: "openai-codex", defaultModel: "gpt-6.1-sol", defaultThinkingLevel: "max",
+    enabledModels: ["user/model"], autoMode: { model: "openai-codex/gpt-6.1-sol", stage2Reasoning: "high", log: true } });
   const onlyMain = JSON.parse(forceNativeModels("settings", settings, models, ["main"]));
   assert.deepEqual([onlyMain.theme, onlyMain.defaultProvider, onlyMain.defaultModel, onlyMain.defaultThinkingLevel], ["rose-pine-dawn", "anthropic", "claude-opus-5-5", "high"]);
   // Danh sách suy ra (enabledModels) và vai không nêu giữ nguyên; bước gộp ba chiều lo phần đó.
-  assert.deepEqual([onlyMain.enabledModels, onlyMain.autoMode.model], [["user/model"], "openai-codex/gpt-6-sol"]);
+  assert.deepEqual([onlyMain.enabledModels, onlyMain.autoMode.model], [["user/model"], "openai-codex/gpt-6.1-sol"]);
   const autoMode = JSON.parse(forceNativeModels("settings", settings, models, ["autoMode"])).autoMode;
-  assert.deepEqual(autoMode, { model: "anthropic/claude-sonnet-5", stage2Reasoning: "low", log: true });
+  assert.deepEqual(autoMode, { model: "anthropic/claude-sonnet-5-5", stage2Reasoning: "low", log: true });
   assert.equal(forceNativeModels("settings", settings, models, ["worker"]), settings);
   const goal = JSON.stringify({ provider: "openai-codex", model: "gpt-6-astra", thinking_level: "low", maxAutonomousRuns: 3, oracle: { enabled: true, thinking_level: "low" } });
   assert.deepEqual(JSON.parse(forceNativeModels("goal", goal, models, ["auditor", "oracle"])), {
-    provider: "anthropic", model: "claude-sonnet-5", maxAutonomousRuns: 3, thinkingLevel: "high",
+    provider: "anthropic", model: "claude-sonnet-5-5", maxAutonomousRuns: 3, thinkingLevel: "high",
     oracle: { enabled: true, provider: "anthropic", model: "claude-fable-5-1", thinkingLevel: "high" },
   });
-  const advisor = JSON.parse(forceNativeModels("advisor", JSON.stringify({ executor: "anthropic/claude-sonnet-5", executorEffort: "low", advisor: "x/y", alwaysOn: true }), models, ["main"]));
+  const advisor = JSON.parse(forceNativeModels("advisor", JSON.stringify({ executor: "anthropic/claude-sonnet-5-5", executorEffort: "low", advisor: "x/y", alwaysOn: true }), models, ["main"]));
   assert.deepEqual(advisor, { executor: "anthropic/claude-opus-5-5", executorEffort: "high", advisor: "x/y", alwaysOn: true });
-  const role = "---\nname: worker\ntools: read\nmodel: openai-codex/gpt-6-sol\n---\n\nPrompt.\n";
+  const role = "---\nname: worker\ntools: read\nmodel: openai-codex/gpt-6.1-sol\n---\n\nPrompt.\n";
   assert.equal(forceNativeModels("worker", role, models, ["worker"]), "---\nname: worker\ntools: read\nmodel: anthropic/claude-opus-5-5\nthinking: high\n---\n\nPrompt.\n");
   assert.equal(forceNativeModels("worker", role, models, ["main"]), role);
   // Không đọc được thì trả nguyên văn: bước gộp giữ file và báo lại.

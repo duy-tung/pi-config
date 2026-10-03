@@ -29,13 +29,13 @@ Preset có sẵn nằm ở `assets/configs/model-presets.json` và cập nhật 
 | Vai | `default` | `claude` |
 |---|---|---|
 | `main` | Claude Opus 5.5 / high | Claude Opus 5.5 / high |
-| `researcher` | GLM-5.3-Flash / max | Claude Sonnet 5 / high |
-| `worker`, `debugger` | GPT-6 Sol / max | Claude Opus 5.5 / high |
+| `researcher` | GLM-5.3-Flash / max | Claude Sonnet 5.5 / high |
+| `worker`, `debugger` | GPT-6.1 Sol / max | Claude Opus 5.5 / high |
 | `reviewer` | GPT-6 Astra / high | Claude Fable 5.1 / high |
 | `advisor` | GPT-6 Astra / high | Claude Fable 5.1 / high |
-| `auditor` | GPT-6 Astra / high | Claude Sonnet 5 / high |
+| `auditor` | GPT-6 Astra / high | Claude Sonnet 5.5 / high |
 | `oracle` | GPT-6 Astra / high | Claude Fable 5.1 / high |
-| `autoMode` | Claude Sonnet 5 / low | Claude Sonnet 5 / low |
+| `autoMode` | Claude Sonnet 5.5 / low | Claude Sonnet 5.5 / low |
 
 - **`default`:** cần đăng nhập Claude, Codex và OpenCode Go.
 - **`claude`:** chỉ cần Claude. Reviewer, advisor và Oracle dùng một model khác với model viết code.
@@ -76,7 +76,7 @@ Installer tạo file này ở lần cài đầu với `{"preset": "default", "ro
   "preset": "claude",
   "roles": {
     "worker": { "thinking": "max" },
-    "researcher": { "model": "openai-codex/gpt-6-sol", "thinking": "low" }
+    "researcher": { "model": "openai-codex/gpt-6.1-sol", "thinking": "low" }
   }
 }
 ```
