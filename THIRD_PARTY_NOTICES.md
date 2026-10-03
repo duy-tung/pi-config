@@ -31,7 +31,7 @@ Mười bản vá runtime: footer tối giản, quota Codex/Claude cạnh model,
 
 Các manifest `manifests/current`, `manifests/firecrawl` liệt kê phiên bản chính xác; `package-lock.json` ghi integrity và giấy phép dependency khi npm cung cấp metadata. Installer tải package trực tiếp từ registry npm, không tái cấp phép package của bên thứ ba. Override Axios 1.20.0 chỉ thuộc runtime Firecrawl CLI.
 
-Các skill của [firecrawl/cli](https://github.com/firecrawl/cli) (ISC theo package manifest) và [firecrawl/firecrawl-workflows](https://github.com/firecrawl/firecrawl-workflows) (ISC) được tải từ commit ghim cùng repository và thông tin giấy phép gốc.
+Các skill của [firecrawl/cli](https://github.com/firecrawl/cli) (ISC theo package manifest) được tải từ commit ghim cùng repository và thông tin giấy phép gốc.
 
 ## Git guard
 
