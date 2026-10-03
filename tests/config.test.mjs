@@ -47,10 +47,10 @@ for (const platform of ["darwin", "linux", "win32"]) {
       });
       assert.equal(settings.shellPath, options.shellPath);
       // Chỉ skill của Firecrawl; pi-config không cài skill quy trình.
-      assert.deepEqual(settings.skills, ["firecrawl-cli-source", "firecrawl-workflows"].map((name) => p.join(options.root, "sources", name, "skills")));
+      assert.deepEqual(settings.skills, [p.join(options.root, "sources", "firecrawl-cli-source", "skills")]);
       assert.ok(!settings.skills.some((entry) => entry.includes("mattpocock")));
       assert.deepEqual(settings.extensions, [...["rose-pine-palette.ts", "pi-rewind", "claude-usage", "model-roles", "pi-auto-mode"]
-        .map((entry) => p.join(options.root, "assets", "extensions", entry)), "-builtin:mcp", "-builtin:codemode", "-builtin:tool-search"]);
+        .map((entry) => p.join(options.root, "assets", "extensions", entry)), "-builtin:mcp", "-builtin:codemode", "-builtin:tool-search", "-builtin:llama.cpp"]);
       assert.equal(settings.doubleEscapeAction, "none");
       assert.deepEqual(settings.rewind, { storageDir: p.join(options.root, "state", "rewind") }, "retentionDays theo mặc định 30 ngày của pi-rewind");
       assert.equal(settings.workspaceHistory, undefined);
@@ -59,7 +59,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.ok(settings.packages.every((entry) => (typeof entry === "string" ? entry : entry.source).startsWith(p.join(options.root, "runtimes", profile.runtime, "node_modules"))));
       const providers = json(p.join(profile.agentDir, "models.json")).providers;
       assert.deepEqual(Object.keys(providers), ["openai-codex"], "Opus 5.5 dùng context 1M của catalog");
-      assert.deepEqual(providers["openai-codex"].modelOverrides, { "gpt-6-sol": { contextWindow: 872000 }, "gpt-6-astra": { contextWindow: 872000 } });
+      assert.deepEqual(providers["openai-codex"].modelOverrides, { "gpt-6-sol": { contextWindow: 872000 }, "gpt-6.1-sol": { contextWindow: 872000 }, "gpt-6-astra": { contextWindow: 872000 } });
       assert.deepEqual(settings.enabledModels, ["anthropic/claude-opus-5-5", "openai-codex/gpt-6-sol", "openai-codex/gpt-6-astra", "opencode-go/glm-5.3-flash"]);
       if (name === "main") {
       const roles = {
@@ -121,6 +121,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.ok(!settings.packages.some((entry) => String(entry?.source ?? entry).includes("pi-permission-system")));
       assert.ok(!files.some((file) => file.path.includes("pi-permission-system")));
       assert.deepEqual(json(p.join(profile.agentDir, "keybindings.json"))["app.thinking.cycle"], ["alt+t"]);
+      assert.deepEqual(json(p.join(profile.agentDir, "keybindings.json"))["tui.altScreen.search"], ["alt+s"]);
       // Alt+Enter từ terminal của Orca tới Pi thành Shift+Enter, nên Ctrl+Enter là phím follow-up thứ hai.
       const windowsKeys = platform === "win32" || (platform === "linux" && Boolean(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP));
       assert.deepEqual(json(p.join(profile.agentDir, "keybindings.json"))["app.message.followUp"], [windowsKeys ? "ctrl+q" : "alt+enter", "ctrl+enter"]);

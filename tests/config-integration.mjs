@@ -230,7 +230,7 @@ await check("single session exposes slash commands and only one model delegation
   assert.ok(!loader.getExtensions().extensions.some(extension => extension.path?.includes("anthropic-attribution")));
   // Không dùng MCP: MCP, codemode và tool_search dựng sẵn bị tắt, không có /mcp hay tool MCP nào.
   const loaded = loader.getExtensions().extensions.map(extension => extension.path);
-  for (const name of ["builtin:mcp", "builtin:codemode", "builtin:tool-search"]) assert.ok(!loaded.includes(name), `${name} must be disabled`);
+  for (const name of ["builtin:mcp", "builtin:codemode", "builtin:tool-search", "builtin:llama.cpp"]) assert.ok(!loaded.includes(name), `${name} must be disabled`);
   assert.ok(!session.extensionRunner.getRegisteredCommands().some(command => command.name === "mcp"));
   assert.ok(!tools.some(name => name === "mcp" || name.startsWith("mcp__")));
   assert.ok(!session.getActiveToolNames().includes("codemode"));
