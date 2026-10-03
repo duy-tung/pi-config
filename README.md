@@ -43,7 +43,7 @@ Chạy `pi` để mở Claude Opus 5.5/high với toàn bộ công cụ. Các wo
 | Shell job nền | `/bg --name "Dev server" npm run dev`, `/jobs`, `/logs`, `/kill` |
 | Ý kiến cố vấn | `/advisor-manual`, `/advisor-settings`, `/advisor-off`, `/advisor` |
 | Rewind code/hội thoại | `Esc Esc`, `/rewind` (`/checkpoint`, `/undo`), `/redo`; `/clear` mở phiên mới |
-| Permission | `Shift+Tab` (manual → auto → bypass), `/permissions`, `/auto-mode` |
+| Permission | `Shift+Tab` (manual → auto → bypass), `/permissions` (mode, model phân loại, lệnh bị chặn, luật, `test <lệnh>`) |
 | Model và reasoning | `/model`, `/thinking`, `Alt+T` đổi mức thinking |
 | Công cụ và giao diện | `/agents`, `/usage`, `/claude-usage`, `/open-tui` |
 
@@ -67,7 +67,7 @@ Permission (`pi-auto-mode`, extension của repo) có ba mode như Claude Code. 
 
 **Manual** quyết định như auto nhưng hỏi bạn (Allow once / Allow for this session / Deny) thay cho bộ phân loại, không gọi model nào; không có UI thì chặn.
 
-**Bypass** chạy mọi thứ trừ luật deny; lệnh không kiểm được với deny đường dẫn, `rm` vào đường dẫn quan trọng, lệnh xoá đệ quy và lệnh rủi ro (cài cơ chế tự chạy, tắt kiểm TLS, ghi đường dẫn hệ thống) thì hỏi bạn trước. `Shift+Tab` đổi mode, `/permissions` xem và duyệt lại lệnh bị chặn, `/auto-mode` xem trạng thái và chi phí Jev. Chi tiết: [docs/auto-mode.md](docs/auto-mode.md).
+**Bypass** chạy mọi thứ trừ luật deny; lệnh không kiểm được với deny đường dẫn, `rm` vào đường dẫn quan trọng, lệnh xoá đệ quy và lệnh rủi ro (cài cơ chế tự chạy, tắt kiểm TLS, ghi đường dẫn hệ thống) thì hỏi bạn trước. `Shift+Tab` đổi mode. `/permissions` là menu duy nhất: đổi mode, model phân loại, xem trạng thái và chi phí Jev, duyệt lại lệnh bị chặn, xem luật và chạy thử một lệnh. Chi tiết: [docs/auto-mode.md](docs/auto-mode.md).
 
 **Git guard** chặn tất định (không qua bộ phân loại, ở mọi mode, cả agent con): force-push (trừ `--force-with-lease`), push thẳng lên nhánh bảo vệ (`main`, `master`, `release/*`…), `reset --hard`, `clean -f`, `branch -D`, bỏ qua hook (`--no-verify`, `HUSKY=0`…), viết lại lịch sử và `rm -r` trên `/`, `~`, `.`, `.git`. Cần thật thì bạn tự chạy bằng `!<lệnh>` trong editor. Cấu hình: [docs/auto-mode.md](docs/auto-mode.md#git-guard).
 

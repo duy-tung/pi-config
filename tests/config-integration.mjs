@@ -220,8 +220,10 @@ async function check(name, fn) {
 }
 await check("single session exposes slash commands and only one model delegation system", async () => {
   const commands = session.extensionRunner.getRegisteredCommands().map(command => command.name);
-  for (const name of ["bg", "jobs", "logs", "kill", "advisor", "advisor-off", "rewind", "checkpoint", "undo", "redo", "clear", "permissions", "auto-mode", "claude-usage", "models"])
+  for (const name of ["bg", "jobs", "logs", "kill", "advisor", "advisor-off", "rewind", "checkpoint", "undo", "redo", "clear", "permissions", "claude-usage", "models"])
     assert.ok(commands.includes(name), `Missing /${name}`);
+  // /permissions là menu duy nhất của cổng permission (gộp /auto-mode cũ).
+  assert.ok(!commands.includes("auto-mode"), "/auto-mode đã gộp vào /permissions");
   assert.equal(new Set(commands).size, commands.length);
   const tools = session.getAllTools().map(tool => tool.name);
   assert.ok(tools.includes("Agent"));

@@ -12,8 +12,24 @@
 
 - `Shift+Tab` đổi mode theo vòng manual → auto → bypass → manual. Lần đầu vào bypass hiện cảnh báo cần đồng ý; lựa chọn được nhớ, từ chối thì sang manual. Bypass bị bỏ qua (vòng đi thẳng sang manual) khi chạy bằng root (trừ `IS_SANDBOX=1`) hoặc khi `permissions.disableBypassPermissionsMode` là `"disable"`.
 - Mức thinking chuyển sang `Alt+T` (như Option+T của Claude Code; trên macOS terminal cần gửi Option như Alt — WezTerm mặc định với Option trái) hoặc `/thinking`.
-- `/permissions`: mode hiện tại, danh sách lệnh vừa bị chặn (chọn một lệnh để duyệt cho **một lần thử lại**, Pi được báo "Permission granted for: …"), xem luật.
-- `/auto-mode`: trạng thái, gồm Jev (nguồn key, số lần gọi, token và chi phí trong phiên). `/auto-mode defaults` xem bộ luật mặc định. `/auto-mode test <lệnh bash>` chạy thử quyết định cho một lệnh (có gọi model khi cần) và in xác suất của Jev.
+- `/permissions` là menu duy nhất của cổng permission (thay `/auto-mode` cũ):
+
+  ```
+  Permissions · ⏵⏵ auto mode on
+  ├─ Mode: auto — change…        chọn manual / auto / bypass (vào bypass vẫn qua cảnh báo)
+  ├─ Classifier: <model> · <thinking>…
+  │    tiêu đề: mode, model phân loại, timeout, Jev (nguồn key, số lần gọi, token, chi phí), số lần chặn, số luật
+  │    └─ Change classifier model…   model đã đăng nhập → mức thinking; lưu settings.json, áp ngay
+  ├─ Recently denied (N)          chọn một lệnh để duyệt cho một lần thử lại
+  ├─ Rules…
+  │    ├─ Your rules: allow / ask / deny (chỉ xem)
+  │    └─ Built-in classifier rules (bộ luật mặc định của auto mode)
+  └─ Test a command…              chạy thử quyết định cho một lệnh bash
+  ```
+
+  - **Recently denied**: lệnh bị bộ phân loại, luật hoặc chính bạn (manual) chặn. Chọn một lệnh để duyệt cho **một lần thử lại** đúng lệnh đó; Pi được báo "Permission granted for: …".
+  - **Test a command** hoặc `/permissions test <lệnh bash>`: chạy thử quyết định. Chỉ ở auto mode mới gọi bộ phân loại (có thể tốn token) và in xác suất của Jev; manual và bypass chỉ báo lệnh sẽ được hỏi hay chạy.
+  - Không có UI, `/permissions` gửi trạng thái như mục Classifier qua thông báo của extension, như `/auto-mode` cũ (print/JSON của Pi không hiện thông báo).
 - Key Jev: biến môi trường `TYPESAFE_API_KEY`.
 - Khởi động: `pi --permission-mode manual|auto|bypass` hoặc `pi --dangerously-skip-permissions`; mặc định lấy từ `permissions.defaultMode` (installer đặt `auto`). Nhận cả tên của Claude Code: `default` là manual, `bypassPermissions` là bypass; giá trị khác là `auto`. Mode bypass không bao giờ được khôi phục từ phiên cũ hay settings của project.
 
@@ -155,17 +171,17 @@ LLM mặc định là **Claude Sonnet 5.5** (`anthropic/claude-sonnet-5-5`):
   - Đây là cách duy nhất tài liệu TypeSafe và SDK chính thức mô tả, và là cách phổ biến nhất trong các package Jev. Cùng biến này được pi-advisor-flow (bộ lọc Jev, mặc định tắt) đọc.
   - Đánh đổi: mọi lệnh agent chạy đều thấy biến môi trường, và key nằm dạng chữ trong file profile. Ở auto mode, lệnh in biến (`env`, `printenv`, `export -p`) phải qua bộ phân loại, và luật Secret Exposure chặn làm lộ key; ở bypass không có lớp nào chặn.
   - Key chỉ được gửi tới endpoint của TypeSafe (`https://api.typesafe.ai/v1/systemone`); không đổi được provider.
-  - Kiểm tra: `pi-doctor` (in nguồn key, không in key), `/auto-mode`.
+  - Kiểm tra: `pi-doctor` (in nguồn key, không in key), `/permissions` → Classifier.
 - **Dữ liệu gửi cho TypeSafe**: giai đoạn 1 gửi môi trường và hành động; probe gửi nội dung kết quả tool. Secret dạng phổ biến được che trước khi gửi: token, API key, private key, mật khẩu trong URL, header `Authorization`, biến `*_TOKEN=`/`*_KEY=`.
   - Theo tài liệu của TypeSafe, họ không train trên dữ liệu khách hàng; việc lưu trữ theo Data Processing Agreement, và zero data retention chỉ có ở gói enterprise.
   - Không muốn gửi thì đặt `"jev": false`.
 - **Chi phí** jev-1.13.0: $0,042 cho 1 triệu token đầu vào, đầu ra miễn phí. Một lần sàng lọc khoảng 2.400 token (≈ $0,0001). Probe khoảng 600 token cộng nội dung, tối đa khoảng 10.000 token. Đo từ một máy chủ ở Mỹ: p50 khoảng 120 ms, p90 khoảng 160–250 ms.
-  - `/auto-mode` hiện số lần gọi, token và chi phí của phiên chính (không gồm subagent).
+  - `/permissions` → Classifier hiện số lần gọi, token và chi phí của phiên chính (không gồm subagent).
   - Giới hạn hiện tại của TypeSafe là 1.200 request/phút và có thể đổi.
 
 ### Khi bị chặn
 
-- Agent nhận lý do (`[Tên luật] câu lý do`) và chỉ dẫn: làm tiếp phần khác, chọn cách an toàn hơn, không lách bằng tool/script/lệnh mã hóa/subagent khác; nếu thật sự cần thì dừng và nói rõ cần chạy gì. Người dùng thấy thông báo `bash denied by auto mode · … · /permissions`.
+- Agent nhận lý do (`[Tên luật] câu lý do`) và chỉ dẫn: làm tiếp phần khác, chọn cách an toàn hơn, không lách bằng tool/script/lệnh mã hóa/subagent khác; nếu thật sự cần thì dừng và nói rõ cần chạy gì. Người dùng thấy thông báo `bash denied by auto mode · … · /permissions`, và lệnh vào `/permissions` → Recently denied.
 - **3 lần chặn liên tiếp hoặc 20 lần trong phiên** → hỏi người dùng có cho chạy lệnh đó không (như Claude Code). Không có UI (print/JSON) thì chặn và agent chạy tiếp.
 
 ### Subagent
@@ -209,7 +225,7 @@ Spawn `Agent` luôn qua bộ phân loại (xét nội dung task); ở manual th�
 
 - Luật theo cú pháp Claude Code: `Tool` hoặc `Tool(specifier)`. `Bash(git push *)` khớp từng lệnh con (` *` ở cuối cũng khớp khi không có đối số); luật bắt đầu bằng `*` còn khớp cả chuỗi lệnh gốc. `Read(...)`/`Edit(...)`/`Write(...)` cho đường dẫn: `~/…` theo HOME, `/…` hoặc `//…` tuyệt đối, không có `/` thì so với tên file, còn lại tương đối với thư mục làm việc; `**` khớp nhiều cấp. `Path(...)` là cách riêng của pi-config cho cả đọc và ghi. Deny bắt đầu bằng `!` là ngoại lệ. `WebFetch(domain:host)` cho `fetch_content`; MCP dùng tên `mcp__server__tool`.
 - Với `fetch_content`, xét mọi URL trong cả `url` và `urls`: deny/ask chỉ cần khớp một URL; auto chỉ dùng luật allow khi mọi URL đều được phủ. Ngoại lệ `!` áp dụng riêng từng URL.
-- Các ô `environment`, `soft_deny`, `hard_deny`, `allow` của `autoMode` là câu chữ đưa vào prompt; `"$defaults"` chèn bộ mặc định (xem `/auto-mode defaults`), bỏ nó đi là thay hẳn. Mỗi luật dạng `Tên: mô tả`.
+- Các ô `environment`, `soft_deny`, `hard_deny`, `allow` của `autoMode` là câu chữ đưa vào prompt; `"$defaults"` chèn bộ mặc định (xem `/permissions` → Rules → Built-in classifier rules), bỏ nó đi là thay hẳn. Mỗi luật dạng `Tên: mô tả`.
 - `model` không dùng được thì dùng model của phiên và báo một lần: chưa đăng nhập hoặc không có trong catalog (ngay từ đầu), hay hết quota, rate limit, model bị từ chối (lúc chạy; chuyển luôn tới hết phiên như Claude Code). Model của phiên cũng lỗi thì chặn.
 - `log: true` (hoặc `PI_AUTO_MODE_LOG=1`) ghi quyết định vào `<stateDir>/decisions.jsonl` (tên tool, cách quyết định, luật, lý do và điểm của Jev; không ghi input của tool). `PI_AUTO_MODE_DISABLE=1` tắt extension trong một lần chạy.
 - Installer đặt luật deny cho file bí mật (`.env`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube/config`, `~/.netrc`, `~/.git-credentials`, token của `gh`/docker, `id_rsa*`, `*.pem`, auth của Pi/Claude/Codex, credential Firecrawl, backups), `sudo` và helper khóa Firecrawl. Cài lại giữ luật deny bạn đã thêm và thêm luật mới của installer, kể cả khi `settings.json` đã được Pi hoặc bạn sửa.

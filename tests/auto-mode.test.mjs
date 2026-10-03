@@ -6,7 +6,8 @@ import path from "node:path";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
 import { classify, classifyWithFallback } from "../assets/extensions/pi-auto-mode/lib/classifier.ts";
-import { loadConfig, MODES, nextMode, parseGitGuard, parseMode, spliceDefaults } from "../assets/extensions/pi-auto-mode/lib/config.ts";
+import { parsePermissionsArgs, permissionsCompletions, TEST_USAGE } from "../assets/extensions/pi-auto-mode/lib/command.ts";
+import { loadConfig, MODES, nextMode, parseGitGuard, parseMode, saveClassifier, spliceDefaults, withClassifier } from "../assets/extensions/pi-auto-mode/lib/config.ts";
 import { answerOf, MANUAL_CHOICES, manualApproval, manualTitle } from "../assets/extensions/pi-auto-mode/lib/manual.ts";
 import { MANUAL_DECLINED, MANUAL_NO_APPROVER, modeInstructions } from "../assets/extensions/pi-auto-mode/lib/messages.ts";
 import { criticalPathReason, protectedReason, resolveShellPath } from "../assets/extensions/pi-auto-mode/lib/paths.ts";
@@ -953,6 +954,66 @@ test("manual: Allow once, Allow for this session (cùng khóa lời gọi), Deny
   assert.equal(asked.length, 4);
   assert.match(MANUAL_NO_APPROVER, /no one can answer/u);
   assert.match(MANUAL_DECLINED, /declined/u);
+});
+
+test("/permissions: tham số test <lệnh> và gợi ý tham số", () => {
+  assert.deepEqual(parsePermissionsArgs(""), { kind: "menu" });
+  assert.deepEqual(parsePermissionsArgs("  "), { kind: "menu" });
+  assert.deepEqual(parsePermissionsArgs("test git push --force origin main"), { kind: "test", command: "git push --force origin main" });
+  assert.deepEqual(parsePermissionsArgs(" test   echo 'a  b' | wc -c "), { kind: "test", command: "echo 'a  b' | wc -c" });
+  assert.deepEqual(parsePermissionsArgs("test"), { kind: "usage", message: TEST_USAGE });
+  assert.deepEqual(parsePermissionsArgs("test   "), { kind: "usage", message: TEST_USAGE });
+  assert.equal(parsePermissionsArgs("status").kind, "usage");
+  assert.equal(parsePermissionsArgs("testing").kind, "usage");
+  assert.deepEqual(permissionsCompletions("").map((item) => item.value), ["test "]);
+  assert.deepEqual(permissionsCompletions("te").map((item) => item.value), ["test "]);
+  assert.deepEqual(permissionsCompletions("x"), []);
+  assert.deepEqual(permissionsCompletions("test ls"), []);
+});
+
+test("model phân loại: chỉ đổi autoMode.model/stage2Reasoning trong settings.json, giữ phần còn lại và quyền file", () => {
+  const original = `${JSON.stringify({ theme: "rose-pine-moon", autoMode: { model: "anthropic/claude-sonnet-5-5", stage2Reasoning: "low", jev: { model: "jev-1.13.0" }, stateDir: "/s" }, permissions: { deny: ["x"] } }, null, 2)}\n`;
+  const next = withClassifier(original, "openai-codex/gpt-6-astra", "high");
+  assert.deepEqual(JSON.parse(next), {
+    theme: "rose-pine-moon", autoMode: { model: "openai-codex/gpt-6-astra", stage2Reasoning: "high", jev: { model: "jev-1.13.0" }, stateDir: "/s" },
+    permissions: { deny: ["x"] },
+  });
+  assert.deepEqual(Object.keys(JSON.parse(next)), ["theme", "autoMode", "permissions"], "giữ thứ tự khóa");
+  assert.ok(next.endsWith("}\n"));
+  // Pi ghi settings.json không có newline cuối; BOM được giữ; chưa có autoMode thì thêm.
+  assert.equal(withClassifier('{"theme":"x"}', "a/b", "low"), '{\n  "theme": "x",\n  "autoMode": {\n    "model": "a/b",\n    "stage2Reasoning": "low"\n  }\n}');
+  assert.ok(withClassifier('\uFEFF{"autoMode":[]}\n', "a/b", "off").startsWith('\uFEFF{\n  "autoMode": {\n    "model": "a/b"'));
+  assert.equal(JSON.parse(withClassifier("", "a/b", "low")).autoMode.model, "a/b");
+  for (const broken of ["{ hỏng", "[]", "3"]) assert.throws(() => withClassifier(broken, "a/b", "low"));
+
+  const ws = workspace();
+  try {
+    const file = path.join(ws.dir, "agent", "settings.json");
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, original, { mode: 0o640 });
+    fs.chmodSync(file, 0o640);
+    // Khóa bỏ lại từ một process đã chết (cũ hơn 10 giây) được lấy lại; ghi xong thì nhả khóa.
+    fs.mkdirSync(`${file}.lock`);
+    const old = new Date(Date.now() - 60_000);
+    fs.utimesSync(`${file}.lock`, old, old);
+    saveClassifier(file, "anthropic/claude-opus-5-5", "medium");
+    assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")), JSON.parse(withClassifier(original, "anthropic/claude-opus-5-5", "medium")));
+    assert.equal(loadConfig(path.dirname(file), {}).model, "anthropic/claude-opus-5-5");
+    assert.equal(loadConfig(path.dirname(file), {}).stage2Reasoning, "medium");
+    if (process.platform !== "win32") assert.equal(fs.statSync(file).mode & 0o777, 0o640);
+    assert.deepEqual(fs.readdirSync(path.dirname(file)), ["settings.json"], "không còn khóa hay file tạm");
+    // File hỏng: không ghi đè.
+    fs.writeFileSync(file, "{ hỏng");
+    assert.throws(() => saveClassifier(file, "a/b", "low"));
+    assert.equal(fs.readFileSync(file, "utf8"), "{ hỏng");
+    assert.deepEqual(fs.readdirSync(path.dirname(file)), ["settings.json"]);
+    // Chưa có file: tạo với quyền 0600.
+    fs.rmSync(file);
+    saveClassifier(file, "a/b", "low");
+    if (process.platform !== "win32") assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  } finally {
+    ws.cleanup();
+  }
 });
 
 test("subagent dùng mode của phiên gốc qua registry toàn process", () => {

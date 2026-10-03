@@ -150,7 +150,7 @@ test('/models trong phiên Pi thật: menu đổi thinking, model, bỏ ghi đè
     await menu(/^autoMode /u, /^Đổi model/u, /^high$/u);
     assert.match(last().message, /^Có hiệu lực: autoMode ở lần phân loại kế tiếp của auto mode\.$/mu);
     await runtime.session.prompt('/permissions');
-    assert.match(titles.at(-1), /Classifier: .*anthropic\/claude-opus-5-5/u);
+    assert.ok(menus.at(-1).some(option => /^Classifier: .*anthropic\/claude-opus-5-5 · high…$/u.test(option)), menus.at(-1).join(' | '));
 
     // Đổi thinking nhưng không xác nhận: chỉ xem trước, không ghi gì; tham số gõ kèm /models bị bỏ qua (huỷ menu).
     const before = snapshot(f.root, f.agentDir);
