@@ -2,7 +2,7 @@
 
 Pi dùng tool `Agent` của `@tintinweb/pi-subagents` 0.19.0. Parent Claude Opus 5.5/high phân tích yêu cầu, chốt thiết kế, chia việc và nghiệm thu.
 
-| Role | Model/effort (preset `default`) | Quyền và trách nhiệm |
+| Role | Model/effort (mặc định) | Quyền và trách nhiệm |
 |---|---|---|
 | `researcher` | GLM-5.3-Flash/max | Khảo sát code/docs/log, lịch sử git và web (`web_search`, `fetch_content`); chỉ đọc (bash cho lệnh đọc như `git log`, `rg`, `jq`) và trả bằng chứng |
 | `worker` | GPT-6.1 Sol/max | Triển khai phần việc đã chốt hoặc sửa lỗi (tái hiện, tìm nguyên nhân, sửa, kiểm hồi quy); sửa file và kiểm thử |

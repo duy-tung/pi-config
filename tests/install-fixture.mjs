@@ -6,18 +6,25 @@ import {fileURLToPath} from 'node:url';
 import {buildConfiguration} from '../lib/config.mjs';
 import {mergesConfig} from '../lib/resources.mjs';
 import {reconcileConfigFile} from '../runtime/merge.mjs';
-import {loadPresets, resolveModelRoles} from '../runtime/model-roles.mjs';
+import {loadModelDefaults, resolveModelRoles} from '../runtime/model-roles.mjs';
 
 // Bản cài giả cho test của /models; không chạy installer, không cài runtime.
 export const repoDir = fileURLToPath(new URL('../', import.meta.url));
-export const presets = loadPresets(path.join(repoDir, 'assets', 'configs', 'model-presets.json'));
-/** Model/thinking của mọi vai theo preset mặc định, như installer khi chưa có model-roles.json. */
-export const defaultRoles = resolveModelRoles(presets).roles;
+export const defaults = loadModelDefaults(repoDir);
+/** Model/thinking mặc định của mọi vai, như installer khi chưa có model-roles.json. */
+export const defaultRoles = resolveModelRoles(defaults).roles;
+/** Ghi đè để chỉ cần đăng nhập Claude (ví dụ trong docs/models.md); reviewer, advisor khác model với worker. */
+export const claudeOnly = {
+  researcher: {model: 'anthropic/claude-sonnet-5-5', thinking: 'high'},
+  worker: {model: 'anthropic/claude-opus-5-5', thinking: 'high'},
+  reviewer: {model: 'anthropic/claude-fable-5-1', thinking: 'high'},
+  advisor: {model: 'anthropic/claude-fable-5-1', thinking: 'high'},
+};
 export const sha256 = data => crypto.createHash('sha256').update(data).digest('hex');
 export const readJson = file => JSON.parse(fs.readFileSync(file, 'utf8'));
 
 /**
- * File cấu hình, base và checksum như installer ghi, cùng preset trong <root>/assets.
+ * File cấu hình, base và checksum như installer ghi, cùng model mặc định trong <root>/assets.
  * full: chép cả assets và runtime/*.mjs (vào <root>/bin) như installer, để nạp extension của bản cài.
  */
 export function simulatedInstall(t, {roles = defaultRoles, full = false} = {}) {
@@ -40,7 +47,7 @@ export function simulatedInstall(t, {roles = defaultRoles, full = false} = {}) {
       state.files[file] = sha256(content);
     }
   }
-  for (const name of [path.join('configs', 'model-presets.json')]) {
+  for (const name of [path.join('configs', 'model-defaults.json')]) {
     const copy = path.join(root, 'assets', name);
     fs.mkdirSync(path.dirname(copy), {recursive: true});
     fs.copyFileSync(path.join(repoDir, 'assets', name), copy);

@@ -7,9 +7,9 @@ import {mergesConfig} from '../lib/resources.mjs';
 import {defaultsFile, planConfigFile} from '../runtime/merge.mjs';
 import {ROLES, changedRoles, resolveModelRoles} from '../runtime/model-roles.mjs';
 import {planModelFiles, runModels, whenApplied, writeModelFiles} from '../runtime/models.mjs';
-import {presets, readJson, simulatedInstall as install, snapshot} from './install-fixture.mjs';
+import {claudeOnly, defaults, readJson, simulatedInstall as install, snapshot} from './install-fixture.mjs';
 
-test('áp preset mới vào bản cài: giữ phần người dùng sửa, vai không đổi giữ giá trị đổi qua /model; cài lại sau đó không đổi gì', t => {
+test('áp ghi đè mới vào bản cài: giữ phần người dùng sửa, vai không đổi giữ giá trị đổi qua /model; cài lại sau đó không đổi gì', t => {
   const f = install(t);
   // Pi đổi theme, người dùng sửa tools của worker, /model lưu Sonnet vào executor của advisor.
   const settings = readJson(f.file('settings.json'));
@@ -20,8 +20,8 @@ test('áp preset mới vào bản cài: giữ phần người dùng sửa, vai k
   const advisor = readJson(f.file('advisor.json'));
   advisor.executor = 'anthropic/claude-sonnet-5-5';
   fs.writeFileSync(f.file('advisor.json'), JSON.stringify(advisor, null, 2));
-  const before = resolveModelRoles(presets).roles;
-  const after = resolveModelRoles(presets, {preset: 'claude'}).roles;
+  const before = resolveModelRoles(defaults).roles;
+  const after = resolveModelRoles(defaults, {roles: claudeOnly}).roles;
   const force = changedRoles(before, after);
   assert.ok(!force.includes('main'));
   const beforePlan = snapshot(f.root, f.agentDir);
@@ -49,7 +49,7 @@ test('ép mọi vai (apply --reset): giá trị đổi ngoài model-roles.json t
   const advisor = readJson(f.file('advisor.json'));
   Object.assign(advisor, {executor: 'anthropic/claude-sonnet-5-5', alwaysOn: true});
   fs.writeFileSync(f.file('advisor.json'), JSON.stringify(advisor));
-  const roles = resolveModelRoles(presets).roles;
+  const roles = resolveModelRoles(defaults).roles;
   const {plans} = planModelFiles({root: f.root, agentDir: f.agentDir, state: f.state(), roles, force: ROLES});
   writeModelFiles({root: f.root, statePath: f.statePath, state: f.state(), plans});
   assert.deepEqual([readJson(f.file('advisor.json')).executor, readJson(f.file('advisor.json')).alwaysOn], ['anthropic/claude-opus-5-5', true]);
@@ -57,12 +57,12 @@ test('ép mọi vai (apply --reset): giá trị đổi ngoài model-roles.json t
 
 test('thiếu base thì báo cần chạy lại installer', t => {
   const f = install(t);
-  const roles = resolveModelRoles(presets, {preset: 'claude'}).roles;
+  const roles = resolveModelRoles(defaults, {roles: claudeOnly}).roles;
   fs.rmSync(defaultsFile(f.root, f.file('agents/reviewer.md')));
   assert.deepEqual(planModelFiles({root: f.root, agentDir: f.agentDir, state: f.state(), roles}).missing, [f.file('agents/reviewer.md')]);
 });
 
-// Catalog giả như catalog của phiên Pi: biết model của mọi preset; logins: openai-codex chưa đăng nhập.
+// Catalog giả như catalog của phiên Pi: biết model mặc định và model Claude; logins: openai-codex chưa đăng nhập.
 const KNOWN = new Set(['anthropic/claude-opus-5-5', 'anthropic/claude-sonnet-5-5', 'anthropic/claude-fable-5-1', 'openai-codex/gpt-6.1-sol', 'openai-codex/gpt-6-astra', 'opencode-go/glm-5.3-flash']);
 const fakeCatalog = {
   check: async (roles, {logins = false} = {}) => ({
@@ -89,8 +89,8 @@ test('/models: thay đổi sai và khóa của installer báo lỗi, không ghi 
     [{role: 'coder', thinking: 'high'}, /roles: không có vai "coder"/u],
     [{role: 'worker', thinking: 'ultra'}, /roles\.worker\.thinking phải là một trong/u],
     [{role: 'worker', model: 'opus'}, /roles\.worker\.model phải có dạng "provider\/id"/u],
-    [{preset: 'mine'}, /preset "mine" không có \(có default, claude\)/u],
     [{frobnicate: true}, /không hiểu thay đổi/u],
+    [{preset: 'claude'}, /không hiểu thay đổi/u],
   ]) {
     const result = await run(change);
     assert.equal(result.status, 1, JSON.stringify(change));
@@ -117,7 +117,7 @@ test('whenApplied gom các vai theo thời điểm có hiệu lực; thời đi�
   ]);
 });
 
-test('catalog và effects của phiên: kiểm model, xem trước, ghi đè, preset, bảng và lệch, bỏ ghi đè, đưa vai lệch về cấu hình', async t => {
+test('catalog và effects của phiên: kiểm model, xem trước, ghi đè, bảng và lệch, bỏ ghi đè, đưa vai lệch về cấu hình', async t => {
   // Bản cài giả không có runtime: mọi bước phải dùng catalog truyền vào.
   const f = install(t);
   const applied = [];
@@ -141,36 +141,38 @@ test('catalog và effects của phiên: kiểm model, xem trước, ghi đè, pr
   assert.equal(set.status, 0, set.text);
   assert.deepEqual(applied, [['worker']]);
   assert.match(set.text, /\náp ngay: worker$/u);
-  assert.deepEqual(readJson(f.file('model-roles.json')), {preset: 'default', roles: {worker: {model: 'anthropic/claude-sonnet-5-5'}}});
+  assert.deepEqual(readJson(f.file('model-roles.json')), {roles: {worker: {model: 'anthropic/claude-sonnet-5-5'}}});
   if (process.platform !== 'win32') assert.equal(fs.statSync(f.file('model-roles.json')).mode & 0o777, 0o600);
-  // Preset claude giữ main và autoMode; worker chỉ ghi đè model nên đổi thinking theo preset (max → high).
-  const preset = await run({preset: 'claude'});
-  assert.equal(preset.status, 0, preset.text);
-  assert.match(preset.text, /^preset: default → claude$/mu);
-  assert.deepEqual(applied[1], ['researcher', 'worker', 'reviewer', 'advisor']);
+  // worker chỉ ghi đè model; thinking theo mặc định (max). Ghi đè thinking của worker và model của advisor.
+  assert.equal((await run({role: 'worker', thinking: 'high'})).status, 0);
+  const advisorSet = await run({role: 'advisor', model: 'anthropic/claude-fable-5-1'});
+  assert.equal(advisorSet.status, 0, advisorSet.text);
+  assert.match(advisorSet.text, /^advisor: openai-codex\/gpt-6-astra \(high\) → anthropic\/claude-fable-5-1 \(high\)$/mu);
+  assert.deepEqual(applied.slice(1), [['worker'], ['advisor']]);
   {
     const advisor = readJson(f.file('advisor.json'));
     assert.deepEqual([advisor.advisorMaxCallsPerSession, advisor.advisorFallbackModel, advisor.advisorDisableSameModel, advisor.advisorAgentsMdContext],
-      [5, 'anthropic/claude-opus-5-5', false, false], 'gate, số lượt, fallback và AGENTS.md của advisor không đổi theo preset');
+      [5, 'anthropic/claude-opus-5-5', false, false], 'gate, số lượt, fallback và AGENTS.md của advisor không đổi theo model của advisor');
   }
   // Lệch qua /agents: bảng và cảnh báo chỉ tới /models.
   fs.writeFileSync(f.file('agents/reviewer.md'), fs.readFileSync(f.file('agents/reviewer.md'), 'utf8').replace('thinking: high', 'thinking: low'));
   const shown = await run();
   assert.equal(shown.status, 0, shown.text);
-  assert.match(shown.text, /^preset claude \(/u);
+  assert.match(shown.text, /^mặc định \+ ghi đè \(.*model-roles\.json\)$/mu);
   assert.match(shown.text, /^ {2}worker: anthropic\/claude-sonnet-5-5 \(high\), ghi đè$/mu);
-  assert.match(shown.text, /^cảnh báo: reviewer đang dùng anthropic\/claude-fable-5-1 \(low\) theo agents\/reviewer\.md, khác model-roles\.json \(anthropic\/claude-fable-5-1 \(high\)\)\. Trong \/models: /mu);
-  // Bỏ ghi đè của worker: dùng lại preset.
+  assert.match(shown.text, /^ {2}reviewer: openai-codex\/gpt-6-astra \(low\) theo agents\/reviewer\.md; model-roles\.json: openai-codex\/gpt-6-astra \(high\)$/mu);
+  assert.match(shown.text, /^cảnh báo: reviewer đang dùng openai-codex\/gpt-6-astra \(low\) theo agents\/reviewer\.md, khác model-roles\.json \(openai-codex\/gpt-6-astra \(high\)\)\. Trong \/models: /mu);
+  // Bỏ ghi đè của worker: dùng lại mặc định.
   const reset = await run({reset: 'worker'});
   assert.equal(reset.status, 0, reset.text);
-  assert.deepEqual(readJson(f.file('model-roles.json')), {preset: 'claude', roles: {}});
-  assert.match(fs.readFileSync(f.file('agents/worker.md'), 'utf8'), /^model: anthropic\/claude-opus-5-5\nthinking: high$/mu);
+  assert.deepEqual(readJson(f.file('model-roles.json')), {roles: {advisor: {model: 'anthropic/claude-fable-5-1'}}});
+  assert.match(fs.readFileSync(f.file('agents/worker.md'), 'utf8'), /^model: openai-codex\/gpt-6.1-sol\nthinking: max$/mu);
   // Đưa vai lệch về model-roles.json (apply --reset trước đây): ép mọi vai, báo giá trị bị thay.
   const apply = await run({apply: true});
   assert.equal(apply.status, 0, apply.text);
   assert.match(apply.text, /^model-roles\.json không đổi\.$/mu);
-  assert.match(apply.text, /^Ghi đè giá trị đổi ngoài model-roles\.json: reviewer \(agents\/reviewer\.md: anthropic\/claude-fable-5-1 \(low\)\)$/mu);
-  assert.match(fs.readFileSync(f.file('agents/reviewer.md'), 'utf8'), /^thinking: high$/mu);
+  assert.match(apply.text, /^Ghi đè giá trị đổi ngoài model-roles\.json: reviewer \(agents\/reviewer\.md: openai-codex\/gpt-6-astra \(low\)\)$/mu);
+  assert.match(fs.readFileSync(f.file('agents/reviewer.md'), 'utf8'), /^model: openai-codex\/gpt-6-astra\nthinking: high$/mu);
   assert.deepEqual(applied.at(-1), ['reviewer']);
   assert.doesNotMatch((await run()).text, /đang dùng/u);
   // Mọi file gốc đã khớp: đưa về cấu hình không ghi gì.
@@ -181,7 +183,7 @@ test('catalog và effects của phiên: kiểm model, xem trước, ghi đè, pr
 
 test('/models: ghi đè còn sót của vai đã gỡ chỉ là cảnh báo; bảng và thay đổi vẫn chạy', async t => {
   const f = install(t);
-  fs.writeFileSync(f.file('model-roles.json'), JSON.stringify({preset: 'default', roles: {auditor: {thinking: 'max'}, oracle: {model: 'openai-codex/gpt-6-astra'}}}));
+  fs.writeFileSync(f.file('model-roles.json'), JSON.stringify({roles: {auditor: {thinking: 'max'}, oracle: {model: 'openai-codex/gpt-6-astra'}}}));
   const run = runner(f);
   const warning = /^cảnh báo: .*model-roles\.json: roles: bỏ qua auditor, oracle \(vai đã gỡ khỏi pi-config\); xoá khỏi model-roles\.json để hết cảnh báo$/mu;
   const shown = await run();
@@ -192,4 +194,29 @@ test('/models: ghi đè còn sót của vai đã gỡ chỉ là cảnh báo; b�
   assert.equal(set.status, 0, set.text);
   assert.match(set.text, warning);
   assert.deepEqual(readJson(f.file('model-roles.json')).roles.worker, {thinking: 'high'});
+});
+
+test('/models: khóa preset còn sót chỉ là cảnh báo; lần ghi kế tiếp (kể cả đưa vai lệch về cấu hình) bỏ khóa này', async t => {
+  const f = install(t);
+  fs.writeFileSync(f.file('model-roles.json'), JSON.stringify({preset: 'claude', roles: {researcher: {model: 'anthropic/claude-sonnet-5-5'}}}));
+  const run = runner(f);
+  const warning = /^cảnh báo: .*model-roles\.json: bỏ qua "preset": "claude" \(preset đã gỡ khỏi pi-config: mọi vai dùng mặc định, chỉ ghi đè trong roles có tác dụng\); xoá khóa này khỏi model-roles\.json để hết cảnh báo$/mu;
+  const shown = await run();
+  assert.equal(shown.status, 0, shown.text);
+  assert.match(shown.text, warning);
+  // Mặc định cùng ghi đè researcher; các file gốc của bản cài giả theo mặc định nên researcher là vai lệch duy nhất.
+  assert.match(shown.text, /^ {2}worker: openai-codex\/gpt-6\.1-sol \(max\)$/mu);
+  assert.match(shown.text, /^ {2}researcher: opencode-go\/glm-5\.3-flash \(max\) theo agents\/researcher\.md; model-roles\.json: anthropic\/claude-sonnet-5-5 \(max\), ghi đè$/mu);
+  const before = snapshot(f.root, f.agentDir);
+  const preview = await run({apply: true}, true);
+  assert.equal(preview.status, 0, preview.text);
+  assert.match(preview.text, /^Sẽ bỏ khóa "preset" \(đã gỡ\) khỏi model-roles\.json\.$/mu);
+  assert.deepEqual(snapshot(f.root, f.agentDir), before);
+  const apply = await run({apply: true});
+  assert.equal(apply.status, 0, apply.text);
+  assert.deepEqual(readJson(f.file('model-roles.json')), {roles: {researcher: {model: 'anthropic/claude-sonnet-5-5'}}});
+  assert.match(fs.readFileSync(f.file('agents/researcher.md'), 'utf8'), /^model: anthropic\/claude-sonnet-5-5\nthinking: max$/mu);
+  const after = await run();
+  assert.equal(after.status, 0, after.text);
+  assert.doesNotMatch(after.text, /preset|đang dùng/u);
 });

@@ -27,7 +27,7 @@ Chi tiết kiến trúc CPU, công cụ hệ thống và tùy chọn đường d
 ## Đăng nhập dịch vụ
 
 1. Chạy `pi`, dùng `/login` và chọn **Anthropic** cho parent Claude Opus 5.5 (gói Pro/Max) và bộ phân loại của auto mode (Claude Sonnet 5.5), hoặc đặt `ANTHROPIC_API_KEY`. Xem [docs/claude-setup.md](docs/claude-setup.md).
-2. Trong `/login`, chọn **OpenAI Codex (legacy)** cho worker (GPT-6.1 Sol) và reviewer (GPT-6 Astra). Pi 0.99 đổi tên hiển thị; provider vẫn là `openai-codex`. "Sign in with ChatGPT" của provider **OpenAI** là provider khác (`openai`), preset không dùng.
+2. Trong `/login`, chọn **OpenAI Codex (legacy)** cho worker (GPT-6.1 Sol) và reviewer (GPT-6 Astra). Pi 0.99 đổi tên hiển thị; provider vẫn là `openai-codex`. "Sign in with ChatGPT" của provider **OpenAI** là provider khác (`openai`), pi-config không dùng.
 3. Trong `/login`, chọn **OpenCode Go** và nhập API key cho GLM. Pi cũng nhận biến môi trường `OPENCODE_API_KEY`.
 4. Chạy `firecrawl login --browser` để đăng nhập dịch vụ web.
 5. Tuỳ chọn: tạo API key TypeSafe tại [console.typesafe.ai](https://console.typesafe.ai), thêm `export TYPESAFE_API_KEY="<key>"` vào `~/.zshrc` hoặc `~/.bashrc` (Windows: `setx TYPESAFE_API_KEY "<key>"`) rồi mở terminal mới, để auto mode sàng lọc bằng Jev. Đây là cách tài liệu TypeSafe và đa số package Jev hướng dẫn. Chưa có key thì bộ phân loại LLM làm cả hai giai đoạn như trước.
@@ -83,7 +83,7 @@ Pi dùng `Agent` của **@tintinweb/pi-subagents**:
 
 Parent Claude Opus 5.5/high giữ thiết kế, quyết định quan trọng và nghiệm thu cuối. GLM chạy trực tiếp qua OpenCode Go trong Pi.
 
-Bảng trên là preset `default`. Model và thinking của mọi vai (parent, các role, advisor, auto mode) đặt trong `<agent-dir>/model-roles.json` và đổi bằng `/models` trong Pi: menu chọn preset (vd `claude`, chỉ cần đăng nhập Claude) hoặc đổi model/thinking của từng vai, rồi áp ngay cho phiên đang chạy. Xem [docs/models.md](docs/models.md).
+Bảng trên là cấu hình mặc định. Model và thinking của từng vai (parent, các role, advisor, auto mode) ghi đè được trong `<agent-dir>/model-roles.json` bằng `/models` trong Pi, áp ngay cho phiên đang chạy; chưa có Codex hay OpenCode Go thì ghi đè các vai đó sang Claude. Xem [docs/models.md](docs/models.md).
 
 ```text
 @researcher Tìm luồng xử lý timeout và báo file/dòng.

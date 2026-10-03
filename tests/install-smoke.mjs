@@ -25,9 +25,9 @@ await run(process.execPath,[path.join(root,'bin/launch.mjs'),'main','--version']
   assert.equal(gone.status,windows?9009:127,gone.stdout+gone.stderr);
   assert.match(gone.stderr,windows?/Node not found at .*Run install\.ps1 again/u:/không thấy Node tại .*Chạy lại installer/u);
 }
-// Cài mới tạo model-roles.json (thuộc về người dùng) với preset mặc định.
+// Cài mới tạo model-roles.json (thuộc về người dùng) chưa có ghi đè.
 const modelRolesPath=path.join(agentDir,'model-roles.json');
-assert.deepEqual(readJson(modelRolesPath),{preset:'default',roles:{}});
+assert.deepEqual(readJson(modelRolesPath),{roles:{}});
 // pi-doctor báo lỗi khi searchRouting.providers có provider ngoài webSearch.allowedProviders (pi-web-access sẽ không nạp).
 const webSearchPath=path.join(agentDir,'web-search.json'),webSearchBytes=fs.readFileSync(webSearchPath);
 const mismatched=readJson(webSearchPath);mismatched.searchRouting.providers.push('parallel-mcp');writeJson(webSearchPath,mismatched);
@@ -118,9 +118,11 @@ assert.match(reinstall,/Đã lưu \d+ tài nguyên ngoài cấu hình hiện t�
 assert.deepEqual(fs.readFileSync(secret),secretBefore);
 await run(process.execPath,[path.join(repo,'tests/agent-integration.mjs'),root]);
 assert.deepEqual(fs.readFileSync(auth),authBefore);
-// Đổi preset trong model-roles.json: mọi file gốc nhận model mới; dòng tools người dùng sửa trong file role được giữ.
-// Ghi đè của vai đã gỡ (debugger) còn sót: installer và pi-doctor chỉ cảnh báo.
-writeJson(modelRolesPath,{preset:'claude',roles:{researcher:{thinking:'max'},debugger:{thinking:'low'}}});
+// Ghi đè để chỉ dùng Claude trong model-roles.json: mọi file gốc nhận model mới; dòng tools người dùng sửa trong file
+// role được giữ. Khóa preset cũ và ghi đè của vai đã gỡ (debugger) còn sót: installer và pi-doctor chỉ cảnh báo.
+const claudeRoles={researcher:{model:'anthropic/claude-sonnet-5-5'},worker:{model:'anthropic/claude-opus-5-5',thinking:'high'},
+  reviewer:{model:'anthropic/claude-fable-5-1'},advisor:{model:'anthropic/claude-fable-5-1'}};
+writeJson(modelRolesPath,{preset:'claude',roles:{...claudeRoles,debugger:{thinking:'low'}}});
 const workerPath=path.join(agentDir,'agents','worker.md');
 fs.writeFileSync(workerPath,fs.readFileSync(workerPath,'utf8').replace(/^tools: .*$/mu,'tools: "read, grep, find, ls, bash"'));
 const switched=install();
@@ -135,18 +137,19 @@ assert.deepEqual([advisorNow.executor,advisorNow.advisor],['anthropic/claude-opu
 assert.deepEqual(readJson(settingsPath).enabledModels,['anthropic/claude-opus-5-5','anthropic/claude-fable-5-1','anthropic/claude-sonnet-5-5']);
 const doctorModels=spawnSync(process.execPath,[path.join(root,'bin/launch.mjs'),'doctor'],{encoding:'utf8'});
 assert.equal(doctorModels.status,0,doctorModels.stdout+doctorModels.stderr);
-assert.match(doctorModels.stdout,/^preset claude \(/mu);
+assert.match(doctorModels.stdout,/^mặc định \+ ghi đè \(/mu);
 assert.doesNotMatch(doctorModels.stderr,/đang dùng/u,'không vai nào lệch');
 assert.match(doctorModels.stderr,/model-roles\.json: roles: bỏ qua debugger \(vai đã gỡ khỏi pi-config\)/u);
+assert.match(doctorModels.stderr,/model-roles\.json: bỏ qua "preset": "claude" \(preset đã gỡ khỏi pi-config/u);
 assert.ok(!fs.existsSync(path.join(agentDir,'agents','debugger.md')));
 // Model sai tên (pi-subagents sẽ lặng lẽ dùng model của parent): installer dừng trước khi ghi cấu hình.
-writeJson(modelRolesPath,{preset:'claude',roles:{researcher:{thinking:'max'},worker:{model:'anthropic/claude-opus-5-6'}}});
+writeJson(modelRolesPath,{roles:{...claudeRoles,worker:{model:'anthropic/claude-opus-5-6'}}});
 const beforeFailure=snapshot();
 const failed=spawnSync(process.execPath,args,{encoding:'utf8',maxBuffer:64*1024*1024,timeout:1800000});
 assert.notEqual(failed.status,0,failed.stdout);
 assert.match(failed.stderr,/worker: không có model anthropic\/claude-opus-5-6 trong catalog của Pi/u);
 assert.deepEqual(snapshot(),beforeFailure);
-writeJson(modelRolesPath,{preset:'claude',roles:{researcher:{thinking:'max'}}});
+writeJson(modelRolesPath,{roles:claudeRoles});
 // /model lưu Sonnet vào executor của advisor, /advisor-settings đổi số lượt: pi-doctor báo vai lệch và chỉ tới /models.
 const advisorPath=path.join(agentDir,'advisor.json');
 writeJson(advisorPath,{...readJson(advisorPath),executor:'anthropic/claude-sonnet-5-5',advisorMaxCallsPerSession:9});
@@ -185,7 +188,7 @@ const state=readJson(path.join(root,'install-state.json'));assert.deepEqual(Obje
 assert.ok(!fs.existsSync(path.join(root,'assets','skills')));
 assert.ok(readJson(path.join(agentDir,'settings.json')).skills.every(entry=>entry.includes(path.join('sources','firecrawl-'))));
 assert.equal(fs.existsSync(path.join(root,'.install.lock')),false);
-console.log('PASS: cài sạch, một runtime Pi, skill Firecrawl, auth/permission, type của bản vá; cài lại gộp mặc định mới, giữ tùy chỉnh và secret giả; model-roles.json: đổi preset, chặn model sai tên, báo vai lệch; bỏ nguồn skills cũ; lần cuối không đổi gì.');
+console.log('PASS: cài sạch, một runtime Pi, skill Firecrawl, auth/permission, type của bản vá; cài lại gộp mặc định mới, giữ tùy chỉnh và secret giả; model-roles.json: ghi đè chỉ dùng Claude, bỏ qua khóa preset cũ, chặn model sai tên, báo vai lệch; bỏ nguồn skills cũ; lần cuối không đổi gì.');
 console.log(`Fixture: ${root}`);
 if(process.env.GITHUB_ENV){
   fs.appendFileSync(process.env.GITHUB_ENV,`PI_CONFIG_SMOKE_ROOT=${root}\nPI_CONFIG_SMOKE_AGENT_DIR=${agentDir}\nPI_CONFIG_SMOKE_BIN_DIR=${binDir}\n`);

@@ -10,7 +10,7 @@ import {prunePlatformPackages} from './lib/platform-prune.mjs';
 import {backupFile,describeMerge,reconcileConfigFile,writeAtomic} from './runtime/merge.mjs';
 import {acquireInstallLock} from './runtime/install-lock.mjs';
 import {mergesConfig,reconcileResources} from './lib/resources.mjs';
-import {checkCatalog,loadPresets,readModelRoles,resolveModelRoles,writeModelRoles} from './runtime/model-roles.mjs';
+import {checkCatalog,loadModelDefaults,readModelRoles,resolveModelRoles,writeModelRoles} from './runtime/model-roles.mjs';
 import {run,download,npmCli,npmTimeout,readJson,writeJson,sha256,shellQuote,assertSafePath} from './lib/system.mjs';
 
 const repoDir=path.dirname(fileURLToPath(import.meta.url));
@@ -67,12 +67,11 @@ function managedJson(file,content){
   if(result.changes.length||result.conflicts.length)merged.push({file,...result});
   if(state.files[file]!==result.recorded){state.files[file]=result.recorded;writeJson(statePath,state);}
 }
-/** Model/thinking của mọi vai từ <agent-dir>/model-roles.json (chưa có thì preset mặc định). Lỗi thì dừng trước khi ghi. */
+/** Model/thinking của mọi vai: mặc định và ghi đè trong <agent-dir>/model-roles.json. Lỗi thì dừng trước khi ghi. */
 function modelRolesPlan(){
-  const presets=loadPresets(path.join(repoDir,'assets','configs','model-presets.json'));
   const current=readModelRoles(agentDir);
-  if(current.error)throw new Error(`${current.error}\nSửa file, hoặc xoá để dùng preset mặc định.`);
-  const resolved=resolveModelRoles(presets,current.config);
+  if(current.error)throw new Error(`${current.error}\nSửa file, hoặc xoá để dùng mặc định.`);
+  const resolved=resolveModelRoles(loadModelDefaults(repoDir),current.config);
   if(resolved.errors.length)throw new Error(`${current.file} không hợp lệ:\n- ${resolved.errors.join('\n- ')}`);
   for(const warning of resolved.warnings)console.warn(`cảnh báo: ${current.file}: ${warning}`);
   return {file:current.file,exists:current.exists,config:current.config,roles:resolved.roles};

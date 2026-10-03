@@ -81,7 +81,7 @@ Luật `Path(...)`/`Read(...)` kiểm đường dẫn có trong lệnh, ở cả
 - **Không kiểm được.** Đối số chỉ biết lúc chạy (`cat "$FILE"`, `$(...)`), brace expansion, `xargs`, `find -exec`, cờ grep/rg chưa nhận diện, danh sách file gián tiếp (`sort --files0-from`), cây quá 50.000 mục, PowerShell: auto mode giao bộ phân loại (lên thẳng giai đoạn 2, kèm ghi chú luật), bypass hỏi bạn.
 - **Tool của Pi.** `grep` được tìm cả thư mục; dòng thuộc file bị deny bị bỏ khỏi kết quả, kèm một dòng báo số dòng đã bỏ. `find`, `ls` chỉ trả tên. `read` vào file bị deny bị chặn.
 
-Đây là kiểm theo argv lúc gọi tool, không phải sandbox: chương trình tùy ý (`node`, `python -c`, script) vẫn tự mở được file, và file có thể đổi sau lúc kiểm. Vì preset mặc định có deny `.env`, `grep -r` ở gốc repo có `.env` sẽ bị chặn; dùng tool `grep` của Pi hoặc `rg` (bỏ file ẩn). `cat .env.example` vẫn dùng được nhờ ngoại lệ.
+Đây là kiểm theo argv lúc gọi tool, không phải sandbox: chương trình tùy ý (`node`, `python -c`, script) vẫn tự mở được file, và file có thể đổi sau lúc kiểm. Vì cấu hình mặc định có deny `.env`, `grep -r` ở gốc repo có `.env` sẽ bị chặn; dùng tool `grep` của Pi hoặc `rg` (bỏ file ẩn). `cat .env.example` vẫn dùng được nhờ ngoại lệ.
 
 ### Bộ phân loại
 

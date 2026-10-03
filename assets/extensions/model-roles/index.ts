@@ -36,12 +36,10 @@ interface Catalog {
   check(roles: Record<string, RoleValue>, options?: { logins?: boolean }): Promise<CatalogReport>;
 }
 interface Resolved {
-  preset: string;
   roles: Record<string, RoleValue>;
   errors: string[];
   warnings: string[];
 }
-type Presets = Record<string, { description?: string; roles: Record<string, RoleValue> }>;
 // Hàm của runtime/model-roles.mjs và runtime/models.mjs (chép vào <root>/bin khi cài).
 interface RolesModule {
   ROLES: string[];
@@ -51,9 +49,9 @@ interface RolesModule {
     roles: Record<string, RoleValue>; find: (provider: string, id: string) => unknown;
     clamp: (model: never, level: never) => string; login?: (provider: string) => string | undefined;
   }): Promise<CatalogReport>;
-  loadPresets(file: string): Presets;
+  loadModelDefaults(root: string): Record<string, RoleValue>;
   readModelRoles(agentDir: string): { file: string; exists: boolean; config?: unknown; error?: string };
-  resolveModelRoles(presets: Presets, config?: unknown): Resolved;
+  resolveModelRoles(defaults: Record<string, RoleValue>, config?: unknown): Resolved;
   effectiveModelRoles(agentDir: string): Record<string, RoleValue>;
   driftedRoles(roles: Record<string, RoleValue>, effective: Record<string, RoleValue>): string[];
   parseModelRef(value: unknown): { provider: string; id: string } | undefined;
@@ -269,9 +267,11 @@ async function pickLevel(ctx: ExtensionContext, role: string, model: Model<Api> 
 }
 
 /** Menu của một vai → thay đổi (ghi đè hoặc bỏ ghi đè), hoặc undefined khi huỷ. */
-async function roleChange(ctx: ExtensionContext, install: Install, name: string, config: unknown, resolved: Resolved, presets: Presets) {
+async function roleChange(
+  ctx: ExtensionContext, install: Install, name: string, config: unknown, resolved: Resolved, defaults: Record<string, RoleValue>,
+) {
   const wanted = resolved.roles[name];
-  const fallback = install.roles.resolveModelRoles(presets, install.roles.withoutRoles(config, [name])).roles[name];
+  const fallback = install.roles.resolveModelRoles(defaults, install.roles.withoutRoles(config, [name])).roles[name];
   const action = await choose(ctx, roleMenu(name, wanted, fallback));
   if (!action || !("pick" in action)) return action && "change" in action ? action.change : undefined;
   const ref = install.roles.parseModelRef(wanted.model);
@@ -286,22 +286,12 @@ async function roleChange(ctx: ExtensionContext, install: Install, name: string,
   return level ? { role: name, model: `${model.provider}/${model.id}`, thinking: level } : undefined;
 }
 
-async function presetChange(ctx: ExtensionContext, presets: Presets, current: string): Promise<Change | undefined> {
-  const names = Object.keys(presets);
-  const options = names.map((name) => {
-    const description = presets[name].description;
-    return `${name}${name === current ? " (đang dùng)" : ""}${description ? `: ${description}` : ""}`;
-  });
-  const choice = await ctx.ui.select("Preset", options);
-  return choice === undefined ? undefined : { preset: names[options.indexOf(choice)] };
-}
-
 /** /models không tham số: bảng các vai làm menu; mỗi thay đổi được xem trước rồi mới ghi. */
 async function openMenu(pi: ExtensionAPI, ctx: ExtensionCommandContext, install: Install, run: Run) {
   const { roles } = install;
-  const presets = roles.loadPresets(path.join(install.root, "assets", "configs", "model-presets.json"));
+  const defaults = roles.loadModelDefaults(install.root);
   const current = roles.readModelRoles(install.agentDir);
-  const resolved = current.error ? undefined : roles.resolveModelRoles(presets, current.config);
+  const resolved = current.error ? undefined : roles.resolveModelRoles(defaults, current.config);
   if (!resolved || resolved.errors.length) {
     show(ctx, await capture(run));
     return;
@@ -310,13 +300,12 @@ async function openMenu(pi: ExtensionAPI, ctx: ExtensionCommandContext, install:
   const effective = roles.effectiveModelRoles(install.agentDir);
   const drifted = Object.fromEntries(roles.driftedRoles(resolved.roles, effective).map((name) => [name, effective[name]]));
   const action = await choose(ctx, mainMenu({
-    preset: resolved.preset, file: current.exists ? current.file : `chưa có ${roles.MODEL_ROLES_FILE}`,
+    file: current.exists ? current.file : `chưa có ${roles.MODEL_ROLES_FILE}`,
     session: sessionLabel(pi, ctx), roles: resolved.roles, names: roles.ROLES, drifted,
   }));
   if (!action) return;
   const change = "change" in action ? action.change
-    : "preset" in action ? await presetChange(ctx, presets, resolved.preset)
-    : "role" in action ? await roleChange(ctx, install, action.role, current.config, resolved, presets) : undefined;
+    : "role" in action ? await roleChange(ctx, install, action.role, current.config, resolved, defaults) : undefined;
   if (!change) return;
   const preview = await capture(run, change, true);
   if (preview.status) {

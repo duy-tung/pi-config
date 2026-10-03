@@ -6,11 +6,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { buildConfiguration, PACKAGES } from "../lib/config.mjs";
-import { SUBAGENT_ROLES, changedRoles, forceNativeModels, loadPresets, nativeValues, nextModelDefault, resolveModelRoles } from "../runtime/model-roles.mjs";
+import { SUBAGENT_ROLES, changedRoles, forceNativeModels, loadModelDefaults, nativeValues, nextModelDefault, resolveModelRoles } from "../runtime/model-roles.mjs";
+import { claudeOnly } from "./install-fixture.mjs";
 
 const repoDir = fileURLToPath(new URL("../", import.meta.url));
-const presets = loadPresets(path.join(repoDir, "assets", "configs", "model-presets.json"));
-const modelRoles = resolveModelRoles(presets).roles;
+const defaults = loadModelDefaults(repoDir);
+const modelRoles = resolveModelRoles(defaults).roles;
 function fixture(platform) {
   const p = platform === "win32" ? path.win32 : path.posix;
   const home = platform === "win32" ? "C:\\Users\\Dev Example" : "/home/dev example";
@@ -173,7 +174,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.equal(advisor.advisor, "openai-codex/gpt-6-astra");
       assert.equal(advisor.advisorEffort, "high");
       // Khi request tới Astra lỗi, thử lại một lần với Opus (cùng advisorEffort). Fallback trùng model của phiên chính,
-      // nên phải tắt chặn advisor trùng model; preset nào cũng đặt advisor khác main nên lượt gọi chính không đổi.
+      // nên phải tắt chặn advisor trùng model; mặc định đặt advisor khác main nên lượt gọi chính không đổi.
       assert.equal(advisor.advisorFallbackModel, "anthropic/claude-opus-5-5");
       assert.equal(advisor.advisorDisableSameModel, false);
       // Gate là hướng dẫn trong prompt: khi lỗi lặp lại và trước khi báo xong; không có gate cứng chặn phiên. Người dùng
@@ -244,8 +245,8 @@ test("Đầu vào tương đối bị từ chối để không ghi nhầm worksp
   assert.throws(() => buildConfiguration({ ...options, agentDir: ".pi/agent" }), /agentDir phải là đường dẫn tuyệt đối/u);
 });
 
-test("model-roles: preset và ghi đè đi tới mọi file gốc (settings, file role, advisor, auto mode)", () => {
-  const { roles } = resolveModelRoles(presets, { preset: "claude", roles: { worker: { thinking: "max" } } });
+test("model-roles: ghi đè đi tới mọi file gốc (settings, file role, advisor, auto mode)", () => {
+  const { roles } = resolveModelRoles(defaults, { roles: { ...claudeOnly, worker: { model: "anthropic/claude-opus-5-5", thinking: "max" } } });
   const root = "/home/dev/pi", agentDir = "/home/dev/agent";
   const files = buildConfiguration({ root, agentDir, nodePath: "/opt/node", platform: "linux", home: "/home/dev", repoDir, modelRoles: roles });
   const read = (name) => files.find((entry) => entry.path === path.posix.join(agentDir, name)).content;
@@ -263,8 +264,7 @@ test("model-roles: preset và ghi đè đi tới mọi file gốc (settings, fil
     ["anthropic/claude-opus-5-5", "high", "anthropic/claude-fable-5-1", "high", true]);
 });
 
-test("/models dựng mặc định mới từ base của preset khác: giống hệt file installer sinh cho preset đó", () => {
-  const presets = loadPresets(path.join(repoDir, "assets", "configs", "model-presets.json"));
+test("/models dựng mặc định mới từ base của cấu hình khác: giống hệt file installer sinh cho các ghi đè đó", () => {
   for (const platform of ["linux", "win32"]) {
     const { p, options } = fixture(platform);
     // Loại file gốc chứa model (như danh sách file của planModelFiles trong runtime/models.mjs).
@@ -272,15 +272,15 @@ test("/models dựng mặc định mới từ base của preset khác: giống h
       ["settings.json", "settings"], ["advisor.json", "advisor"],
       ...SUBAGENT_ROLES.map((role) => [p.join("agents", `${role}.md`), role]),
     ].map(([name, kind]) => [p.join(options.agentDir, name), kind]));
-    const before = resolveModelRoles(presets).roles;
-    const after = resolveModelRoles(presets, { preset: "claude", roles: { worker: { thinking: "max" }, autoMode: { model: "anthropic/claude-haiku-4-5" } } }).roles;
+    const before = resolveModelRoles(defaults).roles;
+    const after = resolveModelRoles(defaults, { roles: { ...claudeOnly, worker: { model: "anthropic/claude-opus-5-5", thinking: "max" }, autoMode: { model: "anthropic/claude-haiku-4-5" } } }).roles;
     const old = buildConfiguration({ ...options, modelRoles: before });
     const fresh = new Map(buildConfiguration({ ...options, modelRoles: after }).map((entry) => [entry.path, entry.content]));
     const kinds = [];
     for (const entry of old) {
       const kind = kindOf.get(entry.path);
       if (!kind) {
-        // File không chứa model thì không đổi theo preset.
+        // File không chứa model thì không đổi theo ghi đè.
         assert.equal(fresh.get(entry.path), entry.content, entry.path);
         continue;
       }
@@ -293,8 +293,7 @@ test("/models dựng mặc định mới từ base của preset khác: giống h
 });
 
 test("ép giá trị của vai trong file gốc người dùng đã đổi: chỉ vai được nêu, bỏ khóa khiến vai dùng giá trị khác", () => {
-  const presets = loadPresets(path.join(repoDir, "assets", "configs", "model-presets.json"));
-  const models = nativeValues(resolveModelRoles(presets, { preset: "claude" }).roles);
+  const models = nativeValues(resolveModelRoles(defaults, { roles: claudeOnly }).roles);
   const settings = JSON.stringify({ theme: "rose-pine-dawn", defaultProvider: "openai-codex", defaultModel: "gpt-6.1-sol", defaultThinkingLevel: "max",
     enabledModels: ["user/model"], autoMode: { model: "openai-codex/gpt-6.1-sol", stage2Reasoning: "high", log: true } });
   const onlyMain = JSON.parse(forceNativeModels("settings", settings, models, ["main"]));

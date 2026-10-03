@@ -1,0 +1,10 @@
+{
+  "roles": {
+    "main": { "model": "anthropic/claude-opus-5-5", "thinking": "high" },
+    "researcher": { "model": "opencode-go/glm-5.3-flash", "thinking": "max" },
+    "worker": { "model": "openai-codex/gpt-6.1-sol", "thinking": "max" },
+    "reviewer": { "model": "openai-codex/gpt-6-astra", "thinking": "high" },
+    "advisor": { "model": "openai-codex/gpt-6-astra", "thinking": "high" },
+    "autoMode": { "model": "anthropic/claude-sonnet-5-5", "thinking": "low" }
+  }
+}

@@ -2,7 +2,7 @@
 
 Giao tiếp và tài liệu vận hành bằng tiếng Việt. Repo mô tả bộ cài và cấu hình Pi hiện hành cho Windows, Linux, macOS.
 
-- Cấu hình chuẩn là preset `default` trong `assets/configs/model-presets.json` (người dùng chọn preset và ghi đè trong `<agent-dir>/model-roles.json`, bằng `/models` trong Pi): parent Claude Opus 5.5/high; researcher GLM/max; worker GPT-6.1 Sol/max; reviewer và advisor GPT-6 Astra/high; auto mode: Jev jev-1.13.0 sàng lọc (khi có key TypeSafe), Claude Sonnet 5.5/low xét kỹ phần bị gắn cờ. Preset `claude` chỉ dùng Claude. Agent không giới hạn số lượt. Một runtime Pi 1.0.0, một cấu hình main; dùng Agent của @tintinweb/pi-subagents và slash command trong cùng phiên.
+- Cấu hình model chuẩn (duy nhất) nằm trong `assets/configs/model-defaults.json` (người dùng ghi đè theo vai trong `<agent-dir>/model-roles.json`, bằng `/models` trong Pi): parent Claude Opus 5.5/high; researcher GLM/max; worker GPT-6.1 Sol/max; reviewer và advisor GPT-6 Astra/high; auto mode: Jev jev-1.13.0 sàng lọc (khi có key TypeSafe), Claude Sonnet 5.5/low xét kỹ phần bị gắn cờ. Agent không giới hạn số lượt. Một runtime Pi 1.0.0, một cấu hình main; dùng Agent của @tintinweb/pi-subagents và slash command trong cùng phiên.
 - Ghim phiên bản dependency, nguồn skills và checksum bản vá. Chỉ đổi phiên bản hoặc phân vai theo phạm vi yêu cầu.
 - pi-config chỉ cài skill của công cụ (Firecrawl); skill quy trình không thuộc repo này. Git guard (`pi-auto-mode/lib/git-guard.ts`) giữ hành vi tất định, có test bảng.
 - Shell jobs, rewind (pi-rewind) và advisor phải dùng được trong cùng phiên; background chỉ cung cấp shell jobs, model delegation dùng Agent. Giữ context riêng và quyền công cụ của từng role; model/thinking trong role được ưu tiên hơn tham số Agent.
