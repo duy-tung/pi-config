@@ -1027,7 +1027,12 @@ test("acceptEdits như Claude Code: mkdir/touch/rm/rmdir/mv/cp/sed -i trong work
     for (const command of [
       "rm ../other/a", "rm -rf .git/hooks", "sed 's/a/b/' src/a.ts", "sed -i s/a/b/ /etc/hosts", "PATH=/tmp mkdir build", "sudo mkdir build",
       "rm -rf .", "rm -rf ~", "cd src && rm a.txt", "rm src/a > log", "xargs rm",
+      // Biến môi trường và chuyển hướng của lệnh có wrapper vẫn bị kiểm; giá trị của tùy chọn cũng là đường dẫn.
+      "PATH=/tmp timeout 10 mkdir build", "timeout 1 touch x >> ~/.zshrc", "LD_PRELOAD=./x.so nice mkdir build", "timeout 1 sudo mkdir build",
+      "cp --target-directory=/etc a", "cp -t/etc a", "mv -t /etc a",
     ]) assert.notEqual(decide(bash(command), accept).kind, "allow", command);
+    assert.equal(decide(bash("LD_PRELOAD=./x.so timeout 1 mkdir build"), auto).kind, "classify");
+    assert.deepEqual(decide(bash("timeout 10 nice -n 2 mkdir build"), accept), { kind: "allow", via: "workspace file operation" });
   } finally {
     ws.cleanup();
   }

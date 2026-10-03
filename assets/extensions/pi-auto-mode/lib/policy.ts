@@ -252,7 +252,13 @@ function workspaceFileOps(commands: SimpleCommand[], pc: PolicyContext, home: st
     const name = commandName(command);
     if (!allowed.has(name) || command.words[0] !== name || command.redirects.length || command.wrapped) return false;
     if (name === "sed" && !command.words.some((word) => /^-i|^--in-place(?:=|$)/u.test(word))) return false;
-    const args = command.words.slice(1).filter((word) => !word.startsWith("-"));
+    // Đối số và giá trị của tùy chọn (`--target-directory=DIR`, `-tDIR` của cp/mv) đều phải nằm trong workspace.
+    const args = command.words.slice(1).flatMap((word) => {
+      if (!word.startsWith("-")) return [word];
+      const eq = word.startsWith("--") ? word.indexOf("=") : -1;
+      if (eq > 0) return [word.slice(eq + 1)];
+      return (name === "cp" || name === "mv") && /^-t./u.test(word) ? [word.slice(2)] : [];
+    });
     if (!args.length) return false;
     for (const word of args) {
       const file = resolveShellPath(word, pc.cwd, home);

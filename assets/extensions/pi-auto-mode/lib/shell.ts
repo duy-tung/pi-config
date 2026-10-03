@@ -779,14 +779,21 @@ export function commandText(command: SimpleCommand): string {
 export const STRIPPED_WRAPPERS = new Set(["timeout", "gtimeout", "time", "nice", "nohup", "stdbuf"]);
 
 /**
- * Lệnh dùng để so luật allow: bỏ lệnh wrapper ngoài cùng trong STRIPPED_WRAPPERS (lệnh bên trong đã nằm trong danh
- * sách) và coi lệnh bên trong như lệnh cấp cao nhất. Luật deny/ask vẫn xét cả danh sách gốc.
+ * Lệnh dùng để so luật allow và xét lệnh file: bóc các wrapper trong STRIPPED_WRAPPERS ở đầu lệnh (`timeout 10 nice
+ * mkdir x` → `mkdir x`) nhưng giữ biến môi trường và chuyển hướng của lệnh ngoài, để `LD_PRELOAD=x timeout 1 mkdir` hay
+ * `timeout 1 touch x >> ~/.zshrc` vẫn bị kiểm. Lệnh bên trong mà analyzeShell đã bóc sẵn từ các wrapper này bị bỏ (đã
+ * có trong lệnh vừa bóc). Luật deny/ask vẫn xét cả danh sách gốc.
  */
 export function ruleUnits(analysis: ShellAnalysis): SimpleCommand[] {
   return analysis.commands.flatMap((command) => {
-    if (!command.wrapped && STRIPPED_WRAPPERS.has(command.words[0] ?? "") && innerStart(command.words) !== undefined) return [];
-    if (command.wrapped && STRIPPED_WRAPPERS.has(command.wrapped)) return [{ ...command, wrapped: undefined }];
-    return [command];
+    if (command.wrapped && STRIPPED_WRAPPERS.has(command.wrapped)) return [];
+    let unit = command;
+    while (STRIPPED_WRAPPERS.has(unit.words[0] ?? "")) {
+      const start = innerStart(unit.words);
+      if (start === undefined) break;
+      unit = { ...unit, words: unit.words.slice(start), literal: unit.literal.slice(start), glob: unit.glob.slice(start) };
+    }
+    return [unit];
   });
 }
 

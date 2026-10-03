@@ -255,6 +255,7 @@ Spawn `Agent` ở auto qua bộ phân loại (xét nội dung task); ở manual 
 - Tiếng Anh là ngôn ngữ chính của Jev. Giai đoạn 1 không đọc tin nhắn người dùng nên không bị ảnh hưởng; probe trên nội dung không phải tiếng Anh kém chính xác hơn.
 - Probe chỉ chạy khi có key Jev và chỉ với kết quả mang nội dung bên ngoài. File đọc trong workspace (kể cả repo vừa clone) không được quét. Nội dung dài hơn 24.000 ký tự chỉ được quét phần đầu và phần cuối.
 - Kết quả subagent trả về được probe quét, nhưng không xét lại cả lịch sử hành động của subagent như Claude Code.
+- **No** chỉ dừng lượt khi mọi lời gọi trong cùng một lô tool song song đều bị chặn kiểu này (cách `terminate` của Pi); lời gọi khác trong lô đã được duyệt vẫn chạy.
 - Accept edits cho `sed -i` chạy theo đối số, như Claude Code: script của `sed` có thể tự ghi file khác (lệnh `w`) hoặc chạy lệnh (`e` của GNU sed) mà không bị hỏi.
 - Bước 4 chỉ nhận ra các lệnh shell ở trên. Script tự xoá thư mục (`python -c "shutil.rmtree(...)"`, `node -e`...) hoặc lệnh xoá trên máy khác (`ssh`, `docker exec`) không bị hỏi.
 - Bước 5 cũng vậy:
