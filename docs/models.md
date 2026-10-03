@@ -9,9 +9,10 @@ Model và mức thinking của mọi vai đặt ở một chỗ: `<agent-dir>/mo
 | `main` | Phiên chính (parent) | `settings.json` (`defaultProvider`, `defaultModel`, `defaultThinkingLevel`) và `executor` trong `advisor.json` |
 | `researcher`, `worker`, `reviewer` | Agent của pi-subagents | dòng `model:`/`thinking:` trong `agents/<vai>.md` |
 | `advisor` | pi-advisor-flow | `advisor`, `advisorEffort` trong `advisor.json` |
-| `autoMode` | Bộ phân loại LLM của auto mode | `autoMode.model`, `autoMode.stage2Reasoning` trong `settings.json` |
 
-`enabledModels` (danh sách của Ctrl+P và `scopeModels` của pi-subagents) và `modelThinkingLevels` (mức thinking khi đổi sang một model) được suy ra từ các vai: model của `main` đứng đầu, model của auto mode không vào danh sách.
+`enabledModels` (danh sách của Ctrl+P và `scopeModels` của pi-subagents) và `modelThinkingLevels` (mức thinking khi đổi sang một model) được suy ra từ các vai: model của `main` đứng đầu.
+
+Model của bộ phân loại auto mode không phải một vai (bản cũ có vai `autoMode`): đổi trong `/permissions` → Classifier → Change classifier model…, lưu vào `autoMode.model` và `autoMode.stage2Reasoning` của `settings.json` và áp ngay cho phiên. Mặc định Claude Sonnet 5.5 / low; cài lại giữ giá trị bạn đã đổi. Xem [docs/auto-mode.md](auto-mode.md#cấu-hình).
 
 Vai `main` ghi cả `executor` của advisor: khi advisor luôn bật, mỗi lần mở phiên nó đặt model của phiên chính thành `executor`. Mặc định đặt advisor khác `main` (hỏi chính mình không thêm góc nhìn). Chặn advisor trùng model của pi-advisor-flow (`advisorDisableSameModel`) được tắt trong `advisor.json`, vì fallback `advisorFallbackModel` (Opus 5.5, dùng khi request tới advisor lỗi) trùng model của phiên chính; hai khóa này không thuộc `model-roles.json`, `/models` không đổi chúng. Ảnh trong hội thoại cũng được gửi kèm cho advisor khi model advisor nhận ảnh.
 
@@ -32,7 +33,6 @@ Chỉ có một cấu hình model có sẵn, ở `assets/configs/model-defaults.
 | `worker` | GPT-6.1 Sol / max |
 | `reviewer` | GPT-6 Astra / high |
 | `advisor` | GPT-6 Astra / high |
-| `autoMode` | Claude Sonnet 5.5 / low |
 
 Mặc định cần đăng nhập Claude, Codex và OpenCode Go. Chỉ có Claude thì ghi đè các vai còn lại sang Claude ([ví dụ](#chỉ-dùng-claude)).
 
@@ -54,7 +54,6 @@ Khi có vai lệch, menu còn có mục đưa các vai lệch về `model-roles.
   | Vai | Trong phiên chạy `/models` | Phiên Pi khác đang mở |
   |---|---|---|
   | `main` | Ngay: phiên này chuyển sang model và thinking mới. Nếu provider chưa đăng nhập thì phiên giữ model cũ và `/models` báo lại | Phiên Pi mở sau |
-  | `autoMode` | Từ lần phân loại kế tiếp của auto mode | Phiên Pi mở sau |
   | `researcher`, `worker`, `reviewer` | Từ lần gọi `Agent` kế tiếp | Từ lần gọi `Agent` kế tiếp |
   | `advisor` | Từ lần hỏi advisor kế tiếp | Từ lần hỏi advisor kế tiếp |
 
@@ -76,12 +75,13 @@ Installer tạo file này ở lần cài đầu với `{"roles": {}}`. Từ đó
 - **`roles.<vai>`:** `model` dạng `provider/id` (xem `/model` hoặc `pi --list-models`), `thinking` là một trong `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Có thể đặt riêng từng trường; trường không ghi dùng mặc định.
 - Khóa `preset` của bản cũ (preset `default`/`claude` đã gỡ) không phải lỗi: installer, `/models` và `pi-doctor` bỏ qua và in một dòng cảnh báo; chỉ ghi đè trong `roles` có tác dụng. Lần ghi kế tiếp của `/models` bỏ khóa này.
 - Ghi đè của vai đã gỡ (`auditor`, `oracle`, `debugger`; worker nay gồm cả sửa lỗi) không phải lỗi: installer, `/models` và `pi-doctor` bỏ qua và in một dòng cảnh báo; xoá khỏi file để hết cảnh báo.
+- Ghi đè còn sót của vai `autoMode` (bản cũ) cũng chỉ bị bỏ qua kèm một dòng cảnh báo chỉ tới `/permissions` → Classifier. Lần cài đầu sau khi nâng cấp, model phân loại từng đặt bằng ghi đè này trở về mặc định; đặt lại trong `/permissions`.
 
 Sửa tay file này xong thì chạy lại installer, hoặc mở `/models`: vai bạn sửa hiện là vai lệch, và mục đưa vai lệch về `model-roles.json` áp file vào các file gốc.
 
 ### Chỉ dùng Claude
 
-Không có Codex hay OpenCode Go: chỉ cần đăng nhập Claude với file sau. Reviewer và advisor dùng Fable, khác model với người viết code (worker Opus); `main` và `autoMode` giữ mặc định.
+Không có Codex hay OpenCode Go: chỉ cần đăng nhập Claude với file sau. Reviewer và advisor dùng Fable, khác model với người viết code (worker Opus); `main` giữ mặc định. Model phân loại của auto mode mặc định đã là Claude.
 
 ```json
 {
@@ -126,7 +126,7 @@ Installer gộp file `agents/*.md` theo từng khóa của frontmatter. Phần p
 ## Giới hạn
 
 - Role của project (`.pi/agents/*.md`) và `.pi/settings.json` của project không theo `model-roles.json`.
-- Model Jev của bước 1 auto mode (`autoMode.jev.model`) và model tìm kiếm của pi-web-access không thuộc `model-roles.json`.
+- Model phân loại của auto mode (`autoMode.model`, đổi trong `/permissions`), model Jev của bước 1 (`autoMode.jev.model`) và model tìm kiếm của pi-web-access không thuộc `model-roles.json`.
 - `pi-test` kiểm cơ chế của bản cài với các model mặc định, vì provider giả chỉ có các model này. Model bạn chọn được `pi-doctor` kiểm trong catalog.
 - `/models` dựng cấu hình mới từ mặc định installer lưu ở lần cài trước (`<root>/state/defaults`). Thiếu bản lưu này thì `/models` báo lỗi khi ghi; chạy lại installer một lần.
 - `/models` chỉ quản lý agent dir của bản cài; phiên chạy với `PI_CODING_AGENT_DIR` khác sẽ báo lỗi. Trong phiên đang mở, danh sách Ctrl+P (`enabledModels`) và mức thinking mặc định theo model chỉ cập nhật từ phiên sau.

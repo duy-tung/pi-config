@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { buildConfiguration, PACKAGES } from "../lib/config.mjs";
+import { buildConfiguration, CLASSIFIER, PACKAGES } from "../lib/config.mjs";
 import { SUBAGENT_ROLES, changedRoles, forceNativeModels, loadModelDefaults, nativeValues, nextModelDefault, resolveModelRoles } from "../runtime/model-roles.mjs";
 import { claudeOnly } from "./install-fixture.mjs";
 
@@ -245,7 +245,7 @@ test("Đầu vào tương đối bị từ chối để không ghi nhầm worksp
   assert.throws(() => buildConfiguration({ ...options, agentDir: ".pi/agent" }), /agentDir phải là đường dẫn tuyệt đối/u);
 });
 
-test("model-roles: ghi đè đi tới mọi file gốc (settings, file role, advisor, auto mode)", () => {
+test("model-roles: ghi đè đi tới mọi file gốc (settings, file role, advisor); model phân loại không phải một vai", () => {
   const { roles } = resolveModelRoles(defaults, { roles: { ...claudeOnly, worker: { model: "anthropic/claude-opus-5-5", thinking: "max" } } });
   const root = "/home/dev/pi", agentDir = "/home/dev/agent";
   const files = buildConfiguration({ root, agentDir, nodePath: "/opt/node", platform: "linux", home: "/home/dev", repoDir, modelRoles: roles });
@@ -254,6 +254,7 @@ test("model-roles: ghi đè đi tới mọi file gốc (settings, file role, adv
   assert.deepEqual([settings.defaultProvider, settings.defaultModel, settings.defaultThinkingLevel], ["anthropic", "claude-opus-5-5", "high"]);
   assert.deepEqual(settings.enabledModels, ["anthropic/claude-opus-5-5", "anthropic/claude-fable-5-1", "anthropic/claude-sonnet-5-5"]);
   assert.deepEqual(settings.modelThinkingLevels, { "anthropic/claude-opus-5-5": "high", "anthropic/claude-fable-5-1": "high", "anthropic/claude-sonnet-5-5": "high" });
+  assert.deepEqual(CLASSIFIER, { model: "anthropic/claude-sonnet-5-5", stage2Reasoning: "low" });
   assert.deepEqual([settings.autoMode.model, settings.autoMode.stage2Reasoning, settings.autoMode.jev.model], ["anthropic/claude-sonnet-5-5", "low", "jev-1.13.0"]);
   const frontmatter = (role) => read(`agents/${role}.md`).split("\n---\n")[0];
   assert.match(frontmatter("worker"), /^model: anthropic\/claude-opus-5-5\nthinking: max$/mu);
@@ -273,7 +274,7 @@ test("/models dựng mặc định mới từ base của cấu hình khác: gi�
       ...SUBAGENT_ROLES.map((role) => [p.join("agents", `${role}.md`), role]),
     ].map(([name, kind]) => [p.join(options.agentDir, name), kind]));
     const before = resolveModelRoles(defaults).roles;
-    const after = resolveModelRoles(defaults, { roles: { ...claudeOnly, worker: { model: "anthropic/claude-opus-5-5", thinking: "max" }, autoMode: { model: "anthropic/claude-haiku-4-5" } } }).roles;
+    const after = resolveModelRoles(defaults, { roles: { ...claudeOnly, worker: { model: "anthropic/claude-opus-5-5", thinking: "max" } } }).roles;
     const old = buildConfiguration({ ...options, modelRoles: before });
     const fresh = new Map(buildConfiguration({ ...options, modelRoles: after }).map((entry) => [entry.path, entry.content]));
     const kinds = [];
@@ -288,7 +289,7 @@ test("/models dựng mặc định mới từ base của cấu hình khác: gi�
       assert.equal(nextModelDefault(kind, entry.content, nativeValues(after)), fresh.get(entry.path), entry.path);
     }
     assert.deepEqual(kinds.sort(), ["advisor", "researcher", "reviewer", "settings", "worker"]);
-    assert.deepEqual(changedRoles(before, after), ["researcher", "worker", "reviewer", "advisor", "autoMode"]);
+    assert.deepEqual(changedRoles(before, after), ["researcher", "worker", "reviewer", "advisor"]);
   }
 });
 
@@ -299,9 +300,8 @@ test("ép giá trị của vai trong file gốc người dùng đã đổi: ch�
   const onlyMain = JSON.parse(forceNativeModels("settings", settings, models, ["main"]));
   assert.deepEqual([onlyMain.theme, onlyMain.defaultProvider, onlyMain.defaultModel, onlyMain.defaultThinkingLevel], ["rose-pine-dawn", "anthropic", "claude-opus-5-5", "high"]);
   // Danh sách suy ra (enabledModels) và vai không nêu giữ nguyên; bước gộp ba chiều lo phần đó.
-  assert.deepEqual([onlyMain.enabledModels, onlyMain.autoMode.model], [["user/model"], "openai-codex/gpt-6.1-sol"]);
-  const autoMode = JSON.parse(forceNativeModels("settings", settings, models, ["autoMode"])).autoMode;
-  assert.deepEqual(autoMode, { model: "anthropic/claude-sonnet-5-5", stage2Reasoning: "low", log: true });
+  // Model phân loại (đổi trong /permissions) không bao giờ bị /models ép.
+  assert.deepEqual([onlyMain.enabledModels, onlyMain.autoMode], [["user/model"], { model: "openai-codex/gpt-6.1-sol", stage2Reasoning: "high", log: true }]);
   assert.equal(forceNativeModels("settings", settings, models, ["worker"]), settings);
   const advisor = JSON.parse(forceNativeModels("advisor", JSON.stringify({ executor: "anthropic/claude-sonnet-5-5", executorEffort: "low", advisor: "x/y", alwaysOn: true }), models, ["main"]));
   assert.deepEqual(advisor, { executor: "anthropic/claude-opus-5-5", executorEffort: "high", advisor: "x/y", alwaysOn: true });
@@ -309,5 +309,5 @@ test("ép giá trị của vai trong file gốc người dùng đã đổi: ch�
   assert.equal(forceNativeModels("worker", role, models, ["worker"]), "---\nname: worker\ntools: read\nmodel: anthropic/claude-opus-5-5\nthinking: high\n---\n\nPrompt.\n");
   assert.equal(forceNativeModels("worker", role, models, ["main"]), role);
   // Không đọc được thì trả nguyên văn: bước gộp giữ file và báo lại.
-  for (const [kind, text] of [["settings", "{ hỏng"], ["settings", "[]"], ["worker", "không có frontmatter"]]) assert.equal(forceNativeModels(kind, text, models, ["main", "autoMode", "worker"]), text);
+  for (const [kind, text] of [["settings", "{ hỏng"], ["settings", "[]"], ["worker", "không có frontmatter"]]) assert.equal(forceNativeModels(kind, text, models, ["main", "worker"]), text);
 });

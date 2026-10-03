@@ -64,10 +64,10 @@ async function withInstallLock(root, fn) {
 }
 
 // Khi nào một phiên Pi đang chạy nhận giá trị mới: pi-subagents đọc lại file role ở mỗi lần gọi Agent, advisor đọc lại
-// advisor.json ở mỗi lần hỏi; phiên chính và auto mode đọc cấu hình khi mở phiên.
+// advisor.json ở mỗi lần hỏi; phiên chính đọc cấu hình khi mở phiên.
 const APPLIED_AT = {
   ...Object.fromEntries(SUBAGENT_ROLES.map(name => [name, 'ở lần gọi Agent kế tiếp'])), advisor: 'ở lần hỏi advisor kế tiếp',
-  main: 'ở phiên Pi mở sau', autoMode: 'ở phiên Pi mở sau',
+  main: 'ở phiên Pi mở sau',
 };
 
 /**

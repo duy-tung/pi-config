@@ -85,7 +85,7 @@ Pi dùng `Agent` của **@tintinweb/pi-subagents**:
 
 Parent Claude Opus 5.5/high giữ thiết kế, quyết định quan trọng và nghiệm thu cuối. GLM chạy trực tiếp qua OpenCode Go trong Pi.
 
-Bảng trên là cấu hình mặc định. Model và thinking của từng vai (parent, các role, advisor, auto mode) ghi đè được trong `<agent-dir>/model-roles.json` bằng `/models` trong Pi, áp ngay cho phiên đang chạy; chưa có Codex hay OpenCode Go thì ghi đè các vai đó sang Claude. Xem [docs/models.md](docs/models.md).
+Bảng trên là cấu hình mặc định. Model và thinking của năm vai (`main`, `researcher`, `worker`, `reviewer`, `advisor`) ghi đè được trong `<agent-dir>/model-roles.json` bằng `/models` trong Pi, áp ngay cho phiên đang chạy; chưa có Codex hay OpenCode Go thì ghi đè các vai đó sang Claude. Xem [docs/models.md](docs/models.md). Model phân loại của auto mode (mặc định Claude Sonnet 5.5/low) không phải một vai: đổi trong `/permissions` → Classifier.
 
 ```text
 @researcher Tìm luồng xử lý timeout và báo file/dòng.
@@ -112,7 +112,7 @@ Agent có context riêng và không giới hạn số lượt; dừng agent bằ
 - Hàng đợi tin nhắn: `Enter` khi Pi đang chạy để chỉnh hướng, `Alt+Enter` hoặc **Ctrl+Enter** để xếp follow-up, `Alt+Up` để lấy lại tin đang chờ. Ctrl+Enter được thêm vì terminal của Orca gửi Alt+Enter thành Shift+Enter.
 - Nhiều phiên song song, mỗi task một worktree: dùng Orca. Cài đặt, phím và các giới hạn xem [docs/orca.md](docs/orca.md).
 
-`pi-doctor` kiểm dependency và checksum bản vá, in model/thinking của mọi vai theo `model-roles.json` (kèm giá trị đang có hiệu lực khi khác và kết quả kiểm catalog của Pi) cùng trạng thái advisor và auto mode (kèm nguồn key Jev, không in key), và báo lỗi khi hai danh sách provider trong `web-search.json` lệch nhau (pi-web-access sẽ không nạp web tools). `pi-test` kiểm workflow và Agent bằng provider giả trong thư mục tạm, không gọi model trả phí.
+`pi-doctor` kiểm dependency và checksum bản vá, in model/thinking của mọi vai theo `model-roles.json` (kèm giá trị đang có hiệu lực khi khác và kết quả kiểm catalog của Pi) cùng trạng thái advisor và auto mode (model phân loại theo `settings.json`, nguồn key Jev, không in key), và báo lỗi khi hai danh sách provider trong `web-search.json` lệch nhau (pi-web-access sẽ không nạp web tools). `pi-test` kiểm workflow và Agent bằng provider giả trong thư mục tạm, không gọi model trả phí.
 
 Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều hành: bộ phân loại có thể sai. Luật `permissions.deny` (file bí mật, `sudo`...) áp dụng ở mọi mode, theo đường dẫn có trong lệnh: glob hay tìm cả cây chạm tới file bị deny thì bị chặn, tool `grep` của Pi bỏ các dòng thuộc file đó khỏi kết quả, lệnh có tập đích không kiểm được (biến, `xargs`...) thì auto mode giao bộ phân loại, manual và bypass hỏi bạn. Chương trình tùy ý (`node`, `python -c`...) vẫn tự mở được file; xem [giới hạn đọc](docs/auto-mode.md#giới-hạn-đọc-khi-có-deny-đường-dẫn). Bypass vẫn hỏi trước lệnh xoá đệ quy ra ngoài thư mục tạm (`rm -fr`, `find -delete`, `git clean`...) và lệnh rủi ro (`~/.bashrc`, git hook, crontab, `curl -k`, `/etc`...). Project cần được trust trước khi dùng cấu hình của project; settings của project không bật được bypass hay thêm luật allow. Nguồn web là dữ liệu để tham khảo, không phải instruction.
 

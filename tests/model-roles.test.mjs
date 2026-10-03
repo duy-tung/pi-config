@@ -22,7 +22,7 @@ test('mặc định đặt đủ model và thinking hợp lệ cho mọi vai; l�
   assert.deepEqual(table(resolveModelRoles(defaults).roles), {
     main: 'anthropic/claude-opus-5-5 high', researcher: 'opencode-go/glm-5.3-flash max',
     worker: 'openai-codex/gpt-6.1-sol max', reviewer: 'openai-codex/gpt-6-astra high',
-    advisor: 'openai-codex/gpt-6-astra high', autoMode: 'anthropic/claude-sonnet-5-5 low',
+    advisor: 'openai-codex/gpt-6-astra high',
   });
   assert.ok(ROLES.every(name => Object.values(resolveModelRoles(defaults).roles[name].source).every(source => source === 'default')));
   // Ghi đè chỉ dùng Claude (docs/models.md): reviewer khác model với worker.
@@ -72,7 +72,7 @@ test('cấu hình sai: báo từng lỗi, vẫn trả đủ vai theo mặc đị
     'roles.worker.model phải có dạng "provider/id" (vd "anthropic/claude-opus-5-5"), đang là "opus"',
     'roles.worker.thinking phải là một trong off, minimal, low, medium, high, xhigh, max, đang là "ultra"',
     'roles.worker: không có khóa "effort" (chỉ có model, thinking)',
-    'roles: không có vai "coder" (có main, researcher, worker, reviewer, advisor, autoMode)',
+    'roles: không có vai "coder" (có main, researcher, worker, reviewer, advisor)',
   ]);
   assert.equal(resolved.roles.worker.model, 'openai-codex/gpt-6.1-sol');
   assert.deepEqual(resolveModelRoles(defaults, []).errors, ['model-roles.json phải là một object JSON']);
@@ -89,6 +89,21 @@ test('ghi đè còn sót của vai đã gỡ (auditor, oracle, debugger): bỏ q
   assert.deepEqual(resolved.roles, resolveModelRoles(defaults, {roles: {worker: {thinking: 'high'}}}).roles);
 });
 
+test('ghi đè còn sót của vai autoMode (model phân loại đã chuyển sang /permissions): bỏ qua kèm một dòng cảnh báo chỉ chỗ mới', () => {
+  const resolved = resolveModelRoles(defaults, {roles: {autoMode: {model: 'anthropic/claude-haiku-4-5', thinking: 'low'}, worker: {thinking: 'high'}}});
+  assert.deepEqual(resolved.errors, []);
+  assert.deepEqual(resolved.warnings, [
+    'roles: bỏ qua autoMode (model của bộ phân loại auto mode giờ đặt trong /permissions → Classifier); xoá khỏi model-roles.json để hết cảnh báo',
+  ]);
+  assert.deepEqual(Object.keys(resolved.roles), ROLES);
+  assert.ok(!ROLES.includes('autoMode'));
+  assert.deepEqual(resolved.roles, resolveModelRoles(defaults, {roles: {worker: {thinking: 'high'}}}).roles);
+  // Giá trị sai dạng cũng chỉ là cảnh báo: vai không còn được kiểm.
+  assert.deepEqual(resolveModelRoles(defaults, {roles: {autoMode: 'x'}}).errors, []);
+  // Cùng lúc với vai đã gỡ: mỗi loại một dòng.
+  assert.equal(resolveModelRoles(defaults, {roles: {autoMode: {}, debugger: {}}}).warnings.length, 2);
+});
+
 test('giá trị cho từng file gốc: phiên chính, advisor luôn cùng model, danh sách model', () => {
   const values = nativeValues(resolveModelRoles(defaults).roles);
   assert.deepEqual(values.settings, {
@@ -98,14 +113,13 @@ test('giá trị cho từng file gốc: phiên chính, advisor luôn cùng model
     },
     enabledModels: ['anthropic/claude-opus-5-5', 'openai-codex/gpt-6.1-sol', 'openai-codex/gpt-6-astra', 'opencode-go/glm-5.3-flash'],
   });
-  assert.deepEqual(values.autoMode, {model: 'anthropic/claude-sonnet-5-5', stage2Reasoning: 'low'});
   assert.deepEqual(values.advisor, {
     executor: 'anthropic/claude-opus-5-5', executorEffort: 'high', advisor: 'openai-codex/gpt-6-astra', advisorEffort: 'high',
   });
   const custom = nativeValues(resolveModelRoles(defaults, {roles: {...claudeOnly, main: {thinking: 'xhigh'}}}).roles);
-  assert.deepEqual(Object.keys(custom), ['settings', 'autoMode', 'subagents', 'advisor']);
+  assert.deepEqual(Object.keys(custom), ['settings', 'subagents', 'advisor']);
   assert.deepEqual([custom.advisor.executor, custom.advisor.executorEffort], ['anthropic/claude-opus-5-5', 'xhigh']);
-  // Model của auto mode không vào danh sách Ctrl+P; model dùng chung chỉ xuất hiện một lần, phiên chính đứng đầu.
+  // Model dùng chung chỉ xuất hiện một lần, phiên chính đứng đầu.
   assert.deepEqual(custom.settings.enabledModels, ['anthropic/claude-opus-5-5', 'anthropic/claude-fable-5-1', 'anthropic/claude-sonnet-5-5']);
   assert.equal(custom.settings.modelThinkingLevels['anthropic/claude-opus-5-5'], 'xhigh');
 });
@@ -135,7 +149,7 @@ test('giá trị đang có hiệu lực theo file gốc và vai bị lệch so v
   const values = nativeValues(resolveModelRoles(defaults).roles);
   const write = (name, value) => fs.writeFileSync(path.join(agentDir, name), typeof value === 'string' ? value : JSON.stringify(value));
   fs.mkdirSync(path.join(agentDir, 'agents'));
-  write('settings.json', {...values.settings, defaultModel: 'claude-sonnet-5-5', autoMode: values.autoMode});
+  write('settings.json', {...values.settings, defaultModel: 'claude-sonnet-5-5', autoMode: {model: 'anthropic/claude-haiku-4-5'}});
   write('advisor.json', {...values.advisor, alwaysOn: true});
   for (const [name, value] of Object.entries(values.subagents)) write(`agents/${name}.md`, role(value.model, value.thinking));
   const roles = resolveModelRoles(defaults).roles;

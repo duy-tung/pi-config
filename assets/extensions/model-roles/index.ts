@@ -11,12 +11,10 @@ import { type Action, type Change, levelOf, levelOptions, mainMenu, type Menu, r
 /**
  * /models: menu đổi model/thinking của các vai (model-roles.json), cách duy nhất để đổi model theo vai. Phần ghi chạy
  * bằng <root>/bin/models.mjs của bản cài (cùng kiểm tra, cách gộp và khóa với installer), nhưng kiểm model và đăng
- * nhập bằng catalog của chính phiên này, rồi áp ngay phần áp được: phiên chính đổi model/thinking, auto mode đọc lại
- * model của bộ phân loại. Không có UI thì in bảng model của các vai.
+ * nhập bằng catalog của chính phiên này, rồi áp ngay phần áp được: phiên chính đổi model/thinking. Không có UI thì in
+ * bảng model của các vai. Model của bộ phân loại auto mode đổi trong /permissions (pi-auto-mode), không ở đây.
  */
 
-// pi-auto-mode đọc lại model của bộ phân loại khi nhận sự kiện này và ghi "autoMode" vào applied.
-const MODEL_ROLES_EVENT = "pi-config:model-roles-changed";
 const AUTH_SOURCES: Record<string, string> = {
   runtime: "key của phiên", environment: "biến môi trường", fallback: "key mặc định",
   models_json_key: "key trong models.json", models_json_command: "lệnh trong models.json",
@@ -140,15 +138,9 @@ async function switchSession(pi: ExtensionAPI, ctx: ExtensionContext, install: I
   return `Phiên này dùng ${sessionLabel(pi, ctx)}.`;
 }
 
-/** effects của runModels trong phiên: áp ngay main và auto mode, báo thời điểm của các vai còn lại. */
+/** effects của runModels trong phiên: áp ngay main, báo thời điểm của các vai còn lại. */
 async function applyToSession(pi: ExtensionAPI, ctx: ExtensionContext, install: Install, changed: string[]): Promise<string[]> {
-  const when: Record<string, string> = {};
-  if (changed.includes("autoMode")) {
-    const payload = { applied: [] as string[] };
-    pi.events.emit(MODEL_ROLES_EVENT, payload);
-    if (payload.applied.includes("autoMode")) when.autoMode = "ở lần phân loại kế tiếp của auto mode";
-  }
-  const lines = install.models.whenApplied(changed.filter((name) => name !== "main"), when);
+  const lines = install.models.whenApplied(changed.filter((name) => name !== "main"));
   if (changed.includes("main")) lines.push(await switchSession(pi, ctx, install, install.roles.effectiveModelRoles(install.agentDir).main));
   return lines;
 }

@@ -8,6 +8,7 @@ import {defaultsFile, planConfigFile} from '../runtime/merge.mjs';
 import {ROLES, changedRoles, resolveModelRoles} from '../runtime/model-roles.mjs';
 import {planModelFiles, runModels, whenApplied, writeModelFiles} from '../runtime/models.mjs';
 import {claudeOnly, defaults, readJson, simulatedInstall as install, snapshot} from './install-fixture.mjs';
+import {saveClassifier} from '../assets/extensions/pi-auto-mode/lib/config.ts';
 
 test('áp ghi đè mới vào bản cài: giữ phần người dùng sửa, vai không đổi giữ giá trị đổi qua /model; cài lại sau đó không đổi gì', t => {
   const f = install(t);
@@ -42,6 +43,34 @@ test('áp ghi đè mới vào bản cài: giữ phần người dùng sửa, vai
       assert.deepEqual([plan.content, plan.base, plan.recorded], [undefined, undefined, state.files[file]], file);
     }
   }
+});
+
+test('model phân loại đổi trong /permissions: cài lại giữ giá trị của người dùng, /models không ép; mặc định mới khác thì báo xung đột', t => {
+  const f = install(t);
+  const settingsFile = f.file('settings.json');
+  saveClassifier(settingsFile, 'openai-codex/gpt-6-astra', 'medium');
+  const classifier = () => {
+    const {model, stage2Reasoning} = readJson(settingsFile).autoMode;
+    return [model, stage2Reasoning];
+  };
+  const reinstall = (edit = value => value) => {
+    const entry = buildConfiguration({...f.options, modelRoles: resolveModelRoles(defaults).roles}).find(item => item.path === settingsFile);
+    const content = `${JSON.stringify(edit(JSON.parse(entry.content)), null, 2)}\n`;
+    return planConfigFile({root: f.root, file: settingsFile, content, recorded: f.state().files[settingsFile]});
+  };
+  // Cùng mặc định: gộp ba chiều giữ giá trị đã đổi, không xung đột.
+  const same = reinstall();
+  assert.deepEqual(same.conflicts, []);
+  const kept = JSON.parse(same.content ?? fs.readFileSync(settingsFile, 'utf8')).autoMode;
+  assert.deepEqual([kept.model, kept.stage2Reasoning, kept.jev], ['openai-codex/gpt-6-astra', 'medium', {model: 'jev-1.13.0'}]);
+  // /models ép mọi vai: autoMode không phải một vai nên giữ nguyên.
+  const {plans} = planModelFiles({root: f.root, agentDir: f.agentDir, state: f.state(), roles: resolveModelRoles(defaults, {roles: claudeOnly}).roles, force: ROLES});
+  writeModelFiles({root: f.root, statePath: f.statePath, state: f.state(), plans});
+  assert.deepEqual(classifier(), ['openai-codex/gpt-6-astra', 'medium']);
+  // Mặc định mới của installer đổi model phân loại: giữ của người dùng, báo xung đột kèm mặc định mới.
+  const moved = reinstall(value => ({...value, autoMode: {...value.autoMode, model: 'anthropic/claude-opus-5-5'}}));
+  assert.equal(JSON.parse(moved.content ?? fs.readFileSync(settingsFile, 'utf8')).autoMode.model, 'openai-codex/gpt-6-astra');
+  assert.deepEqual(moved.conflicts.map(item => [item.path, item.current, item.next]), [[['autoMode', 'model'], 'openai-codex/gpt-6-astra', 'anthropic/claude-opus-5-5']]);
 });
 
 test('ép mọi vai (apply --reset): giá trị đổi ngoài model-roles.json trở về cấu hình, phần khác vẫn giữ', t => {
@@ -109,11 +138,11 @@ test('/models: thay đổi sai và khóa của installer báo lỗi, không ghi 
 
 test('whenApplied gom các vai theo thời điểm có hiệu lực; thời điểm riêng thay mặc định', () => {
   assert.deepEqual(whenApplied([]), []);
-  assert.deepEqual(whenApplied(['main', 'worker', 'reviewer', 'advisor', 'autoMode']), [
-    'Có hiệu lực: main, autoMode ở phiên Pi mở sau; worker, reviewer ở lần gọi Agent kế tiếp; advisor ở lần hỏi advisor kế tiếp.',
+  assert.deepEqual(whenApplied(['main', 'worker', 'reviewer', 'advisor']), [
+    'Có hiệu lực: main ở phiên Pi mở sau; worker, reviewer ở lần gọi Agent kế tiếp; advisor ở lần hỏi advisor kế tiếp.',
   ]);
-  assert.deepEqual(whenApplied(['autoMode', 'worker'], {autoMode: 'ở lần phân loại kế tiếp'}), [
-    'Có hiệu lực: autoMode ở lần phân loại kế tiếp; worker ở lần gọi Agent kế tiếp.',
+  assert.deepEqual(whenApplied(['main', 'worker'], {main: 'ngay'}), [
+    'Có hiệu lực: main ngay; worker ở lần gọi Agent kế tiếp.',
   ]);
 });
 

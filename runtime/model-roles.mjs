@@ -10,11 +10,14 @@ import {writeAtomic} from './merge.mjs';
  * Installer sinh các file gốc (settings.json, agents/*.md, advisor.json) từ kết quả resolve;
  * /models (runtime/models.mjs) đổi model-roles.json và áp ngay vào các file gốc; /models và pi-doctor so kết quả
  * resolve với giá trị đang có hiệu lực trong các file gốc.
+ * Model của bộ phân loại auto mode không phải một vai: đặt trong /permissions → Classifier (autoMode.model của settings.json).
  */
 
-export const ROLES = ['main', 'researcher', 'worker', 'reviewer', 'advisor', 'autoMode'];
+export const ROLES = ['main', 'researcher', 'worker', 'reviewer', 'advisor'];
 // Vai đã gỡ khỏi pi-config: ghi đè còn sót trong model-roles.json bị bỏ qua kèm cảnh báo, không làm hỏng cấu hình.
 export const REMOVED_ROLES = ['auditor', 'oracle', 'debugger'];
+// Vai đã chuyển chỗ: ghi đè còn sót bị bỏ qua kèm cảnh báo chỉ chỗ đặt mới.
+const MOVED_ROLES = {autoMode: 'model của bộ phân loại auto mode giờ đặt trong /permissions → Classifier'};
 export const SUBAGENT_ROLES = ['researcher', 'worker', 'reviewer'];
 export const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 const FIELDS = ['model', 'thinking'];
@@ -22,7 +25,7 @@ export const MODEL_ROLES_FILE = 'model-roles.json';
 const defaultModelRoles = () => ({roles: {}});
 
 // Thứ tự suy ra enabledModels (Ctrl+P, scopeModels của pi-subagents) và thinking mặc định theo model:
-// model của phiên chính đứng đầu; model của auto mode không vào danh sách chọn model.
+// model của phiên chính đứng đầu.
 const MODEL_ORDER = ['main', 'worker', 'reviewer', 'researcher', 'advisor'];
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
@@ -62,6 +65,7 @@ function checkRoles(where, roles, errors, warnings) {
   for (const [name, value] of Object.entries(roles)) {
     if (ROLES.includes(name)) result[name] = checkRole(`${where}.${name}`, value, errors);
     else if (REMOVED_ROLES.includes(name)) removed.push(name);
+    else if (Object.hasOwn(MOVED_ROLES, name)) warnings.push(`${where}: bỏ qua ${name} (${MOVED_ROLES[name]}); xoá khỏi ${MODEL_ROLES_FILE} để hết cảnh báo`);
     else errors.push(`${where}: không có vai "${name}" (có ${ROLES.join(', ')})`);
   }
   if (removed.length) warnings.push(`${where}: bỏ qua ${removed.join(', ')} (vai đã gỡ khỏi pi-config); xoá khỏi ${MODEL_ROLES_FILE} để hết cảnh báo`);
@@ -112,7 +116,6 @@ export function nativeValues(roles) {
       defaultProvider: main.provider, defaultModel: main.id, defaultThinkingLevel: roles.main.thinking,
       modelThinkingLevels: levels, enabledModels: [...new Set(MODEL_ORDER.map(name => roles[name].model))],
     },
-    autoMode: {model: roles.autoMode.model, stage2Reasoning: roles.autoMode.thinking},
     subagents: Object.fromEntries(SUBAGENT_ROLES.map(name => [name, {model: roles[name].model, thinking: roles[name].thinking}])),
     // alwaysOn của advisor đặt model của phiên chính thành executor mỗi lần mở phiên: executor luôn là vai main.
     advisor: {
@@ -122,7 +125,7 @@ export function nativeValues(roles) {
 }
 
 // Vai mà mỗi file gốc (JSON) chứa model/thinking.
-const FILE_ROLES = {settings: ['main', 'autoMode'], advisor: ['main', 'advisor']};
+const FILE_ROLES = {settings: ['main'], advisor: ['main', 'advisor']};
 
 /**
  * Đặt model/thinking của các vai vào object của một file gốc JSON (sửa tại chỗ, giữ thứ tự khóa sẵn có).
@@ -138,7 +141,6 @@ function setNativeModels(kind, value, models, only) {
       defaultThinkingLevel: models.settings.defaultThinkingLevel,
     });
     if (!only) Object.assign(value, {modelThinkingLevels: models.settings.modelThinkingLevels, enabledModels: models.settings.enabledModels});
-    if (want('autoMode')) value.autoMode = Object.assign(isObject(value.autoMode) ? value.autoMode : {}, models.autoMode);
   } else if (kind === 'advisor') {
     if (want('main')) Object.assign(value, {executor: models.advisor.executor, executorEffort: models.advisor.executorEffort});
     if (want('advisor')) {
@@ -297,7 +299,6 @@ export function effectiveModelRoles(agentDir) {
     result[name] = {...(fs.existsSync(file) ? roleModel(fs.readFileSync(file, 'utf8')) : {}), file: `agents/${name}.md`};
   }
   result.advisor = {model: advisor?.advisor, thinking: advisor?.advisorEffort, file: 'advisor.json'};
-  result.autoMode = {model: settings.autoMode?.model, thinking: settings.autoMode?.stage2Reasoning, file: 'settings.json'};
   return result;
 }
 

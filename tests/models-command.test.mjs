@@ -36,7 +36,7 @@ test('/models: menu các vai đánh dấu ghi đè và giá trị đang chạy k
 });
 
 const testRoot = process.env.PI_CONFIG_TEST_ROOT;
-test('/models trong phiên Pi thật: menu đổi thinking, model, bỏ ghi đè, đưa vai lệch về cấu hình; áp ngay cho phiên và auto mode', {skip: !testRoot, timeout: 120000}, async t => {
+test('/models và /permissions trong phiên Pi thật: menu đổi thinking, model, bỏ ghi đè, đưa vai lệch về cấu hình; mode và model phân loại áp ngay', {skip: !testRoot, timeout: 120000}, async t => {
   // Bản cài giả có extension và bin như installer; runtime nối từ bản cài thật. Chỉ nạp model-roles và pi-auto-mode,
   // model của các vai giữ như installer sinh. Chỉ Claude có key giả: Codex và OpenCode Go chưa đăng nhập.
   const f = simulatedInstall(t, {full: true});
@@ -121,7 +121,7 @@ test('/models trong phiên Pi thật: menu đổi thinking, model, bỏ ghi đè
     // worker → đổi thinking → high, xem trước rồi xác nhận.
     await menu(/^worker +openai-codex\/gpt-6.1-sol · max$/u, /^Đổi thinking/u, /^high$/u);
     assert.match(titles[0], /^Model của các vai: mặc định \+ ghi đè \(.*model-roles\.json\)\nPhiên này: anthropic\/claude-opus-5-5 · high$/u);
-    assert.deepEqual(menus[0].map(option => option.split(' ')[0]), ['main', 'researcher', 'worker', 'reviewer', 'advisor', 'autoMode']);
+    assert.deepEqual(menus[0].map(option => option.split(' ')[0]), ['main', 'researcher', 'worker', 'reviewer', 'advisor']);
     assert.match(confirms[0], /^Ghi thay đổi này\?\nworker: openai-codex\/gpt-6.1-sol \(max\) → openai-codex\/gpt-6.1-sol \(high\)$/mu);
     assert.match(confirms[0], /^Sẽ cập nhật: .*agents\/worker\.md/mu);
     assert.match(frontmatter('worker'), /^thinking: high$/mu);
@@ -145,12 +145,37 @@ test('/models trong phiên Pi thật: menu đổi thinking, model, bỏ ghi đè
     assert.deepEqual([readJson(f.file('advisor.json')).executor, readJson(f.file('settings.json')).defaultModel], ['anthropic/claude-sonnet-5-5', 'claude-sonnet-5-5']);
     assert.deepEqual(readJson(f.file('model-roles.json')).roles.main, {model: 'anthropic/claude-sonnet-5-5', thinking: 'low'});
 
-    // autoMode: pi-auto-mode đọc lại model của bộ phân loại ngay trong phiên.
-    keystrokes.push(...'anthropic/claude-opus-5-5', '\r');
-    await menu(/^autoMode /u, /^Đổi model/u, /^high$/u);
-    assert.match(last().message, /^Có hiệu lực: autoMode ở lần phân loại kế tiếp của auto mode\.$/mu);
-    await runtime.session.prompt('/permissions');
-    assert.ok(menus.at(-1).some(option => /^Classifier: .*anthropic\/claude-opus-5-5 · high…$/u.test(option)), menus.at(-1).join(' | '));
+    // Model phân loại chỉ đổi trong /permissions → Classifier: model đã đăng nhập (chỉ Claude), rồi mức thinking;
+    // ghi autoMode.model/stage2Reasoning vào settings.json (giữ quyền file) và áp ngay cho phiên.
+    const permissions = async (...steps) => {
+      answers.push(...steps);
+      await runtime.session.prompt('/permissions');
+      assert.deepEqual(missing, []);
+    };
+    const settingsMode = fs.statSync(settingsPath).mode & 0o777;
+    await permissions(/^Classifier: anthropic\/claude-sonnet-5-5 · low…$/u, /^Change classifier model…$/u, /^anthropic\/claude-opus-5-5$/u, /^high$/u);
+    assert.match(titles.at(-3), /^Mode: auto\nClassifier \(auto mode\): anthropic\/claude-sonnet-5-5 · low · timeout 60s\n/u);
+    assert.ok(menus.at(-2).includes('anthropic/claude-sonnet-5-5 (current)') && menus.at(-2).every(option => option.startsWith('anthropic/')), menus.at(-2).join(' | '));
+    assert.ok(menus.at(-1).includes('low (current)'));
+    assert.match(last().message, /^Classifier: anthropic\/claude-opus-5-5 · high \(saved to .*settings\.json\)$/u);
+    assert.deepEqual([readJson(settingsPath).autoMode.model, readJson(settingsPath).autoMode.stage2Reasoning], ['anthropic/claude-opus-5-5', 'high']);
+    assert.equal(readJson(settingsPath).autoMode.jev.model, 'jev-1.13.0', 'phần còn lại của autoMode giữ nguyên');
+    if (process.platform !== 'win32') assert.equal(fs.statSync(settingsPath).mode & 0o777, settingsMode);
+    await permissions();
+    assert.equal(titles.at(-1), 'Permissions · ⏵⏵ auto mode on');
+    assert.deepEqual(menus.at(-1), [
+      'Mode: auto — change…', 'Classifier: anthropic/claude-opus-5-5 · high…', 'Recently denied (0)', 'Rules…', 'Test a command…',
+    ]);
+    // Mode: chọn manual rồi chạy thử; manual không gọi bộ phân loại. /permissions test <lệnh> chạy thử trực tiếp.
+    await permissions(/^Mode: auto/u, /^⏸ manual mode on$/u);
+    await runtime.session.prompt('/permissions test npm install left-pad');
+    assert.match(last().message, /^Manual mode: Pi would ask you before running this \(no classifier call\)\.$/u);
+    await runtime.session.prompt('/permissions test git status');
+    assert.match(last().message, /^Decision without classifier: allow \(read-only command\)$/u);
+    await permissions(/^Mode: manual/u, /^⏵⏵ auto mode on$/u);
+    await permissions();
+    assert.equal(titles.at(-1), 'Permissions · ⏵⏵ auto mode on');
+    assert.ok(!runtime.session.extensionRunner.getRegisteredCommands().some(item => item.name === 'auto-mode'), '/auto-mode đã gộp vào /permissions');
 
     // Đổi thinking nhưng không xác nhận: chỉ xem trước, không ghi gì; tham số gõ kèm /models bị bỏ qua (huỷ menu).
     const before = snapshot(f.root, f.agentDir);
