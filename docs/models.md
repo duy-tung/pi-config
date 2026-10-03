@@ -51,7 +51,7 @@ Chọn preset: `/models` → **Chọn preset…**. Lần cài đầu dùng `defa
 
 Menu còn có mục chọn preset, và khi có vai lệch, mục đưa các vai lệch về `model-roles.json` ([xem dưới](#giá-trị-đổi-ngoài-model-rolesjson)). Mọi thay đổi được xem trước, và chỉ ghi khi bạn xác nhận. Phiên không có giao diện (vd chế độ RPC không có UI) thì `/models` chỉ in bảng các vai.
 
-- **Áp ngay.** Thay đổi sửa `model-roles.json` rồi áp phần model vào `settings.json`, `advisor.json`, `pi-goal-x-settings.json`, `agents/*.md` và `AGENTS.md`, không cần chạy lại installer. Cách gộp giống installer: phần khác bạn đã sửa trong các file đó được giữ, file bị ghi lại có backup trong `<root>/backups`, và lần cài sau không phải ghi lại gì.
+- **Áp ngay.** Thay đổi sửa `model-roles.json` rồi áp phần model vào `settings.json`, `advisor.json`, `pi-goal-x-settings.json` và `agents/*.md`, không cần chạy lại installer. Cách gộp giống installer: phần khác bạn đã sửa trong các file đó được giữ, file bị ghi lại có backup trong `<root>/backups`, và lần cài sau không phải ghi lại gì.
 - **Vai bị ép.** Vai mà thay đổi đổi giá trị (vai bạn chọn, hoặc các vai preset mới khác preset cũ) nhận giá trị mới trong file gốc kể cả khi bạn đã đổi vai đó qua `/model` hay `/agents`; bản xem trước in giá trị bị thay. Vai khác giữ giá trị bạn đã đổi.
 - **Kiểm tra.** Kiểm như installer (xem [Kiểm tra](#kiểm-tra)), bằng catalog và credential mà phiên đang dùng; có lỗi thì không ghi gì. Provider chưa đăng nhập thì gợi ý `/login`.
 - **Khóa.** `/models` và installer dùng chung khóa `<root>/.install.lock`, nên không ghi cùng lúc.
@@ -120,5 +120,4 @@ Installer gộp file `agents/*.md` theo từng khóa của frontmatter. Phần p
 - Model Jev của bước 1 auto mode (`autoMode.jev.model`) và model tìm kiếm của pi-web-access không thuộc `model-roles.json`.
 - `pi-test` kiểm cơ chế của bản cài với các model của preset `default`, vì provider giả chỉ có các model này. Model bạn chọn được `pi-doctor` kiểm trong catalog.
 - `/models` dựng cấu hình mới từ mặc định installer lưu ở lần cài trước (`<root>/state/defaults`). Thiếu bản lưu này thì `/models` báo lỗi khi ghi; chạy lại installer một lần.
-- `AGENTS.md` bạn đã sửa được giữ nguyên, nên tên model trong đó có thể cũ.
 - `/models` chỉ quản lý agent dir của bản cài; phiên chạy với `PI_CODING_AGENT_DIR` khác sẽ báo lỗi. Trong phiên đang mở, danh sách Ctrl+P (`enabledModels`) và mức thinking mặc định theo model chỉ cập nhật từ phiên sau.

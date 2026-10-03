@@ -3,6 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+/** Chuỗi bắt đầu bằng scheme URL (`https://`, `git+ssh://`); scheme ít nhất hai ký tự nên `C://` vẫn là đường dẫn. */
+export const URL_LIKE = /^[a-z][a-z0-9+.-]+:\/\//iu;
+
 const UNICODE_SPACES = /[  -   　]/gu;
 
 /** Cùng quy tắc resolveToCwd của tool read/write/edit của Pi: bỏ @, mở rộng ~, file://, khoảng trắng Unicode. */

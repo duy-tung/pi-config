@@ -28,6 +28,8 @@ export interface AutoModeConfig {
   ask: string[];
   deny: string[];
   additionalDirectories: string[];
+  /** Thư mục skill trong `skills` của settings (đọc tự do, như thư mục làm việc). */
+  skills: string[];
   /** Model phân loại "provider/id" cho cả hai giai đoạn; bỏ trống thì dùng model của phiên. */
   model?: string;
   stage2Reasoning: string;
@@ -38,7 +40,7 @@ export interface AutoModeConfig {
   hardDeny: string[];
   stateDir: string;
   log: boolean;
-  /** Ghi chú thêm về môi trường; nối vào slot environment. */
+  /** File settings.json đã đọc (hiện ở /permissions → Show rules). */
   source: string;
   jev: JevConfig;
   gitGuard: GitGuardConfig;
@@ -49,7 +51,7 @@ const DEFAULTS = {
   stage2Reasoning: "low",
 };
 
-const JEV_MODEL = "jev-1.13.0";
+export const JEV_MODEL = "jev-1.13.0";
 
 /** `autoMode.jev`: false hoặc {enabled: false} tắt hẳn (cả giai đoạn 1 lẫn probe); `model` sai thì dùng mặc định. */
 export function parseJev(value: unknown): JevConfig {
@@ -70,14 +72,12 @@ function strings(value: unknown): string[] | undefined {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim() !== "") : undefined;
 }
 
-function mode(value: unknown): PermissionMode | undefined {
-  if (value === "bypassPermissions" || value === "bypass") return "bypass";
-  if (value === "auto") return "auto";
-  return undefined;
-}
-
+/** `auto`, `bypass` hoặc `bypassPermissions` (bỏ khoảng trắng hai đầu); giá trị khác là undefined. */
 export function parseMode(value: unknown): PermissionMode | undefined {
-  return mode(typeof value === "string" ? value.trim() : value);
+  const text = typeof value === "string" ? value.trim() : value;
+  if (text === "bypassPermissions" || text === "bypass") return "bypass";
+  if (text === "auto") return "auto";
+  return undefined;
 }
 
 function readSettings(file: string): Record<string, unknown> {
@@ -103,12 +103,13 @@ export function loadConfig(agentDir: string, env: NodeJS.ProcessEnv = process.en
   const timeout = Number(auto.timeoutMs);
   return {
     enabled: env.PI_AUTO_MODE_DISABLE !== "1",
-    defaultMode: mode(permissions.defaultMode) ?? "auto",
+    defaultMode: parseMode(permissions.defaultMode) ?? "auto",
     disableBypass: disable === true || disable === "disable",
     allow: strings(permissions.allow) ?? [],
     ask: strings(permissions.ask) ?? [],
     deny: strings(permissions.deny) ?? [],
     additionalDirectories: strings(permissions.additionalDirectories) ?? [],
+    skills: strings(settings.skills) ?? [],
     model: text(auto.model),
     stage2Reasoning: text(auto.stage2Reasoning) ?? DEFAULTS.stage2Reasoning,
     timeoutMs: Number.isFinite(timeout) && timeout >= 5_000 ? timeout : DEFAULTS.timeoutMs,

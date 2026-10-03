@@ -1,11 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  MODEL_ROLES_FILE, ROLES, SUBAGENT_ROLES, changedRoles, driftWarning, driftedRoles, effectiveModelRoles, fillRoleNames,
+  MODEL_ROLES_FILE, ROLES, SUBAGENT_ROLES, changedRoles, driftWarning, driftedRoles, effectiveModelRoles,
   forceNativeModels, loadPresets, loginWarning, modelRolesReport, nativeValues, nextModelDefault, readModelRoles, resolveModelRoles,
   roleLabel as label, withPreset, withRole, withoutRoles, writeModelRoles,
 } from './model-roles.mjs';
-import {backupFile, defaultsFile, describeMerge, planConfigFile, sha256, writeAtomic, writeConfigPlan} from './merge.mjs';
+import {backupFile, defaultsFile, describeMerge, planConfigFile, writeAtomic, writeConfigPlan} from './merge.mjs';
 import {acquireInstallLock} from './install-lock.mjs';
 
 /**
@@ -19,8 +19,7 @@ const relative = (agentDir, file) => path.relative(agentDir, file).split(path.se
 /**
  * Kế hoạch áp model/thinking của các vai vào file gốc của agent dir, chưa ghi gì. Mặc định mới của mỗi file dựng từ
  * base của lần cài trước (nextModelDefault) rồi gộp ba chiều như installer: giá trị người dùng đổi trong file gốc được
- * giữ, trừ model/thinking của các vai trong force. AGENTS.md sinh lại từ bản mẫu trong <root>/assets như file
- * installer quản lý (đã sửa thì giữ). missing: file gốc chưa có base, phải chạy lại installer trước.
+ * giữ, trừ model/thinking của các vai trong force. missing: file gốc chưa có base, phải chạy lại installer trước.
  */
 export function planModelFiles({root, agentDir, state, roles, force = []}) {
   const models = nativeValues(roles);
@@ -40,18 +39,6 @@ export function planModelFiles({root, agentDir, state, roles, force = []}) {
     const forced = force.length ? text => forceNativeModels(kind, text, models, force) : undefined;
     plans.push(planConfigFile({root, file, content, recorded: state.files[file], force: forced}));
   }
-  const file = path.join(agentDir, 'AGENTS.md');
-  const template = path.join(root, 'assets', 'AGENTS.md');
-  if (!fs.existsSync(template) || sha256(fs.readFileSync(template)) !== state.files[template]) {
-    plans.push({file, managed: true, preserved: 'template'});
-    return {plans, missing};
-  }
-  if (fs.existsSync(file) && fs.lstatSync(file).isSymbolicLink()) throw new Error(`Không ghi đè symlink: ${file}`);
-  const content = fillRoleNames(fs.readFileSync(template, 'utf8'), roles);
-  const current = fs.existsSync(file) ? sha256(fs.readFileSync(file)) : undefined;
-  if (current === sha256(content)) plans.push({file, managed: true, recorded: current});
-  else if (current === undefined || current === state.files[file]) plans.push({file, managed: true, content, recorded: sha256(content)});
-  else plans.push({file, managed: true, preserved: 'edited'});
   return {plans, missing};
 }
 
@@ -60,11 +47,7 @@ export function writeModelFiles({root, statePath, state, plans}) {
   const backup = file => backupFile(root, file);
   for (const plan of plans) {
     if (plan.preserved) continue;
-    if (!plan.managed) writeConfigPlan(plan, {backup});
-    else if (plan.content !== undefined) {
-      if (fs.existsSync(plan.file)) backup(plan.file);
-      writeAtomic(plan.file, Buffer.from(plan.content), 0o600);
-    }
+    writeConfigPlan(plan, {backup});
     state.files[plan.file] = plan.recorded;
   }
   writeAtomic(statePath, Buffer.from(`${JSON.stringify(state, null, 2)}\n`), 0o600);
@@ -88,8 +71,8 @@ const APPLIED_AT = {
 };
 
 /**
- * Câu báo các vai vừa đổi giá trị trong file gốc có hiệu lực khi nào (effects mặc định của runModels), gom các vai
- * cùng thời điểm. when: thời điểm riêng theo vai (vd /models trong phiên).
+ * Câu báo các vai vừa đổi giá trị trong file gốc có hiệu lực khi nào (extension dùng trong effects của runModels),
+ * gom các vai cùng thời điểm. when: thời điểm riêng theo vai (vd /models trong phiên).
  */
 export function whenApplied(changed, when = {}) {
   const groups = new Map();
@@ -158,9 +141,7 @@ async function applyChange({root, agentDir, catalog, effects, out, dryRun, chang
     const written = plans.filter(plan => !plan.preserved && plan.content !== undefined).map(plan => relative(agentDir, plan.file));
     out.log(written.length ? `${dryRun ? 'Sẽ cập nhật' : 'Cập nhật'}: ${written.join(', ')}` : 'File gốc đã khớp, không cần ghi.');
     for (const plan of plans) {
-      if (plan.preserved === 'edited') out.log(`Giữ nguyên ${plan.file} vì bạn đã sửa; model của các vai trong file có thể đã cũ.`);
-      else if (plan.preserved === 'template') out.log(`Không cập nhật ${plan.file}: bản mẫu trong ${path.join(root, 'assets')} đã bị sửa hoặc thiếu.`);
-      else if (plan.preserved) out.log(`Không cập nhật ${plan.file}: không đọc được ${plan.file.endsWith('.md') ? 'frontmatter' : 'JSON'}.`);
+      if (plan.preserved) out.log(`Không cập nhật ${plan.file}: không đọc được ${plan.file.endsWith('.md') ? 'frontmatter' : 'JSON'}.`);
       else if (plan.conflicts?.length) out.log(describeMerge({file: plan.file, conflicts: plan.conflicts, additive: plan.additive}).join('\n'));
     }
     if (report.notes.length) out.log(`Mức thinking model không hỗ trợ (Pi dùng mức gần nhất):\n  - ${report.notes.join('\n  - ')}`);
@@ -183,7 +164,7 @@ async function applyChange({root, agentDir, catalog, effects, out, dryRun, chang
  * Có change (xem edit): áp thay đổi đó; dryRun chỉ in, không ghi. Trả exit code; lỗi được in ra, không ném.
  * catalog: catalog của phiên ({check}). effects(vai): các dòng báo khi nào vai có giá trị hiệu lực mới.
  */
-export async function runModels({root, agentDir, catalog, change, dryRun = false, out = console, effects = whenApplied}) {
+export async function runModels({root, agentDir, catalog, change, dryRun = false, out, effects}) {
   try {
     if (change) return await applyChange({root, agentDir, catalog, effects, out, dryRun, change});
     const report = await modelRolesReport({root, agentDir, logins: true, catalog});

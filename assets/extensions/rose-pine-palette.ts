@@ -25,8 +25,7 @@ export default function (pi: ExtensionAPI) {
 	};
 	pi.on("session_start", (_event, ctx) => {
 		cleanup();
-		const mode = (ctx as ExtensionContext & { mode?: string }).mode;
-		if (!ctx.hasUI || (mode !== undefined && mode !== "tui") || !process.stdout.isTTY || process.env.TERM === "dumb") return;
+		if (!ctx.hasUI || ctx.mode !== "tui" || !process.stdout.isTTY || process.env.TERM === "dumb") return;
 		current = ctx;
 		process.once("exit", restore);
 		ctx.ui.setWidget("rose-pine-palette", (tui) => {

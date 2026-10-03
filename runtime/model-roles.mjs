@@ -79,8 +79,7 @@ export function resolveModelRoles(presets, config = defaultModelRoles()) {
   if (!isObject(config)) errors.push(`${MODEL_ROLES_FILE} phải là một object JSON`);
   else {
     for (const key of Object.keys(config)) {
-      if (key === 'presets') errors.push('preset riêng ("presets") không còn được hỗ trợ: chọn preset có sẵn và ghi đè từng vai trong "roles"');
-      else if (!['preset', 'roles'].includes(key)) errors.push(`không có khóa "${key}" (chỉ có preset, roles)`);
+      if (!['preset', 'roles'].includes(key)) errors.push(`không có khóa "${key}" (chỉ có preset, roles)`);
     }
     if (config.preset !== undefined) preset = config.preset;
     overrides = checkRoles('roles', config.roles, errors);
@@ -243,14 +242,6 @@ export function setRoleModel(text, {model, thinking}) {
 export function roleModel(text) {
   const fields = splitRole(text)?.fields;
   return {model: fields?.model || undefined, thinking: fields?.thinking || undefined};
-}
-
-/** Điền {{vai}} trong văn bản (AGENTS.md của agent dir) bằng id model/thinking của vai đó, vd claude-opus-5-5/high. */
-export function fillRoleNames(text, roles) {
-  return text.replace(/\{\{(\w+)\}\}/gu, (match, name) => {
-    if (!ROLES.includes(name)) throw new Error(`Không có vai ${name} cho ${match}`);
-    return `${parseModelRef(roles[name].model).id}/${roles[name].thinking}`;
-  });
 }
 
 export function loadPresets(file) {

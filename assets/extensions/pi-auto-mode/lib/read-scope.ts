@@ -1,10 +1,12 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { resolveShellPath } from "./paths.ts";
+import { resolveShellPath, URL_LIKE } from "./paths.ts";
 import { commandName, type ShellAnalysis, type SimpleCommand } from "./shell.ts";
 
 const SEARCH = new Set(["grep", "egrep", "fgrep", "rg"]);
+/** Cờ ngắn của rg nhận giá trị: phần còn lại của cụm cờ là giá trị, không phải cờ khác. */
+const RG_SHORT_VALUES = "ABCEefgMjmtTr";
 
 interface SearchPaths {
   paths: string[];
@@ -22,7 +24,7 @@ export function searchReadPaths(command: SimpleCommand): SearchPaths | undefined
   if (!SEARCH.has(name)) return undefined;
   const rg = name === "rg";
   const shortFlags = rg ? "0123456789aAbcEFhHiIlLMnNoPpqSsTuUvVwWxz" : "abcEFGHhIiLlnoPqRrsUVvwxZz";
-  const shortValues = rg ? "ABCEefgMjmtTr" : "ABCDdefm";
+  const shortValues = rg ? RG_SHORT_VALUES : "ABCDdefm";
   const longFlags = rg
     ? ["--text", "--byte-offset", "--count", "--count-matches", "--fixed-strings", "--heading", "--no-heading",
       "--with-filename", "--no-filename", "--ignore-case", "--case-sensitive", "--smart-case", "--files-with-matches",
@@ -134,7 +136,7 @@ const FIND_ACTIONS = /^-(?:exec|execdir|ok|okdir|fprint|fprint0|fprintf|fls)$/u;
 const LOOP_KEYWORDS = new Set(["for", "select"]);
 const SHELL_KEYWORDS = new Set(["if", "then", "else", "elif", "fi", "do", "done", "while", "until", "!", "{", "}", "time"]);
 
-function denies(file: string, denied: DeniedPath, link = true): { file: string; rule: string } | undefined {
+export function denies(file: string, denied: DeniedPath, link = true): { file: string; rule: string } | undefined {
   const rule = denied(file);
   if (rule) return { file, rule };
   if (!link) return undefined;
@@ -147,10 +149,6 @@ function denies(file: string, denied: DeniedPath, link = true): { file: string; 
   return undefined;
 }
 
-/**
- * Duyệt cây (không theo symlink thư mục) tìm file khớp luật deny. Giới hạn số mục và thời gian;
- * vượt giới hạn thì không kết luận được. skipHidden: rg mặc định bỏ file/thư mục ẩn.
- */
 /** git bỏ qua file này (.gitignore, .git/info/exclude, core.excludesFile); ngoài repo hoặc lỗi thì coi như không. */
 export function gitIgnored(file: string): boolean {
   try {
@@ -162,6 +160,10 @@ export function gitIgnored(file: string): boolean {
   }
 }
 
+/**
+ * Duyệt cây (không theo symlink thư mục) tìm file khớp luật deny. Giới hạn số mục và thời gian;
+ * vượt giới hạn thì không kết luận được. skipHidden: rg mặc định bỏ file/thư mục ẩn.
+ */
 export function findDenied(root: string, denied: DeniedPath, skipHidden = false, skipIgnored = false): PathScope {
   const started = Date.now();
   const first = denies(root, denied);
@@ -282,13 +284,16 @@ function directoryChange(command: SimpleCommand, home: string): string | null | 
   return undefined;
 }
 
-/** rg có đọc file/thư mục ẩn không: --hidden, --no-ignore*, -u/-uu/-uuu, -. (kể cả trong cụm cờ ngắn). */
-function rgSearchesHidden(arg: string): boolean {
-  if (arg === "--hidden" || arg.startsWith("--no-ignore") || arg === "--unrestricted") return true;
+/**
+ * rg có đọc file bị .gitignore bỏ qua ("ignored": --no-ignore*, --unrestricted, -u một lần trở lên) hoặc file/thư mục
+ * ẩn ("hidden": thêm --hidden và -.) không, kể cả trong cụm cờ ngắn.
+ */
+function rgSearches(arg: string, what: "hidden" | "ignored"): boolean {
+  if (arg.startsWith("--no-ignore") || arg === "--unrestricted" || (what === "hidden" && arg === "--hidden")) return true;
   if (!/^-[^-]/u.test(arg)) return false;
   for (const flag of arg.slice(1)) {
-    if (flag === "u" || flag === ".") return true;
-    if ("ABCEefgMjmtTr".includes(flag)) return false; // phần còn lại là giá trị của cờ
+    if (flag === "u" || (what === "hidden" && flag === ".")) return true;
+    if (RG_SHORT_VALUES.includes(flag)) return false; // phần còn lại là giá trị của cờ
   }
   return false;
 }
@@ -297,7 +302,7 @@ function rgSearchesHidden(arg: string): boolean {
 function literalOperands(command: SimpleCommand): string[] {
   const words = new Set<string>();
   const add = (value: string) => {
-    if (!value || /[\r\n]/u.test(value) || /^[a-z][a-z0-9+.-]+:\/\//iu.test(value)) return;
+    if (!value || /[\r\n]/u.test(value) || URL_LIKE.test(value)) return;
     words.add(value);
     const colon = value.indexOf(":");
     if (colon > 0 && colon < value.length - 1 && !/^[A-Za-z]:[\\/]/u.test(value)) words.add(value.slice(colon + 1));
@@ -314,17 +319,6 @@ function literalOperands(command: SimpleCommand): string[] {
   });
   for (const redirect of command.redirects) if (!redirect.glob && !/^\d+$|^-$/u.test(redirect.target)) add(redirect.target);
   return [...words];
-}
-
-/** rg có đọc file bị .gitignore bỏ qua không: --no-ignore*, -u (một lần trở lên), --unrestricted. */
-function rgSearchesIgnored(arg: string): boolean {
-  if (arg.startsWith("--no-ignore") || arg === "--unrestricted") return true;
-  if (!/^-[^-]/u.test(arg)) return false;
-  for (const flag of arg.slice(1)) {
-    if (flag === "u") return true;
-    if ("ABCEefgMjmtTr".includes(flag)) return false;
-  }
-  return false;
 }
 
 /** Bỏ từ khoá điều khiển đứng đầu (if, do, then...) để lấy lệnh thật. */
@@ -413,8 +407,8 @@ export function shellPathScope(analysis: ShellAnalysis, cwd: string, home: strin
       const search = searchReadPaths(command);
       if (!search) { uncertain.push(`${name} uses options that are not recognized`); continue; }
       if (search.recursive && !search.filesOnly) trees = search.paths;
-      skipHidden = name === "rg" && !args.some(rgSearchesHidden);
-      skipIgnored = name === "rg" && !args.some(rgSearchesIgnored);
+      skipHidden = name === "rg" && !args.some((arg) => rgSearches(arg, "hidden"));
+      skipIgnored = name === "rg" && !args.some((arg) => rgSearches(arg, "ignored"));
     } else if (name === "git" && args.includes("grep")) {
       trees = ["."];
     } else if (ARCHIVERS.has(name) || (COPIERS.has(name) && args.some(isRecursiveCopy))) {

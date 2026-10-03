@@ -4,20 +4,20 @@
 
 ## Mã được đóng gói hoặc có đoạn mã trong bản vá
 
-| Thành phần | Phiên bản | Nguồn | Giấy phép kèm theo |
-|---|---|---|---|
-| Pi coding agent | 0.99.2 | [earendil-works/pi](https://github.com/earendil-works/pi) | [MIT — Mario Zechner](vendor/pi.LICENSE) |
-| pi-subagents | 0.19.0 | [tintinweb/pi-subagents](https://github.com/tintinweb/pi-subagents) | [MIT — tintinweb](vendor/pi-subagents.LICENSE) |
-| pi-open-tui | 0.3.10 | [OldSuns/pi-open-tui](https://github.com/OldSuns/pi-open-tui) | [MIT — pi-open-tui contributors](vendor/pi-open-tui.LICENSE) |
-| pi-advisor-flow | 0.9.1 | [philipbrembeck/pi-advisor](https://github.com/philipbrembeck/pi-advisor) | [MIT — Philip Brembeck](vendor/pi-advisor-flow.LICENSE) |
-| @pi-archimedes/image-paste | 2.8.0 | [danielcherubini/pi-archimedes](https://github.com/danielcherubini/pi-archimedes) | [MIT](vendor/pi-archimedes.LICENSE) |
-| pi-web-access | 0.35.0 | [nicobailon/pi-web-access](https://github.com/nicobailon/pi-web-access) | [MIT — Nico Bailon](vendor/pi-web-access.LICENSE) |
-| @gotgenes/pi-anthropic-auth | 3.4.1 | [gotgenes/pi-anthropic-auth](https://github.com/gotgenes/pi-anthropic-auth) | [MIT — Christopher D. Lasher](vendor/pi-anthropic-auth.LICENSE) |
-| @narumitw/pi-usage | 0.61.1 | [narumiruna/pi-extensions](https://github.com/narumiruna/pi-extensions) | [MIT — narumiruna](vendor/pi-usage.LICENSE) |
+| Thành phần | Nguồn | Giấy phép kèm theo |
+|---|---|---|
+| Pi coding agent | [earendil-works/pi](https://github.com/earendil-works/pi) | [MIT — Mario Zechner](vendor/pi.LICENSE) |
+| pi-subagents | [tintinweb/pi-subagents](https://github.com/tintinweb/pi-subagents) | [MIT — tintinweb](vendor/pi-subagents.LICENSE) |
+| pi-open-tui | [OldSuns/pi-open-tui](https://github.com/OldSuns/pi-open-tui) | [MIT — pi-open-tui contributors](vendor/pi-open-tui.LICENSE) |
+| pi-advisor-flow | [philipbrembeck/pi-advisor](https://github.com/philipbrembeck/pi-advisor) | [MIT — Philip Brembeck](vendor/pi-advisor-flow.LICENSE) |
+| @pi-archimedes/image-paste | [danielcherubini/pi-archimedes](https://github.com/danielcherubini/pi-archimedes) | [MIT](vendor/pi-archimedes.LICENSE) |
+| pi-web-access | [nicobailon/pi-web-access](https://github.com/nicobailon/pi-web-access) | [MIT — Nico Bailon](vendor/pi-web-access.LICENSE) |
+| @gotgenes/pi-anthropic-auth | [gotgenes/pi-anthropic-auth](https://github.com/gotgenes/pi-anthropic-auth) | [MIT — Christopher D. Lasher](vendor/pi-anthropic-auth.LICENSE) |
+| @narumitw/pi-usage | [narumiruna/pi-extensions](https://github.com/narumiruna/pi-extensions) | [MIT — narumiruna](vendor/pi-usage.LICENSE) |
 
-Các tarball `vendor/*-pi0992.tgz` giữ source npm và giấy phép gốc, chỉ bổ sung `0.99.2` vào peer metadata của pi-background-tasks và pi-goal-x. URL/integrity upstream và SHA256 bản đóng gói được ghi trong `manifests/current/package.json`. Script `scripts/rebuild-vendor.py` kiểm nguồn và tái tạo các tarball trên môi trường phát triển có Python 3.12 trở lên và curl; máy cài Pi không cần Python.
+Tarball `vendor/pi-background-tasks-*-pi0992.tgz` giữ source npm và giấy phép gốc, chỉ bổ sung `0.99.2` vào peer metadata. Phiên bản của từng thành phần: bảng trong [README](README.md#phiên-bản). URL/integrity upstream và SHA256 bản đóng gói được ghi trong `manifests/current/package.json`. Script `scripts/rebuild-vendor.py` kiểm nguồn và tái tạo tarball trên môi trường phát triển có Python 3.12 trở lên và curl; máy cài Pi không cần Python.
 
-Nguồn bổ sung: [pi-goal-x](https://github.com/tmonk/pi-goal-x), [pi-background-tasks](https://github.com/ismailsaleekh/pi-background-tasks). Giấy phép của các package nằm nguyên trong tarball.
+Nguồn bổ sung: [pi-goal-x](https://github.com/tmonk/pi-goal-x), [pi-background-tasks](https://github.com/ismailsaleekh/pi-background-tasks). Giấy phép của các package nằm nguyên trong package npm hoặc tarball.
 
 `pi-rewind` (`assets/extensions/pi-rewind`) là mã riêng của pi-config (MIT). Nhãn và bố cục giao diện theo `/rewind` của Claude Code; ý tưởng kỹ thuật tham khảo [pi-workspace-history](https://github.com/wcldyx/pi-workspace-history) (MIT) nhưng không chép mã.
 

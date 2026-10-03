@@ -1,5 +1,5 @@
 import path from "node:path";
-import { insideAny, insideTemporary, resolveShellPath } from "./paths.ts";
+import { insideAny, insideTemporary, resolveShellPath, URL_LIKE } from "./paths.ts";
 import { commandName, removeArgs, type ShellAnalysis, type SimpleCommand } from "./shell.ts";
 
 /**
@@ -207,9 +207,9 @@ function targetRisk(target: Target, ctx: RiskContext): string | undefined {
 
 /** URL trong đối số: chỉ tính localhost/127.x/::1 là loopback; userinfo (localhost@evil) vẫn lấy đúng host. */
 function allLoopback(words: string[]): boolean {
-  const hosts = words.filter((word) => /^[a-z][a-z0-9+.-]*:\/\//iu.test(word) || /^(?:localhost|127\.|\[::1\])/iu.test(word)).map((word) => {
+  const hosts = words.filter((word) => URL_LIKE.test(word) || /^(?:localhost|127\.|\[::1\])/iu.test(word)).map((word) => {
     try {
-      return new URL(/^[a-z][a-z0-9+.-]*:\/\//iu.test(word) ? word : `http://${word}`).hostname;
+      return new URL(URL_LIKE.test(word) ? word : `http://${word}`).hostname;
     } catch {
       return "";
     }
