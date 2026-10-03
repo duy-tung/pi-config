@@ -4,12 +4,15 @@
   "advisorCompletionGate": true,
   "advisorMaxCallsPerSession": 5,
   "alwaysOn": true,
+  "advisorFallbackModel": "anthropic/claude-opus-5-5",
+  "advisorDisableSameModel": false,
   "advisorAutoLoopGate": false,
   "gateFailureMode": "warn-and-continue",
   "advisorRedactSecrets": true,
   "advisorTrackedFileContent": false,
   "advisorUntrackedContent": false,
   "advisorHerdrIntegration": false,
+  "advisorAgentsMdContext": false,
   "advisorGitContext": "full",
   "contextMaxChars": 60000
 }

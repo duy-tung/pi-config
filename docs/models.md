@@ -14,7 +14,7 @@ Model và mức thinking của mọi vai đặt ở một chỗ: `<agent-dir>/mo
 
 `enabledModels` (danh sách của Ctrl+P và `scopeModels` của pi-subagents) và `modelThinkingLevels` (mức thinking khi đổi sang một model) được suy ra từ các vai: model của `main` đứng đầu, model của auto mode không vào danh sách.
 
-Vai `main` ghi cả `executor` của advisor: khi advisor luôn bật, mỗi lần mở phiên nó đặt model của phiên chính thành `executor`. Từ pi-advisor-flow 0.9.0, advisor không được gọi khi `advisor` trùng model với phiên chính (hỏi chính mình không thêm góc nhìn), nên mọi preset luôn đặt advisor khác `main`; ảnh trong hội thoại cũng được gửi kèm cho advisor khi model advisor nhận ảnh.
+Vai `main` ghi cả `executor` của advisor: khi advisor luôn bật, mỗi lần mở phiên nó đặt model của phiên chính thành `executor`. Mọi preset đặt advisor khác `main` (hỏi chính mình không thêm góc nhìn). Chặn advisor trùng model của pi-advisor-flow (`advisorDisableSameModel`) được tắt trong `advisor.json`, vì fallback `advisorFallbackModel` (Opus 5.5, dùng khi request tới advisor lỗi) trùng model của phiên chính; hai khóa này không thuộc `model-roles.json`, `/models` không đổi chúng. Ảnh trong hội thoại cũng được gửi kèm cho advisor khi model advisor nhận ảnh.
 
 ## Advisor: gate và số lượt
 

@@ -172,6 +172,10 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.equal(advisor.executorEffort, settings.defaultThinkingLevel);
       assert.equal(advisor.advisor, "openai-codex/gpt-6-astra");
       assert.equal(advisor.advisorEffort, "high");
+      // Khi request tới Astra lỗi, thử lại một lần với Opus (cùng advisorEffort). Fallback trùng model của phiên chính,
+      // nên phải tắt chặn advisor trùng model; preset nào cũng đặt advisor khác main nên lượt gọi chính không đổi.
+      assert.equal(advisor.advisorFallbackModel, "anthropic/claude-opus-5-5");
+      assert.equal(advisor.advisorDisableSameModel, false);
       // Gate là hướng dẫn trong prompt: khi lỗi lặp lại và trước khi báo xong; không có gate cứng chặn phiên. Người dùng
       // đổi gate và số lượt bằng /advisor-settings; cài lại giữ giá trị đó (gộp ba chiều).
       assert.deepEqual([advisor.advisorPlanGate, advisor.advisorFailureGate, advisor.advisorCompletionGate], [false, true, true]);
@@ -185,6 +189,8 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.equal(advisor.advisorRedactSecrets, true);
       assert.equal(advisor.advisorTrackedFileContent, false);
       assert.equal(advisor.advisorUntrackedContent, false);
+      // Advisor đã có hội thoại; không gửi thêm AGENTS.md (mặc định bật từ 0.10.0) để request advisor nhỏ hơn.
+      assert.equal(advisor.advisorAgentsMdContext, false);
       } else assert.ok(!files.some(file => file.path === p.join(profile.agentDir,"advisor.json")));
       if (profile.packages.includes("pi-goal-x")) {
       const goal = json(p.join(profile.agentDir, "pi-goal-x-settings.json"));

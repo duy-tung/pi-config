@@ -154,7 +154,11 @@ test('catalog và effects của phiên: kiểm model, xem trước, ghi đè, pr
   assert.equal(preset.status, 0, preset.text);
   assert.match(preset.text, /^preset: default → claude$/mu);
   assert.deepEqual(applied[1], ['researcher', 'worker', 'debugger', 'reviewer', 'advisor', 'auditor', 'oracle']);
-  assert.equal(readJson(f.file('advisor.json')).advisorMaxCallsPerSession, 5, 'gate và số lượt của advisor không đổi theo preset');
+  {
+    const advisor = readJson(f.file('advisor.json'));
+    assert.deepEqual([advisor.advisorMaxCallsPerSession, advisor.advisorFallbackModel, advisor.advisorDisableSameModel, advisor.advisorAgentsMdContext],
+      [5, 'anthropic/claude-opus-5-5', false, false], 'gate, số lượt, fallback và AGENTS.md của advisor không đổi theo preset');
+  }
   // Lệch qua /agents: bảng và cảnh báo chỉ tới /models.
   fs.writeFileSync(f.file('agents/reviewer.md'), fs.readFileSync(f.file('agents/reviewer.md'), 'utf8').replace('thinking: high', 'thinking: low'));
   const shown = await run();

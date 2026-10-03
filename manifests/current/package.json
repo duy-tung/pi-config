@@ -13,7 +13,7 @@
     "@juicesharp/rpiv-todo": "2.12.0",
     "@narumitw/pi-usage": "0.61.2",
     "@tintinweb/pi-subagents": "0.19.0",
-    "pi-advisor-flow": "file:../../vendor/pi-advisor-flow-0.9.1-pi100.tgz",
+    "pi-advisor-flow": "0.10.0",
     "pi-open-tui": "0.3.10",
     "pi-web-access": "0.35.0",
     "typescript": "5.9.3",
@@ -30,14 +30,6 @@
         "sha256": "0b5a59451d02fe29d35f53c0654381afe3cbe437ca686bd116e472479cefc562",
         "upstreamIntegrity": "sha512-5dma6xvO7jeAimRaCNCzfe5y+b4bVBYPxnJ/0RnGS+mj6B6SzgA4FcORKuAtZaoGvC29dlyof3NtX7/QD4Ywew==",
         "upstreamTarball": "https://registry.npmjs.org/pi-background-tasks/-/pi-background-tasks-2.6.9.tgz",
-        "reason": "Peer metadata adds exactly Pi 1.0.0; runtime changes are tracked separately in assets/patches.json."
-      },
-      "pi-advisor-flow": {
-        "version": "0.9.1",
-        "source": "../../vendor/pi-advisor-flow-0.9.1-pi100.tgz",
-        "sha256": "72ac013310db88fb88f94451723d91d9d21599bce143af5f5f056458791fc055",
-        "upstreamIntegrity": "sha512-drRWMtaAZAvTi6OCsJMtMJ6b77UVE9MgMw61EQIFl82Rg5ZtrgIi+3NjoH3e2uTqdTNAGqxLGQZudvzV9rdb4Q==",
-        "upstreamTarball": "https://registry.npmjs.org/pi-advisor-flow/-/pi-advisor-flow-0.9.1.tgz",
         "reason": "Peer metadata adds exactly Pi 1.0.0; runtime changes are tracked separately in assets/patches.json."
       }
     }

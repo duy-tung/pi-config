@@ -50,7 +50,8 @@ Chạy `pi` để mở Claude Opus 5.5/high với toàn bộ công cụ. Các wo
 
 Advisor (pi-advisor-flow) luôn bật khi mở phiên: executor là Opus/high của phiên, advisor là GPT-6 Astra/high.
 - System prompt dặn Opus gọi `ask_advisor` sau hai lần thử tương đương cùng thất bại và trước khi báo xong việc không nhỏ. Tối đa 5 lần mỗi phiên; không có gate cứng chặn phiên. Đổi gate và số lượt bằng `/advisor-settings`; cài lại giữ giá trị đã đổi.
-- Advisor không có tool. Nó thấy tối đa 60.000 ký tự gồm hội thoại gần nhất và diff chưa commit (diff tối đa 20.000 ký tự, đã che secret). Thay đổi lớn vẫn nên giao reviewer.
+- Advisor không có tool. Nó thấy tối đa 60.000 ký tự gồm hội thoại gần nhất và diff chưa commit (diff tối đa 20.000 ký tự, đã che secret); không gửi kèm `AGENTS.md` (`advisorAgentsMdContext: false`). Thay đổi lớn vẫn nên giao reviewer.
+- Request tới GPT-6 Astra lỗi thì thử lại một lần với Opus 5.5 (`advisorFallbackModel`, cùng mức thinking của advisor), tính là một lượt. Fallback trùng model của phiên chính nên `advisorDisableSameModel` tắt: nếu đổi phiên chính sang chính model advisor, advisor vẫn được gọi thay vì bỏ qua.
 - Bản vá giữ system prompt không đổi sau mỗi lần hỏi, để Opus không mất prompt cache.
 - `/advisor-off` tắt hẳn, kể cả các phiên sau (bản vá: Pi tự bật mọi tool của extension khi mở phiên, nên advisor chỉ bật khi Always on kích hoạt được); bật lại ở `/advisor-settings` → Always on. Khi advisor đang bật, `/model` lưu model mới làm executor vào `advisor.json`; cài lại giữ giá trị này.
 - Mở phiên khi chưa đăng nhập Claude hoặc Codex thì Pi báo `Advisor models are not configured or available` và phiên chạy không có advisor; đăng nhập rồi chạy `/advisor`.
@@ -132,13 +133,13 @@ Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều
 | `@narumitw/pi-usage` | 0.61.2 |
 | `pi-background-tasks` | 2.6.9 |
 | `pi-goal-x` | 0.32.3 |
-| `pi-advisor-flow` | 0.9.1 |
+| `pi-advisor-flow` | 0.10.0 |
 | `pi-open-tui` | 0.3.10 |
 | `@pi-archimedes/image-paste` | 2.9.0 |
 | Firecrawl CLI | 1.25.1 |
 | Firecrawl skills | Commit trong [sources.lock.json](sources.lock.json) |
 
-Các manifest và lockfile nằm trong [manifests](manifests). Hai package có peer range chưa gồm Pi 1.0.0 (pi-background-tasks, pi-advisor-flow) được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json). Quy trình nâng phiên bản (vendor, lockfile, tính lại checksum bản vá): [docs/upgrade.md](docs/upgrade.md).
+Các manifest và lockfile nằm trong [manifests](manifests). pi-background-tasks có peer range chưa gồm Pi 1.0.0 nên được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json). Quy trình nâng phiên bản (vendor, lockfile, tính lại checksum bản vá): [docs/upgrade.md](docs/upgrade.md).
 
 ## Quản lý cấu hình
 
