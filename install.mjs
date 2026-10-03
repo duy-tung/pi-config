@@ -192,7 +192,7 @@ try{
   reconcileResources({root,agentDir,binDir,state,wanted});
   state.installedAt=new Date().toISOString();writeJson(statePath,state);
   const pruned=pruneBackups(root);
-  if(pruned.length)console.log(`Đã xoá ${pruned.length} bản runtime/nguồn/tài nguyên cũ trong ${path.join(root,'backups')}.`);
+  if(pruned.length)console.log(`Đã xoá ${pruned.length} bản backup cũ (runtime, nguồn, tài nguyên, file cấu hình) trong ${path.join(root,'backups')}.`);
   console.log(`\nĐã cài Pi vào ${root}. Mở terminal mới rồi chạy pi.`);
   const jevKey=process.platform==='win32'?'setx TYPESAFE_API_KEY "<key>"':'export TYPESAFE_API_KEY="<key>" trong ~/.zshrc hoặc ~/.bashrc';
   console.log(`Đăng nhập: pi → /login. Firecrawl: firecrawl login --browser. Jev cho auto mode: ${jevKey}.`);
