@@ -17,7 +17,7 @@ import { clip, editChanges, editList, str } from "./transcript.ts";
 
 export interface Hazard {
   id: string;
-  /** Tên luật tương ứng trong prompt của bộ phân loại (cho log và `/auto-mode test`). */
+  /** Tên luật tương ứng trong prompt của bộ phân loại (cho log và `/permissions test`). */
   rule: string;
   question: NoulQuestion;
 }
@@ -369,7 +369,7 @@ export function judgeScreen(answers: Record<string, Answer>): ScreenVerdict {
   };
 }
 
-/** Một dòng tóm tắt cho `/auto-mode test`. */
+/** Một dòng tóm tắt cho `/permissions test`. */
 export function describeVerdict(verdict: ScreenVerdict): string {
   const list = verdict.hazards.length
     ? verdict.hazards.slice(0, 3).map((item) => `${item.rule} ${item.p.toFixed(2)}`).join(", ")

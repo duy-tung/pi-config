@@ -6,7 +6,9 @@ import path from "node:path";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
 import { classify, classifyWithFallback } from "../assets/extensions/pi-auto-mode/lib/classifier.ts";
-import { loadConfig, parseGitGuard, spliceDefaults } from "../assets/extensions/pi-auto-mode/lib/config.ts";
+import { loadConfig, MODES, nextMode, parseGitGuard, parseMode, spliceDefaults } from "../assets/extensions/pi-auto-mode/lib/config.ts";
+import { answerOf, MANUAL_CHOICES, manualApproval, manualTitle } from "../assets/extensions/pi-auto-mode/lib/manual.ts";
+import { MANUAL_DECLINED, MANUAL_NO_APPROVER, modeInstructions } from "../assets/extensions/pi-auto-mode/lib/messages.ts";
 import { criticalPathReason, protectedReason, resolveShellPath } from "../assets/extensions/pi-auto-mode/lib/paths.ts";
 import { decide, describeCall, filterDeniedGrep, gitGuardBlock } from "../assets/extensions/pi-auto-mode/lib/policy.ts";
 import { buildSystemPrompt, DEFAULT_SOFT_DENY, parseVerdict, resolveSlots } from "../assets/extensions/pi-auto-mode/lib/prompt.ts";
@@ -885,15 +887,87 @@ test("giới hạn chặn 3 liên tiếp / 20 tổng và duyệt một lần", (
   assert.equal(state.consumeApproval(key), false);
 });
 
+test("mode: ba mode, Shift+Tab xoay vòng manual → auto → bypass, tên của Claude Code", () => {
+  assert.deepEqual(MODES, ["manual", "auto", "bypass"]);
+  assert.deepEqual(MODES.map(nextMode), ["auto", "bypass", "manual"]);
+  for (const [value, mode] of [["manual", "manual"], [" default ", "manual"], ["auto", "auto"], ["bypass", "bypass"], ["bypassPermissions", "bypass"]]) {
+    assert.equal(parseMode(value), mode, value);
+  }
+  for (const value of ["acceptEdits", "plan", "", 3, undefined, "Manual"]) assert.equal(parseMode(value), undefined, String(value));
+  assert.match(modeInstructions("manual"), /^Manual permission mode is active: .*approval prompt.*do not retry it unchanged/su);
+  assert.doesNotMatch(modeInstructions("manual"), /classifier/u);
+});
+
+test("manual: lối đi nhanh và luật allow chạy ngay, luật deny chặn, phần auto gửi bộ phân loại thì hỏi người dùng", async () => {
+  const ws = workspace();
+  try {
+    const pc = context(ws, { mode: "manual", rules: buildRuleSet(["Bash(npm test)"], ["Bash(git push *)"], ["Path(*.env)", "Bash(curl *)"]) });
+    const decision = (call) => decide(call, pc);
+    assert.deepEqual(decision({ toolName: "read", input: { path: "src/a.ts" } }), { kind: "allow", via: "safe tool" });
+    assert.deepEqual(decision({ toolName: "edit", input: { path: "src/a.ts" } }), { kind: "allow", via: "workspace edit" });
+    assert.deepEqual(decision(bash("git status")), { kind: "allow", via: "read-only command" });
+    assert.deepEqual(decision(bash("npm test")), { kind: "allow", via: "allow rule" });
+    assert.equal(decision(bash("curl https://example.com")).kind, "deny");
+    assert.equal(decision({ toolName: "read", input: { path: ".env" } }).kind, "deny");
+    assert.equal(decision(bash("git push origin feature")).kind, "ask");
+    assert.equal(decision(bash("git reset --hard")).kind, "deny", "git guard vẫn chặn ở manual");
+    assert.deepEqual(decision(bash("npm install left-pad")), { kind: "classify", notes: [] });
+    // Lớp bảo vệ mà bypass hỏi (xoá vào đường dẫn quan trọng, lệnh rủi ro) cũng tới bước hỏi, kèm ghi chú.
+    const risky = decision(bash("echo 'x' >> ~/.bashrc"));
+    assert.equal(risky.kind, "classify");
+    assert.match(manualTitle("bash", "echo 'x' >> ~/.bashrc", risky.notes), /^Allow bash: echo 'x' >> ~\/\.bashrc\?\n\nNote: this command .+\.$/su);
+    assert.equal(decide(bash("rm -rf ~/old"), pc).kind, "classify");
+    // Luật allow chạy code tùy ý (auto bỏ) có hiệu lực ở manual khi index.ts gộp lại phần stripped.
+    const set = buildRuleSet(["Agent", "Bash(npm run *)"], [], []);
+    const manual = context(ws, { mode: "manual", rules: { ...set, allow: [...set.allow, ...set.stripped] } });
+    assert.deepEqual(decide({ toolName: "Agent", input: { prompt: "x" } }, manual), { kind: "allow", via: "allow rule" });
+    assert.deepEqual(decide(bash("npm run build"), manual), { kind: "allow", via: "allow rule" });
+    assert.equal(decide({ toolName: "Agent", input: { prompt: "x" } }, context(ws, { rules: set })).kind, "classify", "auto bỏ luật allow Agent");
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("manual: Allow once, Allow for this session (cùng khóa lời gọi), Deny, không có UI thì chặn", async () => {
+  assert.deepEqual(Object.values(MANUAL_CHOICES), ["Allow once", "Allow for this session", "Deny"]);
+  assert.deepEqual(["Allow once", "Allow for this session", "Deny", undefined, "?"].map(answerOf), ["once", "session", "deny", "deny", "deny"]);
+  const approvals = new Set();
+  const asked = [];
+  const ask = (answer) => async (title) => {
+    asked.push(title);
+    return answer;
+  };
+  const key = callKey("bash", { command: "npm install" });
+  const request = (answer, callKeyValue = key) => ({ key: callKeyValue, title: "Allow bash: npm install?", approvals, ask: answer ? ask(answer) : undefined });
+  assert.deepEqual(await manualApproval(request("once")), { kind: "allow", via: "user" });
+  assert.equal(approvals.size, 0, "Allow once không nhớ lời gọi");
+  assert.deepEqual(await manualApproval(request("deny")), { kind: "block", reason: MANUAL_DECLINED, declined: true });
+  assert.deepEqual(await manualApproval(request(undefined)), { kind: "block", reason: MANUAL_NO_APPROVER, declined: false });
+  assert.deepEqual(await manualApproval(request("session")), { kind: "allow", via: "user (session)" });
+  assert.equal(asked.length, 3);
+  // Đúng lời gọi đó (thứ tự khóa của input không quan trọng): không hỏi lại, kể cả khi không có UI.
+  assert.deepEqual(await manualApproval(request(undefined, callKey("bash", { command: "npm install" }))), { kind: "allow", via: "session approval" });
+  assert.equal(asked.length, 3);
+  // Lời gọi khác (đổi input) vẫn hỏi.
+  assert.deepEqual(await manualApproval(request("deny", callKey("bash", { command: "npm install -g x" }))), { kind: "block", reason: MANUAL_DECLINED, declined: true });
+  assert.equal(asked.length, 4);
+  assert.match(MANUAL_NO_APPROVER, /no one can answer/u);
+  assert.match(MANUAL_DECLINED, /declined/u);
+});
+
 test("subagent dùng mode của phiên gốc qua registry toàn process", () => {
   let mode = "auto";
-  registerRoot({ sessionId: "root", mode: () => mode, humanMessages: () => ["hi"] });
+  const approvals = new Set(["k"]);
+  registerRoot({ sessionId: "root", mode: () => mode, humanMessages: () => ["hi"], sessionApprovals: () => approvals });
   linkChild("child", "root");
   linkChild("grandchild", "child");
   assert.equal(isChild("grandchild"), true);
   assert.equal(rootFor("grandchild")?.mode(), "auto");
   mode = "bypass";
   assert.equal(rootFor("child")?.mode(), "bypass");
+  mode = "manual";
+  assert.equal(rootFor("grandchild")?.mode(), "manual");
+  assert.equal(rootFor("grandchild")?.sessionApprovals(), approvals, "child dùng chung lời gọi được cho phép tới hết phiên");
   unregisterRoot("root");
   assert.equal(rootFor("child"), undefined);
 });
@@ -917,6 +991,10 @@ test("cấu hình: đọc settings người dùng, bỏ qua giá trị sai", () 
     assert.equal(config.model, "openai-codex/gpt-6.1-sol");
     assert.deepEqual(config.skills, ["~/skills"]);
     assert.equal(loadConfig(agentDir, { PI_AUTO_MODE_DISABLE: "1" }).enabled, false);
+    for (const [value, mode] of [["default", "manual"], ["manual", "manual"], ["acceptEdits", "auto"]]) {
+      fs.writeFileSync(path.join(agentDir, "settings.json"), JSON.stringify({ permissions: { defaultMode: value } }));
+      assert.equal(loadConfig(agentDir, {}).defaultMode, mode, value);
+    }
   } finally {
     ws.cleanup();
   }

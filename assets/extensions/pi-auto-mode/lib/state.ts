@@ -32,6 +32,8 @@ export class PermissionState {
   total = 0;
   readonly recent: DenialRecord[] = [];
   private readonly approvals = new Map<string, number>();
+  /** Manual mode: lời gọi người dùng đã cho phép tới hết phiên (cùng khóa callKey). */
+  readonly sessionApprovals = new Set<string>();
 
   recordAllowed(): void {
     this.consecutive = 0;
