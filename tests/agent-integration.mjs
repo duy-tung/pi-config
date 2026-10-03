@@ -32,11 +32,10 @@ for (const dir of [agentDir, cwd]) fs.mkdirSync(dir, { recursive: true });
 for (const name of ["settings.json", "keybindings.json", "models.json", "advisor.json", "subagents.json", "open-tui.json", "pi-usage.json"]) {
   if (fs.existsSync(path.join(configuration.agentDir, name))) fs.copyFileSync(path.join(configuration.agentDir, name), path.join(agentDir, name));
 }
-// Kiểm cơ chế của bản cài với model của preset default (provider giả chỉ có các model này), dù model-roles.json
-// chọn preset khác; model/thinking bạn chọn được pi-doctor kiểm trong catalog của Pi.
+// Kiểm cơ chế của bản cài với model mặc định (provider giả chỉ có các model này), dù model-roles.json ghi đè
+// model khác; model/thinking bạn chọn được pi-doctor kiểm trong catalog của Pi.
 const modelRoles = await import(pathToFileURL(path.join(installRoot, "bin", "model-roles.mjs")).href);
-const defaults = modelRoles.nativeValues(modelRoles.resolveModelRoles(
-  modelRoles.loadPresets(path.join(installRoot, "assets", "configs", "model-presets.json"))).roles);
+const defaults = modelRoles.nativeValues(modelRoles.resolveModelRoles(modelRoles.loadModelDefaults(installRoot)).roles);
 const modelId = (ref) => modelRoles.parseModelRef(ref).id;
 fs.mkdirSync(path.join(agentDir, "agents"));
 for (const name of modelRoles.SUBAGENT_ROLES) {
@@ -51,7 +50,7 @@ settings.autoMode = { ...settings.autoMode, model: "config-test/parent", stateDi
 Object.assign(settings, {
   defaultProvider: "config-test", defaultModel: "parent", defaultThinkingLevel: "off",
   // Model của phiên chính (đứng đầu danh sách) thay bằng model giả của parent.
-  // GPT-6.1 Sol không thuộc preset nào; thêm để kiểm Codex fast với một vai tự đặt model này.
+  // GPT-6.1 Sol để kiểm Codex fast, không phụ thuộc vào model mặc định của worker.
   enabledModels: ["config-test/parent", ...defaults.settings.enabledModels.slice(1), "openai-codex/gpt-6.1-sol"], modelThinkingLevels: defaults.settings.modelThinkingLevels,
   // Cổng permission của bản cài nạp sau provider giả.
   extensions: [fileURLToPath(new URL("./agent-provider.ts", import.meta.url)),

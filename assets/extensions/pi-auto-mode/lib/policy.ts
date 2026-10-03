@@ -19,6 +19,7 @@ import { READ_TOOLS, SHELL_TOOLS, WRITE_TOOLS } from "./tools.ts";
  * Quyết định tất định cho một lời gọi tool, trước khi cần tới bộ phân loại.
  * Thứ tự theo Claude Code: deny → ask → rm vào đường dẫn quan trọng → (bypass: xoá đệ quy, lệnh rủi ro)
  * → bypass → tự bảo vệ → lối đi nhanh (chỉ bao giờ nói "an toàn") → bộ phân loại.
+ * Manual quyết định như auto; "classify" ở manual là hỏi người dùng (index.ts, lib/manual.ts).
  */
 export type Decision =
   | { kind: "allow"; via: string }
@@ -491,7 +492,7 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
   }
 
   if (facts.writesSelf) {
-    return { kind: "ask", reason: "This changes Pi's permission configuration, which only you can approve in auto mode." };
+    return { kind: "ask", reason: "This changes Pi's permission configuration, which only you can approve." };
   }
 
   if (unverified) {
@@ -548,9 +549,11 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
       if (pc.agentIsUngated?.(call.input)) {
         return {
           kind: "deny",
-          reason: "This subagent would run without extensions (isolated), so auto mode could not check its actions. Spawn it without isolated/extensions:false, or ask the user to run it in bypass mode.",
+          reason: "This subagent would run without extensions (isolated), so the permission gate could not check its actions. Spawn it without isolated/extensions:false, or ask the user to run it in bypass mode.",
         };
       }
+      // Luật allow `Agent` chỉ có ở manual (auto bỏ luật này, xem isDangerousAllow).
+      if (firstMatch(pc.rules.allow, facts.target, pc.cwd, home)) return { kind: "allow", via: "allow rule" };
       return classify();
     default: {
       const allow = firstMatch(pc.rules.allow, facts.target, pc.cwd, home);

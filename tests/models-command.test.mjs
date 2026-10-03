@@ -10,25 +10,24 @@ import {linkRuntime, readJson, simulatedInstall, snapshot} from './install-fixtu
 
 test('/models: menu các vai đánh dấu ghi đè và giá trị đang chạy khi lệch; menu của vai', () => {
   const roles = {
-    main: {model: 'anthropic/claude-opus-5-5', thinking: 'high', source: {model: 'preset', thinking: 'preset'}},
-    worker: {model: 'openai-codex/gpt-6.1-sol', thinking: 'high', source: {model: 'preset', thinking: 'override'}},
+    main: {model: 'anthropic/claude-opus-5-5', thinking: 'high', source: {model: 'default', thinking: 'default'}},
+    worker: {model: 'openai-codex/gpt-6.1-sol', thinking: 'high', source: {model: 'default', thinking: 'override'}},
   };
   const menu = mainMenu({
-    preset: 'default', file: '/agent/model-roles.json', session: 'anthropic/claude-opus-5-5 · high', roles, names: ['main', 'worker'],
+    file: '/agent/model-roles.json', session: 'anthropic/claude-opus-5-5 · high', roles, names: ['main', 'worker'],
     drifted: {worker: {model: 'anthropic/claude-sonnet-5-5', thinking: 'max', file: 'agents/worker.md'}},
   });
-  assert.equal(menu.title, 'Model của các vai: preset default (/agent/model-roles.json)\nPhiên này: anthropic/claude-opus-5-5 · high');
+  assert.equal(menu.title, 'Model của các vai: mặc định + ghi đè (/agent/model-roles.json)\nPhiên này: anthropic/claude-opus-5-5 · high');
   assert.deepEqual(menu.options, [
     'main       anthropic/claude-opus-5-5 · high',
     'worker     openai-codex/gpt-6.1-sol · high, ghi đè; đang chạy anthropic/claude-sonnet-5-5 · max theo agents/worker.md',
-    'Chọn preset… (đang dùng default)',
     'Đưa worker về model-roles.json',
   ]);
-  assert.deepEqual(menu.actions, [{role: 'main'}, {role: 'worker'}, {preset: true}, {change: {apply: true}}]);
-  assert.deepEqual(mainMenu({preset: 'claude', file: 'x', roles, names: ['main'], drifted: {}}).options.slice(1), ['Chọn preset… (đang dùng claude)']);
+  assert.deepEqual(menu.actions, [{role: 'main'}, {role: 'worker'}, {change: {apply: true}}]);
+  assert.deepEqual(mainMenu({file: 'x', roles, names: ['main'], drifted: {}}).options, [menu.options[0]], 'không vai lệch thì chỉ có các vai');
   const role = roleMenu('worker', roles.worker, {model: 'openai-codex/gpt-6.1-sol', thinking: 'max'});
   assert.deepEqual(role.options, [
-    'Đổi model… (đang dùng openai-codex/gpt-6.1-sol)', 'Đổi thinking… (đang dùng high)', 'Bỏ ghi đè, dùng preset (openai-codex/gpt-6.1-sol · max)',
+    'Đổi model… (đang dùng openai-codex/gpt-6.1-sol)', 'Đổi thinking… (đang dùng high)', 'Bỏ ghi đè, dùng mặc định (openai-codex/gpt-6.1-sol · max)',
   ]);
   assert.deepEqual(role.actions, [{pick: 'model'}, {pick: 'thinking'}, {change: {reset: 'worker'}}]);
   assert.equal(roleMenu('main', roles.main).options.length, 2, 'vai không ghi đè thì không có mục bỏ ghi đè');
@@ -37,7 +36,7 @@ test('/models: menu các vai đánh dấu ghi đè và giá trị đang chạy k
 });
 
 const testRoot = process.env.PI_CONFIG_TEST_ROOT;
-test('/models trong phiên Pi thật: menu đổi thinking, model, preset, bỏ ghi đè, đưa vai lệch về cấu hình; áp ngay cho phiên và auto mode', {skip: !testRoot, timeout: 120000}, async t => {
+test('/models và /permissions trong phiên Pi thật: menu đổi thinking, model, bỏ ghi đè, đưa vai lệch về cấu hình; mode và model phân loại áp ngay', {skip: !testRoot, timeout: 120000}, async t => {
   // Bản cài giả có extension và bin như installer; runtime nối từ bản cài thật. Chỉ nạp model-roles và pi-auto-mode,
   // model của các vai giữ như installer sinh. Chỉ Claude có key giả: Codex và OpenCode Go chưa đăng nhập.
   const f = simulatedInstall(t, {full: true});
@@ -121,8 +120,8 @@ test('/models trong phiên Pi thật: menu đổi thinking, model, preset, bỏ 
 
     // worker → đổi thinking → high, xem trước rồi xác nhận.
     await menu(/^worker +openai-codex\/gpt-6.1-sol · max$/u, /^Đổi thinking/u, /^high$/u);
-    assert.match(titles[0], /^Model của các vai: preset default \(.*model-roles\.json\)\nPhiên này: anthropic\/claude-opus-5-5 · high$/u);
-    assert.deepEqual(menus[0].map(option => option.split(' ')[0]), ['main', 'researcher', 'worker', 'reviewer', 'advisor', 'autoMode', 'Chọn']);
+    assert.match(titles[0], /^Model của các vai: mặc định \+ ghi đè \(.*model-roles\.json\)\nPhiên này: anthropic\/claude-opus-5-5 · high$/u);
+    assert.deepEqual(menus[0].map(option => option.split(' ')[0]), ['main', 'researcher', 'worker', 'reviewer', 'advisor']);
     assert.match(confirms[0], /^Ghi thay đổi này\?\nworker: openai-codex\/gpt-6.1-sol \(max\) → openai-codex\/gpt-6.1-sol \(high\)$/mu);
     assert.match(confirms[0], /^Sẽ cập nhật: .*agents\/worker\.md/mu);
     assert.match(frontmatter('worker'), /^thinking: high$/mu);
@@ -146,22 +145,47 @@ test('/models trong phiên Pi thật: menu đổi thinking, model, preset, bỏ 
     assert.deepEqual([readJson(f.file('advisor.json')).executor, readJson(f.file('settings.json')).defaultModel], ['anthropic/claude-sonnet-5-5', 'claude-sonnet-5-5']);
     assert.deepEqual(readJson(f.file('model-roles.json')).roles.main, {model: 'anthropic/claude-sonnet-5-5', thinking: 'low'});
 
-    // autoMode: pi-auto-mode đọc lại model của bộ phân loại ngay trong phiên.
-    keystrokes.push(...'anthropic/claude-opus-5-5', '\r');
-    await menu(/^autoMode /u, /^Đổi model/u, /^high$/u);
-    assert.match(last().message, /^Có hiệu lực: autoMode ở lần phân loại kế tiếp của auto mode\.$/mu);
-    await runtime.session.prompt('/permissions');
-    assert.match(titles.at(-1), /Classifier: .*anthropic\/claude-opus-5-5/u);
+    // Model phân loại chỉ đổi trong /permissions → Classifier: model đã đăng nhập (chỉ Claude), rồi mức thinking;
+    // ghi autoMode.model/stage2Reasoning vào settings.json (giữ quyền file) và áp ngay cho phiên.
+    const permissions = async (...steps) => {
+      answers.push(...steps);
+      await runtime.session.prompt('/permissions');
+      assert.deepEqual(missing, []);
+    };
+    const settingsMode = fs.statSync(settingsPath).mode & 0o777;
+    await permissions(/^Classifier: anthropic\/claude-sonnet-5-5 · low…$/u, /^Change classifier model…$/u, /^anthropic\/claude-opus-5-5$/u, /^high$/u);
+    assert.match(titles.at(-3), /^Mode: auto\nClassifier \(auto mode\): anthropic\/claude-sonnet-5-5 · low · timeout 60s\n/u);
+    assert.ok(menus.at(-2).includes('anthropic/claude-sonnet-5-5 (current)') && menus.at(-2).every(option => option.startsWith('anthropic/')), menus.at(-2).join(' | '));
+    assert.ok(menus.at(-1).includes('low (current)'));
+    assert.match(last().message, /^Classifier: anthropic\/claude-opus-5-5 · high \(saved to .*settings\.json\)$/u);
+    assert.deepEqual([readJson(settingsPath).autoMode.model, readJson(settingsPath).autoMode.stage2Reasoning], ['anthropic/claude-opus-5-5', 'high']);
+    assert.equal(readJson(settingsPath).autoMode.jev.model, 'jev-1.13.0', 'phần còn lại của autoMode giữ nguyên');
+    if (process.platform !== 'win32') assert.equal(fs.statSync(settingsPath).mode & 0o777, settingsMode);
+    await permissions();
+    assert.equal(titles.at(-1), 'Permissions · ⏵⏵ auto mode on');
+    assert.deepEqual(menus.at(-1), [
+      'Mode: auto — change…', 'Classifier: anthropic/claude-opus-5-5 · high…', 'Recently denied (0)', 'Rules…', 'Test a command…',
+    ]);
+    // Mode: chọn manual rồi chạy thử; manual không gọi bộ phân loại. /permissions test <lệnh> chạy thử trực tiếp.
+    await permissions(/^Mode: auto/u, /^⏸ manual mode on$/u);
+    await runtime.session.prompt('/permissions test npm install left-pad');
+    assert.match(last().message, /^Manual mode: Pi would ask you before running this \(no classifier call\)\.$/u);
+    await runtime.session.prompt('/permissions test git status');
+    assert.match(last().message, /^Decision without classifier: allow \(read-only command\)$/u);
+    await permissions(/^Mode: manual/u, /^⏵⏵ auto mode on$/u);
+    await permissions();
+    assert.equal(titles.at(-1), 'Permissions · ⏵⏵ auto mode on');
+    assert.ok(!runtime.session.extensionRunner.getRegisteredCommands().some(item => item.name === 'auto-mode'), '/auto-mode đã gộp vào /permissions');
 
-    // Chọn preset nhưng không xác nhận: chỉ xem trước, không ghi gì; tham số gõ kèm /models bị bỏ qua (huỷ menu).
+    // Đổi thinking nhưng không xác nhận: chỉ xem trước, không ghi gì; tham số gõ kèm /models bị bỏ qua (huỷ menu).
     const before = snapshot(f.root, f.agentDir);
     decisions.push(false);
-    await menu(/^Chọn preset/u, /^claude: /u);
-    assert.match(confirms.at(-1), /^preset: default → claude$/mu);
-    await runtime.session.prompt('/models preset claude');
+    await menu(/^researcher /u, /^Đổi thinking/u, /^high$/u);
+    assert.match(confirms.at(-1), /^researcher: opencode-go\/glm-5.3-flash \(max\) → opencode-go\/glm-5.3-flash \(high\)$/mu);
+    await runtime.session.prompt('/models researcher high');
     assert.deepEqual(snapshot(f.root, f.agentDir), before);
 
-    // Bỏ ghi đè của worker: dùng lại thinking của preset.
+    // Bỏ ghi đè của worker: dùng lại thinking mặc định.
     await menu(/^worker .*ghi đè/u, /^Bỏ ghi đè/u);
     assert.equal(readJson(f.file('model-roles.json')).roles.worker, undefined);
     assert.match(frontmatter('worker'), /^thinking: max$/mu);
@@ -172,13 +196,22 @@ test('/models trong phiên Pi thật: menu đổi thinking, model, preset, bỏ 
     assert.match(confirms.at(-1), /^Sẽ ghi đè giá trị đổi ngoài model-roles\.json: worker \(agents\/worker\.md: openai-codex\/gpt-6.1-sol \(low\)\)$/mu);
     assert.match(frontmatter('worker'), /^thinking: max$/mu);
 
-    // Ghi đè còn sót của vai đã gỡ: menu vẫn mở, kèm một dòng cảnh báo.
+    // Ghi đè còn sót của vai đã gỡ, rồi khóa preset cũ: menu vẫn mở, mỗi lần kèm một dòng cảnh báo.
     const config = readJson(f.file('model-roles.json'));
     fs.writeFileSync(f.file('model-roles.json'), JSON.stringify({...config, roles: {...config.roles, debugger: {thinking: 'low'}}}));
     await menu();
     assert.deepEqual([last().type, last().message.split('\n').length], ['warning', 1]);
     assert.match(last().message, /^cảnh báo: .*model-roles\.json: roles: bỏ qua debugger \(vai đã gỡ khỏi pi-config\)/u);
-    assert.match(titles.at(-1), /^Model của các vai: preset /u);
+    assert.match(titles.at(-1), /^Model của các vai: mặc định \+ ghi đè /u);
+    fs.writeFileSync(f.file('model-roles.json'), JSON.stringify({preset: 'claude', ...config}));
+    await menu();
+    assert.deepEqual([last().type, last().message.split('\n').length], ['warning', 1]);
+    assert.match(last().message, /^cảnh báo: .*model-roles\.json: bỏ qua "preset": "claude" \(preset đã gỡ khỏi pi-config/u);
+    // Lần ghi kế tiếp qua menu bỏ khóa preset.
+    await menu(/^worker /u, /^Đổi thinking/u, /^high$/u);
+    assert.match(confirms.at(-1), /^Sẽ bỏ khóa "preset" \(đã gỡ\) khỏi model-roles\.json\.$/mu);
+    assert.equal(Object.hasOwn(readJson(f.file('model-roles.json')), 'preset'), false);
+    assert.deepEqual(readJson(f.file('model-roles.json')).roles.worker, {thinking: 'high'});
     assert.equal(fs.existsSync(path.join(f.root, '.install.lock')), false);
     assert.deepEqual(errors, []);
   } finally {

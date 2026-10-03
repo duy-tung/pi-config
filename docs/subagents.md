@@ -2,7 +2,7 @@
 
 Pi dùng tool `Agent` của `@tintinweb/pi-subagents` 0.19.0. Parent Claude Opus 5.5/high phân tích yêu cầu, chốt thiết kế, chia việc và nghiệm thu.
 
-| Role | Model/effort (preset `default`) | Quyền và trách nhiệm |
+| Role | Model/effort (mặc định) | Quyền và trách nhiệm |
 |---|---|---|
 | `researcher` | GLM-5.3-Flash/max | Khảo sát code/docs/log, lịch sử git và web (`web_search`, `fetch_content`); chỉ đọc (bash cho lệnh đọc như `git log`, `rg`, `jq`) và trả bằng chứng |
 | `worker` | GPT-6.1 Sol/max | Triển khai phần việc đã chốt hoặc sửa lỗi (tái hiện, tìm nguyên nhân, sửa, kiểm hồi quy); sửa file và kiểm thử |
@@ -41,7 +41,7 @@ Researcher nạp `pi-web-access`. Package này khai extension là thư mục `./
 
 ## Quyền và nghiệm thu
 
-Researcher và reviewer không có write/edit; shell của chúng dành cho lệnh đọc, chạy test và thu bằng chứng, và vẫn qua cổng permission. Worker dùng shell, write và edit qua cổng permission; chỉ commit khi brief cho phép rõ. Child dùng mode (auto/bypass) của phiên gốc; bộ phân loại của child lấy tin nhắn của người dùng ở phiên gốc làm ý định, coi task do parent viết là không phải lời người dùng. Khi cần hỏi (luật ask, chạm giới hạn chặn), câu hỏi hiện ở UI của phiên gốc. Trong auto mode, `Agent` với `isolated:true` hoặc danh sách extension thiếu `pi-auto-mode` bị chặn vì child sẽ chạy không có cổng.
+Researcher và reviewer không có write/edit; shell của chúng dành cho lệnh đọc, chạy test và thu bằng chứng, và vẫn qua cổng permission. Worker dùng shell, write và edit qua cổng permission; chỉ commit khi brief cho phép rõ. Child dùng mode (manual/auto/bypass) của phiên gốc; bộ phân loại của child lấy tin nhắn của người dùng ở phiên gốc làm ý định, coi task do parent viết là không phải lời người dùng. Khi cần hỏi (luật ask, chạm giới hạn chặn, câu hỏi của manual mode), câu hỏi hiện ở UI của phiên gốc. Trong auto và manual mode, `Agent` với `isolated:true` hoặc danh sách extension thiếu `pi-auto-mode` bị chặn vì child sẽ chạy không có cổng.
 
 Parent cần tránh giao trùng việc hoặc để nhiều writer sửa chồng file. Dùng ID của agent đang chạy để lấy kết quả hay điều chỉnh; parent kiểm evidence và test trước khi kết luận.
 

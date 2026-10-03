@@ -33,6 +33,12 @@ export function unavailable(reason: string): string {
 
 export const USER_DENIED = "The user denied permission for this action. Do not retry it or work around it; ask the user how to proceed if it is essential.";
 
+/** Manual mode: người dùng chọn Deny (hoặc đóng hộp thoại) cho một lời gọi cần duyệt. */
+export const MANUAL_DECLINED = "The user declined this action in manual permission mode. Do not retry it unchanged or work around it (no other tool, script, encoded or split command, or sub-agent to get the same effect). Take a different approach, or ask the user how they want to proceed.";
+
+/** Manual mode không có ai trả lời (print/JSON, hoặc subagent mà phiên gốc không có UI): chặn. */
+export const MANUAL_NO_APPROVER = "Manual permission mode needs the user's approval for this action, but no one can answer in this session (no interactive UI), so it was not run. Continue with other work and report what you needed to the user; unattended runs should use --permission-mode auto.";
+
 export const NO_APPROVER = "This action needs the user's approval, but no one can answer in this session, so it was not run. Continue with other work and report what you needed to the user.";
 
 export function limitReason(limit: "consecutive" | "total", count: number, latest: string): string {
@@ -48,6 +54,12 @@ export function approvalGranted(summary: string): string {
 
 /** Mục system prompt cho agent chính theo mode. */
 export function modeInstructions(mode: PermissionMode): string {
+  if (mode === "manual") {
+    return [
+      "Manual permission mode is active: reads, read-only commands and edits inside the working directory run right away; other tool calls (commands that change things, network access, edits outside the project, sub-agents) show the user an approval prompt before they run.",
+      "Just make the tool call; do not ask for permission in text first. If the user declines an action, do not retry it unchanged or work around it; take a different approach or ask the user how to proceed.",
+    ].join(" ");
+  }
   if (mode === "bypass") {
     return "Bypass permissions mode is active: tool calls run without permission checks, except the user's deny and ask rules; the user is asked before recursive deletes outside the system temp directory. Take extra care with destructive, irreversible or external actions, and confirm with the user when their intent is unclear.";
   }
@@ -66,6 +78,6 @@ export const BYPASS_WARNING = [
   "By proceeding, you accept all responsibility for actions taken in Bypass Permissions mode.",
 ].join("\n");
 
-export const JEV_NOTICE = "Auto mode can screen actions with Jev, TypeSafe's System One model: routine commands are cleared without an LLM call and only risky ones reach the LLM classifier. Set TYPESAFE_API_KEY in your shell profile (for example `export TYPESAFE_API_KEY=...` in ~/.zshrc) and start Pi from a new terminal. Until then the LLM classifier screens every action. /auto-mode shows the status.";
+export const JEV_NOTICE = "Auto mode can screen actions with Jev, TypeSafe's System One model: routine commands are cleared without an LLM call and only risky ones reach the LLM classifier. Set TYPESAFE_API_KEY in your shell profile (for example `export TYPESAFE_API_KEY=...` in ~/.zshrc) and start Pi from a new terminal. Until then the LLM classifier screens every action. /permissions → Classifier shows the status.";
 
 export const AUTO_NOTICE ="Auto mode lets Pi handle permission prompts automatically: a classifier checks each risky tool call before it runs. Actions it judges safe run; risky ones are blocked and Pi tries another approach. It can make mistakes, so prefer isolated environments for sensitive work. Shift+Tab switches mode; /permissions shows recent denials.";

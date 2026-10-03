@@ -3,10 +3,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { type ExtensionAPI, type ExtensionContext, getAgentDir, getPackageDir, parseFrontmatter, type ToolResultEventResult } from "@earendil-works/pi-coding-agent";
 import { classifyWithFallback, type ClassifierResult, type Complete, type ScreenOutcome } from "./lib/classifier.ts";
-import { JEV_MODEL, loadConfig, parseMode, type PermissionMode, readState, writeState } from "./lib/config.ts";
+import { JEV_MODEL, loadConfig, MODES, nextMode, parseMode, type PermissionMode, readState, saveClassifier, writeState } from "./lib/config.ts";
 import { evaluate, JEV_PRICE_PER_MTOK, JEV_TUNING, type JevAccess, JevError, resolveAccess } from "./lib/jev.ts";
+import { parsePermissionsArgs, permissionsCompletions } from "./lib/command.ts";
+import { answerOf, MANUAL_CHOICES, type ManualAnswer, manualApproval, manualTitle } from "./lib/manual.ts";
 import * as text from "./lib/messages.ts";
 import { type CallFacts, decide, describeCall, filterDeniedGrep, type PolicyContext, SAFE_TOOLS, type ToolCall } from "./lib/policy.ts";
 import { resolveToolPath, temporaryRoots } from "./lib/paths.ts";
@@ -23,8 +26,11 @@ import { agentIsUngated, isChild, linkChild, registerRoot, rootFor, type RootHan
 import { buildTranscript, ENTRY_TYPE, humanMessages, type SessionEntryLike, textOf } from "./lib/transcript.ts";
 
 const WIDGET = "pi-auto-mode";
-// /models (extension model-roles) vừa ghi model của vai autoMode vào settings.json.
-const MODEL_ROLES_EVENT = "pi-config:model-roles-changed";
+/** Dòng mode dưới ô nhập (và tiêu đề /permissions). */
+const MODE_LABELS: Record<PermissionMode, string> = {
+  manual: "⏸ manual mode on", auto: "⏵⏵ auto mode on", bypass: "⏵⏵ bypass permissions on",
+};
+const MODE_COLORS = { manual: "accent", auto: "warning", bypass: "error" } as const;
 const DESTRUCTIVE_GIT = /\b(?:rm|rmdir|rimraf|git\s+(?:reset|checkout|restore|clean|stash|push|commit|add|rebase|branch\s+-[dD]))\b|\s-delete\b/u;
 
 function ownDirectory(): string | undefined {
@@ -74,7 +80,9 @@ export default function piAutoMode(pi: ExtensionAPI) {
   let injectionSuspect: string | undefined;
   let lastScreen: ScreenVerdict | undefined;
 
-  pi.registerFlag("permission-mode", { type: "string", description: "Permission mode at startup: auto or bypassPermissions" });
+  pi.registerFlag("permission-mode", {
+    type: "string", description: "Permission mode at startup: manual, auto or bypass (Claude Code's default and bypassPermissions also work)",
+  });
   pi.registerFlag("dangerously-skip-permissions", { type: "boolean", description: "Start in bypass permissions mode (no permission checks)" });
 
   const currentMode = (): PermissionMode => (child ? rootFor(sessionId)?.mode() ?? "auto" : mode);
@@ -91,10 +99,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
     ctx.ui.setWidget(WIDGET, (tui, theme) => {
       widgetTui = tui as { requestRender?: () => void };
       return {
-        render: () => {
-          const label = mode === "bypass" ? theme.fg("error", "⏵⏵ bypass permissions on") : theme.fg("warning", "⏵⏵ auto mode on");
-          return [`${label}${theme.fg("dim", " (shift+tab to cycle)")}`];
-        },
+        render: () => [`${theme.fg(MODE_COLORS[mode], MODE_LABELS[mode])}${theme.fg("dim", " (shift+tab to cycle)")}`],
         invalidate() {},
       };
     }, { placement: "belowEditor" });
@@ -106,32 +111,50 @@ export default function piAutoMode(pi: ExtensionAPI) {
     log({ event: "mode", mode: next });
   }
 
-  /** Điều kiện vào bypass (như Claude Code): không bị tắt, không chạy bằng root, đã đồng ý cảnh báo. */
-  async function canEnterBypass(ctx: ExtensionContext, startup: boolean): Promise<boolean> {
-    if (config.disableBypass) {
-      notify(ctx, "Bypass permissions mode is disabled by settings", "warning");
-      return false;
-    }
-    if (process.getuid?.() === 0 && process.env.IS_SANDBOX !== "1") {
-      notify(ctx, "Bypass permissions mode cannot be used with root/sudo privileges", "error");
+  /** Bypass bị tắt bởi settings hoặc vì chạy bằng root (như Claude Code); trả lý do. */
+  function bypassBlocked(): string | undefined {
+    if (config.disableBypass) return "Bypass permissions mode is disabled by settings";
+    if (process.getuid?.() === 0 && process.env.IS_SANDBOX !== "1") return "Bypass permissions mode cannot be used with root/sudo privileges";
+    return undefined;
+  }
+
+  /** Điều kiện vào bypass (như Claude Code): không bị tắt, không chạy bằng root, đã đồng ý cảnh báo. decline: nhãn nút từ chối. */
+  async function canEnterBypass(ctx: ExtensionContext, startup: boolean, decline: string): Promise<boolean> {
+    const blocked = bypassBlocked();
+    if (blocked) {
+      notify(ctx, blocked, "warning");
       return false;
     }
     const persisted = readState(config.stateDir);
     if (persisted.bypassAccepted) return true;
     if (!ctx.hasUI) return startup;
-    const choice = await ctx.ui.select(text.BYPASS_WARNING, ["No, stay in auto mode", "Yes, I accept"]);
+    const choice = await ctx.ui.select(text.BYPASS_WARNING, [decline, "Yes, I accept"]);
     if (choice !== "Yes, I accept") return false;
     writeState(config.stateDir, { ...readState(config.stateDir), bypassAccepted: true });
     return true;
   }
 
+  /** Đổi sang mode được chọn (vào bypass phải qua canEnterBypass); trả true khi đã đổi. */
+  async function switchMode(ctx: ExtensionContext, next: PermissionMode): Promise<boolean> {
+    if (child || next === mode) return false;
+    if (next === "bypass" && !await canEnterBypass(ctx, false, `No, keep ${mode} mode`)) return false;
+    setMode(next);
+    return true;
+  }
+
+  /** Shift+Tab: manual → auto → bypass → manual. Bypass bị tắt thì bỏ qua; từ chối cảnh báo thì sang manual. */
   async function cycle(ctx: ExtensionContext): Promise<void> {
     if (child) return;
-    if (mode === "auto") {
-      if (await canEnterBypass(ctx, false)) setMode("bypass");
-    } else {
-      setMode("auto");
+    const next = nextMode(mode);
+    if (next !== "bypass") {
+      setMode(next);
+      return;
     }
+    if (bypassBlocked()) {
+      setMode("manual");
+      return;
+    }
+    setMode(await canEnterBypass(ctx, false, "No, switch to manual mode") ? "bypass" : "manual");
   }
 
   function log(entry: Record<string, unknown>): void {
@@ -148,8 +171,10 @@ export default function piAutoMode(pi: ExtensionAPI) {
   // Chính sách
   // ---------------------------------------------------------------------------
 
+  /** Luật permission; manual dùng cả luật allow chạy code tùy ý (như mode default của Claude Code), auto bỏ chúng. */
   function rules() {
-    return buildRuleSet(config.allow, config.ask, config.deny);
+    const set = buildRuleSet(config.allow, config.ask, config.deny);
+    return currentMode() === "manual" ? { ...set, allow: [...set.allow, ...set.stripped] } : set;
   }
 
   function selfPaths(): string[] {
@@ -189,14 +214,24 @@ export default function piAutoMode(pi: ExtensionAPI) {
   // Hỏi người dùng (luật ask, rm vào đường dẫn quan trọng khi bypass, chạm giới hạn chặn)
   // ---------------------------------------------------------------------------
 
-  async function askUser(ctx: ExtensionContext, title: string): Promise<boolean | undefined> {
+  /** Hỏi người dùng (child hỏi qua UI của phiên gốc); undefined khi không ai trả lời được. */
+  function chooser(ctx: ExtensionContext): ((title: string, options: string[]) => Promise<string | undefined>) | undefined {
     if (child) {
       const root = rootFor(sessionId);
-      return root?.ask ? root.ask(title) : undefined;
+      return root?.ask ? (title, options) => root.ask!(title, options) : undefined;
     }
-    if (!ctx.hasUI) return undefined;
-    const choice = await ctx.ui.select(title, ["Allow once", "Deny"]);
-    return choice === "Allow once";
+    return ctx.hasUI ? (title, options) => ctx.ui.select(title, options) : undefined;
+  }
+
+  async function askUser(ctx: ExtensionContext, title: string): Promise<boolean | undefined> {
+    const choose = chooser(ctx);
+    if (!choose) return undefined;
+    return (await choose(title, [MANUAL_CHOICES.once, MANUAL_CHOICES.deny])) === MANUAL_CHOICES.once;
+  }
+
+  /** Lời gọi được cho phép tới hết phiên (manual): child dùng chung tập của phiên gốc. */
+  function sessionApprovals(): Set<string> {
+    return (child ? rootFor(sessionId)?.sessionApprovals() : undefined) ?? state.sessionApprovals;
   }
 
   // ---------------------------------------------------------------------------
@@ -373,7 +408,9 @@ export default function piAutoMode(pi: ExtensionAPI) {
     ctx: ExtensionContext, call: ToolCall, toolCallId: string | undefined, notes: string[], escalate: boolean, analysis: ShellAnalysis | undefined,
   ): Promise<ClassifierResult> {
     const session = ctx.model;
-    const model = demoted ? session : resolveModel(ctx, config.model);
+    // Child dùng model phân loại của phiên gốc (người dùng có thể vừa đổi trong /permissions).
+    const classifier = (child ? rootFor(sessionId)?.classifier() : undefined) ?? { model: config.model, stage2Reasoning: config.stage2Reasoning };
+    const model = demoted ? session : resolveModel(ctx, classifier.model);
     if (!model) return { kind: "unavailable", reason: "no model is configured for the classifier" };
     const sameAsSession = !!session && session.provider === model.provider && session.id === model.id;
     if (!facts.length) await loadFacts(ctx.cwd);
@@ -406,7 +443,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
     try {
       const { result, fellBack, primaryReason } = await classifyWithFallback({
         systemPrompt: promptText(), blocks, complete, timeoutMs: config.timeoutMs,
-        stage2Reasoning: config.stage2Reasoning, signal: ctx.signal, screen: makeScreen(ctx, call, notes, escalate, analysis),
+        stage2Reasoning: classifier.stage2Reasoning, signal: ctx.signal, screen: makeScreen(ctx, call, notes, escalate, analysis),
       }, fallback);
       if (fellBack && result.kind !== "unavailable" && session) {
         demoted = true;
@@ -452,6 +489,19 @@ export default function piAutoMode(pi: ExtensionAPI) {
     // Duyệt một lần từ /permissions: bỏ qua bộ phân loại, luật deny vẫn đã áp dụng ở trên.
     if (state.consumeApproval(key)) {
       return allowed(call, "user approval");
+    }
+    // Manual: hỏi người dùng thay cho bộ phân loại (không gọi model nào).
+    if (currentMode() === "manual") {
+      const choose = chooser(ctx);
+      const options = [MANUAL_CHOICES.once, MANUAL_CHOICES.session, MANUAL_CHOICES.deny];
+      const result = await manualApproval({
+        key, title: manualTitle(call.toolName, facts.summary, decision.notes), approvals: sessionApprovals(),
+        ask: choose ? async (title): Promise<ManualAnswer> => answerOf(await choose(title, options)) : undefined,
+      });
+      log({ event: "manual", tool: call.toolName, result: result.kind === "allow" ? result.via : result.declined ? "declined" : "no approver" });
+      if (result.kind === "allow") return allowed(call, result.via);
+      if (result.declined) state.recordDenied({ toolName: call.toolName, summary: facts.summary, reason: "Declined by you", key }, false);
+      return { block: true, reason: result.reason };
     }
     const result = await runClassifier(ctx, call, toolCallId, decision.notes, !!decision.escalate, facts.analysis);
     if (result.kind === "allow") return allowed(call, result.screen === "jev" ? "jev" : `classifier stage ${result.stage}`);
@@ -577,13 +627,6 @@ export default function piAutoMode(pi: ExtensionAPI) {
     const identity = payload as { sessionId?: string };
     if (identity?.sessionId) unlinkChild(identity.sessionId);
   });
-  // Chỉ đọc lại model của bộ phân loại, có hiệu lực từ lần phân loại kế tiếp; luật và chế độ giữ như lúc mở phiên.
-  // applied báo lại cho /models là phiên này đã nhận.
-  pi.events.on(MODEL_ROLES_EVENT, (payload: unknown) => {
-    const fresh = loadConfig(agentDir);
-    config = { ...config, model: fresh.model, stage2Reasoning: fresh.stage2Reasoning };
-    (payload as { applied?: string[] } | undefined)?.applied?.push("autoMode");
-  });
 
   pi.on("before_agent_start", (event) => {
     const options = event.systemPromptOptions as { contextFiles?: { path: string; content: string }[]; sections?: Record<string, string> };
@@ -615,19 +658,21 @@ export default function piAutoMode(pi: ExtensionAPI) {
       sessionId,
       mode: () => mode,
       humanMessages: () => humanMessages(ctx.sessionManager.getBranch() as SessionEntryLike[]),
-      ask: ctx.hasUI ? async (title: string) => (await ctx.ui.select(`[subagent] ${title}`, ["Allow once", "Deny"])) === "Allow once" : undefined,
+      ask: ctx.hasUI ? (title: string, options: string[]) => ctx.ui.select(`[subagent] ${title}`, options) : undefined,
+      sessionApprovals: () => state.sessionApprovals,
+      classifier: () => ({ model: config.model, stage2Reasoning: config.stage2Reasoning }),
     };
     registerRoot(handle);
     // Không bao giờ khôi phục bypass từ phiên cũ; chỉ cờ dòng lệnh hoặc settings người dùng.
     const flagBypass = pi.getFlag("dangerously-skip-permissions") === true;
     const wanted = flagBypass ? "bypass" : parseMode(pi.getFlag("permission-mode")) ?? config.defaultMode;
-    setMode("auto");
+    setMode(wanted === "manual" ? "manual" : "auto");
     installWidget(ctx);
     if (wanted === "bypass") {
-      void canEnterBypass(ctx, true).then((ok) => {
+      void canEnterBypass(ctx, true, "No, stay in auto mode").then((ok) => {
         if (ok) setMode("bypass");
       });
-    } else if (ctx.hasUI && ctx.mode === "tui") {
+    } else if (wanted === "auto" && ctx.hasUI && ctx.mode === "tui") {
       const persisted = readState(config.stateDir);
       if (!persisted.autoNoticeShown) {
         notify(ctx, text.AUTO_NOTICE, "info");
@@ -658,105 +703,180 @@ export default function piAutoMode(pi: ExtensionAPI) {
 
   // Shift+Tab như Claude Code; bộ cài chuyển mức thinking của Pi sang Alt+T. Nếu keybindings.json vẫn gán
   // Shift+Tab cho thinking, Pi bỏ phím này của extension (kèm chẩn đoán) và mode đổi bằng /permissions.
-  pi.registerShortcut("shift+tab" as never, { description: "Switch permission mode (auto ⇄ bypass)", handler: (ctx) => cycle(ctx) });
+  pi.registerShortcut("shift+tab" as never, { description: "Switch permission mode (manual → auto → bypass)", handler: (ctx) => cycle(ctx) });
 
   function modelLabel(): string {
-    const llm = config.model ?? "session model";
+    const llm = `${config.model ?? "session model"} · ${config.stage2Reasoning}`;
     return jevReady() ? `Jev ${config.jev.model} → ${llm}` : llm;
   }
 
-  pi.registerCommand("permissions", {
-    description: "Permission mode, recently denied actions and rules",
-    handler: async (_args, ctx) => {
-      if (!ctx.hasUI) return;
-      const modeLabel = currentMode() === "bypass" ? "⏵⏵ bypass permissions on" : "⏵⏵ auto mode on";
-      const options = [
-        `Recently denied (${state.recent.length})`,
-        currentMode() === "bypass" ? "Switch to auto mode" : "Switch to bypass permissions mode",
-        "Show rules",
-      ];
-      const choice = await ctx.ui.select(`Permissions · ${modeLabel}\nClassifier: ${modelLabel()}`, options);
-      if (!choice) return;
-      if (choice.startsWith("Switch")) {
-        await cycle(ctx);
-        return;
-      }
-      if (choice === "Show rules") {
-        const set = rules();
-        const list = (items: { raw: string }[]) => (items.length ? items.map((rule) => `  ${rule.raw}`).join("\n") : "  (none)");
-        const body = [
-          `Allow:\n${list(set.allow)}`, `Ask:\n${list(set.ask)}`, `Deny:\n${list(set.deny)}`,
-          ...(set.stripped.length ? [`Ignored in auto mode (would bypass the classifier):\n${list(set.stripped)}`] : []),
-          `Settings: ${config.source}`,
-        ].join("\n\n");
-        await ctx.ui.editor("Permission rules (read-only view)", body);
-        return;
-      }
-      if (!state.recent.length) {
-        ctx.ui.notify("No recent denials. Actions denied by auto mode will appear here.", "info");
-        return;
-      }
-      const labels = state.recent.map((record) => `${record.approved ? "✓" : "✗"} ${record.toolName} · ${record.summary} — ${record.rule ? `[${record.rule}] ` : ""}${record.reason}`);
-      const picked = await ctx.ui.select("Recently denied — pick one to approve for a single retry", labels);
-      const record = picked ? state.recent[labels.indexOf(picked)] : undefined;
-      if (!record || record.approved) return;
-      const confirm = await ctx.ui.select(`Approve ${record.toolName}: ${record.summary}?\nPi will be told it may retry this exact action once.`, ["Approve and retry", "Cancel"]);
-      if (confirm !== "Approve and retry") return;
-      state.approve(record.key);
-      const message = text.approvalGranted(record.summary);
-      ownMessages.add(message);
-      pi.sendUserMessage(message, ctx.isIdle() ? undefined : { deliverAs: "followUp" });
-    },
-  });
+  /** Trạng thái của cổng (mode, bộ phân loại, Jev, số lần chặn, luật): tiêu đề menu Classifier và /permissions không UI. */
+  function statusLines(): string[] {
+    const set = rules();
+    return [
+      `Mode: ${currentMode()}${child ? " (inherited from the parent session)" : ""}`,
+      `Classifier (auto mode): ${modelLabel()} · timeout ${Math.round(config.timeoutMs / 1000)}s${demoted ? " · using the session model for this session" : ""}`,
+      `Jev (System One): ${jevLabel()}${jevStats.calls || jevStats.failures ? `\n  ${jevUsage()}` : ""}`,
+      ...(injectionSuspect ? [`Possible prompt injection in a ${injectionSuspect} result since your last message: actions go straight to careful review`] : []),
+      `Denials: ${state.consecutive} in a row, ${state.total} this session (limits ${LIMITS.consecutive}/${LIMITS.total})`,
+      `Rules: ${set.allow.length} allow, ${set.ask.length} ask, ${set.deny.length} deny${set.stripped.length && currentMode() !== "manual" ? `, ${set.stripped.length} ignored in auto mode` : ""}`,
+    ];
+  }
 
-  pi.registerCommand("auto-mode", {
-    description: "Auto mode status, defaults and dry run: /auto-mode [status|defaults|test <command>]",
-    getArgumentCompletions: (prefix) => ["status", "defaults", "test "].filter((item) => item.startsWith(prefix)).map((value) => ({ value, label: value.trim() })),
+  /** Chạy thử quyết định cho một lệnh bash; chỉ auto mode gọi bộ phân loại (có thể tốn token). */
+  async function testCommand(ctx: ExtensionContext, command: string): Promise<void> {
+    const call = { toolName: "bash", input: { command } };
+    const pc = policyContext(ctx);
+    const facts = describeCall(call, pc);
+    const decision = decide(call, pc, facts);
+    if (decision.kind !== "classify") {
+      notify(ctx, `Decision without classifier: ${decision.kind}${"via" in decision ? ` (${decision.via})` : ""}${"reason" in decision ? ` — ${decision.reason}` : ""}`, "info");
+      return;
+    }
+    const notes = decision.notes.length ? ` Note: ${decision.notes.join("; ")}.` : "";
+    if (currentMode() !== "auto") {
+      notify(ctx, `${currentMode() === "manual" ? "Manual mode: Pi would ask you before running this" : "Bypass mode: this runs without a check"} (no classifier call).${notes}`, "info");
+      return;
+    }
+    notify(ctx, "Asking the classifier…", "info");
+    const result = await runClassifier(ctx, call, undefined, decision.notes, !!decision.escalate, facts.analysis);
+    const summary = result.kind === "allow" ? `allow (${result.screen === "jev" ? "Jev" : `stage ${result.stage}`})`
+      : result.kind === "block" ? `block (stage ${result.stage}) — ${result.rule ? `[${result.rule}] ` : ""}${result.reason}`
+        : `unavailable — ${result.reason}`;
+    const screened = lastScreen ? `Jev: ${describeVerdict(lastScreen)}\n` : "";
+    notify(ctx, `${screened}Classifier: ${summary}`, result.kind === "allow" ? "info" : "warning");
+  }
+
+  /** Chọn model phân loại trong các model đã đăng nhập, rồi mức suy luận; lưu vào settings.json và áp ngay. */
+  async function changeClassifier(ctx: ExtensionContext): Promise<void> {
+    const ref = (model: { provider: string; id: string }) => `${model.provider}/${model.id}`;
+    const models = ctx.modelRegistry.getAvailable().sort((a, b) => ref(a).localeCompare(ref(b)));
+    if (!models.length) {
+      ctx.ui.notify("No logged-in model is available for the classifier; use /login first.", "warning");
+      return;
+    }
+    const current = (value: string, active: boolean) => (active ? `${value} (current)` : value);
+    const labels = models.map((model) => current(ref(model), ref(model) === config.model));
+    const picked = await ctx.ui.select("Classifier model (auto mode stage 2, and stage 1 without Jev)", labels);
+    const model = picked ? models[labels.indexOf(picked)] : undefined;
+    if (!model) return;
+    const supported = getSupportedThinkingLevels(model) as string[];
+    const levels = supported.length ? supported : ["off"];
+    const levelLabels = levels.map((level) => current(level, level === config.stage2Reasoning));
+    const chosen = await ctx.ui.select(`Classifier thinking (${ref(model)})`, levelLabels);
+    const level = chosen ? levels[levelLabels.indexOf(chosen)] : undefined;
+    if (!level) return;
+    try {
+      saveClassifier(config.source, ref(model), level);
+    } catch (error) {
+      ctx.ui.notify(`Could not save the classifier model to ${config.source}: ${error instanceof Error ? error.message : String(error)}`, "error");
+      return;
+    }
+    // Áp ngay cho phiên này (và child, qua registry); model mới được thử lại dù model cũ đã bị thay bằng model của phiên.
+    config = { ...config, model: ref(model), stage2Reasoning: level };
+    demoted = false;
+    warnedModel = false;
+    log({ event: "classifier", model: ref(model), reasoning: level });
+    ctx.ui.notify(`Classifier: ${ref(model)} · ${level} (saved to ${config.source})`, "info");
+  }
+
+  async function showRules(ctx: ExtensionContext): Promise<void> {
+    const set = buildRuleSet(config.allow, config.ask, config.deny);
+    const choice = await ctx.ui.select("Rules", [
+      `Your rules: ${set.allow.length + set.stripped.length} allow, ${set.ask.length} ask, ${set.deny.length} deny`,
+      "Built-in classifier rules (auto mode defaults)",
+    ]);
+    if (!choice) return;
+    if (choice.startsWith("Your rules")) {
+      const list = (items: { raw: string }[]) => (items.length ? items.map((rule) => `  ${rule.raw}`).join("\n") : "  (none)");
+      const body = [
+        `Allow:\n${list(set.allow)}`, `Ask:\n${list(set.ask)}`, `Deny:\n${list(set.deny)}`,
+        ...(set.stripped.length ? [`Allow rules ignored in auto mode (they would bypass the classifier; manual mode uses them):\n${list(set.stripped)}`] : []),
+        `Settings: ${config.source}`,
+      ].join("\n\n");
+      await ctx.ui.editor("Permission rules (read-only view)", body);
+      return;
+    }
+    const body = [
+      "# Environment", ...DEFAULT_ENVIRONMENT.map((item) => `- ${item}`), "",
+      "# HARD rules", ...DEFAULT_HARD_DENY.map((item) => `- ${item}`), "",
+      "# SOFT rules", ...DEFAULT_SOFT_DENY.map((item) => `- ${item}`), "",
+      "# ALLOW exceptions", ...DEFAULT_ALLOW.map((item) => `- ${item}`), "",
+      "Customize in settings.json → autoMode.environment / hard_deny / soft_deny / allow; include \"$defaults\" to keep these.",
+    ].join("\n");
+    await ctx.ui.editor("Auto mode classifier rules (read-only view)", body);
+  }
+
+  async function recentlyDenied(ctx: ExtensionContext): Promise<void> {
+    if (!state.recent.length) {
+      ctx.ui.notify("No recent denials. Actions denied by auto mode, rules or you will appear here.", "info");
+      return;
+    }
+    const labels = state.recent.map((record) => `${record.approved ? "✓" : "✗"} ${record.toolName} · ${record.summary} — ${record.rule ? `[${record.rule}] ` : ""}${record.reason}`);
+    const picked = await ctx.ui.select("Recently denied — pick one to approve for a single retry", labels);
+    const record = picked ? state.recent[labels.indexOf(picked)] : undefined;
+    if (!record || record.approved) return;
+    const confirm = await ctx.ui.select(`Approve ${record.toolName}: ${record.summary}?\nPi will be told it may retry this exact action once.`, ["Approve and retry", "Cancel"]);
+    if (confirm !== "Approve and retry") return;
+    state.approve(record.key);
+    const message = text.approvalGranted(record.summary);
+    ownMessages.add(message);
+    pi.sendUserMessage(message, ctx.isIdle() ? undefined : { deliverAs: "followUp" });
+  }
+
+  // Một menu cho mọi thứ của cổng permission (thay /auto-mode cũ): mode, bộ phân loại, lệnh bị chặn, luật, chạy thử.
+  pi.registerCommand("permissions", {
+    description: "Permission mode, classifier model, recently denied actions, rules and dry runs: /permissions [test <command>]",
+    getArgumentCompletions: (prefix) => permissionsCompletions(prefix),
     handler: async (args, ctx) => {
-      const [sub, ...rest] = args.trim().split(/\s+/u);
-      if (sub === "defaults") {
-        const body = [
-          "# Environment", ...DEFAULT_ENVIRONMENT.map((item) => `- ${item}`), "",
-          "# HARD rules", ...DEFAULT_HARD_DENY.map((item) => `- ${item}`), "",
-          "# SOFT rules", ...DEFAULT_SOFT_DENY.map((item) => `- ${item}`), "",
-          "# ALLOW exceptions", ...DEFAULT_ALLOW.map((item) => `- ${item}`), "",
-          "Customize in settings.json → autoMode.environment / hard_deny / soft_deny / allow; include \"$defaults\" to keep these.",
-        ].join("\n");
-        if (ctx.hasUI) await ctx.ui.editor("Auto mode default rules (read-only view)", body);
+      const parsed = parsePermissionsArgs(args);
+      if (parsed.kind === "usage") {
+        notify(ctx, parsed.message, "warning");
         return;
       }
-      if (sub === "test") {
-        const command = rest.join(" ");
-        if (!command) {
-          notify(ctx, "Usage: /auto-mode test <bash command>", "warning");
-          return;
-        }
-        const call = { toolName: "bash", input: { command } };
-        const pc = policyContext(ctx);
-        const facts = describeCall(call, pc);
-        const decision = decide(call, pc, facts);
-        if (decision.kind !== "classify") {
-          notify(ctx, `Decision without classifier: ${decision.kind}${"via" in decision ? ` (${decision.via})` : ""}${"reason" in decision ? ` — ${decision.reason}` : ""}`, "info");
-          return;
-        }
-        notify(ctx, "Asking the classifier…", "info");
-        const result = await runClassifier(ctx, call, undefined, decision.notes, !!decision.escalate, facts.analysis);
-        const summary = result.kind === "allow" ? `allow (${result.screen === "jev" ? "Jev" : `stage ${result.stage}`})`
-          : result.kind === "block" ? `block (stage ${result.stage}) — ${result.rule ? `[${result.rule}] ` : ""}${result.reason}`
-            : `unavailable — ${result.reason}`;
-        const screened = lastScreen ? `Jev: ${describeVerdict(lastScreen)}\n` : "";
-        notify(ctx, `${screened}Classifier: ${summary}`, result.kind === "allow" ? "info" : "warning");
+      if (parsed.kind === "test") {
+        await testCommand(ctx, parsed.command);
         return;
       }
-      const set = rules();
-      notify(ctx, [
-        `Mode: ${currentMode() === "bypass" ? "bypass permissions" : "auto"}${child ? " (inherited from the parent session)" : ""}`,
-        `Classifier: ${modelLabel()} · timeout ${Math.round(config.timeoutMs / 1000)}s`,
-        `Jev (System One): ${jevLabel()}${jevStats.calls || jevStats.failures ? `\n  ${jevUsage()}` : ""}`,
-        ...(injectionSuspect ? [`Possible prompt injection in a ${injectionSuspect} result since your last message: actions go straight to careful review`] : []),
-        `Denials: ${state.consecutive} in a row, ${state.total} this session (limits ${LIMITS.consecutive}/${LIMITS.total})`,
-        `Rules: ${set.allow.length} allow, ${set.ask.length} ask, ${set.deny.length} deny${set.stripped.length ? `, ${set.stripped.length} ignored in auto mode` : ""}`,
-      ].join("\n"), "info");
+      // Không có UI (print/JSON): in trạng thái như /auto-mode status cũ.
+      if (!ctx.hasUI) {
+        ctx.ui.notify(statusLines().join("\n"), "info");
+        return;
+      }
+      const options = [
+        `Mode: ${currentMode()} — change…`,
+        `Classifier: ${modelLabel()}…`,
+        `Recently denied (${state.recent.length})`,
+        "Rules…",
+        "Test a command…",
+      ];
+      const choice = await ctx.ui.select(`Permissions · ${MODE_LABELS[currentMode()]}`, options);
+      if (!choice) return;
+      switch (options.indexOf(choice)) {
+        case 0: {
+          if (child) return;
+          const labels = MODES.map((item) => `${MODE_LABELS[item]}${item === currentMode() ? " (current)" : ""}`);
+          const picked = await ctx.ui.select("Permission mode (Shift+Tab cycles manual → auto → bypass)", labels);
+          if (picked) await switchMode(ctx, MODES[labels.indexOf(picked)]);
+          return;
+        }
+        case 1: {
+          const picked = await ctx.ui.select(statusLines().join("\n"), ["Change classifier model…"]);
+          if (picked) await changeClassifier(ctx);
+          return;
+        }
+        case 2:
+          await recentlyDenied(ctx);
+          return;
+        case 3:
+          await showRules(ctx);
+          return;
+        case 4: {
+          const command = (await ctx.ui.input("Test a command (dry run of the permission decision)", "bash command"))?.trim();
+          if (command) await testCommand(ctx, command);
+          return;
+        }
+      }
     },
   });
 }

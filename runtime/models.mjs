@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  MODEL_ROLES_FILE, ROLES, SUBAGENT_ROLES, changedRoles, driftWarning, driftedRoles, effectiveModelRoles,
-  forceNativeModels, loadPresets, loginWarning, modelRolesReport, nativeValues, nextModelDefault, readModelRoles, resolveModelRoles,
-  roleLabel as label, withPreset, withRole, withoutRoles, writeModelRoles,
+  MODEL_ROLES_FILE, ROLES, SUBAGENT_ROLES, changedRoles, copyConfig, driftWarning, driftedRoles, effectiveModelRoles,
+  forceNativeModels, loadModelDefaults, loginWarning, modelRolesReport, nativeValues, nextModelDefault, readModelRoles,
+  resolveModelRoles, roleLabel as label, withRole, withoutRoles, writeModelRoles,
 } from './model-roles.mjs';
 import {backupFile, defaultsFile, describeMerge, planConfigFile, writeAtomic, writeConfigPlan} from './merge.mjs';
 import {acquireInstallLock} from './install-lock.mjs';
@@ -64,10 +64,10 @@ async function withInstallLock(root, fn) {
 }
 
 // Khi nào một phiên Pi đang chạy nhận giá trị mới: pi-subagents đọc lại file role ở mỗi lần gọi Agent, advisor đọc lại
-// advisor.json ở mỗi lần hỏi; phiên chính và auto mode đọc cấu hình khi mở phiên.
+// advisor.json ở mỗi lần hỏi; phiên chính đọc cấu hình khi mở phiên.
 const APPLIED_AT = {
   ...Object.fromEntries(SUBAGENT_ROLES.map(name => [name, 'ở lần gọi Agent kế tiếp'])), advisor: 'ở lần hỏi advisor kế tiếp',
-  main: 'ở phiên Pi mở sau', autoMode: 'ở phiên Pi mở sau',
+  main: 'ở phiên Pi mở sau',
 };
 
 /**
@@ -84,20 +84,18 @@ export function whenApplied(changed, when = {}) {
 }
 
 /**
- * model-roles.json mới và các vai cần ép trong file gốc cho một thay đổi của /models:
- * - {preset}: chọn preset; ép các vai preset mới đổi giá trị;
+ * model-roles.json mới và các vai cần ép trong file gốc cho một thay đổi của /models (mọi thay đổi bỏ khóa preset cũ):
  * - {role, model?, thinking?}: ghi đè model và/hoặc thinking của một vai; ép vai đó;
- * - {reset: vai}: bỏ ghi đè, vai dùng lại giá trị của preset; ép vai đó;
- * - {apply: true}: giữ model-roles.json, ép mọi vai (bỏ giá trị đổi ngoài model-roles.json qua /model, /agents...).
+ * - {reset: vai}: bỏ ghi đè, vai dùng lại giá trị mặc định; ép vai đó;
+ * - {apply: true}: giữ các ghi đè, ép mọi vai (bỏ giá trị đổi ngoài model-roles.json qua /model, /agents...).
  */
 function edit(config, change) {
-  if (change.preset !== undefined) return {config: withPreset(config, change.preset), force: changedRoles};
-  if (change.reset !== undefined) return {config: withoutRoles(config, [change.reset]), force: () => [change.reset]};
+  if (change.reset !== undefined) return {config: withoutRoles(config, [change.reset]), force: [change.reset]};
   if (change.role !== undefined) {
     const {role, ...fields} = change;
-    return {config: withRole(config, role, fields), force: () => [role]};
+    return {config: withRole(config, role, fields), force: [role]};
   }
-  if (change.apply === true) return {config, force: () => ROLES};
+  if (change.apply === true) return {config: copyConfig(config), force: ROLES};
   throw new Error(`không hiểu thay đổi ${JSON.stringify(change)}`);
 }
 
@@ -108,31 +106,30 @@ function edit(config, change) {
  */
 async function applyChange({root, agentDir, catalog, effects, out, dryRun, change}) {
   const run = async () => {
-    const presets = loadPresets(path.join(root, 'assets', 'configs', 'model-presets.json'));
+    const defaults = loadModelDefaults(root);
     const current = readModelRoles(agentDir);
     if (current.error) throw new Error(`${current.error}\nSửa file rồi mở lại /models.`);
-    const before = resolveModelRoles(presets, current.config);
+    const before = resolveModelRoles(defaults, current.config);
     const effective = effectiveModelRoles(agentDir);
-    const {config, force} = edit(current.config, change);
-    const after = resolveModelRoles(presets, config);
+    const {config, force: forced} = edit(current.config, change);
+    const after = resolveModelRoles(defaults, config);
     if (after.errors.length) throw new Error(`${current.file} sẽ không hợp lệ:\n- ${after.errors.join('\n- ')}`);
     for (const warning of after.warnings) out.warn(`cảnh báo: ${current.file}: ${warning}`);
     const report = await catalog.check(after.roles, {logins: true});
     if (report.errors.length) throw new Error(`Model không dùng được, chưa ghi gì:\n- ${report.errors.join('\n- ')}`);
     const statePath = path.join(root, 'install-state.json');
     const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-    const forced = force(before.roles, after.roles);
     const {plans, missing} = planModelFiles({root, agentDir, state, roles: after.roles, force: forced});
     if (missing.length) {
       throw new Error(`Chưa có mặc định của lần cài trước cho:\n- ${missing.join('\n- ')}\nChạy lại installer một lần rồi dùng /models.`);
     }
     const configChanged = !current.exists || JSON.stringify(config) !== JSON.stringify(current.config);
     const changed = changedRoles(before.roles, after.roles);
-    if (after.preset !== before.preset) out.log(`preset: ${before.preset} → ${after.preset}`);
     for (const name of changed) out.log(`${name}: ${label(before.roles[name])} → ${label(after.roles[name])}`);
     if (!current.exists) out.log(`${dryRun ? 'Sẽ tạo' : 'Tạo'} ${current.file}.`);
     else if (!configChanged) out.log(`${MODEL_ROLES_FILE} không đổi.`);
-    else if (!changed.length && after.preset === before.preset) out.log('Không vai nào đổi model/thinking.');
+    else if (!changed.length) out.log('Không vai nào đổi model/thinking.');
+    if (current.exists && Object.hasOwn(Object(current.config), 'preset')) out.log(`${dryRun ? 'Sẽ bỏ' : 'Bỏ'} khóa "preset" (đã gỡ) khỏi ${MODEL_ROLES_FILE}.`);
     // Giá trị người dùng đã đổi trong file gốc (lệch với cấu hình trước thay đổi) mà thay đổi này ép về cấu hình mới.
     const driftedBefore = driftedRoles(before.roles, effective), driftedAfter = driftedRoles(after.roles, effective);
     const overwritten = forced.filter(name => driftedBefore.includes(name) && driftedAfter.includes(name) && effective[name].model);

@@ -11,12 +11,10 @@ import { type Action, type Change, levelOf, levelOptions, mainMenu, type Menu, r
 /**
  * /models: menu đổi model/thinking của các vai (model-roles.json), cách duy nhất để đổi model theo vai. Phần ghi chạy
  * bằng <root>/bin/models.mjs của bản cài (cùng kiểm tra, cách gộp và khóa với installer), nhưng kiểm model và đăng
- * nhập bằng catalog của chính phiên này, rồi áp ngay phần áp được: phiên chính đổi model/thinking, auto mode đọc lại
- * model của bộ phân loại. Không có UI thì in bảng model của các vai.
+ * nhập bằng catalog của chính phiên này, rồi áp ngay phần áp được: phiên chính đổi model/thinking. Không có UI thì in
+ * bảng model của các vai. Model của bộ phân loại auto mode đổi trong /permissions (pi-auto-mode), không ở đây.
  */
 
-// pi-auto-mode đọc lại model của bộ phân loại khi nhận sự kiện này và ghi "autoMode" vào applied.
-const MODEL_ROLES_EVENT = "pi-config:model-roles-changed";
 const AUTH_SOURCES: Record<string, string> = {
   runtime: "key của phiên", environment: "biến môi trường", fallback: "key mặc định",
   models_json_key: "key trong models.json", models_json_command: "lệnh trong models.json",
@@ -36,12 +34,10 @@ interface Catalog {
   check(roles: Record<string, RoleValue>, options?: { logins?: boolean }): Promise<CatalogReport>;
 }
 interface Resolved {
-  preset: string;
   roles: Record<string, RoleValue>;
   errors: string[];
   warnings: string[];
 }
-type Presets = Record<string, { description?: string; roles: Record<string, RoleValue> }>;
 // Hàm của runtime/model-roles.mjs và runtime/models.mjs (chép vào <root>/bin khi cài).
 interface RolesModule {
   ROLES: string[];
@@ -51,9 +47,9 @@ interface RolesModule {
     roles: Record<string, RoleValue>; find: (provider: string, id: string) => unknown;
     clamp: (model: never, level: never) => string; login?: (provider: string) => string | undefined;
   }): Promise<CatalogReport>;
-  loadPresets(file: string): Presets;
+  loadModelDefaults(root: string): Record<string, RoleValue>;
   readModelRoles(agentDir: string): { file: string; exists: boolean; config?: unknown; error?: string };
-  resolveModelRoles(presets: Presets, config?: unknown): Resolved;
+  resolveModelRoles(defaults: Record<string, RoleValue>, config?: unknown): Resolved;
   effectiveModelRoles(agentDir: string): Record<string, RoleValue>;
   driftedRoles(roles: Record<string, RoleValue>, effective: Record<string, RoleValue>): string[];
   parseModelRef(value: unknown): { provider: string; id: string } | undefined;
@@ -142,15 +138,9 @@ async function switchSession(pi: ExtensionAPI, ctx: ExtensionContext, install: I
   return `Phiên này dùng ${sessionLabel(pi, ctx)}.`;
 }
 
-/** effects của runModels trong phiên: áp ngay main và auto mode, báo thời điểm của các vai còn lại. */
+/** effects của runModels trong phiên: áp ngay main, báo thời điểm của các vai còn lại. */
 async function applyToSession(pi: ExtensionAPI, ctx: ExtensionContext, install: Install, changed: string[]): Promise<string[]> {
-  const when: Record<string, string> = {};
-  if (changed.includes("autoMode")) {
-    const payload = { applied: [] as string[] };
-    pi.events.emit(MODEL_ROLES_EVENT, payload);
-    if (payload.applied.includes("autoMode")) when.autoMode = "ở lần phân loại kế tiếp của auto mode";
-  }
-  const lines = install.models.whenApplied(changed.filter((name) => name !== "main"), when);
+  const lines = install.models.whenApplied(changed.filter((name) => name !== "main"));
   if (changed.includes("main")) lines.push(await switchSession(pi, ctx, install, install.roles.effectiveModelRoles(install.agentDir).main));
   return lines;
 }
@@ -269,9 +259,11 @@ async function pickLevel(ctx: ExtensionContext, role: string, model: Model<Api> 
 }
 
 /** Menu của một vai → thay đổi (ghi đè hoặc bỏ ghi đè), hoặc undefined khi huỷ. */
-async function roleChange(ctx: ExtensionContext, install: Install, name: string, config: unknown, resolved: Resolved, presets: Presets) {
+async function roleChange(
+  ctx: ExtensionContext, install: Install, name: string, config: unknown, resolved: Resolved, defaults: Record<string, RoleValue>,
+) {
   const wanted = resolved.roles[name];
-  const fallback = install.roles.resolveModelRoles(presets, install.roles.withoutRoles(config, [name])).roles[name];
+  const fallback = install.roles.resolveModelRoles(defaults, install.roles.withoutRoles(config, [name])).roles[name];
   const action = await choose(ctx, roleMenu(name, wanted, fallback));
   if (!action || !("pick" in action)) return action && "change" in action ? action.change : undefined;
   const ref = install.roles.parseModelRef(wanted.model);
@@ -286,22 +278,12 @@ async function roleChange(ctx: ExtensionContext, install: Install, name: string,
   return level ? { role: name, model: `${model.provider}/${model.id}`, thinking: level } : undefined;
 }
 
-async function presetChange(ctx: ExtensionContext, presets: Presets, current: string): Promise<Change | undefined> {
-  const names = Object.keys(presets);
-  const options = names.map((name) => {
-    const description = presets[name].description;
-    return `${name}${name === current ? " (đang dùng)" : ""}${description ? `: ${description}` : ""}`;
-  });
-  const choice = await ctx.ui.select("Preset", options);
-  return choice === undefined ? undefined : { preset: names[options.indexOf(choice)] };
-}
-
 /** /models không tham số: bảng các vai làm menu; mỗi thay đổi được xem trước rồi mới ghi. */
 async function openMenu(pi: ExtensionAPI, ctx: ExtensionCommandContext, install: Install, run: Run) {
   const { roles } = install;
-  const presets = roles.loadPresets(path.join(install.root, "assets", "configs", "model-presets.json"));
+  const defaults = roles.loadModelDefaults(install.root);
   const current = roles.readModelRoles(install.agentDir);
-  const resolved = current.error ? undefined : roles.resolveModelRoles(presets, current.config);
+  const resolved = current.error ? undefined : roles.resolveModelRoles(defaults, current.config);
   if (!resolved || resolved.errors.length) {
     show(ctx, await capture(run));
     return;
@@ -310,13 +292,12 @@ async function openMenu(pi: ExtensionAPI, ctx: ExtensionCommandContext, install:
   const effective = roles.effectiveModelRoles(install.agentDir);
   const drifted = Object.fromEntries(roles.driftedRoles(resolved.roles, effective).map((name) => [name, effective[name]]));
   const action = await choose(ctx, mainMenu({
-    preset: resolved.preset, file: current.exists ? current.file : `chưa có ${roles.MODEL_ROLES_FILE}`,
+    file: current.exists ? current.file : `chưa có ${roles.MODEL_ROLES_FILE}`,
     session: sessionLabel(pi, ctx), roles: resolved.roles, names: roles.ROLES, drifted,
   }));
   if (!action) return;
   const change = "change" in action ? action.change
-    : "preset" in action ? await presetChange(ctx, presets, resolved.preset)
-    : "role" in action ? await roleChange(ctx, install, action.role, current.config, resolved, presets) : undefined;
+    : "role" in action ? await roleChange(ctx, install, action.role, current.config, resolved, defaults) : undefined;
   if (!change) return;
   const preview = await capture(run, change, true);
   if (preview.status) {

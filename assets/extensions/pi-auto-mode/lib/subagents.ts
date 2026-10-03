@@ -12,8 +12,12 @@ export interface RootHandle {
   sessionId: string;
   mode(): PermissionMode;
   humanMessages(): string[];
-  /** Hỏi người dùng ở phiên gốc; undefined khi gốc không có UI. */
-  ask?(title: string): Promise<boolean>;
+  /** Hỏi người dùng ở phiên gốc với các lựa chọn cho trước; trả lựa chọn (undefined khi bỏ qua). Không có khi gốc không có UI. */
+  ask?(title: string, options: string[]): Promise<string | undefined>;
+  /** Lời gọi được cho phép tới hết phiên ở manual mode, dùng chung cho phiên gốc và mọi child. */
+  sessionApprovals(): Set<string>;
+  /** Model phân loại và mức suy luận của phiên gốc: đổi trong /permissions thì child dùng ngay. */
+  classifier(): { model?: string; stage2Reasoning: string };
 }
 
 interface Registry {
@@ -21,7 +25,7 @@ interface Registry {
   parents: Map<string, string>;
 }
 
-const KEY = Symbol.for("pi-auto-mode.registry.v1");
+const KEY = Symbol.for("pi-auto-mode.registry.v2");
 
 function registry(): Registry {
   const host = globalThis as unknown as Record<symbol, Registry | undefined>;

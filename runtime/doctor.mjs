@@ -59,7 +59,9 @@ if(fs.existsSync(advisorFile)){
     warnings.push(`advisor.json bật alwaysOn với executor ${advisor.executor}; mỗi phiên sẽ chuyển từ ${main} sang model này`);
 }
 const auto=s.autoMode??{},jev=auto.jev===false||auto.jev?.enabled===false?undefined:auto.jev??{};
-console.log(`  auto mode: bước 1 ${jev?`Jev${jev.model?` ${jev.model}`:''} (${jevKey})`:'LLM của vai autoMode (Jev tắt)'}; bước 2 LLM của vai autoMode`);
+// Model phân loại đặt trong /permissions → Classifier (autoMode.model của settings.json), không thuộc model-roles.json.
+const classifier=`${typeof auto.model==='string'&&auto.model.trim()?auto.model.trim():'model của phiên'} (${auto.stage2Reasoning??'low'})`;
+console.log(`  auto mode: bước 1 ${jev?`Jev${jev.model?` ${jev.model}`:''} (${jevKey})`:`LLM ${classifier} (Jev tắt)`}; bước 2 LLM ${classifier}; đổi trong /permissions → Classifier`);
 for(const source of Object.keys(state.sources))if(!fs.existsSync(path.join(root,'sources',source)))errors.push(`Thiếu skills source: ${source}`);
 console.log('Đăng nhập bằng /login trong pi. Không kiểm tra token bằng mạng.');
 if(process.platform==='win32' && state.shellPath&&!fs.existsSync(state.shellPath))errors.push('Không tìm thấy Git Bash đã cấu hình');

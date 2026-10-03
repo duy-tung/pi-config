@@ -2,7 +2,7 @@
 
 [![Kiểm thử cài đặt](https://github.com/duy-tung/pi-config/actions/workflows/test.yml/badge.svg)](https://github.com/duy-tung/pi-config/actions/workflows/test.yml)
 
-Bộ cài **Pi 1.0.0** cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, native web search theo model (Codex, Claude) với Exa và Firecrawl dự phòng, quota Claude trong footer, permission kiểu Claude Code (auto mode và bypass, kèm git guard) và giao diện Rosé Pine. Chỉ cài skill của công cụ (Firecrawl); không kèm bộ skill quy trình. Dependency, nguồn skills và bản vá được ghim để tái lập cấu hình.
+Bộ cài **Pi 1.0.0** cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, native web search theo model (Codex, Claude) với Exa và Firecrawl dự phòng, quota Claude trong footer, permission kiểu Claude Code (manual, auto mode và bypass, kèm git guard) và giao diện Rosé Pine. Chỉ cài skill của công cụ (Firecrawl); không kèm bộ skill quy trình. Dependency, nguồn skills và bản vá được ghim để tái lập cấu hình.
 
 ## Cài đặt
 
@@ -27,7 +27,7 @@ Chi tiết kiến trúc CPU, công cụ hệ thống và tùy chọn đường d
 ## Đăng nhập dịch vụ
 
 1. Chạy `pi`, dùng `/login` và chọn **Anthropic** cho parent Claude Opus 5.5 (gói Pro/Max) và bộ phân loại của auto mode (Claude Sonnet 5.5), hoặc đặt `ANTHROPIC_API_KEY`. Xem [docs/claude-setup.md](docs/claude-setup.md).
-2. Trong `/login`, chọn **OpenAI Codex (legacy)** cho worker (GPT-6.1 Sol) và reviewer (GPT-6 Astra). Pi 0.99 đổi tên hiển thị; provider vẫn là `openai-codex`. "Sign in with ChatGPT" của provider **OpenAI** là provider khác (`openai`), preset không dùng.
+2. Trong `/login`, chọn **OpenAI Codex (legacy)** cho worker (GPT-6.1 Sol) và reviewer (GPT-6 Astra). Pi 0.99 đổi tên hiển thị; provider vẫn là `openai-codex`. "Sign in with ChatGPT" của provider **OpenAI** là provider khác (`openai`), pi-config không dùng.
 3. Trong `/login`, chọn **OpenCode Go** và nhập API key cho GLM. Pi cũng nhận biến môi trường `OPENCODE_API_KEY`.
 4. Chạy `firecrawl login --browser` để đăng nhập dịch vụ web.
 5. Tuỳ chọn: tạo API key TypeSafe tại [console.typesafe.ai](https://console.typesafe.ai), thêm `export TYPESAFE_API_KEY="<key>"` vào `~/.zshrc` hoặc `~/.bashrc` (Windows: `setx TYPESAFE_API_KEY "<key>"`) rồi mở terminal mới, để auto mode sàng lọc bằng Jev. Đây là cách tài liệu TypeSafe và đa số package Jev hướng dẫn. Chưa có key thì bộ phân loại LLM làm cả hai giai đoạn như trước.
@@ -43,7 +43,7 @@ Chạy `pi` để mở Claude Opus 5.5/high với toàn bộ công cụ. Các wo
 | Shell job nền | `/bg --name "Dev server" npm run dev`, `/jobs`, `/logs`, `/kill` |
 | Ý kiến cố vấn | `/advisor-manual`, `/advisor-settings`, `/advisor-off`, `/advisor` |
 | Rewind code/hội thoại | `Esc Esc`, `/rewind` (`/checkpoint`, `/undo`), `/redo`; `/clear` mở phiên mới |
-| Permission | `Shift+Tab` (auto ⇄ bypass), `/permissions`, `/auto-mode` |
+| Permission | `Shift+Tab` (manual → auto → bypass), `/permissions` (mode, model phân loại, lệnh bị chặn, luật, `test <lệnh>`) |
 | Model và reasoning | `/model`, `/thinking`, `Alt+T` đổi mức thinking |
 | Công cụ và giao diện | `/agents`, `/usage`, `/claude-usage`, `/open-tui` |
 
@@ -59,15 +59,17 @@ Background cung cấp shell jobs. Khi job kết thúc (xong, lỗi hoặc bị d
 
 Rewind (`pi-rewind`, extension của repo) theo giao diện `/rewind` của Claude Code: mỗi prompt có checkpoint; `Esc Esc` hoặc `/rewind` mở danh sách prompt kèm số dòng đã đổi, rồi chọn khôi phục code, hội thoại, cả hai, hoặc tóm tắt từ/đến prompt đó. File do `edit`/`write` sửa luôn được theo dõi; file do `bash`/`Agent` sửa được theo dõi trong git worktree. Mục Redo trong menu (hoặc `/redo`) hoàn tác lần rewind gần nhất, và ngay sau Redo có mục Undo redo để lấy lại việc đã làm sau lần rewind. `/clear` mở phiên mới như `/new`, và menu của phiên mới có mục quay lại phiên cũ. Nếu Pi thoát giữa lúc khôi phục code, menu cho hoàn tất hoặc hoàn tác lần khôi phục đó. Chi tiết và giới hạn: [docs/rewind.md](docs/rewind.md).
 
-Permission (`pi-auto-mode`, extension của repo) có hai mode như Claude Code. **Auto** là mặc định: thao tác đọc, lệnh chỉ đọc và sửa file trong project chạy ngay; lệnh khác qua bộ phân loại hai giai đoạn.
+Permission (`pi-auto-mode`, extension của repo) có ba mode như Claude Code. **Auto** là mặc định: thao tác đọc, lệnh chỉ đọc và sửa file trong project chạy ngay; lệnh khác qua bộ phân loại hai giai đoạn.
 - Giai đoạn 1 là **Jev**, model System One của TypeSafe, khi có key. Jev không sinh chữ: mỗi lệnh là một request (khoảng 120 ms) trả xác suất cho 17 loại rủi ro và một thang mức hại, code so với ngưỡng. Lệnh thường chạy luôn, không gọi LLM. Khi hiệu chỉnh với Jev thật, cả 168 lệnh rủi ro đều bị gắn cờ; khoảng 1/10 lệnh thường phải gọi LLM.
 - Giai đoạn 2 là Claude Sonnet 5.5 có suy luận, chỉ xét lệnh bị gắn cờ và chỉ thấy tin nhắn của người dùng cùng lệnh của agent. Không có key Jev thì Sonnet 5 làm cả hai giai đoạn.
 - Jev cũng quét kết quả web, MCP và subagent để tìm prompt injection và cảnh báo agent.
 - Lệnh bị chặn trả lý do cho agent để đi đường an toàn hơn; 3 lần chặn liên tiếp hoặc 20 lần trong phiên thì hỏi người dùng.
 
-**Bypass** chạy mọi thứ trừ luật deny; lệnh không kiểm được với deny đường dẫn, `rm` vào đường dẫn quan trọng, lệnh xoá đệ quy và lệnh rủi ro (cài cơ chế tự chạy, tắt kiểm TLS, ghi đường dẫn hệ thống) thì hỏi bạn trước. `Shift+Tab` đổi mode, `/permissions` xem và duyệt lại lệnh bị chặn, `/auto-mode` xem trạng thái và chi phí Jev. Chi tiết: [docs/auto-mode.md](docs/auto-mode.md).
+**Manual** quyết định như auto nhưng hỏi bạn (Allow once / Allow for this session / Deny) thay cho bộ phân loại, không gọi model nào; không có UI thì chặn.
 
-**Git guard** chặn tất định (không qua bộ phân loại, ở cả hai mode, cả agent con): force-push (trừ `--force-with-lease`), push thẳng lên nhánh bảo vệ (`main`, `master`, `release/*`…), `reset --hard`, `clean -f`, `branch -D`, bỏ qua hook (`--no-verify`, `HUSKY=0`…), viết lại lịch sử và `rm -r` trên `/`, `~`, `.`, `.git`. Cần thật thì bạn tự chạy bằng `!<lệnh>` trong editor. Cấu hình: [docs/auto-mode.md](docs/auto-mode.md#git-guard).
+**Bypass** chạy mọi thứ trừ luật deny; lệnh không kiểm được với deny đường dẫn, `rm` vào đường dẫn quan trọng, lệnh xoá đệ quy và lệnh rủi ro (cài cơ chế tự chạy, tắt kiểm TLS, ghi đường dẫn hệ thống) thì hỏi bạn trước. `Shift+Tab` đổi mode. `/permissions` là menu duy nhất: đổi mode, model phân loại, xem trạng thái và chi phí Jev, duyệt lại lệnh bị chặn, xem luật và chạy thử một lệnh. Chi tiết: [docs/auto-mode.md](docs/auto-mode.md).
+
+**Git guard** chặn tất định (không qua bộ phân loại, ở mọi mode, cả agent con): force-push (trừ `--force-with-lease`), push thẳng lên nhánh bảo vệ (`main`, `master`, `release/*`…), `reset --hard`, `clean -f`, `branch -D`, bỏ qua hook (`--no-verify`, `HUSKY=0`…), viết lại lịch sử và `rm -r` trên `/`, `~`, `.`, `.git`. Cần thật thì bạn tự chạy bằng `!<lệnh>` trong editor. Cấu hình: [docs/auto-mode.md](docs/auto-mode.md#git-guard).
 
 Opus 5.5 và GLM dùng context **1M** của catalog; Astra/Sol nâng lên **872K**. Theme Rosé Pine Moon.
 
@@ -83,7 +85,7 @@ Pi dùng `Agent` của **@tintinweb/pi-subagents**:
 
 Parent Claude Opus 5.5/high giữ thiết kế, quyết định quan trọng và nghiệm thu cuối. GLM chạy trực tiếp qua OpenCode Go trong Pi.
 
-Bảng trên là preset `default`. Model và thinking của mọi vai (parent, các role, advisor, auto mode) đặt trong `<agent-dir>/model-roles.json` và đổi bằng `/models` trong Pi: menu chọn preset (vd `claude`, chỉ cần đăng nhập Claude) hoặc đổi model/thinking của từng vai, rồi áp ngay cho phiên đang chạy. Xem [docs/models.md](docs/models.md).
+Bảng trên là cấu hình mặc định. Model và thinking của năm vai (`main`, `researcher`, `worker`, `reviewer`, `advisor`) ghi đè được trong `<agent-dir>/model-roles.json` bằng `/models` trong Pi, áp ngay cho phiên đang chạy; chưa có Codex hay OpenCode Go thì ghi đè các vai đó sang Claude. Xem [docs/models.md](docs/models.md). Model phân loại của auto mode (mặc định Claude Sonnet 5.5/low) không phải một vai: đổi trong `/permissions` → Classifier.
 
 ```text
 @researcher Tìm luồng xử lý timeout và báo file/dòng.
@@ -110,9 +112,9 @@ Agent có context riêng và không giới hạn số lượt; dừng agent bằ
 - Hàng đợi tin nhắn: `Enter` khi Pi đang chạy để chỉnh hướng, `Alt+Enter` hoặc **Ctrl+Enter** để xếp follow-up, `Alt+Up` để lấy lại tin đang chờ. Ctrl+Enter được thêm vì terminal của Orca gửi Alt+Enter thành Shift+Enter.
 - Nhiều phiên song song, mỗi task một worktree: dùng Orca. Cài đặt, phím và các giới hạn xem [docs/orca.md](docs/orca.md).
 
-`pi-doctor` kiểm dependency và checksum bản vá, in model/thinking của mọi vai theo `model-roles.json` (kèm giá trị đang có hiệu lực khi khác và kết quả kiểm catalog của Pi) cùng trạng thái advisor và auto mode (kèm nguồn key Jev, không in key), và báo lỗi khi hai danh sách provider trong `web-search.json` lệch nhau (pi-web-access sẽ không nạp web tools). `pi-test` kiểm workflow và Agent bằng provider giả trong thư mục tạm, không gọi model trả phí.
+`pi-doctor` kiểm dependency và checksum bản vá, in model/thinking của mọi vai theo `model-roles.json` (kèm giá trị đang có hiệu lực khi khác và kết quả kiểm catalog của Pi) cùng trạng thái advisor và auto mode (model phân loại theo `settings.json`, nguồn key Jev, không in key), và báo lỗi khi hai danh sách provider trong `web-search.json` lệch nhau (pi-web-access sẽ không nạp web tools). `pi-test` kiểm workflow và Agent bằng provider giả trong thư mục tạm, không gọi model trả phí.
 
-Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều hành: bộ phân loại có thể sai. Luật `permissions.deny` (file bí mật, `sudo`...) áp dụng ở cả hai mode, theo đường dẫn có trong lệnh: glob hay tìm cả cây chạm tới file bị deny thì bị chặn, tool `grep` của Pi bỏ các dòng thuộc file đó khỏi kết quả, lệnh có tập đích không kiểm được (biến, `xargs`...) thì auto mode giao bộ phân loại, bypass hỏi bạn. Chương trình tùy ý (`node`, `python -c`...) vẫn tự mở được file; xem [giới hạn đọc](docs/auto-mode.md#giới-hạn-đọc-khi-có-deny-đường-dẫn). Bypass vẫn hỏi trước lệnh xoá đệ quy ra ngoài thư mục tạm (`rm -fr`, `find -delete`, `git clean`...) và lệnh rủi ro (`~/.bashrc`, git hook, crontab, `curl -k`, `/etc`...). Project cần được trust trước khi dùng cấu hình của project; settings của project không bật được bypass hay thêm luật allow. Nguồn web là dữ liệu để tham khảo, không phải instruction.
+Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều hành: bộ phân loại có thể sai. Luật `permissions.deny` (file bí mật, `sudo`...) áp dụng ở mọi mode, theo đường dẫn có trong lệnh: glob hay tìm cả cây chạm tới file bị deny thì bị chặn, tool `grep` của Pi bỏ các dòng thuộc file đó khỏi kết quả, lệnh có tập đích không kiểm được (biến, `xargs`...) thì auto mode giao bộ phân loại, manual và bypass hỏi bạn. Chương trình tùy ý (`node`, `python -c`...) vẫn tự mở được file; xem [giới hạn đọc](docs/auto-mode.md#giới-hạn-đọc-khi-có-deny-đường-dẫn). Bypass vẫn hỏi trước lệnh xoá đệ quy ra ngoài thư mục tạm (`rm -fr`, `find -delete`, `git clean`...) và lệnh rủi ro (`~/.bashrc`, git hook, crontab, `curl -k`, `/etc`...). Project cần được trust trước khi dùng cấu hình của project; settings của project không bật được bypass hay thêm luật allow. Nguồn web là dữ liệu để tham khảo, không phải instruction.
 
 ## Phiên bản
 
