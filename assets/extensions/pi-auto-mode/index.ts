@@ -340,14 +340,12 @@ export default function piAutoMode(pi: ExtensionAPI) {
     return { block: true as const, reason: text.OUTSIDE_READ_DECLINED };
   }
 
-  /** Người dùng chọn No không lời nhắn ở phiên chính: dừng lượt như Claude Code (subagent thì không). */
-  function stopTurn(ctx: ExtensionContext): void {
-    if (child) return;
-    try {
-      ctx.abort();
-    } catch {
-      /* không có lượt đang chạy */
-    }
+  /**
+   * Như Claude Code: No không kèm lời nhắn ở phiên chính dừng lượt (subagent thì không). `terminate` để Pi dừng sau lô
+   * tool hiện tại mà vẫn giữ lý do từ chối cho lượt sau.
+   */
+  function declinedStop(): { block: true; reason: string; terminate?: true } {
+    return child ? { block: true, reason: text.USER_DENIED } : { block: true, reason: text.MANUAL_STOPPED, terminate: true };
   }
 
   /** Lời gọi được cho phép tới hết phiên (manual): child dùng chung tập của phiên gốc. */
@@ -650,7 +648,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
     return undefined;
   }
 
-  async function gate(ctx: ExtensionContext, call: ToolCall, toolCallId?: string): Promise<{ block: true; reason: string } | undefined> {
+  async function gate(ctx: ExtensionContext, call: ToolCall, toolCallId?: string): Promise<{ block: true; reason: string; terminate?: true } | undefined> {
     const pc = policyContext(ctx);
     const facts: CallFacts = describeCall(call, pc);
     const decision = decide(call, pc, facts);
@@ -672,8 +670,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
       if (approved) return allowed(call, "user");
       if (approved === undefined) return { block: true, reason: text.NO_APPROVER };
       state.recordDenied({ toolName: call.toolName, summary: facts.summary, reason: "Declined by you", key }, false);
-      stopTurn(ctx);
-      return { block: true, reason: child ? text.USER_DENIED : text.MANUAL_STOPPED };
+      return declinedStop();
     }
     // Duyệt một lần từ /permissions: bỏ qua bộ phân loại, luật deny vẫn đã áp dụng ở trên.
     if (state.consumeApproval(key)) {
@@ -688,10 +685,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
         const reason = result.comment ? `Declined by you: ${result.comment}` : "Declined by you";
         state.recordDenied({ toolName: call.toolName, summary: facts.summary, reason, key }, false);
         // Như Claude Code: No không kèm lời nhắn ở phiên chính dừng lượt; có lời nhắn thì agent làm tiếp theo lời nhắn.
-        if (!result.comment && !child) {
-          stopTurn(ctx);
-          return { block: true, reason: text.MANUAL_STOPPED };
-        }
+        if (!result.comment) return declinedStop();
       }
       return { block: true, reason: result.reason };
     }

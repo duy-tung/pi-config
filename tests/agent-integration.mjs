@@ -138,8 +138,8 @@ const ui = {
   onTerminalInput: () => () => {}, input: async (title) => { prompts.push({ kind: "input", title }); return inputAnswers.shift(); }, editor: async () => undefined,
   getEditorComponent: () => undefined, getAllThemes: () => [], setTheme: () => ({ success: true }),
   theme: { fg: (_color, text) => text, bg: (_color, text) => text, bold: (text) => text, italic: (text) => text, dim: (text) => text },
-  select: async (title, options) => {
-    prompts.push({ kind: "select", title, options });
+  select: async (title, options, opts) => {
+    prompts.push({ kind: "select", title, options, timeout: opts?.timeout });
     const wanted = selectAnswers.shift();
     return wanted ? options.find((option) => wanted.test(option)) : options.find((option) => /^Yes$|^Approve once/u.test(option)) ?? options[0];
   },
@@ -443,6 +443,27 @@ await check('three Jev outages in a row turn Jev off for the session instead of 
     assert.ok(notices.slice(before.notices).some(n=>/Jev is unavailable \(3 failures in a row/.test(n.message)));
   }finally{jevControl.failures.length=0;await closeSession(outage);}
 });
+await check('auto mode like Claude Code: one prompt for the first read outside the workspace, critical rm asks with a countdown',async()=>{
+  // Chạy trước kịch bản manual (kịch bản đó cho đọc thư mục này tới hết phiên).
+  const [outsideDir,outsideFile]=process.platform==='win32'?[path.join(process.env.SystemRoot??'C:\\Windows'),'win.ini']:['/etc','hosts'];
+  const read=tool('read',{path:path.join(outsideDir,outsideFile)});
+  const outside=()=>prompts.filter(p=>p.kind==='select'&&/^Allow reads outside the working directories\?/u.test(p.title));
+  let before=outside().length;
+  selectAnswers.push(/^Yes, but ask again next time$/u,/^Yes, and keep allowing/u);
+  let out=await turn('auto-outside',[[read],[read],[read],final('DONE')]);
+  assert.ok(out.length===3&&out.every(m=>!m.isError),JSON.stringify(out));
+  assert.equal(outside().length-before,2,'"ask again next time" hỏi lại; "keep allowing" thì thôi');
+  assert.deepEqual(outside().at(-1).options,['Yes, and keep allowing any reads outside the working directories','No, and block reads outside the working directories from now on','No, and ask again next time','Yes, but ask again next time']);
+  assert.equal(readJson(path.join(fixture,'auto-mode','state.json')).outsideReadsAccepted,true);
+  // rmdir / là đường dẫn quan trọng (chạy cũng không xoá được gì): hỏi với đếm ngược 2 phút, No thì chặn và agent làm tiếp.
+  const critical=()=>prompts.filter(p=>p.kind==='select'&&/rmdir targets the filesystem root/u.test(p.title));
+  before=critical().length;
+  selectAnswers.push(/^No$/u);control.classifier.push('<block>no</block>');
+  out=await turn('auto-critical',[[tool('bash',{command:'rmdir /',timeout:10})],[tool('bash',{command:'printf ok > auto-after-critical.txt',timeout:10})],final('DONE')]);
+  assert.equal(critical().length-before,1);assert.equal(critical().at(-1).timeout,120000);
+  assert.equal(out[0]?.isError,true,JSON.stringify(out));assert.match(JSON.stringify(out[0]),/denied permission/);
+  assert.equal(fs.readFileSync(path.join(cwd,'auto-after-critical.txt'),'utf8'),'ok','agent làm tiếp sau khi bị từ chối');
+});
 await check('manual mode asks like Claude Code: edits ask, No with a message, reading a directory, saved project rule, allow all edits',async()=>{
   const permissions=async(...steps)=>{selectAnswers.push(...steps);await session.prompt('/permissions');assert.equal(selectAnswers.length,0);};
   await permissions(/^Mode: /u,/^⏸ manual mode on$/u);
@@ -455,7 +476,16 @@ await check('manual mode asks like Claude Code: edits ask, No with a message, re
   assert.equal(fs.existsSync(path.join(cwd,'manual-edit.txt')),false);
   const editPrompt=asked().at(-1);
   assert.equal(asked().length-before,1);
-  assert.deepEqual(editPrompt.options,['Yes','Yes, allow all edits during this session','Yes, and switch to auto mode','No','No, and tell Pi what to do differently…']);
+  // Như Claude Code: "switch to auto mode" chỉ có ở hộp hỏi lệnh shell.
+  assert.deepEqual(editPrompt.options,['Yes','Yes, allow all edits during this session','No','No, and tell Pi what to do differently…']);
+  // No không kèm lời nhắn ở phiên chính dừng lượt: lời gọi sau không chạy, model không được gọi lại trong lượt đó.
+  before=control.seen.filter(x=>x.key==='manual-stop').length;
+  selectAnswers.push(/^No$/u);
+  out=await turn('manual-stop',[[tool('bash',{command:'printf x > manual-stop.txt',timeout:10})],[tool('bash',{command:'printf y > manual-after-stop.txt',timeout:10})],final('DONE')]);
+  assert.equal(out.length,1,JSON.stringify(out));assert.match(JSON.stringify(out),/stopped the turn/);
+  assert.equal(fs.existsSync(path.join(cwd,'manual-stop.txt')),false);assert.equal(fs.existsSync(path.join(cwd,'manual-after-stop.txt')),false);
+  assert.equal(control.seen.filter(x=>x.key==='manual-stop').length-before,1,'không gọi lại model sau khi dừng');
+  assert.match(asked().at(-1).options.join('|'),/Yes, and switch to auto mode/);
   // Đọc ngoài workspace: "allow reading from <thư mục>/ during this session"; lần sau trong thư mục đó không hỏi.
   // File hệ thống có sẵn ngoài thư mục tạm (fixture nằm trong thư mục tạm, vốn được đọc tự do).
   const [outsideDir,outsideFiles]=process.platform==='win32'?[path.join(process.env.SystemRoot??'C:\\Windows'),['win.ini','system.ini']]:['/etc',['hosts','shells']];
