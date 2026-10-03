@@ -457,11 +457,11 @@ await check('manual mode asks like Claude Code: edits ask, No with a message, re
   assert.equal(asked().length-before,1);
   assert.deepEqual(editPrompt.options,['Yes','Yes, allow all edits during this session','Yes, and switch to auto mode','No','No, and tell Pi what to do differently…']);
   // Đọc ngoài workspace: "allow reading from <thư mục>/ during this session"; lần sau trong thư mục đó không hỏi.
-  const outsideDir=path.join(fixture,'outside');fs.mkdirSync(outsideDir,{recursive:true});
-  for(const name of ['a.txt','b.txt'])fs.writeFileSync(path.join(outsideDir,name),name);
+  // File hệ thống có sẵn ngoài thư mục tạm (fixture nằm trong thư mục tạm, vốn được đọc tự do).
+  const [outsideDir,outsideFiles]=process.platform==='win32'?[path.join(process.env.SystemRoot??'C:\\Windows'),['win.ini','system.ini']]:['/etc',['hosts','shells']];
   before=asked().length;
-  selectAnswers.push(/^Yes, allow reading from .*outside.* during this session$/u);
-  out=await turn('manual-read',[[tool('read',{path:path.join(outsideDir,'a.txt')})],[tool('read',{path:path.join(outsideDir,'b.txt')})],final('DONE')]);
+  selectAnswers.push(/^Yes, allow reading from .* during this session$/u);
+  out=await turn('manual-read',outsideFiles.map(name=>[tool('read',{path:path.join(outsideDir,name)})]).concat([final('DONE')]));
   assert.ok(out.length===2&&out.every(m=>!m.isError),JSON.stringify(out));
   assert.equal(asked().length-before,1,'chỉ hỏi lần đọc đầu');
   // mkdir/touch trong workspace hỏi ở manual; "don't ask again" lưu Bash(touch *) cho project, lần sau không hỏi.
