@@ -99,20 +99,19 @@ export function insideAny(roots: string[], file: string): boolean {
   return roots.some((root) => isInside(root, resolved) && isInside(realPath(root), real));
 }
 
-// Thư mục và file mà việc ghi có thể chạy code về sau, đổi quyền hoặc cấu hình công cụ
-// (tham khảo danh sách protected paths của Claude Code và .git/.agents/.codex của Codex).
+// Thư mục và file mà việc ghi có thể chạy code về sau, đổi quyền hoặc cấu hình công cụ: danh sách protected paths của
+// Claude Code. `.pi` và `.agents` (pi-subagents nạp vai từ đó) là cấu hình của Pi, như `.claude` của Claude Code.
 const PROTECTED_DIRS = new Set([
-  ".git", ".pi", ".claude", ".codex", ".agents", ".vscode", ".idea", ".husky", ".cargo", ".devcontainer",
-  ".yarn", ".mvn", ".github", ".circleci", ".gitlab",
+  ".git", ".pi", ".agents", ".claude", ".vscode", ".idea", ".husky", ".cargo", ".devcontainer", ".yarn", ".mvn",
 ]);
+/** Thư mục được bảo vệ gồm hai cấp (`.config/git`). */
+const PROTECTED_NESTED = [[".config", "git"]];
 const PROTECTED_FILES = new Set([
-  ".gitconfig", ".gitmodules", ".gitattributes", ".bashrc", ".bash_profile", ".bash_login", ".bash_logout",
-  ".bash_aliases", ".profile", ".zshrc", ".zprofile", ".zshenv", ".zlogin", ".zlogout", ".envrc",
-  ".ripgreprc", ".mcp.json", ".claude.json", ".npmrc", ".yarnrc", ".yarnrc.yml", ".pnp.cjs", ".pnp.loader.mjs",
-  ".pnpmfile.cjs", "bunfig.toml", ".bunfig.toml", ".bazelrc", ".pre-commit-config.yaml", "lefthook.yml",
-  ".lefthook.yml", "lefthook.yaml", ".lefthook.yaml", ".gitlab-ci.yml", "gradle-wrapper.properties",
-  "maven-wrapper.properties", ".devcontainer.json", "AGENTS.md", "AGENTS.override.md", "CLAUDE.md",
-  "CLAUDE.local.md", ".pypirc", ".netrc",
+  ".gitconfig", ".gitmodules", ".bashrc", ".bash_profile", ".bash_login", ".bash_logout", ".bash_aliases", ".profile",
+  ".zshrc", ".zprofile", ".zshenv", ".zlogin", ".zlogout", ".envrc", ".npmrc", ".yarnrc", ".yarnrc.yml", ".pnp.cjs",
+  ".pnp.loader.mjs", ".pnpmfile.cjs", "bunfig.toml", ".bunfig.toml", ".bazelrc", ".bazelversion", ".bazeliskrc",
+  ".pre-commit-config.yaml", "lefthook.yml", "lefthook.yaml", ".lefthook.yml", ".lefthook.yaml", "gradle-wrapper.properties",
+  "maven-wrapper.properties", ".devcontainer.json", ".ripgreprc", "pyrightconfig.json", ".mcp.json", ".claude.json",
 ]);
 
 /** Lý do đường dẫn được bảo vệ (ghi vào đây phải qua bộ phân loại), hoặc undefined. */
@@ -124,8 +123,11 @@ export function protectedReason(file: string, roots: string[]): string | undefin
     // Chỉ xét các thành phần nằm trong workspace, để workspace nằm dưới ~/.config... vẫn dùng được.
     const root = roots.find((item) => isInside(item, candidate) || isInside(realPath(item), candidate));
     const relative = root ? path.relative(isInside(root, candidate) ? root : realPath(root), candidate) : candidate;
-    for (const segment of relative.split(path.sep).slice(0, -1)) {
+    const segments = relative.split(path.sep).slice(0, -1);
+    for (const [index, segment] of segments.entries()) {
       if (PROTECTED_DIRS.has(segment)) return `${segment}/ is a protected directory`;
+      const nested = PROTECTED_NESTED.find(([first, second]) => segment === first && segments[index + 1] === second);
+      if (nested) return `${nested.join("/")}/ is a protected directory`;
     }
   }
   return undefined;
@@ -142,8 +144,8 @@ export function isSelfProtected(file: string, selfPaths: string[]): boolean {
 }
 
 /**
- * Đường dẫn quan trọng cho rm/rmdir (giống Claude Code): /, thư mục con trực tiếp của /,
- * HOME và con trực tiếp của HOME, thư mục làm việc và các thư mục cha của nó.
+ * Đường dẫn quan trọng cho rm/rmdir (giống Claude Code): /, thư mục con trực tiếp của /, HOME (và thư mục cha của nó),
+ * thư mục làm việc và các thư mục cha của nó.
  */
 export function criticalPathReason(target: string, cwd: string, home = os.homedir()): string | undefined {
   const resolved = path.resolve(target);
@@ -153,7 +155,6 @@ export function criticalPathReason(target: string, cwd: string, home = os.homedi
     if (candidate === path.parse(candidate).root) return "the filesystem root";
     if (parent === path.parse(candidate).root) return `a top-level directory (${candidate})`;
     if (isInside(candidate, home)) return candidate === home ? "the home directory" : `a parent of the home directory (${candidate})`;
-    if (path.dirname(candidate) === home) return `a top-level folder of the home directory (${candidate})`;
     if (isInside(candidate, cwd)) return candidate === path.resolve(cwd) ? "the working directory" : `a parent of the working directory (${candidate})`;
   }
   return undefined;

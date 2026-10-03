@@ -1,26 +1,66 @@
 import fs from "node:fs";
 import path from "node:path";
-import { isReadOnlyCommand, type ShellAnalysis, type SimpleCommand } from "./shell.ts";
+import { isReadOnlyCommand, ruleUnits, type ShellAnalysis, type SimpleCommand } from "./shell.ts";
 
 /**
- * Luật allow người dùng lưu bằng "Yes, and don't ask again" (như `.claude/settings.local.json` của Claude Code): theo
- * project, ngoài repo. File `<stateDir>/project-rules.json` nằm trong thư mục trạng thái của cổng, nên agent không tự
- * sửa được (selfPaths); settings của project không được thêm luật allow (repo không được nới quyền).
+ * Luật allow người dùng lưu bằng "Yes, and don't ask again" và thư mục lưu bằng /add-dir (như
+ * `.claude/settings.local.json` của Claude Code): theo project (gốc repo, dùng chung cho mọi worktree), ngoài repo.
+ * File `<stateDir>/project-rules.json` nằm trong thư mục trạng thái của cổng, nên agent không tự sửa được (selfPaths);
+ * settings của project không được thêm luật allow (repo không được nới quyền).
  */
 
 const FILE = "project-rules.json";
 
-interface Store {
-  projects: Record<string, { allow: string[] }>;
+interface Project {
+  allow: string[];
+  /** Thư mục thêm bằng /add-dir → "remember for this project". */
+  additionalDirectories?: string[];
 }
 
-/** Gốc project: thư mục gần nhất chứa `.git` (thư mục, hoặc file của worktree); không có thì chính cwd. */
-export function projectRoot(cwd: string): string {
+interface Store {
+  projects: Record<string, Project>;
+}
+
+/** Thư mục gần nhất chứa `.git` (thư mục, hoặc file của worktree/submodule); không có thì chính cwd. */
+function nearestRepo(cwd: string): string {
   const start = path.resolve(cwd);
   for (let dir = start; ; dir = path.dirname(dir)) {
     if (fs.existsSync(path.join(dir, ".git"))) return dir;
     if (path.dirname(dir) === dir) return start;
   }
+}
+
+const roots = new Map<string, string>();
+
+/**
+ * Gốc project như Claude Code: gốc repo git, qua worktree về checkout chính (file `.git` của worktree trỏ tới
+ * `<repo>/.git/worktrees/<tên>`); submodule giữ gốc riêng; không trong repo thì chính cwd. Không gọi git.
+ */
+export function projectRoot(cwd: string): string {
+  const key = path.resolve(cwd);
+  const cached = roots.get(key);
+  if (cached) return cached;
+  const repo = nearestRepo(key);
+  let root = repo;
+  try {
+    const marker = path.join(repo, ".git");
+    if (fs.statSync(marker).isFile()) {
+      const gitdir = /^gitdir:\s*(.+?)\s*$/mu.exec(fs.readFileSync(marker, "utf8"))?.[1];
+      const resolved = gitdir ? path.resolve(repo, gitdir) : undefined;
+      if (resolved && path.basename(path.dirname(resolved)) === "worktrees" && path.basename(path.dirname(path.dirname(resolved))) === ".git") {
+        root = path.dirname(path.dirname(path.dirname(resolved)));
+      }
+    }
+  } catch {
+    /* không đọc được .git: dùng thư mục chứa nó */
+  }
+  roots.set(key, root);
+  return root;
+}
+
+/** Khóa của project trong file: gốc mới, và gốc cũ (worktree/thư mục con) của bản trước để luật đã lưu vẫn dùng được. */
+function projectKeys(cwd: string): string[] {
+  return [...new Set([projectRoot(cwd), nearestRepo(cwd)])];
 }
 
 function read(stateDir: string): Store {
@@ -41,31 +81,57 @@ function write(stateDir: string, store: Store): void {
   fs.renameSync(temporary, file);
 }
 
+const texts = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim() !== "") : [];
+
+function collect(store: Store, cwd: string, field: keyof Project): string[] {
+  return [...new Set(projectKeys(cwd).flatMap((key) => texts(store.projects[key]?.[field])))];
+}
+
 /** Luật allow đã lưu cho project của cwd. */
 export function projectRules(stateDir: string, cwd: string): string[] {
-  const allow = read(stateDir).projects[projectRoot(cwd)]?.allow;
-  return Array.isArray(allow) ? allow.filter((rule): rule is string => typeof rule === "string" && rule.trim() !== "") : [];
+  return collect(read(stateDir), cwd, "allow");
+}
+
+/** Thư mục đã lưu cho project của cwd bằng /add-dir. */
+export function projectDirectories(stateDir: string, cwd: string): string[] {
+  return collect(read(stateDir), cwd, "additionalDirectories");
+}
+
+/** Ghi lại project của cwd dưới gốc mới (gộp cả khóa cũ); project rỗng thì bỏ khỏi file. */
+function update(stateDir: string, cwd: string, edit: (project: Project) => Project): Project {
+  const store = read(stateDir);
+  const current: Project = { allow: collect(store, cwd, "allow"), additionalDirectories: collect(store, cwd, "additionalDirectories") };
+  const next = edit(current);
+  for (const key of projectKeys(cwd)) delete store.projects[key];
+  const additionalDirectories = next.additionalDirectories?.length ? next.additionalDirectories : undefined;
+  if (next.allow.length || additionalDirectories) store.projects[projectRoot(cwd)] = { allow: next.allow, ...(additionalDirectories ? { additionalDirectories } : {}) };
+  write(stateDir, store);
+  return next;
 }
 
 /** Thêm luật cho project của cwd (bỏ trùng); trả danh sách mới. */
 export function addProjectRules(stateDir: string, cwd: string, rules: string[]): string[] {
-  const store = read(stateDir);
-  const root = projectRoot(cwd);
-  const allow = [...new Set([...projectRules(stateDir, cwd), ...rules])];
-  store.projects[root] = { allow };
-  write(stateDir, store);
-  return allow;
+  return update(stateDir, cwd, (project) => ({ ...project, allow: [...new Set([...project.allow, ...rules])] })).allow;
 }
 
-/** Bỏ một luật của project; project hết luật thì bỏ khỏi file. */
+/** Bỏ một luật của project. */
 export function removeProjectRule(stateDir: string, cwd: string, rule: string): string[] {
-  const store = read(stateDir);
-  const root = projectRoot(cwd);
-  const allow = projectRules(stateDir, cwd).filter((item) => item !== rule);
-  if (allow.length) store.projects[root] = { allow };
-  else delete store.projects[root];
-  write(stateDir, store);
-  return allow;
+  return update(stateDir, cwd, (project) => ({ ...project, allow: project.allow.filter((item) => item !== rule) })).allow;
+}
+
+/** Lưu thư mục cho project của cwd (/add-dir). */
+export function addProjectDirectory(stateDir: string, cwd: string, dir: string): string[] {
+  return update(stateDir, cwd, (project) => ({
+    ...project, additionalDirectories: [...new Set([...(project.additionalDirectories ?? []), dir])],
+  })).additionalDirectories ?? [];
+}
+
+/** Bỏ một thư mục đã lưu của project. */
+export function removeProjectDirectory(stateDir: string, cwd: string, dir: string): string[] {
+  return update(stateDir, cwd, (project) => ({
+    ...project, additionalDirectories: (project.additionalDirectories ?? []).filter((item) => item !== dir),
+  })).additionalDirectories ?? [];
 }
 
 const WORD = /^[A-Za-z0-9][\w.:@+-]*$/u;
@@ -120,7 +186,8 @@ function exactRule(command: SimpleCommand): string | undefined {
  */
 export function shellRules(analysis: ShellAnalysis | undefined): string[] | undefined {
   if (!analysis?.plain) return undefined;
-  const commands = analysis.commands.filter((command) => !isReadOnlyCommand(command));
+  // Như Claude Code: wrapper timeout/nice/nohup... bị bỏ, luật lưu cho lệnh bên trong.
+  const commands = ruleUnits(analysis).filter((command) => !isReadOnlyCommand(command));
   if (!commands.length) return undefined;
   const rules = commands.map((command) => {
     const prefix = commandPrefix(command);
@@ -144,6 +211,9 @@ export function fetchRules(urls: string[] | undefined): string[] | undefined {
   }
   return hosts.size === 1 ? [`WebFetch(domain:${[...hosts][0]})`] : undefined;
 }
+
+/** Luật lưu cho web_search: cả tool, như `WebSearch` của Claude Code (lưu theo repo). */
+export const WEB_SEARCH_RULE = "WebSearch";
 
 /** Mô tả ngắn của các luật trong lựa chọn của hộp thoại: `npm test`, `git commit` hoặc domain. */
 export function describeRules(rules: string[]): string {

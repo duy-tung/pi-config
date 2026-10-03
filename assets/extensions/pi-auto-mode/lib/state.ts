@@ -36,6 +36,10 @@ export class PermissionState {
   readonly sessionApprovals = new Set<string>();
   /** Manual mode: thư mục ngoài workspace người dùng cho đọc tới hết phiên ("allow reading from"). */
   readonly sessionReadRoots = new Set<string>();
+  /** Thư mục thêm bằng /add-dir hoặc --add-dir tới hết phiên (đọc và sửa như thư mục làm việc). */
+  readonly sessionDirectories = new Set<string>();
+  /** Hỏi rm vào đường dẫn quan trọng hết giờ không ai trả lời; 3 lần thì chặn luôn tới tin nhắn tiếp theo của người dùng. */
+  criticalTimeouts = 0;
 
   recordAllowed(): void {
     this.consecutive = 0;

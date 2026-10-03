@@ -6,11 +6,17 @@ import { fileURLToPath } from "node:url";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { type ExtensionAPI, type ExtensionContext, getAgentDir, getPackageDir, parseFrontmatter, type ToolResultEventResult } from "@earendil-works/pi-coding-agent";
 import { classifyWithFallback, type ClassifierResult, type Complete, type ScreenOutcome } from "./lib/classifier.ts";
-import { JEV_MODEL, loadConfig, MODES, nextMode, parseMode, type PermissionMode, prompts, readState, saveClassifier, writeState } from "./lib/config.ts";
+import {
+  availableModes, JEV_MODEL, loadConfig, nextMode, parseMode, type PermissionMode, prompts, readState, saveClassifier, saveSettings, withBlockedOutsideReads,
+  writeState,
+} from "./lib/config.ts";
 import { evaluate, JEV_PRICE_PER_MTOK, JEV_TUNING, type JevAccess, JevError, resolveAccess } from "./lib/jev.ts";
 import { parsePermissionsArgs, permissionsCompletions } from "./lib/command.ts";
 import { answerOf, type ManualAnswer, manualApproval, manualOptions, manualTitle, NO, YES } from "./lib/manual.ts";
-import { addProjectRules, describeRules, fetchRules, projectRoot, projectRules, removeProjectRule, shellRules } from "./lib/project-rules.ts";
+import {
+  addProjectDirectory, addProjectRules, describeRules, fetchRules, projectDirectories, projectRoot, projectRules, removeProjectDirectory, removeProjectRule,
+  shellRules, WEB_SEARCH_RULE,
+} from "./lib/project-rules.ts";
 import * as text from "./lib/messages.ts";
 import { type CallFacts, decide, describeCall, filterDeniedGrep, type PolicyContext, SAFE_TOOLS, type ToolCall } from "./lib/policy.ts";
 import { resolveToolPath, temporaryRoots } from "./lib/paths.ts";
@@ -33,6 +39,12 @@ const MODE_LABELS: Record<PermissionMode, string> = {
 };
 const MODE_COLORS = { manual: "accent", acceptEdits: "success", auto: "warning", bypass: "error" } as const;
 const WRITE_TOOL_NAMES = new Set(["edit", "write"]);
+/** Đếm ngược của hộp hỏi rm vào đường dẫn quan trọng ở auto/bypass (Claude Code: 2 phút). */
+const CRITICAL_TIMEOUT_MS = 120_000;
+const OUTSIDE_KEEP = "Yes, and keep allowing any reads outside the working directories";
+const OUTSIDE_BLOCK = "No, and block reads outside the working directories from now on";
+const OUTSIDE_NO = "No, and ask again next time";
+const OUTSIDE_ONCE = "Yes, but ask again next time";
 const DESTRUCTIVE_GIT = /\b(?:rm|rmdir|rimraf|git\s+(?:reset|checkout|restore|clean|stash|push|commit|add|rebase|branch\s+-[dD]))\b|\s-delete\b/u;
 
 function ownDirectory(): string | undefined {
@@ -65,6 +77,8 @@ export default function piAutoMode(pi: ExtensionAPI) {
   let state = new PermissionState();
 
   let mode: PermissionMode = "auto";
+  /** Bypass có trong vòng Shift+Tab: phiên mở bằng bypass (cờ hoặc defaultMode) hoặc --allow-dangerously-skip-permissions. */
+  let bypassAvailable = false;
   let sessionId = "";
   /** Thư mục làm việc của phiên, cho luật lưu theo project khi không có ctx (trạng thái của /permissions). */
   let sessionCwd = process.cwd();
@@ -96,6 +110,12 @@ export default function piAutoMode(pi: ExtensionAPI) {
     type: "string", description: "Permission mode at startup: manual, acceptEdits, auto or bypass (Claude Code's default and bypassPermissions also work)",
   });
   pi.registerFlag("dangerously-skip-permissions", { type: "boolean", description: "Start in bypass permissions mode (no permission checks)" });
+  pi.registerFlag("allow-dangerously-skip-permissions", {
+    type: "boolean", description: "Add bypass permissions mode to the Shift+Tab cycle without starting in it",
+  });
+  pi.registerFlag("add-dir", {
+    type: "string", description: `Additional working directory for this session (several: separate with "${path.delimiter}")`,
+  });
 
   const currentMode = (): PermissionMode => (child ? rootFor(sessionId)?.mode() ?? "auto" : mode);
 
@@ -154,19 +174,22 @@ export default function piAutoMode(pi: ExtensionAPI) {
     return true;
   }
 
-  /** Shift+Tab: manual → acceptEdits → auto → bypass → manual. Bypass bị tắt thì bỏ qua; từ chối cảnh báo thì sang manual. */
+  /**
+   * Shift+Tab như Claude Code: manual → acceptEdits → bypass (khi có) → auto → manual. Bypass bị tắt thì bỏ qua; từ
+   * chối cảnh báo thì sang auto.
+   */
   async function cycle(ctx: ExtensionContext): Promise<void> {
     if (child) return;
-    const next = nextMode(mode);
+    const next = nextMode(mode, bypassAvailable);
     if (next !== "bypass") {
       setMode(next);
       return;
     }
     if (bypassBlocked()) {
-      setMode("manual");
+      setMode("auto");
       return;
     }
-    setMode(await canEnterBypass(ctx, false, "No, switch to manual mode") ? "bypass" : "manual");
+    setMode(await canEnterBypass(ctx, false, "No, switch to auto mode") ? "bypass" : "auto");
   }
 
   function log(entry: Record<string, unknown>): void {
@@ -201,9 +224,24 @@ export default function piAutoMode(pi: ExtensionAPI) {
     ];
   }
 
+  /** Thư mục thêm bằng /add-dir hoặc --add-dir tới hết phiên: child dùng chung tập của phiên gốc. */
+  function sessionDirectories(): Set<string> {
+    return (child ? rootFor(sessionId)?.sessionDirectories() : undefined) ?? state.sessionDirectories;
+  }
+
+  /** Thư mục làm việc: cwd, additionalDirectories, thư mục lưu cho project và thư mục thêm trong phiên (/add-dir). */
   function roots(cwd: string): string[] {
-    const extra = config.additionalDirectories.map((dir) => resolveToolPath(dir, cwd)).filter((dir): dir is string => !!dir);
-    return [...new Set([path.resolve(cwd), ...extra, ...temporaryRoots()])];
+    const configured = [...config.additionalDirectories, ...savedDirectories(cwd)];
+    const extra = configured.map((dir) => resolveToolPath(dir, cwd)).filter((dir): dir is string => !!dir);
+    return [...new Set([path.resolve(cwd), ...extra, ...sessionDirectories(), ...temporaryRoots()])];
+  }
+
+  function savedDirectories(cwd: string): string[] {
+    try {
+      return projectDirectories(config.stateDir, cwd);
+    } catch {
+      return [];
+    }
   }
 
   /** Nơi đọc không cần bộ phân loại: workspace, skill đã cấu hình, tài liệu Pi, agent dir. */
@@ -222,7 +260,8 @@ export default function piAutoMode(pi: ExtensionAPI) {
     return {
       mode: currentMode(), cwd: ctx.cwd, roots: roots(ctx.cwd), readRoots: readRoots(ctx.cwd), rules: rules(ctx.cwd), selfPaths: selfPaths(),
       agentIsUngated: (input) => agentIsUngated(input, { cwd: ctx.cwd, agentDir, parse: (source) => parseFrontmatter(source).frontmatter }),
-      tempRoots: temporaryRoots(),
+      tempRoots: temporaryRoots(), blockOutsideReads: config.blockOutsideReads,
+      outsideReadsAccepted: readState(config.stateDir).outsideReadsAccepted === true,
     };
   }
 
@@ -231,18 +270,84 @@ export default function piAutoMode(pi: ExtensionAPI) {
   // ---------------------------------------------------------------------------
 
   /** Hỏi người dùng (child hỏi qua UI của phiên gốc); undefined khi không ai trả lời được. */
-  function chooser(ctx: ExtensionContext): ((title: string, options: string[]) => Promise<string | undefined>) | undefined {
+  type Choose = (title: string, options: string[], opts?: { timeout?: number }) => Promise<string | undefined>;
+
+  function chooser(ctx: ExtensionContext): Choose | undefined {
     if (child) {
       const root = rootFor(sessionId);
-      return root?.ask ? (title, options) => root.ask!(title, options) : undefined;
+      return root?.ask ? (title, options, opts) => root.ask!(title, options, opts) : undefined;
     }
-    return ctx.hasUI ? (title, options) => ctx.ui.select(title, options) : undefined;
+    return ctx.hasUI ? (title, options, opts) => ctx.ui.select(title, options, opts) : undefined;
   }
 
   async function askUser(ctx: ExtensionContext, title: string): Promise<boolean | undefined> {
     const choose = chooser(ctx);
     if (!choose) return undefined;
     return (await choose(title, [YES, NO])) === YES;
+  }
+
+  /** Số lần hỏi rm vào đường dẫn quan trọng hết giờ (child dùng chung số của phiên gốc). */
+  function criticalTimeouts(add = 0): number {
+    if (child) return rootFor(sessionId)?.criticalTimeouts(add) ?? add;
+    state.criticalTimeouts += add;
+    return state.criticalTimeouts;
+  }
+
+  /**
+   * rm vào đường dẫn quan trọng ở auto/bypass (như Claude Code): hỏi với đếm ngược 2 phút; hết giờ thì chặn và agent làm
+   * tiếp; 3 lần hết giờ thì chặn luôn tới tin nhắn tiếp theo của người dùng; không có UI thì chặn.
+   */
+  async function criticalGate(ctx: ExtensionContext, call: ToolCall, summary: string, reason: string) {
+    const choose = chooser(ctx);
+    if (!choose) return { block: true as const, reason: text.criticalDenied("unattended") };
+    if (criticalTimeouts() >= 3) return { block: true as const, reason: text.criticalDenied("repeated") };
+    const started = Date.now();
+    const choice = await choose(`Allow ${call.toolName}: ${summary}?\n\n${reason} No permission rule can approve this.`, [YES, NO], { timeout: CRITICAL_TIMEOUT_MS });
+    log({ event: "critical", tool: call.toolName, choice: choice ?? "none" });
+    if (choice === YES) return allowed(call, "user (critical path)");
+    if (choice === undefined && Date.now() - started >= CRITICAL_TIMEOUT_MS - 1_000) {
+      criticalTimeouts(1);
+      return { block: true as const, reason: text.criticalDenied("timeout") };
+    }
+    return { block: true as const, reason: text.USER_DENIED };
+  }
+
+  /**
+   * Lần đọc đầu ngoài workspace ở auto mode (như Claude Code): hỏi một lần với 4 lựa chọn; không có UI thì cho đọc.
+   * "Keep allowing" lưu vào state.json; "block from now on" đặt permissions.blockReadsOutsideWorkingDirectories.
+   */
+  async function outsideReadGate(ctx: ExtensionContext, call: ToolCall, files: string[]) {
+    const choose = chooser(ctx);
+    if (!choose) return allowed(call, "read outside the working directories (no prompt without UI)");
+    const options = [OUTSIDE_KEEP, OUTSIDE_BLOCK, OUTSIDE_NO, OUTSIDE_ONCE];
+    const choice = await choose(`Allow reads outside the working directories?\n\n${call.toolName}: ${files.join(", ")}`, options);
+    log({ event: "outside-read", tool: call.toolName, choice: choice ?? "none" });
+    if (choice === OUTSIDE_KEEP) {
+      writeState(config.stateDir, { ...readState(config.stateDir), outsideReadsAccepted: true });
+      return allowed(call, "user (keep allowing reads outside)");
+    }
+    if (choice === OUTSIDE_ONCE) return allowed(call, "user (read outside once)");
+    if (choice === OUTSIDE_BLOCK) {
+      try {
+        saveSettings(config.source, withBlockedOutsideReads);
+        config = { ...config, blockOutsideReads: true };
+        notify(ctx, `Reads outside the working directories are now blocked (permissions.blockReadsOutsideWorkingDirectories in ${config.source}). Use /add-dir to allow a directory.`, "info");
+      } catch (error) {
+        notify(ctx, `Could not save the setting: ${error instanceof Error ? error.message : String(error)}`, "warning");
+      }
+    }
+    state.recordDenied({ toolName: call.toolName, summary: files.join(", "), reason: "Read outside the working directories not allowed", key: callKey(call.toolName, call.input) }, false);
+    return { block: true as const, reason: text.OUTSIDE_READ_DECLINED };
+  }
+
+  /** Người dùng chọn No không lời nhắn ở phiên chính: dừng lượt như Claude Code (subagent thì không). */
+  function stopTurn(ctx: ExtensionContext): void {
+    if (child) return;
+    try {
+      ctx.abort();
+    } catch {
+      /* không có lượt đang chạy */
+    }
   }
 
   /** Lời gọi được cho phép tới hết phiên (manual): child dùng chung tập của phiên gốc. */
@@ -269,12 +374,14 @@ export default function piAutoMode(pi: ExtensionAPI) {
     let remember: (() => void) | undefined;
     if (!risky) {
       const saved = facts.kind === "shell" && call.toolName === "bash" ? shellRules(facts.analysis as ShellAnalysis)
-        : facts.kind === "network" && call.toolName === "fetch_content" ? fetchRules(facts.target.urls) : undefined;
+        : facts.kind === "network" && call.toolName === "fetch_content" ? fetchRules(facts.target.urls)
+          : facts.kind === "network" && call.toolName === "web_search" ? [WEB_SEARCH_RULE] : undefined;
       if (saved) {
         const project = path.basename(projectRoot(cwd)) || projectRoot(cwd);
         always = call.toolName === "bash"
           ? `Yes, and don't ask again for ${describeRules(saved)} commands in ${project}`
-          : `Yes, and don't ask again for ${describeRules(saved)}`;
+          : call.toolName === "web_search" ? `Yes, and don't ask again for web searches in ${project}`
+            : `Yes, and don't ask again for ${describeRules(saved)}`;
         remember = () => {
           try {
             addProjectRules(config.stateDir, cwd, saved);
@@ -300,7 +407,8 @@ export default function piAutoMode(pi: ExtensionAPI) {
       }
     }
     const input = child ? rootFor(sessionId)?.input : ctx.hasUI ? (title: string) => ctx.ui.input(title, "") : undefined;
-    const options = manualOptions({ always, auto: !!setModeFromPrompt, comment: !!input });
+    // Như Claude Code: "switch to auto mode" chỉ có ở hộp hỏi lệnh shell.
+    const options = manualOptions({ always, auto: !!setModeFromPrompt && facts.kind === "shell", comment: !!input });
     return manualApproval({
       key, title: manualTitle(call.toolName, facts.summary, notes), approvals: sessionApprovals(), options,
       ask: choose ? async (title, items): Promise<ManualAnswer> => answerOf(items, await choose(title, items.map((item) => item.label))) : undefined,
@@ -557,10 +665,15 @@ export default function piAutoMode(pi: ExtensionAPI) {
       return { block: true, reason: decision.message ?? text.ruleDenial(decision.reason) };
     }
     if (decision.kind === "ask") {
+      if (decision.critical) return criticalGate(ctx, call, facts.summary, decision.reason);
+      if (decision.outsideRead) return outsideReadGate(ctx, call, decision.outsideRead);
       const approved = await askUser(ctx, `Allow ${call.toolName}: ${facts.summary}?\n\n${decision.reason}`);
       log({ event: "ask", tool: call.toolName, approved });
       if (approved) return allowed(call, "user");
-      return { block: true, reason: approved === false ? text.USER_DENIED : text.NO_APPROVER };
+      if (approved === undefined) return { block: true, reason: text.NO_APPROVER };
+      state.recordDenied({ toolName: call.toolName, summary: facts.summary, reason: "Declined by you", key }, false);
+      stopTurn(ctx);
+      return { block: true, reason: child ? text.USER_DENIED : text.MANUAL_STOPPED };
     }
     // Duyệt một lần từ /permissions: bỏ qua bộ phân loại, luật deny vẫn đã áp dụng ở trên.
     if (state.consumeApproval(key)) {
@@ -574,6 +687,11 @@ export default function piAutoMode(pi: ExtensionAPI) {
       if (result.declined) {
         const reason = result.comment ? `Declined by you: ${result.comment}` : "Declined by you";
         state.recordDenied({ toolName: call.toolName, summary: facts.summary, reason, key }, false);
+        // Như Claude Code: No không kèm lời nhắn ở phiên chính dừng lượt; có lời nhắn thì agent làm tiếp theo lời nhắn.
+        if (!result.comment && !child) {
+          stopTurn(ctx);
+          return { block: true, reason: text.MANUAL_STOPPED };
+        }
       }
       return { block: true, reason: result.reason };
     }
@@ -667,8 +785,9 @@ export default function piAutoMode(pi: ExtensionAPI) {
 
   pi.on("input", (event) => {
     if (event.source !== "extension") {
-      // Người dùng lên tiếng: ý định mới, bỏ cờ prompt injection của lượt trước.
+      // Người dùng lên tiếng: ý định mới, bỏ cờ prompt injection của lượt trước và đếm lại số lần hỏi rm hết giờ.
       injectionSuspect = undefined;
+      if (!child) state.criticalTimeouts = 0;
       return;
     }
     if (ownMessages.delete(event.text)) return;
@@ -733,19 +852,31 @@ export default function piAutoMode(pi: ExtensionAPI) {
       sessionId,
       mode: () => mode,
       humanMessages: () => humanMessages(ctx.sessionManager.getBranch() as SessionEntryLike[]),
-      ask: ctx.hasUI ? (title: string, options: string[]) => ctx.ui.select(`[subagent] ${title}`, options) : undefined,
+      ask: ctx.hasUI ? (title: string, options: string[], opts?: { timeout?: number }) => ctx.ui.select(`[subagent] ${title}`, options, opts) : undefined,
       input: ctx.hasUI ? (title: string) => ctx.ui.input(`[subagent] ${title}`, "") : undefined,
       setMode: (next: PermissionMode) => {
         if (next !== "bypass") setMode(next);
       },
       sessionApprovals: () => state.sessionApprovals,
       sessionReadRoots: () => state.sessionReadRoots,
+      sessionDirectories: () => state.sessionDirectories,
+      criticalTimeouts: (add = 0) => (state.criticalTimeouts += add),
       classifier: () => ({ model: config.model, stage2Reasoning: config.stage2Reasoning }),
     };
     registerRoot(handle);
     // Không bao giờ khôi phục bypass từ phiên cũ; chỉ cờ dòng lệnh hoặc settings người dùng.
     const flagBypass = pi.getFlag("dangerously-skip-permissions") === true;
     const wanted = flagBypass ? "bypass" : parseMode(pi.getFlag("permission-mode")) ?? config.defaultMode;
+    // Như Claude Code: bypass chỉ có trong vòng Shift+Tab khi phiên được mở với bypass (kể cả khi từ chối cảnh báo).
+    bypassAvailable = wanted === "bypass" || pi.getFlag("allow-dangerously-skip-permissions") === true;
+    const added = pi.getFlag("add-dir");
+    if (typeof added === "string") {
+      for (const dir of added.split(path.delimiter).filter(Boolean)) {
+        const resolved = resolveToolPath(dir, ctx.cwd);
+        if (resolved && isDirectory(resolved)) state.sessionDirectories.add(resolved);
+        else notify(ctx, `--add-dir: ${dir} is not a directory`, "warning");
+      }
+    }
     setMode(wanted === "bypass" ? "auto" : wanted);
     installWidget(ctx);
     if (wanted === "bypass") {
@@ -783,7 +914,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
 
   // Shift+Tab như Claude Code; bộ cài chuyển mức thinking của Pi sang Alt+T. Nếu keybindings.json vẫn gán
   // Shift+Tab cho thinking, Pi bỏ phím này của extension (kèm chẩn đoán) và mode đổi bằng /permissions.
-  pi.registerShortcut("shift+tab" as never, { description: "Switch permission mode (manual → accept edits → auto → bypass)", handler: (ctx) => cycle(ctx) });
+  pi.registerShortcut("shift+tab" as never, { description: "Switch permission mode (manual → accept edits → [bypass] → auto)", handler: (ctx) => cycle(ctx) });
 
   function modelLabel(): string {
     const llm = `${config.model ?? "session model"} · ${config.stage2Reasoning}`;
@@ -800,6 +931,8 @@ export default function piAutoMode(pi: ExtensionAPI) {
       ...(injectionSuspect ? [`Possible prompt injection in a ${injectionSuspect} result since your last message: actions go straight to careful review`] : []),
       `Denials: ${state.consecutive} in a row, ${state.total} this session (limits ${LIMITS.consecutive}/${LIMITS.total})`,
       `Rules: ${set.allow.length} allow, ${set.ask.length} ask, ${set.deny.length} deny${set.stripped.length && !prompts(currentMode()) ? `, ${set.stripped.length} ignored in auto mode` : ""}`,
+      `Working directories: ${roots(sessionCwd).filter((dir) => !temporaryRoots().includes(dir)).join(", ")}`,
+      ...(config.blockOutsideReads ? ["Reads outside the working directories: blocked (permissions.blockReadsOutsideWorkingDirectories)"] : []),
     ];
   }
 
@@ -866,7 +999,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
     const saved = projectRules(config.stateDir, ctx.cwd);
     const choice = await ctx.ui.select("Rules", [
       `Your rules: ${set.allow.length + set.stripped.length} allow, ${set.ask.length} ask, ${set.deny.length} deny`,
-      `Saved for this project: ${saved.length} allow…`,
+      `Saved for this project: ${saved.length} allow, ${savedDirectories(ctx.cwd).length} directories…`,
       "Built-in classifier rules (auto mode defaults)",
     ]);
     if (!choice) return;
@@ -894,27 +1027,75 @@ export default function piAutoMode(pi: ExtensionAPI) {
     await ctx.ui.editor("Auto mode classifier rules (read-only view)", body);
   }
 
-  /** Luật "Yes, and don't ask again" của project: chọn một luật để bỏ. */
+  /** Luật "Yes, and don't ask again" và thư mục /add-dir đã lưu cho project: chọn một mục để bỏ. */
   async function savedRules(ctx: ExtensionContext): Promise<void> {
     const root = projectRoot(ctx.cwd);
     const saved = projectRules(config.stateDir, ctx.cwd);
-    if (!saved.length) {
-      ctx.ui.notify(`No rules saved for ${root}. "Yes, and don't ask again" in an approval prompt saves one here.`, "info");
+    const dirs = savedDirectories(ctx.cwd);
+    if (!saved.length && !dirs.length) {
+      ctx.ui.notify(`Nothing saved for ${root}. "Yes, and don't ask again" in an approval prompt and /add-dir → remember save here.`, "info");
       return;
     }
     const stripped = new Set(buildRuleSet(saved, [], []).stripped.map((rule) => rule.raw));
-    const labels = saved.map((rule) => `${rule}${stripped.has(rule) ? " (ignored in auto mode)" : ""}`);
+    const items = [
+      ...saved.map((rule) => ({ label: `${rule}${stripped.has(rule) ? " (ignored in auto mode)" : ""}`, remove: () => removeProjectRule(config.stateDir, ctx.cwd, rule), name: rule })),
+      ...dirs.map((dir) => ({ label: `Directory: ${dir}`, remove: () => removeProjectDirectory(config.stateDir, ctx.cwd, dir), name: dir })),
+    ];
+    const labels = items.map((item) => item.label);
     const picked = await ctx.ui.select(`Saved for ${root} — pick one to remove`, labels);
-    const rule = picked ? saved[labels.indexOf(picked)] : undefined;
-    if (!rule) return;
-    if (await ctx.ui.select(`Remove ${rule}?`, ["Remove", "Cancel"]) !== "Remove") return;
+    const item = picked ? items[labels.indexOf(picked)] : undefined;
+    if (!item) return;
+    if (await ctx.ui.select(`Remove ${item.name}?`, ["Remove", "Cancel"]) !== "Remove") return;
     try {
-      removeProjectRule(config.stateDir, ctx.cwd, rule);
-      ctx.ui.notify(`Removed ${rule}`, "info");
+      item.remove();
+      ctx.ui.notify(`Removed ${item.name}`, "info");
     } catch (error) {
-      ctx.ui.notify(`Could not remove the rule: ${error instanceof Error ? error.message : String(error)}`, "error");
+      ctx.ui.notify(`Could not remove it: ${error instanceof Error ? error.message : String(error)}`, "error");
     }
   }
+
+  /**
+   * /add-dir <thư mục> (như Claude Code): thêm thư mục làm việc (đọc tự do, sửa theo mode) cho phiên này, hoặc lưu cho
+   * project. Không đối số: liệt kê thư mục làm việc.
+   */
+  async function addDirectory(args: string, ctx: ExtensionContext): Promise<void> {
+    const raw = args.trim();
+    if (!raw) {
+      notify(ctx, `Working directories:\n${roots(ctx.cwd).filter((dir) => !temporaryRoots().includes(dir)).map((dir) => `  ${dir}`).join("\n")}`, "info");
+      return;
+    }
+    const dir = resolveToolPath(raw, ctx.cwd);
+    if (!dir || !isDirectory(dir)) {
+      notify(ctx, `${raw} is not a directory`, "warning");
+      return;
+    }
+    if (roots(ctx.cwd).includes(dir)) {
+      notify(ctx, `${dir} is already a working directory`, "info");
+      return;
+    }
+    const session = "Yes, for this session";
+    const remember = `Yes, and remember this directory for ${path.basename(projectRoot(ctx.cwd)) || projectRoot(ctx.cwd)}`;
+    const choice = ctx.hasUI ? await ctx.ui.select(`Add ${dir} as a working directory?\nPi can read files there without asking; edits follow the permission mode.`, [session, remember, NO]) : session;
+    if (choice !== session && choice !== remember) return;
+    state.sessionDirectories.add(dir);
+    if (choice === remember) {
+      try {
+        addProjectDirectory(config.stateDir, ctx.cwd, dir);
+      } catch (error) {
+        notify(ctx, `Could not save the directory: ${error instanceof Error ? error.message : String(error)}`, "warning");
+      }
+    }
+    log({ event: "add-dir", dir, remember: choice === remember });
+    notify(ctx, `Added working directory ${dir}${choice === remember ? ` (saved for ${projectRoot(ctx.cwd)}; /permissions → Rules to remove)` : " for this session"}`, "info");
+  }
+
+  pi.registerCommand("add-dir", {
+    description: "Add a working directory: /add-dir <path> (no path: list working directories)",
+    handler: async (args, ctx) => {
+      if (child) return;
+      await addDirectory(args, ctx);
+    },
+  });
 
   async function recentlyDenied(ctx: ExtensionContext): Promise<void> {
     if (!state.recent.length) {
@@ -964,9 +1145,10 @@ export default function piAutoMode(pi: ExtensionAPI) {
       switch (options.indexOf(choice)) {
         case 0: {
           if (child) return;
-          const labels = MODES.map((item) => `${MODE_LABELS[item]}${item === currentMode() ? " (current)" : ""}`);
-          const picked = await ctx.ui.select("Permission mode (Shift+Tab cycles manual → accept edits → auto → bypass)", labels);
-          if (picked) await switchMode(ctx, MODES[labels.indexOf(picked)]);
+          const modes = availableModes(bypassAvailable || currentMode() === "bypass");
+          const labels = modes.map((item) => `${MODE_LABELS[item]}${item === currentMode() ? " (current)" : ""}`);
+          const picked = await ctx.ui.select(`Permission mode (Shift+Tab cycles ${modes.map((item) => MODE_LABELS[item].replace(/^\S+ | on$/gu, "")).join(" → ")})`, labels);
+          if (picked) await switchMode(ctx, modes[labels.indexOf(picked)]);
           return;
         }
         case 1: {

@@ -771,3 +771,28 @@ export function optionOutputs(command: SimpleCommand): string[] {
 export function commandText(command: SimpleCommand): string {
   return command.words.join(" ");
 }
+
+/**
+ * Wrapper Claude Code bỏ trước khi so luật allow (`Bash(npm test *)` khớp `timeout 30 npm test`) và khi xét lệnh file
+ * của acceptEdits. sudo, env, xargs, sh -c không thuộc danh sách.
+ */
+export const STRIPPED_WRAPPERS = new Set(["timeout", "gtimeout", "time", "nice", "nohup", "stdbuf"]);
+
+/**
+ * Lệnh dùng để so luật allow: bỏ lệnh wrapper ngoài cùng trong STRIPPED_WRAPPERS (lệnh bên trong đã nằm trong danh
+ * sách) và coi lệnh bên trong như lệnh cấp cao nhất. Luật deny/ask vẫn xét cả danh sách gốc.
+ */
+export function ruleUnits(analysis: ShellAnalysis): SimpleCommand[] {
+  return analysis.commands.flatMap((command) => {
+    if (!command.wrapped && STRIPPED_WRAPPERS.has(command.words[0] ?? "") && innerStart(command.words) !== undefined) return [];
+    if (command.wrapped && STRIPPED_WRAPPERS.has(command.wrapped)) return [{ ...command, wrapped: undefined }];
+    return [command];
+  });
+}
+
+/** Biến môi trường an toàn đặt trước lệnh (`LANG=C`, `NO_COLOR=1`): chỉ đổi ngôn ngữ, màu, múi giờ. */
+const SAFE_ENV = /^(?:LANG|LANGUAGE|LC_[A-Z]+|NO_COLOR|FORCE_COLOR|CLICOLOR|CLICOLOR_FORCE|TERM|COLUMNS|TZ)=[\w.:@+-]*$/u;
+
+export function safeAssignments(command: SimpleCommand): boolean {
+  return command.assignments.every((assignment) => SAFE_ENV.test(assignment));
+}

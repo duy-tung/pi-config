@@ -3,19 +3,27 @@ import path from "node:path";
 
 /**
  * Như Claude Code: manual (mode default) hỏi người dùng thay cho bộ phân loại, kể cả sửa file; acceptEdits như manual
- * nhưng sửa file và mkdir/touch/cp/mv trong workspace chạy ngay; auto: bộ phân loại duyệt; bypass: không kiểm, trừ
- * luật deny/ask và vài lớp bảo vệ.
+ * nhưng sửa file và mkdir/touch/rm/rmdir/mv/cp/sed trong workspace chạy ngay; auto: bộ phân loại duyệt; bypass: không
+ * kiểm, trừ luật deny/ask và rm vào đường dẫn quan trọng.
  */
 export type PermissionMode = "manual" | "acceptEdits" | "auto" | "bypass";
 
-/** Thứ tự Shift+Tab: manual → acceptEdits → auto → bypass → manual. */
-export const MODES: PermissionMode[] = ["manual", "acceptEdits", "auto", "bypass"];
+/**
+ * Thứ tự Shift+Tab như Claude Code: manual → acceptEdits → bypass → auto → manual. Bypass chỉ có trong vòng khi phiên
+ * được mở với bypass (cờ dòng lệnh hoặc defaultMode trong settings của người dùng).
+ */
+export const MODES: PermissionMode[] = ["manual", "acceptEdits", "bypass", "auto"];
+
+export function availableModes(bypassAvailable: boolean): PermissionMode[] {
+  return MODES.filter((mode) => mode !== "bypass" || bypassAvailable);
+}
 
 /** Mode hỏi người dùng thay cho bộ phân loại (không gọi model nào để duyệt). */
 export const prompts = (mode: PermissionMode): boolean => mode === "manual" || mode === "acceptEdits";
 
-export function nextMode(mode: PermissionMode): PermissionMode {
-  return MODES[(MODES.indexOf(mode) + 1) % MODES.length];
+export function nextMode(mode: PermissionMode, bypassAvailable = false): PermissionMode {
+  const modes = availableModes(bypassAvailable || mode === "bypass");
+  return modes[(modes.indexOf(mode) + 1) % modes.length];
 }
 
 /**
@@ -36,6 +44,8 @@ export interface AutoModeConfig {
   ask: string[];
   deny: string[];
   additionalDirectories: string[];
+  /** permissions.blockReadsOutsideWorkingDirectories: tool đọc file từ chối đọc ngoài workspace ở mọi mode. */
+  blockOutsideReads: boolean;
   /** Thư mục skill trong `skills` của settings (đọc tự do, như thư mục làm việc). */
   skills: string[];
   /** Model phân loại "provider/id" cho cả hai giai đoạn; bỏ trống thì dùng model của phiên. */
@@ -113,6 +123,7 @@ export function loadConfig(agentDir: string, env: NodeJS.ProcessEnv = process.en
     ask: strings(permissions.ask) ?? [],
     deny: strings(permissions.deny) ?? [],
     additionalDirectories: strings(permissions.additionalDirectories) ?? [],
+    blockOutsideReads: permissions.blockReadsOutsideWorkingDirectories === true,
     skills: strings(settings.skills) ?? [],
     model: text(auto.model),
     stage2Reasoning: text(auto.stage2Reasoning) ?? DEFAULTS.stage2Reasoning,
@@ -139,6 +150,8 @@ export interface PersistedState {
   bypassAccepted?: boolean;
   autoNoticeShown?: boolean;
   jevNoticeShown?: boolean;
+  /** "Yes, and keep allowing any reads outside the working directories" ở lần đọc đầu của auto mode. */
+  outsideReadsAccepted?: boolean;
 }
 
 export function readState(stateDir: string): PersistedState {
@@ -168,17 +181,32 @@ export function writeState(stateDir: string, state: PersistedState): void {
 const isRecord = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 
 /**
- * Nội dung settings.json mới với `autoMode.model` và `autoMode.stage2Reasoning` đổi; mọi khóa khác (và thứ tự khóa,
- * BOM, newline cuối) giữ nguyên. Ném lỗi khi file không phải object JSON, để không ghi đè file hỏng.
+ * Nội dung settings.json mới sau khi `mutate` sửa object settings; mọi khóa khác (và thứ tự khóa, BOM, newline cuối)
+ * giữ nguyên. Ném lỗi khi file không phải object JSON, để không ghi đè file hỏng.
  */
-export function withClassifier(source: string, model: string, reasoning: string): string {
-  const bom = source.startsWith("﻿") ? "﻿" : "";
+export function withSettings(source: string, mutate: (settings: Record<string, unknown>) => void): string {
+  const bom = source.startsWith("\uFEFF") ? "\uFEFF" : "";
   const body = source.slice(bom.length);
   const settings: unknown = body.trim() ? JSON.parse(body) : {};
   if (!isRecord(settings)) throw new Error("settings.json is not a JSON object");
-  if (!isRecord(settings.autoMode)) settings.autoMode = {};
-  Object.assign(settings.autoMode as Record<string, unknown>, { model, stage2Reasoning: reasoning });
+  mutate(settings);
   return `${bom}${JSON.stringify(settings, null, 2)}${!body.trim() || body.endsWith("\n") ? "\n" : ""}`;
+}
+
+/** Nội dung settings.json mới với `autoMode.model` và `autoMode.stage2Reasoning` đổi. */
+export function withClassifier(source: string, model: string, reasoning: string): string {
+  return withSettings(source, (settings) => {
+    if (!isRecord(settings.autoMode)) settings.autoMode = {};
+    Object.assign(settings.autoMode as Record<string, unknown>, { model, stage2Reasoning: reasoning });
+  });
+}
+
+/** Nội dung settings.json mới với `permissions.blockReadsOutsideWorkingDirectories: true`. */
+export function withBlockedOutsideReads(source: string): string {
+  return withSettings(source, (settings) => {
+    if (!isRecord(settings.permissions)) settings.permissions = {};
+    (settings.permissions as Record<string, unknown>).blockReadsOutsideWorkingDirectories = true;
+  });
 }
 
 const sleep = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -214,10 +242,10 @@ function withFileLock<T>(file: string, fn: () => T): T {
 }
 
 /**
- * Lưu model của bộ phân loại vào settings.json: đọc-sửa-ghi dưới khóa của Pi, ghi qua file tạm rồi đổi tên, giữ quyền
- * của file (0600 khi chưa có). Pi chỉ ghi lại các khóa nó đổi (đọc lại file trước khi ghi), nên không đè giá trị này.
+ * Sửa settings.json: đọc-sửa-ghi dưới khóa của Pi, ghi qua file tạm rồi đổi tên, giữ quyền của file (0600 khi chưa
+ * có). Pi chỉ ghi lại các khóa nó đổi (đọc lại file trước khi ghi), nên không đè giá trị này.
  */
-export function saveClassifier(file: string, model: string, reasoning: string): void {
+export function saveSettings(file: string, edit: (source: string) => string): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   withFileLock(file, () => {
     let source = "";
@@ -228,7 +256,7 @@ export function saveClassifier(file: string, model: string, reasoning: string): 
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
-    const next = withClassifier(source, model, reasoning);
+    const next = edit(source);
     const temporary = `${file}.${process.pid}.${Date.now()}.tmp`;
     try {
       fs.writeFileSync(temporary, next, { mode });
@@ -239,4 +267,9 @@ export function saveClassifier(file: string, model: string, reasoning: string): 
       throw error;
     }
   });
+}
+
+/** Lưu model của bộ phân loại vào settings.json. */
+export function saveClassifier(file: string, model: string, reasoning: string): void {
+  saveSettings(file, (source) => withClassifier(source, model, reasoning));
 }
