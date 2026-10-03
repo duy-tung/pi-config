@@ -1,51 +1,64 @@
-# Permission: manual, auto và bypass
+# Permission: manual, accept edits, auto và bypass
 
-`pi-auto-mode` là extension riêng của pi-config (`assets/extensions/pi-auto-mode`), thay cho `@gotgenes/pi-permission-system`. Có ba mode, theo mode default, auto mode và bypassPermissions của Claude Code (auto và bypass tương ứng "Approve for me" và "Full Access" của Codex):
+`pi-auto-mode` là extension riêng của pi-config (`assets/extensions/pi-auto-mode`), thay cho `@gotgenes/pi-permission-system`. Có bốn mode, theo các mode default, acceptEdits, auto và bypassPermissions của Claude Code (auto và bypass tương ứng "Approve for me" và "Full Access" của Codex):
 
 | Mode | Dòng dưới ô nhập | Hành vi |
 |---|---|---|
-| **Manual** | `⏸ manual mode on` | Thao tác an toàn và luật `allow` chạy ngay. Thao tác còn lại hỏi bạn: Allow once / Allow for this session / Deny. Không gọi model nào để duyệt |
+| **Manual** | `⏸ manual mode on` | Như mode default của Claude Code: đọc, lệnh chỉ đọc và luật `allow` chạy ngay. Mọi thao tác khác, kể cả sửa file, đều hỏi bạn. Không gọi model nào để duyệt |
+| **Accept edits** | `⏵⏵ accept edits on` (xanh) | Như manual, nhưng sửa file và `mkdir`/`touch`/`cp`/`mv` trong workspace chạy ngay (trừ đường dẫn được bảo vệ) |
 | **Auto** (mặc định) | `⏵⏵ auto mode on` (vàng) | Thao tác an toàn chạy ngay. Thao tác còn lại do bộ phân loại hai giai đoạn duyệt, không hỏi người dùng: Jev (model System One của TypeSafe) sàng lọc, LLM xét kỹ phần bị gắn cờ |
 | **Bypass** | `⏵⏵ bypass permissions on` (đỏ) | Không kiểm tra, trừ luật `deny`, luật `ask`, `rm` vào đường dẫn quan trọng, lệnh xoá đệ quy ra ngoài thư mục tạm và lệnh rủi ro ở bước 5 |
 
 ## Dùng
 
-- `Shift+Tab` đổi mode theo vòng manual → auto → bypass → manual. Lần đầu vào bypass hiện cảnh báo cần đồng ý; lựa chọn được nhớ, từ chối thì sang manual. Bypass bị bỏ qua (vòng đi thẳng sang manual) khi chạy bằng root (trừ `IS_SANDBOX=1`) hoặc khi `permissions.disableBypassPermissionsMode` là `"disable"`.
+- `Shift+Tab` đổi mode theo vòng manual → accept edits → auto → bypass → manual. Lần đầu vào bypass hiện cảnh báo cần đồng ý; lựa chọn được nhớ, từ chối thì sang manual. Bypass bị bỏ qua (vòng đi thẳng sang manual) khi chạy bằng root (trừ `IS_SANDBOX=1`) hoặc khi `permissions.disableBypassPermissionsMode` là `"disable"`.
 - Mức thinking chuyển sang `Alt+T` (như Option+T của Claude Code; trên macOS terminal cần gửi Option như Alt — WezTerm mặc định với Option trái) hoặc `/thinking`.
 - `/permissions` là menu duy nhất của cổng permission (thay `/auto-mode` cũ):
 
   ```
   Permissions · ⏵⏵ auto mode on
-  ├─ Mode: auto — change…        chọn manual / auto / bypass (vào bypass vẫn qua cảnh báo)
+  ├─ Mode: auto — change…        chọn manual / accept edits / auto / bypass (vào bypass vẫn qua cảnh báo)
   ├─ Classifier: <model> · <thinking>…
   │    tiêu đề: mode, model phân loại, timeout, Jev (nguồn key, số lần gọi, token, chi phí), số lần chặn, số luật
   │    └─ Change classifier model…   model đã đăng nhập → mức thinking; lưu settings.json, áp ngay
   ├─ Recently denied (N)          chọn một lệnh để duyệt cho một lần thử lại
   ├─ Rules…
   │    ├─ Your rules: allow / ask / deny (chỉ xem)
+  │    ├─ Saved for this project (luật "don't ask again"; chọn một luật để bỏ)
   │    └─ Built-in classifier rules (bộ luật mặc định của auto mode)
   └─ Test a command…              chạy thử quyết định cho một lệnh bash
   ```
 
   - **Recently denied**: lệnh bị bộ phân loại, luật hoặc chính bạn (manual) chặn. Chọn một lệnh để duyệt cho **một lần thử lại** đúng lệnh đó; Pi được báo "Permission granted for: …".
-  - **Test a command** hoặc `/permissions test <lệnh bash>`: chạy thử quyết định. Chỉ ở auto mode mới gọi bộ phân loại (có thể tốn token) và in xác suất của Jev; manual và bypass chỉ báo lệnh sẽ được hỏi hay chạy.
+  - **Test a command** hoặc `/permissions test <lệnh bash>`: chạy thử quyết định. Chỉ ở auto mode mới gọi bộ phân loại (có thể tốn token) và in xác suất của Jev; manual, accept edits và bypass chỉ báo lệnh sẽ được hỏi hay chạy.
   - Không có UI, `/permissions` gửi trạng thái như mục Classifier qua thông báo của extension, như `/auto-mode` cũ (print/JSON của Pi không hiện thông báo).
 - Key Jev: biến môi trường `TYPESAFE_API_KEY`.
-- Khởi động: `pi --permission-mode manual|auto|bypass` hoặc `pi --dangerously-skip-permissions`; mặc định lấy từ `permissions.defaultMode` (installer đặt `auto`). Nhận cả tên của Claude Code: `default` là manual, `bypassPermissions` là bypass; giá trị khác là `auto`. Mode bypass không bao giờ được khôi phục từ phiên cũ hay settings của project.
+- Khởi động: `pi --permission-mode manual|acceptEdits|auto|bypass` hoặc `pi --dangerously-skip-permissions`; mặc định lấy từ `permissions.defaultMode` (installer đặt `auto`). Nhận cả tên của Claude Code: `default` là manual, `bypassPermissions` là bypass; giá trị khác là `auto`. Mode bypass không bao giờ được khôi phục từ phiên cũ hay settings của project.
 
-## Manual mode
+## Manual và accept edits
 
-Như mode default của Claude Code: lớp chính sách quyết định giống hệt auto (luật `deny` và git guard chặn, luật `ask` hỏi, lối đi nhanh ở bước 8 chạy ngay), nhưng mọi thứ auto gửi bộ phân loại (bước 9, kể cả phần đi thẳng giai đoạn 2) thì hỏi bạn. Không gọi Jev hay LLM để duyệt, nên không tốn token; probe prompt injection cũng không chạy.
+Như mode default và acceptEdits của Claude Code: lớp chính sách quyết định giống hệt auto (luật `deny` và git guard chặn, luật `ask` hỏi, lối đi nhanh ở bước 8 chạy ngay), nhưng mọi thứ auto gửi bộ phân loại (bước 9, kể cả phần đi thẳng giai đoạn 2) thì hỏi bạn. Không gọi Jev hay LLM để duyệt, nên không tốn token; probe prompt injection cũng không chạy.
 
-- Hộp thoại `Allow <tool>: <tóm tắt>?` có ba lựa chọn. **Allow once** chạy lần này. **Allow for this session** chạy và không hỏi lại đúng lời gọi đó (cùng tool và cùng input sau chuẩn hóa, như khóa duyệt một lần của `/permissions`) tới hết phiên; lệnh khác dù chỉ một ký tự vẫn hỏi. **Deny** (hoặc Esc) chặn, agent được báo bạn đã từ chối và không được thử lại y nguyên hay lách; lần từ chối hiện trong `/permissions` → Recently denied.
-- Lời gọi mà bypass vẫn hỏi (`rm` vào đường dẫn quan trọng, xoá đệ quy, lệnh rủi ro ở bước 5, deny đường dẫn không kiểm được) cũng hỏi ở manual, kèm ghi chú rủi ro trong hộp thoại.
+- **Manual** hỏi cả khi sửa file trong workspace và khi chạy `mkdir`/`touch`/`cp`/`mv` ở đó. **Accept edits** cho các việc này chạy ngay; sửa file ngoài workspace hoặc vào đường dẫn được bảo vệ (`.git/`, `.pi/`, `.claude/`, file rc của shell, `AGENTS.md`…) vẫn hỏi.
+- Hộp thoại `Allow <tool>: <tóm tắt>?` có các lựa chọn như Claude Code:
+  - **Yes**: chạy lần này.
+  - **Yes, and don't ask again…**, tùy loại lời gọi:
+    - Lệnh shell: lưu luật allow theo tiền tố lệnh cho project, vd `Bash(npm install *)`, `Bash(git commit *)`, `Bash(npm run build *)`. Lệnh ghép thì mỗi lệnh con không chỉ đọc một luật. Luật được lưu ở `<stateDir>/project-rules.json`, theo gốc project (thư mục có `.git`, không có thì thư mục làm việc). File này nằm ngoài repo, như `.claude/settings.local.json` của Claude Code; agent không tự sửa được, và settings của project không thêm được luật allow. Xem và bỏ luật trong `/permissions` → Rules → Saved for this project. Luật cho chạy code tùy ý (`npm run *`, `python *`…) vẫn bị bỏ qua ở auto mode như luật trong settings.
+    - `fetch_content`: lưu `WebFetch(domain:<host>)` khi mọi URL cùng một host.
+    - Sửa file ở manual: **Yes, allow all edits during this session** chuyển sang accept edits.
+    - Tool khác (MCP, `Agent`, `bg_run`…): không hỏi lại đúng lời gọi đó (cùng tool, cùng input sau chuẩn hóa) tới hết phiên.
+    - Lệnh không đề xuất được tiền tố (biến, `$()`, `sudo`, `bash -c`, chương trình theo đường dẫn, chuyển hướng, glob) cũng chỉ nhớ đúng lời gọi tới hết phiên. Hành động có ghi chú rủi ro (`rm` vào đường dẫn quan trọng, lệnh rủi ro ở bước 5, đường dẫn được bảo vệ, deny đường dẫn không kiểm được) không có lựa chọn này.
+  - **Yes, and switch to auto mode**: chạy lần này rồi chuyển sang auto.
+  - **No** (hoặc Esc): chặn. Agent được báo bạn đã từ chối và không được thử lại y nguyên hay lách; lần từ chối hiện trong `/permissions` → Recently denied.
+  - **No, and tell Pi what to do differently…**: chặn, kèm lời nhắn bạn gõ gửi tới agent (và hiện trong Recently denied).
+- Lời gọi mà bypass vẫn hỏi (`rm` vào đường dẫn quan trọng, xoá đệ quy, lệnh rủi ro ở bước 5, deny đường dẫn không kiểm được) cũng hỏi ở hai mode này, kèm ghi chú rủi ro trong hộp thoại.
 - Luật `allow` có hiệu lực đầy đủ, kể cả luật cho chạy code tùy ý (`Bash(npm run *)`, `Bash(python *)`) mà auto bỏ qua.
 - Không có UI (print, JSON, RPC không có client UI) thì lời gọi cần hỏi bị chặn và agent được báo lý do; chạy không người trông nên dùng `--permission-mode auto`.
-- Subagent hỏi qua UI của phiên gốc (gắn nhãn `[subagent]`), và dùng chung danh sách "Allow for this session" với phiên gốc. Phiên gốc không có UI thì chặn.
+- Subagent hỏi qua UI của phiên gốc (gắn nhãn `[subagent]`), dùng chung danh sách đã nhớ và luật của project với phiên gốc; các lựa chọn chuyển mode đổi mode của phiên gốc. Phiên gốc không có UI thì chặn.
 
 ## Auto mode quyết định thế nào
 
-Mỗi tool call đi qua các bước sau, dừng ở bước đầu tiên có kết quả (thứ tự của Claude Code). Manual đi qua đúng các bước của auto; chỗ auto gửi bộ phân loại thì manual hỏi bạn.
+Mỗi tool call đi qua các bước sau, dừng ở bước đầu tiên có kết quả (thứ tự của Claude Code). Manual và accept edits đi qua đúng các bước của auto; chỗ auto gửi bộ phân loại thì hai mode này hỏi bạn. Riêng manual, sửa file và `mkdir`/`touch`/`cp`/`mv` trong workspace ở bước 8 cũng hỏi.
 
 1. **Luật `deny`** → chặn, ở mọi mode. Áp dụng cho tool file, đối số đường dẫn của lệnh shell (kể cả `$()`, `bash -c`, `sudo`, `xargs`) và tham số đường dẫn của MCP. Khi có deny đường dẫn áp dụng mà không kiểm được tập file, chặn trước `ask`, `allow`, bypass và bộ phân loại; xem giới hạn đọc bên dưới. Ngay sau luật deny là **git guard** (bash, `bg_run`): cũng chặn ở mọi mode, xem [Git guard](#git-guard).
 2. **Luật `ask`** → hỏi người dùng (không có UI thì chặn).
@@ -187,11 +200,11 @@ LLM mặc định là **Claude Sonnet 5.5** (`anthropic/claude-sonnet-5-5`):
 ### Subagent
 
 `@tintinweb/pi-subagents` chạy child trong cùng process, không có UI. Child tải lại pi-auto-mode (role phải liệt kê `pi-auto-mode` trong `extensions`) và:
-- dùng mode của phiên gốc (manual, auto hoặc bypass); đổi mode ở phiên gốc áp dụng ngay cho child;
+- dùng mode của phiên gốc (manual, accept edits, auto hoặc bypass); đổi mode ở phiên gốc áp dụng ngay cho child;
 - bộ phân loại của child lấy tin nhắn của người dùng ở phiên gốc làm ý định, coi task và `steer_subagent` là lời của agent;
-- câu hỏi (luật ask, chạm giới hạn, mọi câu hỏi của manual mode) hiện ở UI của phiên gốc, gắn nhãn `[subagent]`.
+- câu hỏi (luật ask, chạm giới hạn, mọi câu hỏi của manual và accept edits) hiện ở UI của phiên gốc, gắn nhãn `[subagent]`.
 
-Spawn `Agent` luôn qua bộ phân loại (xét nội dung task); ở manual thì hỏi bạn. Trong auto và manual mode, agent `isolated: true`, `extensions: false` hoặc danh sách extension thiếu `pi-auto-mode` bị chặn vì child sẽ chạy không có cổng. Định nghĩa agent được đọc như pi-subagents nạp: `.pi/agents/`, `.agents/agents/` của thư mục làm việc và `agents/` của agent dir (theo thứ tự ưu tiên đó), tên agent là `name:` trong frontmatter (không có thì tên file), không phân biệt hoa thường; `isolated` của frontmatter thắng tham số của lời gọi. Liên kết cha–con dùng sự kiện `subagents:child:session-created` do bản vá runtime của pi-subagents phát.
+Spawn `Agent` luôn qua bộ phân loại (xét nội dung task); ở manual và accept edits thì hỏi bạn. Trong mọi mode trừ bypass, agent `isolated: true`, `extensions: false` hoặc danh sách extension thiếu `pi-auto-mode` bị chặn vì child sẽ chạy không có cổng. Định nghĩa agent được đọc như pi-subagents nạp: `.pi/agents/`, `.agents/agents/` của thư mục làm việc và `agents/` của agent dir (theo thứ tự ưu tiên đó), tên agent là `name:` trong frontmatter (không có thì tên file), không phân biệt hoa thường; `isolated` của frontmatter thắng tham số của lời gọi. Liên kết cha–con dùng sự kiện `subagents:child:session-created` do bản vá runtime của pi-subagents phát.
 
 ## Cấu hình
 

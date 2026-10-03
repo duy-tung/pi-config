@@ -7,9 +7,10 @@ import test from "node:test";
 import { pathToFileURL } from "node:url";
 import { classify, classifyWithFallback } from "../assets/extensions/pi-auto-mode/lib/classifier.ts";
 import { parsePermissionsArgs, permissionsCompletions, TEST_USAGE } from "../assets/extensions/pi-auto-mode/lib/command.ts";
-import { loadConfig, MODES, nextMode, parseGitGuard, parseMode, saveClassifier, spliceDefaults, withClassifier } from "../assets/extensions/pi-auto-mode/lib/config.ts";
-import { answerOf, MANUAL_CHOICES, manualApproval, manualTitle } from "../assets/extensions/pi-auto-mode/lib/manual.ts";
-import { MANUAL_DECLINED, MANUAL_NO_APPROVER, modeInstructions } from "../assets/extensions/pi-auto-mode/lib/messages.ts";
+import { loadConfig, MODES, nextMode, parseGitGuard, parseMode, prompts, saveClassifier, spliceDefaults, withClassifier } from "../assets/extensions/pi-auto-mode/lib/config.ts";
+import { answerOf, manualApproval, manualOptions, manualTitle } from "../assets/extensions/pi-auto-mode/lib/manual.ts";
+import { MANUAL_DECLINED, MANUAL_NO_APPROVER, manualDeclinedWith, modeInstructions } from "../assets/extensions/pi-auto-mode/lib/messages.ts";
+import { addProjectRules, commandPrefix, describeRules, fetchRules, projectRoot, projectRules, removeProjectRule, shellRules } from "../assets/extensions/pi-auto-mode/lib/project-rules.ts";
 import { criticalPathReason, protectedReason, resolveShellPath } from "../assets/extensions/pi-auto-mode/lib/paths.ts";
 import { decide, describeCall, filterDeniedGrep, gitGuardBlock } from "../assets/extensions/pi-auto-mode/lib/policy.ts";
 import { buildSystemPrompt, DEFAULT_SOFT_DENY, parseVerdict, resolveSlots } from "../assets/extensions/pi-auto-mode/lib/prompt.ts";
@@ -888,72 +889,156 @@ test("giới hạn chặn 3 liên tiếp / 20 tổng và duyệt một lần", (
   assert.equal(state.consumeApproval(key), false);
 });
 
-test("mode: ba mode, Shift+Tab xoay vòng manual → auto → bypass, tên của Claude Code", () => {
-  assert.deepEqual(MODES, ["manual", "auto", "bypass"]);
-  assert.deepEqual(MODES.map(nextMode), ["auto", "bypass", "manual"]);
-  for (const [value, mode] of [["manual", "manual"], [" default ", "manual"], ["auto", "auto"], ["bypass", "bypass"], ["bypassPermissions", "bypass"]]) {
+test("mode: bốn mode như Claude Code, Shift+Tab xoay vòng manual → acceptEdits → auto → bypass", () => {
+  assert.deepEqual(MODES, ["manual", "acceptEdits", "auto", "bypass"]);
+  assert.deepEqual(MODES.map(nextMode), ["acceptEdits", "auto", "bypass", "manual"]);
+  assert.deepEqual(MODES.map(prompts), [true, true, false, false]);
+  for (const [value, mode] of [["manual", "manual"], [" default ", "manual"], ["acceptEdits", "acceptEdits"], ["auto", "auto"], ["bypass", "bypass"], ["bypassPermissions", "bypass"]]) {
     assert.equal(parseMode(value), mode, value);
   }
-  for (const value of ["acceptEdits", "plan", "", 3, undefined, "Manual"]) assert.equal(parseMode(value), undefined, String(value));
-  assert.match(modeInstructions("manual"), /^Manual permission mode is active: .*approval prompt.*do not retry it unchanged/su);
-  assert.doesNotMatch(modeInstructions("manual"), /classifier/u);
+  for (const value of ["plan", "dontAsk", "", 3, undefined, "Manual"]) assert.equal(parseMode(value), undefined, String(value));
+  assert.match(modeInstructions("manual"), /^Manual permission mode is active: .*file edits.*approval prompt.*do not retry it unchanged/su);
+  assert.match(modeInstructions("acceptEdits"), /^Accept-edits permission mode is active: .*file edits inside the working directory.*run right away/su);
+  for (const mode of ["manual", "acceptEdits"]) assert.doesNotMatch(modeInstructions(mode), /classifier/u);
 });
 
-test("manual: lối đi nhanh và luật allow chạy ngay, luật deny chặn, phần auto gửi bộ phân loại thì hỏi người dùng", async () => {
+test("manual hỏi cả khi sửa file; acceptEdits cho sửa file và mkdir/touch/cp/mv trong workspace; luật allow, deny, ask như nhau", async () => {
   const ws = workspace();
   try {
-    const pc = context(ws, { mode: "manual", rules: buildRuleSet(["Bash(npm test)"], ["Bash(git push *)"], ["Path(*.env)", "Bash(curl *)"]) });
-    const decision = (call) => decide(call, pc);
-    assert.deepEqual(decision({ toolName: "read", input: { path: "src/a.ts" } }), { kind: "allow", via: "safe tool" });
-    assert.deepEqual(decision({ toolName: "edit", input: { path: "src/a.ts" } }), { kind: "allow", via: "workspace edit" });
-    assert.deepEqual(decision(bash("git status")), { kind: "allow", via: "read-only command" });
-    assert.deepEqual(decision(bash("npm test")), { kind: "allow", via: "allow rule" });
-    assert.equal(decision(bash("curl https://example.com")).kind, "deny");
-    assert.equal(decision({ toolName: "read", input: { path: ".env" } }).kind, "deny");
-    assert.equal(decision(bash("git push origin feature")).kind, "ask");
-    assert.equal(decision(bash("git reset --hard")).kind, "deny", "git guard vẫn chặn ở manual");
-    assert.deepEqual(decision(bash("npm install left-pad")), { kind: "classify", notes: [] });
-    // Lớp bảo vệ mà bypass hỏi (xoá vào đường dẫn quan trọng, lệnh rủi ro) cũng tới bước hỏi, kèm ghi chú.
-    const risky = decision(bash("echo 'x' >> ~/.bashrc"));
-    assert.equal(risky.kind, "classify");
-    assert.match(manualTitle("bash", "echo 'x' >> ~/.bashrc", risky.notes), /^Allow bash: echo 'x' >> ~\/\.bashrc\?\n\nNote: this command .+\.$/su);
-    assert.equal(decide(bash("rm -rf ~/old"), pc).kind, "classify");
+    for (const mode of ["manual", "acceptEdits"]) {
+      const pc = context(ws, { mode, rules: buildRuleSet(["Bash(npm test)"], ["Bash(git push *)"], ["Path(*.env)", "Bash(curl *)"]) });
+      const decision = (call) => decide(call, pc);
+      assert.deepEqual(decision({ toolName: "read", input: { path: "src/a.ts" } }), { kind: "allow", via: "safe tool" }, mode);
+      assert.deepEqual(decision(bash("git status")), { kind: "allow", via: "read-only command" }, mode);
+      assert.deepEqual(decision(bash("npm test")), { kind: "allow", via: "allow rule" }, mode);
+      assert.equal(decision(bash("curl https://example.com")).kind, "deny", mode);
+      assert.equal(decision({ toolName: "read", input: { path: ".env" } }).kind, "deny", mode);
+      assert.equal(decision(bash("git push origin feature")).kind, "ask", mode);
+      assert.equal(decision(bash("git reset --hard")).kind, "deny", `git guard vẫn chặn ở ${mode}`);
+      assert.deepEqual(decision(bash("npm install left-pad")), { kind: "classify", notes: [] }, mode);
+      // Đường dẫn được bảo vệ và ngoài workspace: hỏi ở cả hai mode, kèm ghi chú.
+      assert.equal(decision({ toolName: "write", input: { path: ".git/config" } }).kind, "classify", mode);
+      assert.equal(decision({ toolName: "edit", input: { path: "/etc/hosts" } }).kind, "classify", mode);
+      // Lớp bảo vệ mà bypass hỏi (xoá vào đường dẫn quan trọng, lệnh rủi ro) cũng tới bước hỏi, kèm ghi chú.
+      const risky = decision(bash("echo 'x' >> ~/.bashrc"));
+      assert.equal(risky.kind, "classify", mode);
+      assert.equal(risky.escalate, true, mode);
+      assert.match(manualTitle("bash", "echo 'x' >> ~/.bashrc", risky.notes), /^Allow bash: echo 'x' >> ~\/\.bashrc\?\n\nNote: this command .+\.$/su);
+      assert.equal(decide(bash("rm -rf ~/old"), pc).kind, "classify", mode);
+    }
+    const manual = (call) => decide(call, context(ws, { mode: "manual" }));
+    const accept = (call) => decide(call, context(ws, { mode: "acceptEdits" }));
+    const edit = { toolName: "edit", input: { path: "src/a.ts" } };
+    assert.deepEqual(manual(edit), { kind: "classify", notes: [] }, "manual (mode default của Claude Code) hỏi khi sửa file");
+    assert.deepEqual(accept(edit), { kind: "allow", via: "workspace edit" });
+    assert.deepEqual(decide(edit, context(ws, { mode: "auto" })), { kind: "allow", via: "workspace edit" });
+    assert.equal(manual(bash("mkdir -p build && touch build/x")).kind, "classify");
+    assert.deepEqual(accept(bash("mkdir -p build && touch build/x")), { kind: "allow", via: "workspace file operation" });
     // Luật allow chạy code tùy ý (auto bỏ) có hiệu lực ở manual khi index.ts gộp lại phần stripped.
     const set = buildRuleSet(["Agent", "Bash(npm run *)"], [], []);
-    const manual = context(ws, { mode: "manual", rules: { ...set, allow: [...set.allow, ...set.stripped] } });
-    assert.deepEqual(decide({ toolName: "Agent", input: { prompt: "x" } }, manual), { kind: "allow", via: "allow rule" });
-    assert.deepEqual(decide(bash("npm run build"), manual), { kind: "allow", via: "allow rule" });
+    const withStripped = context(ws, { mode: "manual", rules: { ...set, allow: [...set.allow, ...set.stripped] } });
+    assert.deepEqual(decide({ toolName: "Agent", input: { prompt: "x" } }, withStripped), { kind: "allow", via: "allow rule" });
+    assert.deepEqual(decide(bash("npm run build"), withStripped), { kind: "allow", via: "allow rule" });
     assert.equal(decide({ toolName: "Agent", input: { prompt: "x" } }, context(ws, { rules: set })).kind, "classify", "auto bỏ luật allow Agent");
   } finally {
     ws.cleanup();
   }
 });
 
-test("manual: Allow once, Allow for this session (cùng khóa lời gọi), Deny, không có UI thì chặn", async () => {
-  assert.deepEqual(Object.values(MANUAL_CHOICES), ["Allow once", "Allow for this session", "Deny"]);
-  assert.deepEqual(["Allow once", "Allow for this session", "Deny", undefined, "?"].map(answerOf), ["once", "session", "deny", "deny", "deny"]);
+test("hộp hỏi như Claude Code: Yes, don't ask again, switch to auto, No, No kèm lời nhắn; không có UI thì chặn", async () => {
+  const always = "Yes, and don't ask again for `npm install` commands in app";
+  const options = manualOptions({ always, auto: true, comment: true });
+  assert.deepEqual(options.map((item) => item.label), ["Yes", always, "Yes, and switch to auto mode", "No", "No, and tell Pi what to do differently…"]);
+  assert.deepEqual(manualOptions({ auto: false, comment: false }).map((item) => item.label), ["Yes", "No"], "lệnh rủi ro không có lựa chọn nhớ");
+  assert.deepEqual(["Yes", always, "Yes, and switch to auto mode", "No", "No, and tell Pi what to do differently…", undefined, "?"].map((label) => answerOf(options, label)),
+    ["once", "always", "auto", "deny", "comment", "deny", "deny"]);
   const approvals = new Set();
-  const asked = [];
-  const ask = (answer) => async (title) => {
-    asked.push(title);
-    return answer;
-  };
+  const asked = [], effects = [];
   const key = callKey("bash", { command: "npm install" });
-  const request = (answer, callKeyValue = key) => ({ key: callKeyValue, title: "Allow bash: npm install?", approvals, ask: answer ? ask(answer) : undefined });
+  const request = (answer, extra = {}) => ({
+    key, title: "Allow bash: npm install?", approvals, options,
+    ask: answer ? async (title) => { asked.push(title); return answer; } : undefined, ...extra,
+  });
   assert.deepEqual(await manualApproval(request("once")), { kind: "allow", via: "user" });
-  assert.equal(approvals.size, 0, "Allow once không nhớ lời gọi");
+  assert.equal(approvals.size, 0, "Yes không nhớ lời gọi");
   assert.deepEqual(await manualApproval(request("deny")), { kind: "block", reason: MANUAL_DECLINED, declined: true });
   assert.deepEqual(await manualApproval(request(undefined)), { kind: "block", reason: MANUAL_NO_APPROVER, declined: false });
-  assert.deepEqual(await manualApproval(request("session")), { kind: "allow", via: "user (session)" });
-  assert.equal(asked.length, 3);
-  // Đúng lời gọi đó (thứ tự khóa của input không quan trọng): không hỏi lại, kể cả khi không có UI.
-  assert.deepEqual(await manualApproval(request(undefined, callKey("bash", { command: "npm install" }))), { kind: "allow", via: "session approval" });
-  assert.equal(asked.length, 3);
+  // Lời nhắn khi từ chối tới được model; bỏ trống thì như No.
+  assert.deepEqual(await manualApproval(request("comment", { comment: async () => "  dùng pnpm  " })),
+    { kind: "block", reason: manualDeclinedWith("dùng pnpm"), declined: true, comment: "dùng pnpm" });
+  assert.match(manualDeclinedWith("dùng pnpm"), /^The user declined this action and said: "dùng pnpm"\. Follow that guidance/u);
+  assert.deepEqual(await manualApproval(request("comment", { comment: async () => "" })), { kind: "block", reason: MANUAL_DECLINED, declined: true });
+  assert.deepEqual(await manualApproval(request("auto", { switchToAuto: () => effects.push("auto") })), { kind: "allow", via: "user (switched to auto)" });
+  // "Don't ask again" có hành động riêng (lưu luật, chuyển acceptEdits) thì không nhớ lời gọi.
+  assert.deepEqual(await manualApproval(request("always", { always: () => effects.push("saved") })), { kind: "allow", via: "user (always)" });
+  assert.deepEqual([effects, approvals.size], [["auto", "saved"], 0]);
+  // Không có hành động riêng: nhớ đúng lời gọi đó tới hết phiên, không hỏi lại kể cả khi không có UI.
+  assert.deepEqual(await manualApproval(request("always")), { kind: "allow", via: "user (always)" });
+  const before = asked.length;
+  assert.deepEqual(await manualApproval(request(undefined)), { kind: "allow", via: "session approval" });
+  assert.equal(asked.length, before);
   // Lời gọi khác (đổi input) vẫn hỏi.
-  assert.deepEqual(await manualApproval(request("deny", callKey("bash", { command: "npm install -g x" }))), { kind: "block", reason: MANUAL_DECLINED, declined: true });
-  assert.equal(asked.length, 4);
-  assert.match(MANUAL_NO_APPROVER, /no one can answer/u);
-  assert.match(MANUAL_DECLINED, /declined/u);
+  assert.deepEqual(await manualApproval({ ...request("deny"), key: callKey("bash", { command: "npm install -g x" }) }), { kind: "block", reason: MANUAL_DECLINED, declined: true });
+});
+
+test("don't ask again: luật theo tiền tố lệnh hoặc domain, lưu theo project ngoài repo", () => {
+  const ws = workspace();
+  try {
+    const rules = (command) => shellRules(analyzeShell(command));
+    assert.deepEqual(rules("npm install left-pad"), ["Bash(npm install *)"]);
+    assert.deepEqual(rules("npm run build -- --prod"), ["Bash(npm run build *)"]);
+    assert.deepEqual(rules("git commit -m 'x'"), ["Bash(git commit *)"]);
+    assert.deepEqual(rules("make"), ["Bash(make *)"]);
+    assert.deepEqual(rules("cargo build --release"), ["Bash(cargo build *)"]);
+    // Lệnh con chỉ với công cụ có lệnh con: tên file không vào tiền tố.
+    assert.deepEqual(rules("touch notes.md"), ["Bash(touch *)"]);
+    assert.deepEqual(rules("prettier --write src"), ["Bash(prettier *)"]);
+    // Lệnh phá huỷ, ra mạng hay trình thông dịch: đúng nguyên lệnh.
+    assert.deepEqual(rules("rm -rf build"), ["Bash(rm -rf build)"]);
+    assert.deepEqual(rules("python3 scripts/gen.py --out x"), ["Bash(python3 scripts/gen.py --out x)"]);
+    assert.deepEqual(rules("curl -fsSL https://example.com/a"), ["Bash(curl -fsSL https://example.com/a)"]);
+    assert.equal(allowCoversShell(buildRuleSet(rules("rm -rf build"), [], []).allow, ["rm -rf build/x"]), false);
+    // Lệnh con chỉ đọc không cần luật; mỗi lệnh con còn lại một luật.
+    assert.deepEqual(rules("git status && git add -A && git commit -m x"), ["Bash(git add *)", "Bash(git commit *)"]);
+    // Không đề xuất: biến, $(), sudo/bash -c (lệnh bọc), chương trình theo đường dẫn, gán biến, chuyển hướng, glob.
+    for (const command of ['rm "$X"', "echo $(date)", "sudo apt install x", "bash -c 'npm i'", "./build.sh", "FOO=1 npm test", "npm test > out.txt", "rm *.log"]) {
+      assert.equal(rules(command), undefined, command);
+    }
+    assert.equal(commandPrefix({ words: ["npm", "-g", "i"], literal: [true, true, true], glob: [false, false, false], assignments: [], redirects: [] }), "npm");
+    // Luật sinh ra khớp lại chính lệnh và lệnh cùng tiền tố, không khớp lệnh khác.
+    const set = buildRuleSet(rules("npm install left-pad"), [], []);
+    assert.equal(allowCoversShell(set.allow, ["npm install lodash"]), true);
+    assert.equal(allowCoversShell(set.allow, ["npm install"]), true);
+    assert.equal(allowCoversShell(set.allow, ["npm uninstall x"]), false);
+    assert.deepEqual(fetchRules(["https://Docs.Example.com/a", "https://docs.example.com/b"]), ["WebFetch(domain:docs.example.com)"]);
+    assert.equal(fetchRules(["https://a.example/x", "https://b.example/y"]), undefined);
+    assert.equal(fetchRules(["file:///etc/passwd"]), undefined);
+    assert.equal(describeRules(["Bash(git add *)", "Bash(git commit *)"]), "`git add`, `git commit`");
+    assert.equal(describeRules(["WebFetch(domain:docs.example.com)"]), "`docs.example.com`");
+    // Gốc project: thư mục có .git (cả file .git của worktree), không có thì cwd.
+    const repo = path.join(ws.dir, "repo"), nested = path.join(repo, "src", "deep"), loose = path.join(ws.dir, "loose");
+    fs.mkdirSync(nested, { recursive: true });
+    fs.mkdirSync(loose);
+    fs.writeFileSync(path.join(repo, ".git"), "gitdir: /elsewhere\n");
+    assert.equal(projectRoot(nested), repo);
+    assert.equal(projectRoot(loose), loose);
+    const stateDir = path.join(ws.dir, "state");
+    assert.deepEqual(projectRules(stateDir, nested), []);
+    addProjectRules(stateDir, nested, ["Bash(npm install *)"]);
+    addProjectRules(stateDir, repo, ["Bash(npm install *)", "WebFetch(domain:docs.example.com)"]);
+    assert.deepEqual(projectRules(stateDir, nested), ["Bash(npm install *)", "WebFetch(domain:docs.example.com)"]);
+    assert.deepEqual(projectRules(stateDir, loose), [], "project khác không thấy luật");
+    if (process.platform !== "win32") assert.equal(fs.statSync(path.join(stateDir, "project-rules.json")).mode & 0o777, 0o600);
+    removeProjectRule(stateDir, repo, "Bash(npm install *)");
+    assert.deepEqual(projectRules(stateDir, repo), ["WebFetch(domain:docs.example.com)"]);
+    removeProjectRule(stateDir, repo, "WebFetch(domain:docs.example.com)");
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(stateDir, "project-rules.json"), "utf8")), { projects: {} });
+    // File hỏng: không có luật, không ném.
+    fs.writeFileSync(path.join(stateDir, "project-rules.json"), "{ hỏng");
+    assert.deepEqual(projectRules(stateDir, repo), []);
+  } finally {
+    ws.cleanup();
+  }
 });
 
 test("/permissions: tham số test <lệnh> và gợi ý tham số", () => {
@@ -1052,7 +1137,7 @@ test("cấu hình: đọc settings người dùng, bỏ qua giá trị sai", () 
     assert.equal(config.model, "openai-codex/gpt-6.1-sol");
     assert.deepEqual(config.skills, ["~/skills"]);
     assert.equal(loadConfig(agentDir, { PI_AUTO_MODE_DISABLE: "1" }).enabled, false);
-    for (const [value, mode] of [["default", "manual"], ["manual", "manual"], ["acceptEdits", "auto"]]) {
+    for (const [value, mode] of [["default", "manual"], ["manual", "manual"], ["acceptEdits", "acceptEdits"], ["plan", "auto"]]) {
       fs.writeFileSync(path.join(agentDir, "settings.json"), JSON.stringify({ permissions: { defaultMode: value } }));
       assert.equal(loadConfig(agentDir, {}).defaultMode, mode, value);
     }

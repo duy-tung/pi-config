@@ -518,7 +518,8 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
       const guarded = protectedReason(file, pc.roots);
       if (guarded) notes.push(`writes ${guarded}`);
       else if (!insideAny(pc.roots, file)) notes.push("writes outside the working directory");
-      else return { kind: "allow", via: "workspace edit" };
+      // Manual (mode default của Claude Code) hỏi cả khi sửa file trong workspace; acceptEdits và auto cho chạy ngay.
+      else if (pc.mode !== "manual") return { kind: "allow", via: "workspace edit" };
       return classify(!!guarded);
     }
     case "shell": {
@@ -531,7 +532,7 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
         if (analysis.plain) {
           const commands = analysis.commands.filter((command) => !isReadOnlyCommand(command));
           if (allowCoversShell(pc.rules.allow, commands.map(commandText))) return { kind: "allow", via: "allow rule" };
-          if (workspaceFileOps(analysis.commands, pc, home)) return { kind: "allow", via: "workspace file operation" };
+          if (pc.mode !== "manual" && workspaceFileOps(analysis.commands, pc, home)) return { kind: "allow", via: "workspace file operation" };
         }
       }
       if (!analysis.plain && analysis.problems.length) notes.push(`shell constructs: ${analysis.problems.slice(0, 4).join(", ")}`);

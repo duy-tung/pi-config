@@ -2,13 +2,17 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * manual: hỏi người dùng thay cho bộ phân loại (như mode default của Claude Code); auto: bộ phân loại duyệt;
- * bypass: không kiểm, trừ luật deny/ask và vài lớp bảo vệ.
+ * Như Claude Code: manual (mode default) hỏi người dùng thay cho bộ phân loại, kể cả sửa file; acceptEdits như manual
+ * nhưng sửa file và mkdir/touch/cp/mv trong workspace chạy ngay; auto: bộ phân loại duyệt; bypass: không kiểm, trừ
+ * luật deny/ask và vài lớp bảo vệ.
  */
-export type PermissionMode = "manual" | "auto" | "bypass";
+export type PermissionMode = "manual" | "acceptEdits" | "auto" | "bypass";
 
-/** Thứ tự Shift+Tab: manual → auto → bypass → manual. */
-export const MODES: PermissionMode[] = ["manual", "auto", "bypass"];
+/** Thứ tự Shift+Tab: manual → acceptEdits → auto → bypass → manual. */
+export const MODES: PermissionMode[] = ["manual", "acceptEdits", "auto", "bypass"];
+
+/** Mode hỏi người dùng thay cho bộ phân loại (không gọi model nào để duyệt). */
+export const prompts = (mode: PermissionMode): boolean => mode === "manual" || mode === "acceptEdits";
 
 export function nextMode(mode: PermissionMode): PermissionMode {
   return MODES[(MODES.indexOf(mode) + 1) % MODES.length];
@@ -84,13 +88,14 @@ function strings(value: unknown): string[] | undefined {
 }
 
 /**
- * `manual`, `auto`, `bypass` và tên của Claude Code (`default` = manual, `bypassPermissions` = bypass), bỏ khoảng
- * trắng hai đầu; giá trị khác là undefined.
+ * `manual`, `acceptEdits`, `auto`, `bypass` và tên của Claude Code (`default` = manual, `bypassPermissions` = bypass),
+ * bỏ khoảng trắng hai đầu; giá trị khác là undefined.
  */
 export function parseMode(value: unknown): PermissionMode | undefined {
   const text = typeof value === "string" ? value.trim() : value;
   if (text === "bypassPermissions" || text === "bypass") return "bypass";
   if (text === "manual" || text === "default") return "manual";
+  if (text === "acceptEdits") return "acceptEdits";
   if (text === "auto") return "auto";
   return undefined;
 }
