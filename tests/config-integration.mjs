@@ -50,9 +50,9 @@ settings.autoMode = { ...settings.autoMode, model: "config-test/worker", stateDi
 Object.assign(settings, {
   defaultProvider: "config-test", defaultModel: "parent", defaultThinkingLevel: "off",
   enabledModels: ["config-test/parent", "config-test/worker"],
-  // Giữ pi-rewind, claude-usage, model-roles và pi-auto-mode (nạp sau cùng) của bản cài;
+  // Giữ pi-rewind, claude-usage và pi-auto-mode (nạp sau cùng) của bản cài;
   // các extension giao diện khác không cần trong RPC.
-  extensions: [...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && /\/(?:pi-rewind|claude-usage|model-roles)$/u.test(entry.replaceAll("\\", "/"))),
+  extensions: [...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && /\/(?:pi-rewind|claude-usage)$/u.test(entry.replaceAll("\\", "/"))),
     fileURLToPath(new URL("./scripted-provider.ts", import.meta.url)),
     ...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && entry.replaceAll("\\", "/").endsWith("/pi-auto-mode")),
     // Giữ các loại trừ extension dựng sẵn (-builtin:mcp...) của bản cài.
@@ -220,9 +220,10 @@ async function check(name, fn) {
 }
 await check("single session exposes slash commands and only one model delegation system", async () => {
   const commands = session.extensionRunner.getRegisteredCommands().map(command => command.name);
-  for (const name of ["bg", "jobs", "logs", "kill", "advisor", "advisor-off", "rewind", "checkpoint", "undo", "redo", "clear", "permissions", "claude-usage", "models"])
+  for (const name of ["bg", "jobs", "logs", "kill", "advisor", "advisor-off", "rewind", "checkpoint", "undo", "redo", "clear", "permissions", "claude-usage", "agents"])
     assert.ok(commands.includes(name), `Missing /${name}`);
-  // /permissions là menu duy nhất của cổng permission (gộp /auto-mode cũ).
+  // /permissions là menu duy nhất của cổng permission (gộp /auto-mode cũ). Model của vai đổi trong /agents, không có /models.
+  assert.ok(!commands.includes("models"), "/models đã gỡ");
   assert.ok(!commands.includes("auto-mode"), "/auto-mode đã gộp vào /permissions");
   assert.equal(new Set(commands).size, commands.length);
   const tools = session.getAllTools().map(tool => tool.name);

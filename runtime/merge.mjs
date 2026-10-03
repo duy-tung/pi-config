@@ -4,8 +4,8 @@ import crypto from 'node:crypto';
 import {joinRole, splitRole} from './model-roles.mjs';
 
 /**
- * Gộp ba chiều cho file cấu hình JSON và file role, dùng chung cho installer và /models (bản cài chép file này
- * vào <root>/bin). Các hàm gộp không đọc/ghi file; planConfigFile và writeConfigPlan ở cuối file làm việc với file.
+ * Gộp ba chiều cho file cấu hình JSON và file role của installer (bản cài chép file này vào <root>/bin cho
+ * pi-doctor). Các hàm gộp không đọc/ghi file; planConfigFile và writeConfigPlan ở cuối file làm việc với file.
  * base: mặc định installer ghi lần trước (<root>/state/defaults); next: mặc định mới; current: file hiện tại,
  * mà Pi và người dùng có thể đã sửa (Pi ghi lại settings.json khi đổi model, thinking, theme...).
  * Giá trị undefined nghĩa là thiếu khóa. Không có base thì gộp cộng dồn: giữ mọi giá trị hiện có, chỉ thêm phần thiếu.
@@ -219,7 +219,7 @@ export function describeMerge({file, changes = [], conflicts = [], additive = fa
   return [header, ...changes.map(change => `  - ${formatChange(change)}`), ...conflicts.map(conflict => `  - ${formatConflict(conflict, additive)}`)];
 }
 
-/** SHA-256 hex; dùng chung cho installer, /models và doctor. */
+/** SHA-256 hex; dùng chung cho installer và doctor. */
 export const sha256 = data => crypto.createHash('sha256').update(data).digest('hex');
 
 /** Base (mặc định đã ghi lần cài trước) của một file được gộp, theo đường dẫn tuyệt đối; giữ đuôi của file. */
@@ -244,13 +244,12 @@ export function backupFile(root, file) {
  * Kế hoạch cập nhật một file cấu hình JSON hoặc file role, chưa ghi gì: gộp mặc định mới (content) với file hiện tại
  * theo base. recorded là checksum installer ghi lần trước, dùng khi chưa có base. Giữ nguyên (preserved) file không
  * đọc được (JSON hỏng, frontmatter không phải dạng key: value) và file có sẵn trước khi cài mà installer chưa từng
- * ghi (không có base lẫn checksum). force(text) sửa file hiện tại trước khi gộp: /models ép model/thinking của vai
- * vừa đổi, kể cả khi người dùng đã đổi vai đó trong file gốc.
+ * ghi (không có base lẫn checksum).
  * Kết quả: content là nội dung mới (undefined: giữ file), base là mặc định cần lưu (undefined: base đã đúng), recorded
  * là checksum của mặc định mới, không phải của file sau khi gộp: file còn phần người dùng sửa không bao giờ khớp nó,
  * nên vẫn là "đã sửa" khi mất base và không bị lưu trữ khi installer thôi quản lý file.
  */
-export function planConfigFile({root, file, content, recorded, force}) {
+export function planConfigFile({root, file, content, recorded}) {
   const exists = fs.existsSync(file);
   if (exists && fs.lstatSync(file).isSymbolicLink()) throw new Error(`Không ghi đè symlink: ${file}`);
   const current = exists ? fs.readFileSync(file) : undefined;
@@ -260,13 +259,12 @@ export function planConfigFile({root, file, content, recorded, force}) {
   if (current !== undefined && base === undefined && recorded === undefined && sha256(current) !== sha256(content)) return kept('foreign');
   const unedited = current !== undefined && sha256(current) === recorded;
   const text = current?.toString('utf8');
-  const edited = text === undefined || !force ? text : force(text);
   const plan = path.extname(file) === '.md'
-    ? reconcileRole({next: content, current: edited, base, unedited})
-    : reconcileJson({next: content, current: edited, base, unedited, settings: path.basename(file) === 'settings.json'});
+    ? reconcileRole({next: content, current: text, base, unedited})
+    : reconcileJson({next: content, current: text, base, unedited, settings: path.basename(file) === 'settings.json'});
   if (plan.invalid) return kept('invalid');
   return {
-    file, baseFile, content: plan.content ?? (edited !== text ? edited : undefined), base: base === content ? undefined : content,
+    file, baseFile, content: plan.content, base: base === content ? undefined : content,
     recorded: sha256(content), changes: plan.changes, conflicts: plan.conflicts, additive: plan.additive === true,
   };
 }

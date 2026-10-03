@@ -8,7 +8,7 @@ Pi dùng tool `Agent` của `@tintinweb/pi-subagents` 0.19.0. Parent Claude Opus
 | `worker` | GPT-6.1 Sol/max | Triển khai phần việc đã chốt hoặc sửa lỗi (tái hiện, tìm nguyên nhân, sửa, kiểm hồi quy); sửa file và kiểm thử |
 | `reviewer` | GPT-6 Astra/high | Review độc lập, chỉ đọc; bash để chạy `git diff`, test sẵn có và script thử trong `/tmp` |
 
-GLM dùng provider `opencode-go` trực tiếp trong Pi. Opus 5.5 và GLM dùng context 1M của catalog; Astra/Sol nâng lên 872K. File role nằm trong `agents/` của Pi; model/thinking của chúng sinh từ `model-roles.json` ([models.md](models.md)). `pi-doctor` in model/thinking thật của từng role, cảnh báo role lệch so với `model-roles.json` và đánh dấu role đã sửa so với bản cài.
+GLM dùng provider `opencode-go` trực tiếp trong Pi. Opus 5.5 và GLM dùng context 1M của catalog; Astra/Sol nâng lên 872K. File role nằm trong `agents/` của Pi. Đổi model/thinking của role trong `/agents` → Agent types → chọn role → Model/Thinking ([models.md](models.md)); cài lại giữ giá trị đã đổi. `pi-doctor` in model/thinking đang có hiệu lực của từng role và kiểm trong catalog.
 
 ## Giao việc
 
@@ -21,9 +21,9 @@ GLM dùng provider `opencode-go` trực tiếp trong Pi. Opus 5.5 và GLM dùng 
 
 Parent có thể gọi `Agent` với `subagent_type` tương ứng. Mỗi prompt giao việc cần mục tiêu, phạm vi file, ràng buộc và tiêu chí nghiệm thu. Researcher chuyển quyết định kiến trúc hoặc yêu cầu chưa rõ về parent.
 
-Model/thinking ghim trong file role được ưu tiên hơn tham số tool. Model trong file role không dùng được thì pi-subagents lặng lẽ chạy role đó bằng model của parent; installer, `/models` và `pi-doctor` kiểm model trong catalog của Pi để bắt lỗi này. Chọn role theo công việc và kiểm model thực trong kết quả khi tùy chỉnh cấu hình.
+Model/thinking ghim trong file role được ưu tiên hơn tham số tool. Model trong file role không dùng được thì pi-subagents lặng lẽ chạy role đó bằng model của parent; `pi-doctor` kiểm model trong catalog của Pi để bắt lỗi này, và danh sách Agent types của `/agents` đánh dấu `(unavailable, fallback: inherit)`. Chọn role theo công việc và kiểm model thực trong kết quả khi tùy chỉnh cấu hình.
 
-`/agents` quản lý agent; `get_subagent_result` lấy kết quả; `steer_subagent` gửi bổ sung theo ID. Khi mở rộng (`Ctrl+O`), kết quả của `Agent`, thông báo completion và `get_subagent_result` hiện dạng Markdown (tiêu đề, danh sách, code, bảng); dạng thu gọn, lỗi và agent đang chạy giữ văn bản thô như trước. Đây là bản vá `src/index.ts` của pi-subagents, chỉ đổi phần hiển thị, không đổi nội dung trả cho model.
+`/agents` quản lý agent, kể cả đổi model/thinking của từng agent (bản vá: Model chọn trong catalog có ô tìm, Thinking chỉ các mức model hỗ trợ; chỉ ghi hai dòng đó của file); `get_subagent_result` lấy kết quả; `steer_subagent` gửi bổ sung theo ID. Khi mở rộng (`Ctrl+O`), kết quả của `Agent`, thông báo completion và `get_subagent_result` hiện dạng Markdown (tiêu đề, danh sách, code, bảng); dạng thu gọn, lỗi và agent đang chạy giữ văn bản thô như trước. Đây là bản vá `src/index.ts` của pi-subagents, chỉ đổi phần hiển thị, không đổi nội dung trả cho model.
 
 Gõ `@role nội dung` ở prompt để giao việc thẳng cho role; agent đang chạy thì nhận tin nhắn đó. Agent khởi động ngay, task là đúng nội dung bạn gõ, không gọi model parent (`agentMentions: "direct"`). Agent không thấy hội thoại, nên nội dung cần tự đủ ý. Agent khởi động từ mention luôn chạy nền, kể cả worker, và kết quả về parent qua thông báo completion. Lời gọi `Agent` của mention không qua bộ phân loại vì chính người dùng đã gõ `@role`; agent con vẫn có cổng permission của role.
 

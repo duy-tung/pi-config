@@ -19,7 +19,7 @@ import { callKey, PermissionState } from "../assets/extensions/pi-auto-mode/lib/
 import { agentIsUngated, isChild, linkChild, registerRoot, rootFor, unregisterRoot } from "../assets/extensions/pi-auto-mode/lib/subagents.ts";
 import { buildTranscript, ENTRY_TYPE, humanMessages } from "../assets/extensions/pi-auto-mode/lib/transcript.ts";
 import { buildConfiguration } from "../lib/config.mjs";
-import { defaultRoles } from "./install-fixture.mjs";
+import { modelDefaults } from "./install-fixture.mjs";
 
 function workspace() {
   const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "pi-auto-mode-test-")));
@@ -393,7 +393,7 @@ test("luật deny của installer chặn cả thư mục bí mật và mọi c�
   const ws = workspace();
   try {
     const agentDir = path.join(ws.home, ".pi", "agent");
-    const files = buildConfiguration({ root: path.join(ws.dir, "root"), agentDir, nodePath: process.execPath, home: ws.home, modelRoles: defaultRoles });
+    const files = buildConfiguration({ root: path.join(ws.dir, "root"), agentDir, nodePath: process.execPath, home: ws.home, modelDefaults });
     const { permissions } = JSON.parse(files.find((file) => file.path === path.join(agentDir, "settings.json")).content);
     const rules = buildRuleSet(permissions.allow, permissions.ask, permissions.deny);
     for (const mode of ["auto", "bypass"]) {
@@ -540,7 +540,7 @@ test("deny đường dẫn: đường dẫn sau cd/env -C/git -C/tar -C, <rev>:<
   const ws = workspace();
   try {
     const agentDir = path.join(ws.home, ".pi", "agent");
-    const files = buildConfiguration({ root: path.join(ws.dir, "root"), agentDir, nodePath: process.execPath, home: ws.home, modelRoles: defaultRoles });
+    const files = buildConfiguration({ root: path.join(ws.dir, "root"), agentDir, nodePath: process.execPath, home: ws.home, modelDefaults });
     const { permissions } = JSON.parse(files.find((file) => file.path === path.join(agentDir, "settings.json")).content);
     const rules = buildRuleSet(permissions.allow, permissions.ask, permissions.deny);
     fs.mkdirSync(path.join(ws.home, ".aws"), { recursive: true });

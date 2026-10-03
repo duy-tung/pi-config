@@ -161,7 +161,7 @@ const role = ({model = 'openai-codex/gpt-6.1-sol', thinking = 'max', tools = '"r
 
 test('file role: sửa dòng model không giữ cả file; prompt và khóa khác của bản mới vẫn vào', () => {
   const base = role(), next = role({model: 'anthropic/claude-opus-5-5', prompt: 'Prompt v2.'});
-  // Người dùng đổi thinking và tools; bản mới đổi model (từ model-roles.json) và prompt.
+  // Người dùng đổi thinking và tools; bản mới đổi model (mặc định của bản phát hành) và prompt.
   const current = role({thinking: 'high', tools: '"read"'});
   const plan = reconcileRole({next, current, base});
   assert.equal(plan.content, role({model: 'anthropic/claude-opus-5-5', thinking: 'high', tools: '"read"', prompt: 'Prompt v2.'}));

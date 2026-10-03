@@ -26,5 +26,5 @@ test('khóa cài đặt: khóa của tiến trình đã chết được gỡ; ti
   assert.deepEqual(fs.readdirSync(root), []);
   // File khóa rỗng (không rõ PID): không tự gỡ.
   fs.writeFileSync(lock, '');
-  assert.throws(() => acquireInstallLock(root), /Installer hoặc \/models khác đang chạy: /u);
+  assert.throws(() => acquireInstallLock(root), /Installer khác đang chạy: /u);
 });

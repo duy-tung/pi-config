@@ -5,7 +5,7 @@ import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import test from 'node:test';
 import {buildConfiguration} from '../lib/config.mjs';
-import {defaultRoles} from './install-fixture.mjs';
+import {modelDefaults} from './install-fixture.mjs';
 
 const root = process.env.PI_CONFIG_TEST_ROOT;
 test('Pi: Opus 5.5/high 1M mặc định, Codex Sol/Astra 872K và advisor payload', {skip: !root}, async () => {
@@ -15,7 +15,7 @@ test('Pi: Opus 5.5/high 1M mặc định, Codex Sol/Astra 872K và advisor paylo
   process.env.PI_OFFLINE = '1';
   globalThis.fetch = () => { throw new Error('Unexpected network in offline model test'); };
   try {
-    const generated = buildConfiguration({root: temp, agentDir: path.join(temp, 'main'), nodePath: process.execPath, home: temp, modelRoles: defaultRoles});
+    const generated = buildConfiguration({root: temp, agentDir: path.join(temp, 'main'), nodePath: process.execPath, home: temp, modelDefaults});
     {
       const runtimeName = 'current';
       const modules = path.join(root, `runtimes/${runtimeName}/node_modules`);
