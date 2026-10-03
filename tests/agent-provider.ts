@@ -23,9 +23,8 @@ export default function (pi) {
       // Bộ phân loại của pi-auto-mode: trả lời từ hàng đợi riêng (mặc định cho phép).
       const serialized = JSON.stringify(context);
       const classifier = serialized.includes("You are the permission classifier for Pi");
-      // Advisor và goal auditor có system prompt riêng; hội thoại dựng lại vẫn chứa CASE của parent nên tách trước.
-      const role = classifier ? "classifier" : serialized.includes("You are the Advisor: a senior engineer") ? "advisor"
-        : serialized.includes("You are a read-only completion auditor") ? "auditor" : undefined;
+      // Advisor có system prompt riêng; hội thoại dựng lại vẫn chứa CASE của parent nên tách trước.
+      const role = classifier ? "classifier" : serialized.includes("You are the Advisor: a senior engineer") ? "advisor" : undefined;
       const key = role ?? [...text.matchAll(/CASE:([a-z0-9_-]+)/g)].at(-1)?.[1] ?? control.fallbackKey;
       void (async () => {
         await Promise.resolve(); // Phát sự kiện sau khi agent đã nhận stream.

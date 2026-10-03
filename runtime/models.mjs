@@ -25,7 +25,7 @@ export function planModelFiles({root, agentDir, state, roles, force = []}) {
   const models = nativeValues(roles);
   const plans = [], missing = [];
   const targets = [
-    ['settings', 'settings.json'], ['advisor', 'advisor.json'], ['goal', 'pi-goal-x-settings.json'],
+    ['settings', 'settings.json'], ['advisor', 'advisor.json'],
     ...SUBAGENT_ROLES.map(role => [role, path.join('agents', `${role}.md`)]),
   ];
   for (const [kind, name] of targets) {
@@ -64,10 +64,10 @@ async function withInstallLock(root, fn) {
 }
 
 // Khi nào một phiên Pi đang chạy nhận giá trị mới: pi-subagents đọc lại file role ở mỗi lần gọi Agent, advisor đọc lại
-// advisor.json ở mỗi lần hỏi; phiên chính, pi-goal-x và auto mode đọc cấu hình khi mở phiên.
+// advisor.json ở mỗi lần hỏi; phiên chính và auto mode đọc cấu hình khi mở phiên.
 const APPLIED_AT = {
   ...Object.fromEntries(SUBAGENT_ROLES.map(name => [name, 'ở lần gọi Agent kế tiếp'])), advisor: 'ở lần hỏi advisor kế tiếp',
-  main: 'ở phiên Pi mở sau', auditor: 'ở phiên Pi mở sau', oracle: 'ở phiên Pi mở sau', autoMode: 'ở phiên Pi mở sau',
+  main: 'ở phiên Pi mở sau', autoMode: 'ở phiên Pi mở sau',
 };
 
 /**
@@ -116,6 +116,7 @@ async function applyChange({root, agentDir, catalog, effects, out, dryRun, chang
     const {config, force} = edit(current.config, change);
     const after = resolveModelRoles(presets, config);
     if (after.errors.length) throw new Error(`${current.file} sẽ không hợp lệ:\n- ${after.errors.join('\n- ')}`);
+    for (const warning of after.warnings) out.warn(`cảnh báo: ${current.file}: ${warning}`);
     const report = await catalog.check(after.roles, {logins: true});
     if (report.errors.length) throw new Error(`Model không dùng được, chưa ghi gì:\n- ${report.errors.join('\n- ')}`);
     const statePath = path.join(root, 'install-state.json');

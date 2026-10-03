@@ -1,6 +1,0 @@
-{
-  "maxAutonomousRuns": 10,
-  "oracle": {
-    "enabled": true
-  }
-}

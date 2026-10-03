@@ -7,12 +7,14 @@ import {writeAtomic} from './merge.mjs';
  * Model và mức thinking của mọi vai ở một chỗ:
  * - preset có sẵn trong assets/configs/model-presets.json (cập nhật theo bản phát hành);
  * - <agent-dir>/model-roles.json của người dùng: preset đang chọn và ghi đè theo vai.
- * Installer sinh các file gốc (settings.json, agents/*.md, advisor.json, pi-goal-x-settings.json) từ kết quả resolve;
+ * Installer sinh các file gốc (settings.json, agents/*.md, advisor.json) từ kết quả resolve;
  * /models (runtime/models.mjs) đổi model-roles.json và áp ngay vào các file gốc; /models và pi-doctor so kết quả
  * resolve với giá trị đang có hiệu lực trong các file gốc.
  */
 
-export const ROLES = ['main', 'researcher', 'worker', 'debugger', 'reviewer', 'advisor', 'auditor', 'oracle', 'autoMode'];
+export const ROLES = ['main', 'researcher', 'worker', 'debugger', 'reviewer', 'advisor', 'autoMode'];
+// Vai đã gỡ khỏi pi-config: ghi đè còn sót trong model-roles.json bị bỏ qua kèm cảnh báo, không làm hỏng cấu hình.
+export const REMOVED_ROLES = ['auditor', 'oracle'];
 export const SUBAGENT_ROLES = ['researcher', 'worker', 'debugger', 'reviewer'];
 export const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 const FIELDS = ['model', 'thinking'];
@@ -22,9 +24,7 @@ const defaultModelRoles = () => ({preset: DEFAULT_PRESET, roles: {}});
 
 // Thứ tự suy ra enabledModels (Ctrl+P, scopeModels của pi-subagents) và thinking mặc định theo model:
 // model của phiên chính đứng đầu; model của auto mode không vào danh sách chọn model.
-const MODEL_ORDER = ['main', 'worker', 'debugger', 'reviewer', 'researcher', 'advisor', 'auditor', 'oracle'];
-// pi-goal-x chỉ nhận tới xhigh; giá trị lạ bị bỏ và auditor chạy ở medium.
-const goalThinking = level => level === 'max' ? 'xhigh' : level;
+const MODEL_ORDER = ['main', 'worker', 'debugger', 'reviewer', 'researcher', 'advisor'];
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 /** "provider/id" → {provider, id}; id có thể chứa "/" (vd model của OpenRouter). */
@@ -53,27 +53,29 @@ function checkRole(where, value, errors) {
   return result;
 }
 
-function checkRoles(where, roles, errors) {
+function checkRoles(where, roles, errors, warnings) {
   if (roles === undefined) return {};
   if (!isObject(roles)) {
     errors.push(`${where} phải là object theo tên vai`);
     return {};
   }
-  const result = {};
+  const result = {}, removed = [];
   for (const [name, value] of Object.entries(roles)) {
     if (ROLES.includes(name)) result[name] = checkRole(`${where}.${name}`, value, errors);
+    else if (REMOVED_ROLES.includes(name)) removed.push(name);
     else errors.push(`${where}: không có vai "${name}" (có ${ROLES.join(', ')})`);
   }
+  if (removed.length) warnings.push(`${where}: bỏ qua ${removed.join(', ')} (vai đã gỡ khỏi pi-config); xoá khỏi ${MODEL_ROLES_FILE} để hết cảnh báo`);
   return result;
 }
 
 /**
  * Model/thinking của từng vai: preset có sẵn → roles trong model-roles.json. source của mỗi trường là "preset" hoặc
  * "override". errors khác rỗng: cấu hình không dùng được; roles khi đó vẫn đủ (lấy từ preset mặc định cho phần lỗi)
- * để còn hiển thị.
+ * để còn hiển thị. warnings: phần bị bỏ qua (ghi đè của vai đã gỡ), cấu hình vẫn dùng được.
  */
 export function resolveModelRoles(presets, config = defaultModelRoles()) {
-  const errors = [];
+  const errors = [], warnings = [];
   let overrides = {};
   let preset = DEFAULT_PRESET;
   if (!isObject(config)) errors.push(`${MODEL_ROLES_FILE} phải là một object JSON`);
@@ -82,7 +84,7 @@ export function resolveModelRoles(presets, config = defaultModelRoles()) {
       if (!['preset', 'roles'].includes(key)) errors.push(`không có khóa "${key}" (chỉ có preset, roles)`);
     }
     if (config.preset !== undefined) preset = config.preset;
-    overrides = checkRoles('roles', config.roles, errors);
+    overrides = checkRoles('roles', config.roles, errors, warnings);
   }
   const known = typeof preset === 'string' && Object.hasOwn(presets, preset);
   if (!known) errors.push(`preset ${JSON.stringify(preset)} không có (có ${Object.keys(presets).join(', ')})`);
@@ -99,7 +101,7 @@ export function resolveModelRoles(presets, config = defaultModelRoles()) {
     }
     roles[name] = role;
   }
-  return {preset, roles, errors};
+  return {preset, roles, errors, warnings};
 }
 
 /** Giá trị cho từng file gốc từ các vai đã resolve. */
@@ -108,7 +110,6 @@ export function nativeValues(roles) {
   const main = ref('main');
   const levels = {};
   for (const name of MODEL_ORDER) levels[roles[name].model] ??= roles[name].thinking;
-  const goal = name => ({provider: ref(name).provider, model: ref(name).id, thinkingLevel: goalThinking(roles[name].thinking)});
   return {
     settings: {
       defaultProvider: main.provider, defaultModel: main.id, defaultThinkingLevel: roles.main.thinking,
@@ -120,12 +121,11 @@ export function nativeValues(roles) {
     advisor: {
       executor: roles.main.model, executorEffort: roles.main.thinking, advisor: roles.advisor.model, advisorEffort: roles.advisor.thinking,
     },
-    goal: {...goal('auditor'), oracle: goal('oracle')},
   };
 }
 
 // Vai mà mỗi file gốc (JSON) chứa model/thinking.
-const FILE_ROLES = {settings: ['main', 'autoMode'], advisor: ['main', 'advisor'], goal: ['auditor', 'oracle']};
+const FILE_ROLES = {settings: ['main', 'autoMode'], advisor: ['main', 'advisor']};
 
 /**
  * Đặt model/thinking của các vai vào object của một file gốc JSON (sửa tại chỗ, giữ thứ tự khóa sẵn có).
@@ -148,16 +148,6 @@ function setNativeModels(kind, value, models, only) {
       const {executor, executorEffort, ...advisor} = models.advisor;
       Object.assign(value, advisor);
     }
-  } else if (kind === 'goal') {
-    const place = (target, goal) => {
-      Object.assign(target, goal);
-      // pi-goal-x nhận cả thinking_level; khóa đứng sau thắng, nên bỏ khi ép.
-      if (only) delete target.thinking_level;
-      return target;
-    };
-    const {oracle, ...auditor} = models.goal;
-    if (want('auditor')) place(value, auditor);
-    if (want('oracle')) value.oracle = place(isObject(value.oracle) ? value.oracle : {}, oracle);
   }
   return value;
 }
@@ -305,7 +295,6 @@ const read = file => {
 export function effectiveModelRoles(agentDir) {
   const settings = read(path.join(agentDir, 'settings.json')) ?? {};
   const advisor = read(path.join(agentDir, 'advisor.json'));
-  const goal = read(path.join(agentDir, 'pi-goal-x-settings.json'));
   const result = {};
   result.main = advisor?.alwaysOn === true && advisor.executor
     ? {model: advisor.executor, thinking: advisor.executorEffort ?? settings.defaultThinkingLevel, file: 'advisor.json'}
@@ -316,23 +305,13 @@ export function effectiveModelRoles(agentDir) {
     result[name] = {...(fs.existsSync(file) ? roleModel(fs.readFileSync(file, 'utf8')) : {}), file: `agents/${name}.md`};
   }
   result.advisor = {model: advisor?.advisor, thinking: advisor?.advisorEffort, file: 'advisor.json'};
-  const goalRole = value => ({
-    model: value?.provider && value?.model ? `${value.provider}/${value.model}` : undefined,
-    thinking: value?.thinkingLevel ?? value?.thinking_level, file: 'pi-goal-x-settings.json',
-  });
-  result.auditor = goalRole(goal);
-  result.oracle = goalRole(goal?.oracle);
   result.autoMode = {model: settings.autoMode?.model, thinking: settings.autoMode?.stage2Reasoning, file: 'settings.json'};
   return result;
 }
 
-/** Vai có giá trị hiệu lực khác cấu hình (đã đổi qua /model, /goal-settings, /agents hoặc sửa tay file gốc). */
-export function driftedRoles(roles, effective) {
-  return ROLES.filter(name => {
-    const wanted = name === 'auditor' || name === 'oracle' ? goalThinking(roles[name].thinking) : roles[name].thinking;
-    return effective[name].model !== roles[name].model || effective[name].thinking !== wanted;
-  });
-}
+/** Vai có giá trị hiệu lực khác cấu hình (đã đổi qua /model, /agents hoặc sửa tay file gốc). */
+export const driftedRoles = (roles, effective) =>
+  ROLES.filter(name => effective[name].model !== roles[name].model || effective[name].thinking !== roles[name].thinking);
 
 /**
  * Catalog model của runtime Pi ở chế độ offline, không đọc auth: model có sẵn, models.json của agent dir và bộ nhớ
@@ -380,9 +359,8 @@ export async function catalogReport({roles, find, clamp, login}) {
     if (!providers.has(ref.provider)) providers.set(ref.provider, []);
     providers.get(ref.provider).push(name);
     if (thinking === undefined) continue;
-    const level = name === 'auditor' || name === 'oracle' ? goalThinking(thinking) : thinking;
-    const clamped = clamp(found, level);
-    if (clamped !== level) notes.push(`${name}: ${model} không hỗ trợ thinking ${level}; Pi dùng ${clamped}`);
+    const clamped = clamp(found, thinking);
+    if (clamped !== thinking) notes.push(`${name}: ${model} không hỗ trợ thinking ${thinking}; Pi dùng ${clamped}`);
   }
   const loggedOut = [];
   if (login) for (const [provider, names] of providers) if (!await login(provider)) loggedOut.push({provider, roles: names});
@@ -410,7 +388,7 @@ export const loginWarning = ({provider, roles}) => `provider ${provider} (${role
 
 /**
  * Bảng model của mọi vai cho /models và pi-doctor: giá trị theo model-roles.json, giá trị đang có hiệu lực khi
- * khác (đổi qua /model, /goal-settings, /agents hoặc sửa tay file gốc), và kết quả kiểm catalog của cả hai.
+ * khác (đổi qua /model, /agents hoặc sửa tay file gốc), và kết quả kiểm catalog của cả hai.
  * catalog: {check(roles, {logins})}; mặc định là runtime đã cài (modules), không kiểm đăng nhập. logins: cảnh báo cả
  * provider chưa đăng nhập (catalog của phiên Pi).
  */
@@ -422,6 +400,7 @@ export async function modelRolesReport({
   if (current.error) return {lines, warnings, errors: [current.error]};
   const resolved = resolveModelRoles(loadPresets(path.join(root, 'assets', 'configs', 'model-presets.json')), current.config);
   if (resolved.errors.length) return {lines, warnings, errors: resolved.errors.map(error => `${current.file}: ${error}`)};
+  warnings.push(...resolved.warnings.map(warning => `${current.file}: ${warning}`));
   const effective = effectiveModelRoles(agentDir);
   const drifted = new Set(driftedRoles(resolved.roles, effective));
   lines.push(`preset ${resolved.preset} (${current.exists ? current.file : `chưa có ${MODEL_ROLES_FILE}`})`);

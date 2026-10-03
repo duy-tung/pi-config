@@ -217,47 +217,6 @@
       ]
     },
     {
-      "package": "pi-goal-x",
-      "versions": {
-        "current": "0.32.3"
-      },
-      "file": "extensions/goal-auditor.ts",
-      "originalSha256": "498ad6b3273b575c86ba28a6a155e9f73b343b99b5f8d601fcd311095c45881a",
-      "patchedSha256": "f6cf523e6c104d8418fb3e617bab9543a9bb9e8239af68bf3be9098a90078cfe",
-      "edits": [
-        {
-          "before": "\tcreateAgentSession,\n\tcreateExtensionRuntime,\n\tdefineTool,\n",
-          "after": "\tcreateAgentSession,\n\tcreateEventBus,\n\tcreateExtensionRuntime,\n\tDefaultResourceLoader,\n\tdefineTool,\n\tgetAgentDir,\n",
-          "count": 1
-        },
-        {
-          "before": "export async function runGoalCompletionAuditor(args: {\n",
-          "after": "/**\n * Local integration: the auditor's bash goes through the parent's permission gate. The gate the\n * user configured (pi-auto-mode in settings.json extensions) loads alone into the isolated auditor\n * session, which then announces itself as a child of the parent session with the same events as a\n * pi-subagents child: it follows the parent's permission mode, takes intent from the parent's user\n * messages and asks through the parent's UI. Without a configured gate the auditor runs as upstream.\n */\nasync function auditorPermissionGate(ctx: ExtensionContext): Promise<{\n\tloader: ResourceLoader;\n\tbind(session: { sessionId: string; bindExtensions(bindings: Record<string, never>): Promise<void> }): Promise<() => void>;\n} | undefined> {\n\tconst agentDir = getAgentDir();\n\tlet entries: unknown[];\n\ttry {\n\t\tconst settings = JSON.parse(fs.readFileSync(path.join(agentDir, \"settings.json\"), \"utf8\")) as { extensions?: unknown };\n\t\tentries = Array.isArray(settings.extensions) ? settings.extensions : [];\n\t} catch {\n\t\treturn undefined;\n\t}\n\tconst entry = entries.map((item) => (typeof item === \"string\" ? item.trim().replace(/^\\+/u, \"\") : \"\"))\n\t\t.find((item) => item !== \"\" && !/^[-!]/u.test(item) && path.basename(item.replace(/[\\\\/]+$/u, \"\")) === \"pi-auto-mode\");\n\tif (!entry) return undefined;\n\tconst events = createEventBus();\n\tconst loader = new DefaultResourceLoader({\n\t\tcwd: ctx.cwd, agentDir, eventBus: events, settingsManager: SettingsManager.inMemory({}),\n\t\tnoExtensions: true, additionalExtensionPaths: [path.resolve(agentDir, entry)],\n\t\tnoSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,\n\t\tsystemPromptOverride: () => makeAuditorResourceLoader().getSystemPrompt(),\n\t\tappendSystemPromptOverride: () => [],\n\t});\n\tawait loader.reload();\n\tconst { extensions, errors } = loader.getExtensions();\n\tif (errors.length || extensions.length !== 1) {\n\t\tthrow new Error(`Auditor permission gate did not load: ${errors.map((item) => item.error).join(\"; \") || entry}`);\n\t}\n\treturn {\n\t\tloader,\n\t\tasync bind(session) {\n\t\t\tconst identity = { sessionId: session.sessionId, parentSessionId: ctx.sessionManager.getSessionId() };\n\t\t\tevents.emit(\"subagents:child:session-created\", identity);\n\t\t\tconst release = () => events.emit(\"subagents:child:disposed\", { sessionId: session.sessionId });\n\t\t\ttry {\n\t\t\t\tawait session.bindExtensions({});\n\t\t\t} catch (error) {\n\t\t\t\trelease();\n\t\t\t\tthrow error;\n\t\t\t}\n\t\t\treturn release;\n\t\t},\n\t};\n}\n\nexport async function runGoalCompletionAuditor(args: {\n",
-          "count": 1
-        },
-        {
-          "before": "\t\tconst projectResources = args.settings?.auditorProjectResources === true;\n\t\tconst { session } = await createSession({\n",
-          "after": "\t\tconst projectResources = args.settings?.auditorProjectResources === true;\n\t\t// Local integration: the parent's permission gate reviews the auditor's bash (auditorPermissionGate).\n\t\tconst gate = projectResources ? undefined : await auditorPermissionGate(args.ctx);\n\t\tconst { session } = await createSession({\n",
-          "count": 1
-        },
-        {
-          "before": "\t\t\t\t: { resourceLoader: makeAuditorResourceLoader() }),\n",
-          "after": "\t\t\t\t: { resourceLoader: gate?.loader ?? makeAuditorResourceLoader() }),\n",
-          "count": 1
-        },
-        {
-          "before": "\t\t} as Parameters<typeof createAgentSession>[0]);\n\t\tconst unsubscribe = session.subscribe((event) => {\n",
-          "after": "\t\t} as Parameters<typeof createAgentSession>[0]);\n\t\tlet releaseGate: (() => void) | undefined;\n\t\ttry {\n\t\t\treleaseGate = await gate?.bind(session);\n\t\t} catch (error) {\n\t\t\tsession.dispose?.();\n\t\t\tthrow error;\n\t\t}\n\t\tconst unsubscribe = session.subscribe((event) => {\n",
-          "count": 1
-        },
-        {
-          "before": "\t\t\tunsubscribe();\n   session.dispose?.();\n",
-          "after": "\t\t\tunsubscribe();\n   session.dispose?.();\n\t\t\treleaseGate?.();\n",
-          "count": 1
-        }
-      ]
-    },
-    {
       "package": "pi-background-tasks",
       "versions": {
         "current": "2.6.9"
@@ -343,7 +302,7 @@
       },
       "file": "dist/index.ts",
       "originalSha256": "30d5faf0ecb1c80f1313ad99d4cf87dd7960d7f1ad35d35f85dc824fcfc8184b",
-      "patchedSha256": "9411a921337cc88abcc51b9c9249b9c40f5519b2228ff1a06b619021b8b5e6ff",
+      "patchedSha256": "77ec60bfbad5de4721f3959b88f99dc380348bb6f8d0ad72b6d6826519c65a00",
       "edits": [
         {
           "before": "  const startStatusRefresh = (ctx, model, force) => {\n",
@@ -362,7 +321,7 @@
         },
         {
           "before": "  pi.on(\"before_provider_request\", (event, ctx) => {\n",
-          "after": "  // Local integration (pi-config): requests that share this session's ModelRuntime but skip its\n  // before_provider_request hook (advisor calls, goal auditor/Oracle sessions, Agent children without\n  // pi-usage) follow the same Fast setting, decided by each request's own model. The UI session installs\n  // the wrapper once per runtime and keeps the setting reader current.\n  pi.on(\"session_start\", (_event, ctx) => {\n    const runtime = ctx.hasUI ? ctx.modelRegistry?.runtime : void 0;\n    if (!runtime || typeof runtime.streamSimple !== \"function\") return;\n    const key = Symbol.for(\"pi-config:codex-fast\");\n    runtime[key] = () => settingsRuntime.get().settings.codexFastMode;\n    if (runtime.streamSimple[key]) return;\n    const streamSimple = runtime.streamSimple;\n    const wrapped = function(model, context, streamOptions) {\n      const onPayload = async (payload, requestModel) => {\n        const previous = await streamOptions?.onPayload?.(payload, requestModel);\n        let enabled = false;\n        try {\n          enabled = runtime[key]?.() === true;\n        } catch {\n          // A settings problem must not fail the request; pi-usage reports it in the UI session.\n        }\n        const rewritten = rewriteCodexFastPayload(previous === void 0 ? payload : previous, requestModel ?? model, enabled);\n        return rewritten === void 0 ? previous : rewritten;\n      };\n      return streamSimple.call(this ?? runtime, model, context, { ...streamOptions, onPayload });\n    };\n    wrapped[key] = true;\n    runtime.streamSimple = wrapped;\n  });\n  pi.on(\"before_provider_request\", (event, ctx) => {\n",
+          "after": "  // Local integration (pi-config): requests that share this session's ModelRuntime but skip its\n  // before_provider_request hook (advisor calls, Agent children without\n  // pi-usage) follow the same Fast setting, decided by each request's own model. The UI session installs\n  // the wrapper once per runtime and keeps the setting reader current.\n  pi.on(\"session_start\", (_event, ctx) => {\n    const runtime = ctx.hasUI ? ctx.modelRegistry?.runtime : void 0;\n    if (!runtime || typeof runtime.streamSimple !== \"function\") return;\n    const key = Symbol.for(\"pi-config:codex-fast\");\n    runtime[key] = () => settingsRuntime.get().settings.codexFastMode;\n    if (runtime.streamSimple[key]) return;\n    const streamSimple = runtime.streamSimple;\n    const wrapped = function(model, context, streamOptions) {\n      const onPayload = async (payload, requestModel) => {\n        const previous = await streamOptions?.onPayload?.(payload, requestModel);\n        let enabled = false;\n        try {\n          enabled = runtime[key]?.() === true;\n        } catch {\n          // A settings problem must not fail the request; pi-usage reports it in the UI session.\n        }\n        const rewritten = rewriteCodexFastPayload(previous === void 0 ? payload : previous, requestModel ?? model, enabled);\n        return rewritten === void 0 ? previous : rewritten;\n      };\n      return streamSimple.call(this ?? runtime, model, context, { ...streamOptions, onPayload });\n    };\n    wrapped[key] = true;\n    runtime.streamSimple = wrapped;\n  });\n  pi.on(\"before_provider_request\", (event, ctx) => {\n",
           "count": 1
         }
       ]

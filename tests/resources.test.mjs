@@ -167,7 +167,7 @@ test('only JSON files in the agent directory, and role files, are merged',t=>{
   assert.equal(mergesConfig(path.join(f.agentDir,'agents','nested','worker.md'),options),false);
   assert.equal(mergesConfig(path.join(f.agentDir,'AGENTS.md'),options),false);
   assert.equal(mergesConfig(path.join(f.root,'install-state.json'),options),false);
-  assert.equal(mergesConfig(path.join(f.root,'assets','configs','goal.json'),options),false);
+  assert.equal(mergesConfig(path.join(f.root,'assets','configs','advisor.json'),options),false);
 });
 test('role files keep their own default copy; a model edit no longer freezes the prompt',t=>{
   const f=fixture(t),file=path.join(f.agentDir,'agents','worker.md');

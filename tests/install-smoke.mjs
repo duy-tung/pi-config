@@ -36,12 +36,12 @@ fs.writeFileSync(webSearchPath,webSearchBytes);
 assert.equal(doctor.status,1,doctor.stdout+doctor.stderr);
 assert.match(doctor.stderr,/parallel-mcp có trong searchRouting\.providers nhưng không có trong webSearch\.allowedProviders/u);
 // Thiếu package trong runtime: doctor báo từng package bằng một dòng, không ném ENOENT.
-const goalDir=path.join(root,'runtimes','current','node_modules','pi-goal-x'),goalAside=`${goalDir}.aside`;
-fs.renameSync(goalDir,goalAside);
+const advisorDir=path.join(root,'runtimes','current','node_modules','pi-advisor-flow'),advisorAside=`${advisorDir}.aside`;
+fs.renameSync(advisorDir,advisorAside);
 const missing=spawnSync(process.execPath,[path.join(root,'bin/launch.mjs'),'doctor'],{encoding:'utf8'});
-fs.renameSync(goalAside,goalDir);
+fs.renameSync(advisorAside,advisorDir);
 assert.equal(missing.status,1,missing.stdout+missing.stderr);
-assert.match(missing.stderr,/^current\/pi-goal-x: chưa cài \(thiếu /mu);
+assert.match(missing.stderr,/^current\/pi-advisor-flow: chưa cài \(thiếu /mu);
 assert.doesNotMatch(missing.stderr,/ENOENT|at file:/u);
 await run(process.execPath,['--test',...['extensions-typecheck','models','glm-wire','native-search-wire','claude-effort-wire','rewind-session','subagent-markdown','patched-typecheck','model-roles','models-command'].map(name=>path.join(repo,`tests/${name}.test.mjs`))],{env:{...process.env,PI_CONFIG_TEST_ROOT:root}});
 await run(process.execPath,[path.join(repo,'tests/config-integration.mjs'),root]);
@@ -72,6 +72,9 @@ const openTui=readJson(openTuiPath);openTui.thinkingPeek.lines=2;delete openTui.
 const statePath=path.join(root,'install-state.json'),prior=readJson(statePath);
 const unused=path.join(root,'assets/unused-resource.json');
 writeJson(unused,{fixture:'managed resource'});prior.files[unused]=sha256(fs.readFileSync(unused));
+// File cấu hình bản cũ ghi mà bản này không ghi nữa (pi-goal-x đã gỡ): chưa sửa thì được lưu vào backups.
+const retiredConfig=path.join(agentDir,'pi-goal-x-settings.json');
+writeJson(retiredConfig,{maxAutonomousRuns:10,oracle:{enabled:true}});prior.files[retiredConfig]=sha256(fs.readFileSync(retiredConfig));
 writeJson(statePath,prior);
 const secret=path.join(root,'secrets/provider.env');
 fs.mkdirSync(path.dirname(secret),{recursive:true});fs.writeFileSync(secret,'PROVIDER_API_KEY=synthetic-preservation-fixture\n',{mode:0o600});
@@ -104,6 +107,9 @@ assert.deepEqual([tui.thinkingPeek.lines,tui.cursorStyle],[2,'bar']);
 assert.ok(reinstall.includes('  - xung đột: giữ giá trị hiện có cho thinkingPeek.lines; mặc định mới là 0'),reinstall);
 assert.ok(fs.existsSync(defaultsOf(openTuiPath)));
 assert.equal(fs.existsSync(unused),false);
+assert.equal(fs.existsSync(retiredConfig),false);
+assert.ok(!Object.hasOwn(readJson(statePath).files,retiredConfig));
+assert.ok(fs.readdirSync(path.join(root,'backups')).some(name=>name.startsWith('resources-')&&fs.existsSync(path.join(root,'backups',name,'4','pi-goal-x-settings.json'))),'pi-goal-x-settings.json nằm trong backups');
 assert.match(reinstall,/Đã lưu \d+ tài nguyên ngoài cấu hình hiện tại tại /u);
 assert.deepEqual(fs.readFileSync(secret),secretBefore);
 await run(process.execPath,[path.join(repo,'tests/agent-integration.mjs'),root]);
@@ -119,9 +125,8 @@ for(const [role,model,thinking] of [['worker','claude-opus-5-5','high'],['debugg
 }
 assert.match(frontmatter('debugger'),/^tools: "read, grep, find, ls, bash"$/mu);
 assert.ok(switched.includes(`Đã gộp mặc định mới vào ${debuggerPath}, giữ phần bạn đã sửa:`),switched);
-const advisorNow=readJson(path.join(agentDir,'advisor.json')),goalNow=readJson(path.join(agentDir,'pi-goal-x-settings.json'));
+const advisorNow=readJson(path.join(agentDir,'advisor.json'));
 assert.deepEqual([advisorNow.executor,advisorNow.advisor],['anthropic/claude-opus-5-5','anthropic/claude-fable-5-1']);
-assert.deepEqual([goalNow.provider,goalNow.model,goalNow.thinkingLevel,goalNow.oracle.model],['anthropic','claude-sonnet-5-5','high','claude-fable-5-1']);
 assert.deepEqual(readJson(settingsPath).enabledModels,['anthropic/claude-opus-5-5','anthropic/claude-fable-5-1','anthropic/claude-sonnet-5-5']);
 const doctorModels=spawnSync(process.execPath,[path.join(root,'bin/launch.mjs'),'doctor'],{encoding:'utf8'});
 assert.equal(doctorModels.status,0,doctorModels.stdout+doctorModels.stderr);

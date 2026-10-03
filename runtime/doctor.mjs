@@ -58,11 +58,6 @@ if(fs.existsSync(advisorFile)){
   if(advisor.alwaysOn===true&&advisor.executor&&advisor.executor!==main)
     warnings.push(`advisor.json bật alwaysOn với executor ${advisor.executor}; mỗi phiên sẽ chuyển từ ${main} sang model này`);
 }
-const goalFile=path.join(state.agentDir,'pi-goal-x-settings.json');
-if(fs.existsSync(goalFile)){
-  const goal=read(goalFile);
-  console.log(`  goal auditor ${goal.disabled===true?'tắt':'bật'}; Oracle ${goal.oracle?.enabled===true?'bật':'tắt'}`);
-}
 const auto=s.autoMode??{},jev=auto.jev===false||auto.jev?.enabled===false?undefined:auto.jev??{};
 console.log(`  auto mode: bước 1 ${jev?`Jev${jev.model?` ${jev.model}`:''} (${jevKey})`:'LLM của vai autoMode (Jev tắt)'}; bước 2 LLM của vai autoMode`);
 for(const source of Object.keys(state.sources))if(!fs.existsSync(path.join(root,'sources',source)))errors.push(`Thiếu skills source: ${source}`);

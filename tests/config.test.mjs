@@ -134,7 +134,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.deepEqual(firecrawl.webSearch.allowedProviders, ["openai", "anthropic", "exa", "firecrawl"]);
       assert.equal(firecrawl.anthropicSearch, undefined, "Model khác Claude không tìm bằng Claude nếu người dùng không bật");
       assert.equal(firecrawl.exaApiKey, undefined, "Exa không cần key: dùng endpoint MCP miễn phí");
-      assert.deepEqual(settings.permissions.ask, ["Edit(**/.pi/pi-goal-x-settings.json)"]);
+      assert.deepEqual(settings.permissions.ask, []);
       assert.deepEqual(firecrawl.fetchRouting.providers, ["firecrawl"]);
       assert.ok(settings.permissions.allow.includes("web_search"));
       assert.equal(firecrawl.allowBrowserCookies, undefined, "pi-web-access chỉ đọc cookie trình duyệt khi bật rõ (true)");
@@ -154,7 +154,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
     }
   });
 
-  test(`${platform}: không xuất credential; advisor, goal auditor và Oracle đúng cấu hình đã chọn`, () => {
+  test(`${platform}: không xuất credential; advisor đúng cấu hình đã chọn`, () => {
     const { p, options, files, json, profile } = fixture(platform);
     assert.equal(new Set(files.map(({ path: file }) => file)).size, files.length);
     for (const file of files) {
@@ -192,14 +192,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       // Advisor đã có hội thoại; không gửi thêm AGENTS.md (mặc định bật từ 0.10.0) để request advisor nhỏ hơn.
       assert.equal(advisor.advisorAgentsMdContext, false);
       } else assert.ok(!files.some(file => file.path === p.join(profile.agentDir,"advisor.json")));
-      if (profile.packages.includes("pi-goal-x")) {
-      const goal = json(p.join(profile.agentDir, "pi-goal-x-settings.json"));
-      assert.deepEqual([goal.provider, goal.model, goal.thinkingLevel], ["openai-codex", "gpt-6-astra", "high"]);
-      // Mặc định của pi-goal-x: auditor bật, không nạp tài nguyên của project.
-      assert.deepEqual([goal.disabled, goal.auditorProjectResources], [undefined, undefined]);
-      assert.deepEqual(goal.oracle, { enabled: true, provider: "openai-codex", model: "gpt-6-astra", thinkingLevel: "high" });
-      assert.equal(goal.maxAutonomousRuns, 10);
-      } else assert.ok(!files.some(file => file.path === p.join(profile.agentDir,"pi-goal-x-settings.json")));
+      assert.ok(!files.some(file => /goal/u.test(p.basename(file.path))), "pi-goal-x đã gỡ");
       assert.equal(json(p.join(profile.agentDir, "settings.json")).cacheWarming, "off");
       if (profile.packages.includes("@tintinweb/pi-subagents")) assert.equal(json(p.join(profile.agentDir, "subagents.json")).fallbackSubagent, "none");
       else assert.ok(!files.some(file => file.path === p.join(profile.agentDir,"subagents.json")));
@@ -251,8 +244,8 @@ test("Đầu vào tương đối bị từ chối để không ghi nhầm worksp
   assert.throws(() => buildConfiguration({ ...options, agentDir: ".pi/agent" }), /agentDir phải là đường dẫn tuyệt đối/u);
 });
 
-test("model-roles: preset và ghi đè đi tới mọi file gốc (settings, file role, advisor, goal, auto mode)", () => {
-  const { roles } = resolveModelRoles(presets, { preset: "claude", roles: { worker: { thinking: "max" }, oracle: { thinking: "max" } } });
+test("model-roles: preset và ghi đè đi tới mọi file gốc (settings, file role, advisor, auto mode)", () => {
+  const { roles } = resolveModelRoles(presets, { preset: "claude", roles: { worker: { thinking: "max" } } });
   const root = "/home/dev/pi", agentDir = "/home/dev/agent";
   const files = buildConfiguration({ root, agentDir, nodePath: "/opt/node", platform: "linux", home: "/home/dev", repoDir, modelRoles: roles });
   const read = (name) => files.find((entry) => entry.path === path.posix.join(agentDir, name)).content;
@@ -268,10 +261,6 @@ test("model-roles: preset và ghi đè đi tới mọi file gốc (settings, fil
   const advisor = JSON.parse(read("advisor.json"));
   assert.deepEqual([advisor.executor, advisor.executorEffort, advisor.advisor, advisor.advisorEffort, advisor.alwaysOn],
     ["anthropic/claude-opus-5-5", "high", "anthropic/claude-fable-5-1", "high", true]);
-  // pi-goal-x chỉ nhận tới xhigh.
-  const goal = JSON.parse(read("pi-goal-x-settings.json"));
-  assert.deepEqual([goal.provider, goal.model, goal.thinkingLevel, goal.maxAutonomousRuns], ["anthropic", "claude-sonnet-5-5", "high", 10]);
-  assert.deepEqual(goal.oracle, { enabled: true, provider: "anthropic", model: "claude-fable-5-1", thinkingLevel: "xhigh" });
 });
 
 test("/models dựng mặc định mới từ base của preset khác: giống hệt file installer sinh cho preset đó", () => {
@@ -280,11 +269,11 @@ test("/models dựng mặc định mới từ base của preset khác: giống h
     const { p, options } = fixture(platform);
     // Loại file gốc chứa model (như danh sách file của planModelFiles trong runtime/models.mjs).
     const kindOf = new Map([
-      ["settings.json", "settings"], ["advisor.json", "advisor"], ["pi-goal-x-settings.json", "goal"],
+      ["settings.json", "settings"], ["advisor.json", "advisor"],
       ...SUBAGENT_ROLES.map((role) => [p.join("agents", `${role}.md`), role]),
     ].map(([name, kind]) => [p.join(options.agentDir, name), kind]));
     const before = resolveModelRoles(presets).roles;
-    const after = resolveModelRoles(presets, { preset: "claude", roles: { worker: { thinking: "max" }, auditor: { thinking: "max" }, autoMode: { model: "anthropic/claude-haiku-4-5" } } }).roles;
+    const after = resolveModelRoles(presets, { preset: "claude", roles: { worker: { thinking: "max" }, autoMode: { model: "anthropic/claude-haiku-4-5" } } }).roles;
     const old = buildConfiguration({ ...options, modelRoles: before });
     const fresh = new Map(buildConfiguration({ ...options, modelRoles: after }).map((entry) => [entry.path, entry.content]));
     const kinds = [];
@@ -298,8 +287,8 @@ test("/models dựng mặc định mới từ base của preset khác: giống h
       kinds.push(kind);
       assert.equal(nextModelDefault(kind, entry.content, nativeValues(after)), fresh.get(entry.path), entry.path);
     }
-    assert.deepEqual(kinds.sort(), ["advisor", "debugger", "goal", "researcher", "reviewer", "settings", "worker"]);
-    assert.deepEqual(changedRoles(before, after), ["researcher", "worker", "debugger", "reviewer", "advisor", "auditor", "oracle", "autoMode"]);
+    assert.deepEqual(kinds.sort(), ["advisor", "debugger", "researcher", "reviewer", "settings", "worker"]);
+    assert.deepEqual(changedRoles(before, after), ["researcher", "worker", "debugger", "reviewer", "advisor", "autoMode"]);
   }
 });
 
@@ -315,11 +304,6 @@ test("ép giá trị của vai trong file gốc người dùng đã đổi: ch�
   const autoMode = JSON.parse(forceNativeModels("settings", settings, models, ["autoMode"])).autoMode;
   assert.deepEqual(autoMode, { model: "anthropic/claude-sonnet-5-5", stage2Reasoning: "low", log: true });
   assert.equal(forceNativeModels("settings", settings, models, ["worker"]), settings);
-  const goal = JSON.stringify({ provider: "openai-codex", model: "gpt-6-astra", thinking_level: "low", maxAutonomousRuns: 3, oracle: { enabled: true, thinking_level: "low" } });
-  assert.deepEqual(JSON.parse(forceNativeModels("goal", goal, models, ["auditor", "oracle"])), {
-    provider: "anthropic", model: "claude-sonnet-5-5", maxAutonomousRuns: 3, thinkingLevel: "high",
-    oracle: { enabled: true, provider: "anthropic", model: "claude-fable-5-1", thinkingLevel: "high" },
-  });
   const advisor = JSON.parse(forceNativeModels("advisor", JSON.stringify({ executor: "anthropic/claude-sonnet-5-5", executorEffort: "low", advisor: "x/y", alwaysOn: true }), models, ["main"]));
   assert.deepEqual(advisor, { executor: "anthropic/claude-opus-5-5", executorEffort: "high", advisor: "x/y", alwaysOn: true });
   const role = "---\nname: worker\ntools: read\nmodel: openai-codex/gpt-6.1-sol\n---\n\nPrompt.\n";

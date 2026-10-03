@@ -55,12 +55,11 @@ export interface ToolCall {
 }
 
 // Tool không đổi trạng thái bên ngoài phiên: đọc, tìm kiếm, todo, hỏi người dùng, xem subagent,
-// xem tiến trình nền, bật web tools, trạng thái goal và advisor. Tương tự danh sách safe-tool của Claude Code.
+// xem tiến trình nền, bật web tools, advisor. Tương tự danh sách safe-tool của Claude Code.
 // bg_kill dừng tiến trình nên không thuộc danh sách: đi qua bộ phân loại như tool khác.
 export const SAFE_TOOLS = new Set([
   "read", "grep", "find", "ls", "todo", "ask_user_question", "get_subagent_result", "steer_subagent",
   "bg_status", "bg_logs", "get_search_content", "web_enable",
-  "get_goal", "create_goal", "update_goal", "set_goal_tasks", "update_goal_task", "submit_goal_oracle_advice",
   "ask_advisor", "record_advisor_outcome",
   // Pi 0.99 (builtin:tool-search): chỉ khai báo tool đã đăng ký cho lượt sau; mỗi lời gọi tool đó vẫn qua cổng.
   "tool_search",

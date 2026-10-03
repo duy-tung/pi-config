@@ -74,6 +74,7 @@ function modelRolesPlan(){
   if(current.error)throw new Error(`${current.error}\nSửa file, hoặc xoá để dùng preset mặc định.`);
   const resolved=resolveModelRoles(presets,current.config);
   if(resolved.errors.length)throw new Error(`${current.file} không hợp lệ:\n- ${resolved.errors.join('\n- ')}`);
+  for(const warning of resolved.warnings)console.warn(`cảnh báo: ${current.file}: ${warning}`);
   return {file:current.file,exists:current.exists,config:current.config,roles:resolved.roles};
 }
 function copyTree(from,to){
