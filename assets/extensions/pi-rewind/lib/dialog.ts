@@ -86,6 +86,68 @@ interface OptionItem {
 const POINTER = "❯";
 const WARNING = "⚠";
 
+/** Mức bỏ dòng khi thiếu chỗ: số lớn bỏ trước; 0 là dòng chính. */
+const SPACER = 3;
+const DETAIL = 2;
+const CONTEXT = 1;
+
+/**
+ * Các dòng của một khung hình. Hộp thoại không được cao hơn terminal: overlay của
+ * pi-tui (và khung fullscreen) cắt phần dưới, mất gợi ý phím và lựa chọn đang trỏ.
+ * fit() bỏ dòng phụ trước, rồi dòng xa mục đang chọn; luôn giữ mục đó và hai dòng cuối.
+ */
+class Lines {
+  private readonly items: { text: string; drop: number; group?: number }[] = [];
+  private groups = 0;
+  /** Chỉ số dòng đang chọn (-1: không có). */
+  active = -1;
+
+  get length(): number {
+    return this.items.length;
+  }
+
+  push(text: string, drop = 0): void {
+    this.items.push({ text, drop });
+  }
+
+  /** Các dòng của một đoạn đã ngắt: thiếu chỗ thì bỏ cả đoạn, không để câu cụt. */
+  paragraph(texts: string[], drop: number): void {
+    const group = ++this.groups;
+    for (const text of texts) this.items.push({ text, drop, group });
+  }
+
+  /** Đánh dấu dòng push kế tiếp là dòng đang chọn. */
+  markActive(): void {
+    this.active = this.items.length;
+  }
+
+  fit(height: number): string[] {
+    const items = this.items.map((item, index) => ({ ...item, active: index === this.active }));
+    const budget = Math.max(1, height);
+    for (const level of [SPACER, DETAIL, CONTEXT]) {
+      for (let index = items.length - 1; index >= 0 && items.length > budget; index--) {
+        const { drop, group } = items[index];
+        if (drop !== level) continue;
+        const first = group === undefined ? index : items.findIndex((item) => item.group === group);
+        items.splice(first, index - first + 1);
+        index = first;
+      }
+    }
+    while (items.length > budget) {
+      const pinned = items.length - 2;
+      const anchor = items.findIndex((item) => item.active);
+      const from = anchor < 0 ? pinned : anchor;
+      let victim = -1;
+      for (let index = 0; index < pinned; index++) {
+        if (index !== anchor && (victim < 0 || Math.abs(index - from) > Math.abs(victim - from))) victim = index;
+      }
+      if (victim < 0) break;
+      items.splice(victim, 1);
+    }
+    return items.slice(-budget).map((item) => item.text);
+  }
+}
+
 export function relativeTime(timestamp: number, now: number): string {
   const seconds = Math.max(0, Math.round((now - timestamp) / 1000));
   if (seconds < 45) return "just now";
@@ -329,16 +391,16 @@ export class RewindDialog {
     this.width = width;
     const t = this.theme;
     const fit = (line: string) => this.deps.truncate(line, Math.max(1, width));
-    const lines: string[] = [];
+    const lines = new Lines();
     lines.push(t.fg("borderAccent", "─".repeat(Math.max(1, width))));
     lines.push(` ${t.bold(t.fg("accent", "Rewind"))}`);
     if (this.error !== undefined) {
       for (const line of this.error.split("\n")) lines.push(` ${t.fg("error", line)}`);
-      lines.push("");
+      lines.push("", SPACER);
       lines.push(` ${t.fg("dim", "enter to go back · esc to close")}`);
     } else if (this.entries.length === 1) {
       lines.push(` ${t.fg("muted", "Nothing to rewind to yet.")}`);
-      lines.push("");
+      lines.push("", SPACER);
       lines.push(` ${t.fg("dim", "esc to cancel")}`);
     } else if (this.activeItem) {
       this.renderItem(lines, this.activeItem);
@@ -348,7 +410,7 @@ export class RewindDialog {
       this.renderList(lines, width);
     }
     lines.push(t.fg("borderAccent", "─".repeat(Math.max(1, width))));
-    return lines.map(fit);
+    return lines.fit(this.options.terminalRows()).map(fit);
   }
 
   private statsLine(stats: RowStats): string {
@@ -358,10 +420,10 @@ export class RewindDialog {
     return `${label}${t.fg("success", `+${stats.insertions}`)} ${t.fg("error", `-${stats.deletions}`)}`;
   }
 
-  private renderList(lines: string[], width: number): void {
+  private renderList(lines: Lines, width: number): void {
     const t = this.theme;
-    lines.push(` ${t.fg("text", "Restore the code and/or conversation to the point before…")}`);
-    lines.push("");
+    lines.push(` ${t.fg("text", "Restore the code and/or conversation to the point before…")}`, CONTEXT);
+    lines.push("", SPACER);
     const visible = this.visibleCount();
     const start = Math.max(0, Math.min(this.selected - Math.floor(visible / 2), this.count - visible));
     const end = Math.min(this.count, start + visible);
@@ -370,41 +432,42 @@ export class RewindDialog {
       const active = index === this.selected;
       const pointer = active ? t.bold(t.fg("accent", `${POINTER} `)) : "  ";
       const entry = this.entries[index];
+      if (active) lines.markActive();
       if ("current" in entry) {
         lines.push(` ${pointer}${t.italic(active ? t.fg("accent", "(current)") : "(current)")}`);
-        if (index < end - 1) lines.push("");
+        if (index < end - 1) lines.push("", SPACER);
         continue;
       }
       if ("item" in entry) {
         const { item } = entry;
         lines.push(` ${pointer}${active ? t.fg("accent", item.label) : item.warning ? t.fg("warning", item.label) : item.label}`);
-        if (item.detail) lines.push(`   ${t.fg("dim", this.deps.truncate(oneLine(item.detail), Math.max(10, width - 4)))}`);
-        lines.push("");
+        if (item.detail) lines.push(`   ${t.fg("dim", this.deps.truncate(oneLine(item.detail), Math.max(10, width - 4)))}`, DETAIL);
+        lines.push("", SPACER);
         continue;
       }
       const { row } = entry;
       const text = this.deps.truncate(oneLine(row.text), Math.max(10, width - 14));
       lines.push(` ${pointer}${active ? t.fg("accent", text) : text}`);
       if (!row.checkpointed) {
-        lines.push(`   ${t.fg("warning", `${WARNING} No code restore`)}`);
+        lines.push(`   ${t.fg("warning", `${WARNING} No code restore`)}`, DETAIL);
       } else {
         const stats = this.stats.get(row.entryId);
-        if (stats === undefined) lines.push(`   ${t.fg("dim", "…")}`);
-        else if (stats === null || stats.filesChanged.length === 0) lines.push(`   ${t.fg("dim", "No code changes")}`);
-        else lines.push(`   ${t.fg("dim", this.statsLine(stats))}`);
+        if (stats === undefined) lines.push(`   ${t.fg("dim", "…")}`, DETAIL);
+        else if (stats === null || stats.filesChanged.length === 0) lines.push(`   ${t.fg("dim", "No code changes")}`, DETAIL);
+        else lines.push(`   ${t.fg("dim", this.statsLine(stats))}`, DETAIL);
       }
-      lines.push("");
+      lines.push("", SPACER);
     }
     if (end < this.count) lines.push(` ${t.fg("dim", `↓ ${this.count - end} more below`)}`);
     lines.push(` ${t.fg("dim", "enter to continue · esc to cancel")}`);
   }
 
-  private renderItem(lines: string[], item: MenuItem): void {
+  private renderItem(lines: Lines, item: MenuItem): void {
     const t = this.theme;
     const width = Math.max(10, this.width - 2);
     for (const line of this.deps.wrap(`${item.title}:`, width)) lines.push(` ${line}`);
-    for (const text of item.lines) for (const line of this.deps.wrap(text, width)) lines.push(` ${t.fg("dim", line)}`);
-    lines.push("");
+    for (const text of item.lines) lines.paragraph(this.deps.wrap(text, width).map((line) => ` ${t.fg("dim", line)}`), CONTEXT);
+    lines.push("", SPACER);
     if (this.busy) {
       lines.push(` ${t.fg("accent", "⠿")} Working…`);
       return;
@@ -412,15 +475,16 @@ export class RewindDialog {
     const options = this.itemOptions(item);
     options.forEach((option, index) => {
       const active = index === Math.min(this.focus, options.length - 1);
+      if (active) lines.markActive();
       const pointer = active ? t.bold(t.fg("accent", `${POINTER} `)) : "  ";
       const label = `${index + 1}. ${option.label}`;
       lines.push(` ${pointer}${active ? t.fg("accent", label) : label}`);
     });
-    lines.push("");
+    lines.push("", SPACER);
     lines.push(` ${t.fg("dim", "enter to select · esc to go back")}`);
   }
 
-  private renderConfirm(lines: string[], row: RewindRow): void {
+  private renderConfirm(lines: Lines, row: RewindRow): void {
     const t = this.theme;
     const now = (this.options.now ?? Date.now)();
     const codeKnown = this.restoreReady && this.restore !== undefined;
@@ -429,15 +493,16 @@ export class RewindDialog {
     }
     const message = row.text.trim() || "(no prompt)";
     const wrapped = message.slice(0, 500).split("\n").slice(0, 4).flatMap((line) => this.deps.wrap(line, Math.max(10, this.width - 4))).slice(0, 4);
-    for (const line of wrapped) lines.push(` ${t.fg("dim", "│")} ${line}`);
-    if (row.timestamp !== undefined && Number.isFinite(row.timestamp)) lines.push(` ${t.fg("dim", "│")} ${t.fg("dim", `(${relativeTime(row.timestamp, now)})`)}`);
-    lines.push("");
+    wrapped.forEach((line, index) => lines.push(` ${t.fg("dim", "│")} ${line}`, index ? DETAIL : 0));
+    if (row.timestamp !== undefined && Number.isFinite(row.timestamp)) lines.push(` ${t.fg("dim", "│")} ${t.fg("dim", `(${relativeTime(row.timestamp, now)})`)}`, DETAIL);
+    lines.push("", SPACER);
     const items = this.items();
     const focus = items[Math.min(this.focus, items.length - 1)]?.value ?? "conversation";
-    for (const line of this.deps.wrap(describeConversation(focus), Math.max(10, this.width - 2))) lines.push(` ${t.fg("dim", line)}`);
+    const describe = (text: string) => lines.paragraph(this.deps.wrap(text, Math.max(10, this.width - 2)).map((line) => ` ${t.fg("dim", line)}`), CONTEXT);
+    describe(describeConversation(focus));
     const code = describeCode(focus, this.restoreReady, this.restore);
-    if (code) for (const line of this.deps.wrap(code, Math.max(10, this.width - 2))) lines.push(` ${t.fg("dim", line)}`);
-    lines.push("");
+    if (code) describe(code);
+    lines.push("", SPACER);
     if (this.busy === "summarize" || this.busy === "summarize_up_to") {
       lines.push(` ${t.fg("accent", "⠿")} Summarizing…`);
       return;
@@ -448,6 +513,7 @@ export class RewindDialog {
     }
     items.forEach((item, index) => {
       const active = index === Math.min(this.focus, items.length - 1);
+      if (active) lines.markActive();
       const pointer = active ? t.bold(t.fg("accent", `${POINTER} `)) : "  ";
       let label = `${index + 1}. ${item.label}`;
       if (item.input) {
@@ -458,15 +524,13 @@ export class RewindDialog {
       lines.push(` ${pointer}${active ? t.fg("accent", label) : label}`);
     });
     if (this.canRestoreCode()) {
-      lines.push("");
+      lines.push("", SPACER);
       const note = this.options.bashTracked
         ? "Rewinding does not affect files edited manually, or git-ignored files changed via bash."
         : "Rewinding does not affect files edited manually or via bash.";
-      this.deps.wrap(note, Math.max(10, this.width - 3)).forEach((line, index) => {
-        lines.push(` ${index === 0 ? t.fg("warning", WARNING) : " "} ${t.fg("dim", line)}`);
-      });
+      lines.paragraph(this.deps.wrap(note, Math.max(10, this.width - 3)).map((line, index) => ` ${index === 0 ? t.fg("warning", WARNING) : " "} ${t.fg("dim", line)}`), CONTEXT);
     }
-    lines.push("");
+    lines.push("", SPACER);
     lines.push(` ${t.fg("dim", `enter to select · esc to ${this.options.preselectedEntryId ? "cancel" : "go back"}`)}`);
   }
 }

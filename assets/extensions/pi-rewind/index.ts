@@ -780,9 +780,15 @@ export default function piRewind(pi: ExtensionAPI) {
         },
         done: () => done(undefined),
         requestRender: () => tui.requestRender(),
-      }, theme, deps));
-      // Đóng dialog, Pi trả lại nội dung editor lúc mở (rỗng) và ghi đè prompt mà
-      // navigateTree vừa đặt; đặt lại prompt như Claude Code để sửa và gửi lại.
+      }, theme, deps), {
+        // Overlay neo đáy, rộng hết terminal: trông như thay chỗ editor, nhưng khác vùng editor
+        // trong fullscreen (chia chiều cao với transcript, status, widget, footer, cắt phần dưới)
+        // overlay có đủ terminal.rows, đúng ngân sách terminalRows mà hộp thoại tự co vào.
+        overlay: true,
+        overlayOptions: { anchor: "bottom-center", width: "100%", maxHeight: "100%" },
+      });
+      // navigateTree chỉ đặt prompt vào editor khi editor rỗng; đặt lại nếu chưa có
+      // để sửa và gửi lại như Claude Code.
       if (restoredPrompt && !ctx.ui.getEditorText().trim()) ctx.ui.setEditorText(restoredPrompt);
     } else {
       switchTo = await rewindWithDialogs(ctx, rows, menu, canSummarize);
