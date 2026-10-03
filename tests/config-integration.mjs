@@ -31,11 +31,11 @@ const fixture = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `pi-config
 const agentDir = path.join(fixture, "fixture agent");
 const cwd = path.join(fixture, "fixture workspace");
 for (const dir of [agentDir, cwd]) fs.mkdirSync(dir, { recursive: true });
-for (const name of ["settings.json", "keybindings.json", "models.json", "advisor.json", "subagents.json", "open-tui.json", "pi-goal-x-settings.json"]) {
+for (const name of ["settings.json", "keybindings.json", "models.json", "advisor.json", "subagents.json", "open-tui.json"]) {
   if (fs.existsSync(path.join(configuration.agentDir, name))) fs.copyFileSync(path.join(configuration.agentDir, name), path.join(agentDir, name));
 }
 fs.mkdirSync(path.join(agentDir, "agents"));
-for (const name of ["researcher", "worker", "debugger", "reviewer"]) {
+for (const name of ["researcher", "worker", "reviewer"]) {
   const role = fs.readFileSync(path.join(configuration.agentDir, "agents", `${name}.md`), "utf8")
     .replace(/^model: .+$/m, "model: config-test/worker")
     .replace('"pi-auto-mode"', '"pi-auto-mode", "scripted-provider"');
@@ -220,7 +220,7 @@ async function check(name, fn) {
 }
 await check("single session exposes slash commands and only one model delegation system", async () => {
   const commands = session.extensionRunner.getRegisteredCommands().map(command => command.name);
-  for (const name of ["goal", "goal-pause", "goal-resume", "bg", "jobs", "logs", "kill", "advisor", "advisor-off", "rewind", "checkpoint", "undo", "redo", "clear", "permissions", "auto-mode", "claude-usage", "models"])
+  for (const name of ["bg", "jobs", "logs", "kill", "advisor", "advisor-off", "rewind", "checkpoint", "undo", "redo", "clear", "permissions", "auto-mode", "claude-usage", "models"])
     assert.ok(commands.includes(name), `Missing /${name}`);
   assert.equal(new Set(commands).size, commands.length);
   const tools = session.getAllTools().map(tool => tool.name);
@@ -361,15 +361,6 @@ await check("ask_user_question RPC round trip", async () => {
   ] }] })]]);
   assert.ok(prompts.length > before); assert.equal(result.length, 1); assert.ok(!result[0].isError, JSON.stringify(result));
   assert.match(JSON.stringify(result), /Local/u);
-});
-await check("goal creates, reports state, and honors explicit pause", async () => {
-  const result = await run("goal", [
-    [tool("create_goal", { objective: "Kiểm thử goal trong fixture cục bộ." })],
-    [tool("get_goal", {})],
-    [tool("update_goal", { status: "paused", reason: "Người dùng fixture yêu cầu tạm dừng sau kiểm tra trạng thái." })],
-  ], "Người dùng fixture yêu cầu tạo goal rồi tạm dừng.");
-  assert.equal(result.length, 3); assert.ok(result.every((message) => !message.isError), JSON.stringify(result));
-  assert.match(JSON.stringify(result), /paused/u);
 });
 await check("background shell job wakes the main session when it ends; triggerOnCompletion:false only notifies", async () => {
   // Windows shell startup is not bounded by an arbitrary sleep: wait on the observable state instead.

@@ -48,7 +48,7 @@ Mỗi tool call đi qua các bước sau, dừng ở bước đầu tiên có k�
 6. **Bypass** → cho chạy.
 7. **Tự bảo vệ**: ghi vào `settings.json`, `keybindings.json`, `mcp.json`, `extensions/` của agent, thư mục trạng thái hoặc mã của chính extension → hỏi người dùng.
 8. **Lối đi nhanh** (không gọi model):
-   - `read`, `grep`, `find`, `ls` trong thư mục làm việc, `additionalDirectories`, thư mục tạm, thư mục skill đã cấu hình, tài liệu của Pi và agent dir; todo, `ask_user_question`, `web_enable`, `get_search_content`, goal, advisor, xem tiến trình nền (`bg_status`, `bg_logs`);
+   - `read`, `grep`, `find`, `ls` trong thư mục làm việc, `additionalDirectories`, thư mục tạm, thư mục skill đã cấu hình, tài liệu của Pi và agent dir; todo, `ask_user_question`, `web_enable`, `get_search_content`, advisor, xem tiến trình nền (`bg_status`, `bg_logs`);
    - `edit`/`write` trong thư mục làm việc, `additionalDirectories` hoặc thư mục tạm, trừ đường dẫn được bảo vệ (`.git/`, `.pi/`, `.claude/`, `.github/`, `.vscode/`, file rc của shell, `.npmrc`, `AGENTS.md`, `CLAUDE.md`…);
    - lệnh shell chứng minh được là chỉ đọc: toàn chữ thuần (không biến, `$()`, subshell, heredoc, gán biến môi trường), mọi lệnh con nằm trong danh sách đọc (`ls`, `cat`, `rg`, `git status/log/diff/show`, `gh pr view`…, `sed -n 1,20p`, `find` không `-exec/-delete`) và không có cờ ghi file (`sort -o`, `base64 -o`, `tree -o`, `yq -i`/`-s`, kể cả cụm cờ `-uoFILE` và tên dài viết tắt `--out=`), chuyển hướng chỉ tới `/dev/null`, và mọi đường dẫn nằm trong các thư mục đọc tự do ở trên;
    - `mkdir`/`touch`/`cp`/`mv` với mọi đích trong workspace (không có `cd` trong chuỗi lệnh);
@@ -57,7 +57,7 @@ Mỗi tool call đi qua các bước sau, dừng ở bước đầu tiên có k�
 
 ### Git guard
 
-Lớp chặn tất định cho lệnh git và `rm` phá huỷ (`lib/git-guard.ts`, theo `guard_git.py` của tstack, cùng bảng ca kiểm thử của bản gốc). Khác bộ phân loại, nó không đoán: luôn chặn cùng một tập lệnh, ở cả auto lẫn bypass, ở phiên chính, agent con và goal auditor, trước luật `ask`/`allow` và bộ phân loại. Chặn:
+Lớp chặn tất định cho lệnh git và `rm` phá huỷ (`lib/git-guard.ts`, theo `guard_git.py` của tstack, cùng bảng ca kiểm thử của bản gốc). Khác bộ phân loại, nó không đoán: luôn chặn cùng một tập lệnh, ở cả auto lẫn bypass, ở phiên chính và agent con, trước luật `ask`/`allow` và bộ phân loại. Chặn:
 
 - `git push --force`/`-f` (cho phép `--force-with-lease`), `--all`, `--mirror`, `--delete`, refspec `+x` hoặc `:x`;
 - push thẳng lên nhánh được bảo vệ, kể cả `git push origin HEAD`, tên nhánh tính lúc chạy (`$(git branch --show-current)`, `"$BRANCH"`) hay `git push` trơn khi đang đứng trên nhánh đó. Mặc định: `main`, `master`, `trunk`, `develop`, `production`, `prod`, `release`, `release/*`;
@@ -120,7 +120,7 @@ LLM mặc định là **Claude Sonnet 5.5** (`anthropic/claude-sonnet-5-5`):
 
 **Không có key Jev** (hoặc `"jev": false`): giai đoạn 1 là LLM với cùng prompt của giai đoạn 2, không suy luận, trả lời `<block>yes|no</block>` trong vài token. Hai giai đoạn dùng chung tiền tố nên giai đoạn 2 gần như trúng cache.
 
-- **Giai đoạn 2 chỉ thấy ý định và hành động**: tin nhắn người dùng gõ, câu trả lời `ask_user_question`, lệnh `!` người dùng tự chạy, và lệnh tool của agent. Lời của agent và mọi kết quả tool bị bỏ để agent không thuyết phục được bộ phân loại và nội dung bị chèn (prompt injection) không tới được nó. Tin nhắn do extension gửi thay (vd goal continuation), task subagent do agent cha viết và bản tóm tắt compaction được đánh dấu là không phải lời người dùng. AGENTS.md được gửi kèm như chỉ dẫn thường trực.
+- **Giai đoạn 2 chỉ thấy ý định và hành động**: tin nhắn người dùng gõ, câu trả lời `ask_user_question`, lệnh `!` người dùng tự chạy, và lệnh tool của agent. Lời của agent và mọi kết quả tool bị bỏ để agent không thuyết phục được bộ phân loại và nội dung bị chèn (prompt injection) không tới được nó. Tin nhắn do extension gửi thay, task subagent do agent cha viết và bản tóm tắt compaction được đánh dấu là không phải lời người dùng. AGENTS.md được gửi kèm như chỉ dẫn thường trực.
 - **Ngữ cảnh**: thư mục làm việc, repo git và remote tại lúc mở phiên (remote thêm sau không được tin), `git status` trước lệnh xóa/reset/push.
 - **Luật**: HARD (rò rỉ dữ liệu ra ngoài — không ghi đè được), 21 luật SOFT (phá lịch sử git, bỏ công việc chưa commit, xóa không hoàn tác, tài nguyên không phải của agent, chạy code tải từ mạng, deploy/hạ tầng, bỏ qua kiểm tra, làm yếu bảo mật, săn credential, lộ secret, persistence, tự sửa quyền, né bộ phân loại, publish, ghi hệ thống ngoài, đổi remote, thay đổi hệ thống, sửa ngoài project, hành động ngoài đời thực, tấn công bên thứ ba) và 11 ngoại lệ ALLOW (phát triển cục bộ, đọc mạng, dependency đã khai báo, commit/push không force lên remote của repo, tài nguyên agent tự tạo…). Luật SOFT chỉ được bỏ qua khi người dùng yêu cầu đúng thao tác và đích đó; câu hỏi, lời khuyến khích chung ("cứ làm đi") hay giá trị agent tự đoán không tính là đồng ý.
 - **Lỗi thì chặn**: model lỗi, hết thời gian (`timeoutMs`, mặc định 60 giây, là hạn chung của cả lần kiểm: hai giai đoạn, một lần thử lại khi lỗi mạng/quá tải và model dự phòng; cộng tối đa khoảng 12 giây của Jev) hoặc trả lời không đọc được → lệnh không chạy, agent được báo "không phải phán quyết không an toàn, thử lại"; không tính vào giới hạn. Model giai đoạn 2 hết quota thì dùng model của phiên. Không có đường tự cho qua.
@@ -166,8 +166,6 @@ LLM mặc định là **Claude Sonnet 5.5** (`anthropic/claude-sonnet-5-5`):
 
 Spawn `Agent` luôn qua bộ phân loại (xét nội dung task). Trong auto mode, agent `isolated: true`, `extensions: false` hoặc danh sách extension thiếu `pi-auto-mode` bị chặn vì child sẽ chạy không có cổng. Định nghĩa agent được đọc như pi-subagents nạp: `.pi/agents/`, `.agents/agents/` của thư mục làm việc và `agents/` của agent dir (theo thứ tự ưu tiên đó), tên agent là `name:` trong frontmatter (không có thì tên file), không phân biệt hoa thường; `isolated` của frontmatter thắng tham số của lời gọi. Liên kết cha–con dùng sự kiện `subagents:child:session-created` do bản vá runtime của pi-subagents phát.
 
-Completion auditor của goal (pi-goal-x) cũng là phiên con: bản vá nạp riêng pi-auto-mode đã cấu hình trong `settings.json` vào phiên auditor và phát cùng sự kiện, nên lệnh `bash` của auditor được duyệt như của subagent. Nếu `settings.json` không có pi-auto-mode, auditor chạy như upstream.
-
 ## Cấu hình
 
 `settings.json` của agent (settings của project không được đọc, để repo không tự nới quyền):
@@ -208,7 +206,6 @@ Completion auditor của goal (pi-goal-x) cũng là phiên con: bản vá nạp 
   - Bản cài trước dùng `~/.ssh/*`, `~/.aws/*`, `~/.config/gcloud/*` (chỉ khớp một cấp). Cài lại tự thêm các luật mới; luật mặc định cũ mà bản mới bỏ được xoá khỏi file, trừ lần cài đầu từ bản chưa lưu mặc định (`<root>/state/defaults`): khi đó luật cũ được giữ cạnh luật mới, vì deny chỉ thu hẹp quyền.
   - Luật `Bash(rm -rf *)` do bản cài cũ ghi bị bỏ khi cài lại: luật này chặn hẳn `rm -rf` (người dùng không duyệt được) nhưng để lọt `rm -fr`; bước 4 thay thế nó. Luật bạn tự thêm lại sau đó được giữ.
   - Giá trị khác trong `permissions` và `autoMode` bạn đã đổi được giữ; nếu mặc định mới cũng đổi giá trị đó, installer báo xung đột kèm mặc định mới.
-  - Luật ask `Edit(**/.pi/pi-goal-x-settings.json)` hỏi trước khi sửa file này: prompt của pi-goal-x cho agent tự đổi `maxAutonomousRuns` ở đây, và file của project đè giới hạn global.
 
 ## Giới hạn
 

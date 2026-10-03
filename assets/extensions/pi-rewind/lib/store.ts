@@ -151,10 +151,10 @@ export class BlobStore {
       }
     }
     if (!limit || total <= limit.maxBytes) return removed;
-    const goal = limit.maxBytes * 0.9;
+    const target = limit.maxBytes * 0.9;
     candidates.sort((a, b) => a.mtimeMs - b.mtimeMs);
     for (const blob of candidates) {
-      if (total <= goal || now - blob.mtimeMs <= RECENT_MS) break;
+      if (total <= target || now - blob.mtimeMs <= RECENT_MS) break;
       try {
         // Được tham chiếu lại sau lần stat ở trên (capture của phiên khác): giữ.
         if (fs.statSync(blob.file).mtimeMs !== blob.mtimeMs) continue;

@@ -29,7 +29,7 @@ const fixture = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `pi-config
 const agentDir = path.join(fixture, "fixture agent");
 const cwd = path.join(fixture, "fixture workspace");
 for (const dir of [agentDir, cwd]) fs.mkdirSync(dir, { recursive: true });
-for (const name of ["settings.json", "keybindings.json", "models.json", "advisor.json", "subagents.json", "open-tui.json", "pi-goal-x-settings.json", "pi-usage.json"]) {
+for (const name of ["settings.json", "keybindings.json", "models.json", "advisor.json", "subagents.json", "open-tui.json", "pi-usage.json"]) {
   if (fs.existsSync(path.join(configuration.agentDir, name))) fs.copyFileSync(path.join(configuration.agentDir, name), path.join(agentDir, name));
 }
 // Kiểm cơ chế của bản cài với model của preset default (provider giả chỉ có các model này), dù model-roles.json
@@ -42,11 +42,6 @@ fs.mkdirSync(path.join(agentDir, "agents"));
 for (const name of modelRoles.SUBAGENT_ROLES) {
   const role = fs.readFileSync(path.join(configuration.agentDir, "agents", `${name}.md`), "utf8");
   fs.writeFileSync(path.join(agentDir, "agents", `${name}.md`), modelRoles.setRoleModel(role, defaults.subagents[name]));
-}
-const goalFile = path.join(agentDir, "pi-goal-x-settings.json");
-if (fs.existsSync(goalFile)) {
-  const { thinking_level: _alias, ...goal } = readJson(goalFile);
-  writeJson(goalFile, { ...goal, ...defaults.goal, oracle: { ...goal.oracle, ...defaults.goal.oracle } });
 }
 const settings = readJson(path.join(agentDir, "settings.json"));
 // Model Jev của bản cài (settings.json người dùng đã sửa có thể không có mục này: dùng mặc định của extension). Phiên
@@ -170,11 +165,11 @@ async function check(name,fn) {
   activePhase=name;console.log(`Agent: ${name}`);
   try {await fn();results.push({name,status:'PASS'});}catch(error){results.push({name,status:'FAIL',error:error.stack});}
 }
-await check('native delegation tools and six task roles are available',async()=>{
+await check('native delegation tools and three task roles are available',async()=>{
   const names=session.getAllTools().map(tool=>tool.name);
   assert.ok(names.includes('Agent'));
   for(const name of ['get_subagent_result','steer_subagent'])assert.ok(names.includes(name));
-  assert.deepEqual(fs.readdirSync(path.join(agentDir,'agents')).sort(),['debugger.md','researcher.md','reviewer.md','worker.md']);
+  assert.deepEqual(fs.readdirSync(path.join(agentDir,'agents')).sort(),['researcher.md','reviewer.md','worker.md']);
 });
 await check('researcher uses GLM/max and separate context',async()=>{
   const out=await run('sol',invocation('sol'),[[tool('read',{path:'safe.txt'})],final('CHILD_OK')]);
@@ -185,7 +180,7 @@ await check('researcher uses GLM/max and separate context',async()=>{
   assert.match(JSON.stringify(child.at(-1).messages),/SAFE_CONTENT/);
 });
 const configured=Object.fromEntries(modelRoles.SUBAGENT_ROLES.map(role=>[role,[modelId(defaults.subagents[role].model),defaults.subagents[role].thinking]]));
-for(const role of ['researcher','worker','debugger','reviewer']) {
+for(const role of ['researcher','worker','reviewer']) {
   await check(`native ${role} keeps its configured model/effort despite conflicting tool parameters`,async()=>{
     const id='configured-'+role;
     const [expectedModel,expectedEffort]=configured[role];
@@ -213,7 +208,7 @@ await check('Codex fast mode reaches Sol, Astra and GPT-6.1 Sol role requests; o
   const sol61=path.join(agentDir,'agents','sol61.md');
   fs.writeFileSync(sol61,fs.readFileSync(path.join(agentDir,'agents','worker.md'),'utf8').replace(/^name: .*$/mu,'name: sol61').replace(/^model: .*$/mu,'model: openai-codex/gpt-6.1-sol'));
   try{
-    for(const [role,tier,model] of [['worker','priority'],['debugger','priority'],['reviewer','priority'],['researcher',undefined],['sol61','priority','gpt-6.1-sol']]){
+    for(const [role,tier,model] of [['worker','priority'],['reviewer','priority'],['researcher',undefined],['sol61','priority','gpt-6.1-sol']]){
       const id='fast-'+role;
       const out=await run(id,invocation(id,{subagent_type:role}));
       assert.equal(out[0]?.isError,false,JSON.stringify(out));
@@ -278,7 +273,7 @@ await check('foreground completion returns inline without another parent generat
   assert.equal(control.seen.filter(x=>x.key==='parent_completion').length,2);
   assert.equal(session.isStreaming,false);assert.equal(session.pendingMessageCount,0);
 });
-// Một prompt của parent theo kịch bản, không qua Agent; chờ cả lượt goal tự tiếp tục chạy xong.
+// Một prompt của parent theo kịch bản, không qua Agent; chờ cả các lượt extension tự mở chạy xong.
 async function turnIn(target, key, steps) {
   control.plans[key]=steps;control.fallbackKey=key;
   const before=target.messages.length;
@@ -310,26 +305,6 @@ await check('advisor Astra/high is always on for the parent and a consultation k
   assert.match(one,/Before declaring success, use ask_advisor/);
   assert.match(one,/Advisor calls are limited to 5 per session/);
   assert.doesNotMatch(one,/Before committing to a materially consequential plan/);
-});
-await check('goal auditor uses Astra/high and its bash passes the permission gate like a subagent',async()=>{
-  control.plans.auditor=[[tool('bash',{command:'printf denied > audit-denied.txt',timeout:10})],
-    [tool('bash',{command:'printf allowed > audit-allowed.txt',timeout:10})],final('Checked the workspace.\n<approved/>')];
-  // Lệnh đầu bị bộ phân loại chặn (hai giai đoạn), lệnh sau được phép.
-  control.classifier.push('<block>yes</block>','<block>yes</block><rule>Persistence</rule><reason>Fixture block.</reason>');
-  const out=await turn('goal-audit',[[tool('create_goal',{objective:'Fixture goal: audit the workspace.'})],
-    [tool('update_goal',{status:'complete',completion_summary:'Fixture work is done.'})],final('GOAL_DONE')]);
-  assert.ok(out.length===2&&out.every(m=>!m.isError),JSON.stringify(out));
-  assert.match(JSON.stringify(out),/Goal audit approved/);
-  const audits=control.seen.filter(x=>x.key==='auditor');
-  assert.equal(audits.length,3);
-  assert.ok(audits.every(x=>x.model===defaults.goal.model&&x.options.reasoning===defaults.goal.thinkingLevel));
-  assert.ok(audits.every(x=>x.payload?.service_tier==='priority'),'Phiên auditor riêng vẫn theo Codex fast mode');
-  assert.ok(audits[0].tools.includes('bash'));
-  assert.equal(fs.existsSync(path.join(cwd,'audit-denied.txt')),false);
-  assert.equal(fs.readFileSync(path.join(cwd,'audit-allowed.txt'),'utf8'),'allowed');
-  const reviewed=control.seen.filter(x=>x.key==='classifier').map(x=>JSON.stringify(x.messages));
-  assert.ok(reviewed.some(text=>text.includes('audit-denied.txt')&&text.includes('delegated_task')),'Auditor phải qua bộ phân loại như phiên con');
-  assert.ok(reviewed.some(text=>text.includes('audit-allowed.txt')));
 });
 await check('/advisor-off lasts into the next session; alwaysOn brings the advisor back',async()=>{
   await session.prompt('/advisor-off');

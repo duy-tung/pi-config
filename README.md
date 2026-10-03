@@ -27,7 +27,7 @@ Chi tiết kiến trúc CPU, công cụ hệ thống và tùy chọn đường d
 ## Đăng nhập dịch vụ
 
 1. Chạy `pi`, dùng `/login` và chọn **Anthropic** cho parent Claude Opus 5.5 (gói Pro/Max) và bộ phân loại của auto mode (Claude Sonnet 5.5), hoặc đặt `ANTHROPIC_API_KEY`. Xem [docs/claude-setup.md](docs/claude-setup.md).
-2. Trong `/login`, chọn **OpenAI Codex (legacy)** cho worker/debugger (GPT-6.1 Sol) và reviewer (GPT-6 Astra). Pi 0.99 đổi tên hiển thị; provider vẫn là `openai-codex`. "Sign in with ChatGPT" của provider **OpenAI** là provider khác (`openai`), preset không dùng.
+2. Trong `/login`, chọn **OpenAI Codex (legacy)** cho worker (GPT-6.1 Sol) và reviewer (GPT-6 Astra). Pi 0.99 đổi tên hiển thị; provider vẫn là `openai-codex`. "Sign in with ChatGPT" của provider **OpenAI** là provider khác (`openai`), preset không dùng.
 3. Trong `/login`, chọn **OpenCode Go** và nhập API key cho GLM. Pi cũng nhận biến môi trường `OPENCODE_API_KEY`.
 4. Chạy `firecrawl login --browser` để đăng nhập dịch vụ web.
 5. Tuỳ chọn: tạo API key TypeSafe tại [console.typesafe.ai](https://console.typesafe.ai), thêm `export TYPESAFE_API_KEY="<key>"` vào `~/.zshrc` hoặc `~/.bashrc` (Windows: `setx TYPESAFE_API_KEY "<key>"`) rồi mở terminal mới, để auto mode sàng lọc bằng Jev. Đây là cách tài liệu TypeSafe và đa số package Jev hướng dẫn. Chưa có key thì bộ phân loại LLM làm cả hai giai đoạn như trước.
@@ -40,7 +40,6 @@ Chạy `pi` để mở Claude Opus 5.5/high với toàn bộ công cụ. Các wo
 
 | Công việc | Lệnh |
 |---|---|
-| Goal dài hạn | `/goal`, `/goal-status`, `/goal-pause`, `/goal-resume` |
 | Shell job nền | `/bg --name "Dev server" npm run dev`, `/jobs`, `/logs`, `/kill` |
 | Ý kiến cố vấn | `/advisor-manual`, `/advisor-settings`, `/advisor-off`, `/advisor` |
 | Rewind code/hội thoại | `Esc Esc`, `/rewind` (`/checkpoint`, `/undo`), `/redo`; `/clear` mở phiên mới |
@@ -56,11 +55,6 @@ Advisor (pi-advisor-flow) luôn bật khi mở phiên: executor là Opus/high c�
 - `/advisor-off` tắt hẳn, kể cả các phiên sau (bản vá: Pi tự bật mọi tool của extension khi mở phiên, nên advisor chỉ bật khi Always on kích hoạt được); bật lại ở `/advisor-settings` → Always on. Khi advisor đang bật, `/model` lưu model mới làm executor vào `advisor.json`; cài lại giữ giá trị này.
 - Mở phiên khi chưa đăng nhập Claude hoặc Codex thì Pi báo `Advisor models are not configured or available` và phiên chạy không có advisor; đăng nhập rồi chạy `/advisor`.
 
-Goal chỉ bắt đầu khi được yêu cầu. Mỗi lần tạo hoặc resume có tối đa 10 lượt tự tiếp tục do goal extension khởi động; giới hạn này không tính các tool call trong một lượt hay request do extension khác khởi động.
-- Khi agent báo hoàn thành, auditor GPT-6 Astra/high kiểm tra độc lập trong phiên riêng (đọc file, chạy lệnh). Không duyệt thì goal vẫn mở kèm phản hồi. Tắt audit cho goal đang chọn bằng `Ctrl+Shift+A` hoặc trong hộp xác nhận goal.
-- Lệnh của auditor qua cổng permission như subagent (bản vá pi-goal-x): theo mode của phiên chính, câu hỏi hiện ở UI phiên chính.
-- Khi agent sắp chuyển goal sang blocked, Oracle Astra/high (chỉ đọc) được hỏi một lần cho mỗi vướng mắc.
-
 Background cung cấp shell jobs. Khi job kết thúc (xong, lỗi hoặc bị dừng), thông báo `<background-task-notification>` tự mở lượt mới cho phiên chính, nên model kết thúc lượt thay vì chờ hay hỏi trạng thái liên tục; không cần gửi tin để nó làm tiếp. Với dev server, watcher hoặc job không cần xử lý khi xong, model đặt `triggerOnCompletion:false`: thông báo vẫn vào hội thoại nhưng không đánh thức model. Model delegation dùng `Agent`.
 
 Rewind (`pi-rewind`, extension của repo) theo giao diện `/rewind` của Claude Code: mỗi prompt có checkpoint; `Esc Esc` hoặc `/rewind` mở danh sách prompt kèm số dòng đã đổi, rồi chọn khôi phục code, hội thoại, cả hai, hoặc tóm tắt từ/đến prompt đó. File do `edit`/`write` sửa luôn được theo dõi; file do `bash`/`Agent` sửa được theo dõi trong git worktree. Mục Redo trong menu (hoặc `/redo`) hoàn tác lần rewind gần nhất, và ngay sau Redo có mục Undo redo để lấy lại việc đã làm sau lần rewind. `/clear` mở phiên mới như `/new`, và menu của phiên mới có mục quay lại phiên cũ. Nếu Pi thoát giữa lúc khôi phục code, menu cho hoàn tất hoặc hoàn tác lần khôi phục đó. Chi tiết và giới hạn: [docs/rewind.md](docs/rewind.md).
@@ -73,7 +67,7 @@ Permission (`pi-auto-mode`, extension của repo) có hai mode như Claude Code.
 
 **Bypass** chạy mọi thứ trừ luật deny; lệnh không kiểm được với deny đường dẫn, `rm` vào đường dẫn quan trọng, lệnh xoá đệ quy và lệnh rủi ro (cài cơ chế tự chạy, tắt kiểm TLS, ghi đường dẫn hệ thống) thì hỏi bạn trước. `Shift+Tab` đổi mode, `/permissions` xem và duyệt lại lệnh bị chặn, `/auto-mode` xem trạng thái và chi phí Jev. Chi tiết: [docs/auto-mode.md](docs/auto-mode.md).
 
-**Git guard** chặn tất định (không qua bộ phân loại, ở cả hai mode, cả agent con và goal auditor): force-push (trừ `--force-with-lease`), push thẳng lên nhánh bảo vệ (`main`, `master`, `release/*`…), `reset --hard`, `clean -f`, `branch -D`, bỏ qua hook (`--no-verify`, `HUSKY=0`…), viết lại lịch sử và `rm -r` trên `/`, `~`, `.`, `.git`. Cần thật thì bạn tự chạy bằng `!<lệnh>` trong editor. Cấu hình: [docs/auto-mode.md](docs/auto-mode.md#git-guard).
+**Git guard** chặn tất định (không qua bộ phân loại, ở cả hai mode, cả agent con): force-push (trừ `--force-with-lease`), push thẳng lên nhánh bảo vệ (`main`, `master`, `release/*`…), `reset --hard`, `clean -f`, `branch -D`, bỏ qua hook (`--no-verify`, `HUSKY=0`…), viết lại lịch sử và `rm -r` trên `/`, `~`, `.`, `.git`. Cần thật thì bạn tự chạy bằng `!<lệnh>` trong editor. Cấu hình: [docs/auto-mode.md](docs/auto-mode.md#git-guard).
 
 Opus 5.5 và GLM dùng context **1M** của catalog; Astra/Sol nâng lên **872K**. Theme Rosé Pine Moon.
 
@@ -84,23 +78,22 @@ Pi dùng `Agent` của **@tintinweb/pi-subagents**:
 | Role | Model/effort | Phạm vi |
 |---|---|---|
 | `researcher` | GLM-5.3-Flash/max | Đọc code trong workspace, tra docs/log/web và lịch sử git, thu thập bằng chứng; chỉ đọc (bash cho lệnh đọc) |
-| `worker` | GPT-6.1 Sol/max | Triển khai và kiểm thử phần việc đã chốt |
-| `debugger` | GPT-6.1 Sol/max | Tái hiện lỗi, tìm nguyên nhân, sửa và kiểm hồi quy |
+| `worker` | GPT-6.1 Sol/max | Triển khai và kiểm thử phần việc đã chốt; sửa lỗi: tái hiện, tìm nguyên nhân, sửa và kiểm hồi quy |
 | `reviewer` | GPT-6 Astra/high | Review độc lập; chỉ đọc, bash để chạy diff, test và script thử |
 
 Parent Claude Opus 5.5/high giữ thiết kế, quyết định quan trọng và nghiệm thu cuối. GLM chạy trực tiếp qua OpenCode Go trong Pi.
 
-Bảng trên là preset `default`. Model và thinking của mọi vai (parent, các role, advisor, goal auditor, Oracle, auto mode) đặt trong `<agent-dir>/model-roles.json` và đổi bằng `/models` trong Pi: menu chọn preset (vd `claude`, chỉ cần đăng nhập Claude) hoặc đổi model/thinking của từng vai, rồi áp ngay cho phiên đang chạy. Xem [docs/models.md](docs/models.md).
+Bảng trên là preset `default`. Model và thinking của mọi vai (parent, các role, advisor, auto mode) đặt trong `<agent-dir>/model-roles.json` và đổi bằng `/models` trong Pi: menu chọn preset (vd `claude`, chỉ cần đăng nhập Claude) hoặc đổi model/thinking của từng vai, rồi áp ngay cho phiên đang chạy. Xem [docs/models.md](docs/models.md).
 
 ```text
 @researcher Tìm luồng xử lý timeout và báo file/dòng.
 @researcher Tra changelog của thư viện HTTP về timeout mặc định.
 @worker Triển khai phần đã chốt, chạy kiểm thử liên quan.
-@debugger Tái hiện lỗi và sửa với regression test.
+@worker Tái hiện lỗi và sửa với regression test.
 @reviewer Review diff, nêu lỗi có bằng chứng.
 ```
 
-Agent có context riêng và không giới hạn số lượt; dừng agent bằng `/agents` → chọn agent → `x` hai lần. Khi parent gọi, researcher/reviewer chạy nền theo mặc định (tối đa 4 cùng lúc), worker/debugger chạy foreground (tối đa 2); vượt giới hạn thì xếp hàng. Parent điều phối để tránh ghi chồng file. Gõ `@role nội dung` thì agent chạy nền và báo kết quả cho parent khi xong. Task là đúng nội dung bạn gõ. Chi tiết cấu hình, quyền và vòng đời: [docs/subagents.md](docs/subagents.md).
+Agent có context riêng và không giới hạn số lượt; dừng agent bằng `/agents` → chọn agent → `x` hai lần. Khi parent gọi, researcher/reviewer chạy nền theo mặc định (tối đa 4 cùng lúc), worker chạy foreground (tối đa 2); vượt giới hạn thì xếp hàng. Parent điều phối để tránh ghi chồng file. Gõ `@role nội dung` thì agent chạy nền và báo kết quả cho parent khi xong. Task là đúng nội dung bạn gõ. Chi tiết cấu hình, quyền và vòng đời: [docs/subagents.md](docs/subagents.md).
 
 ## Công cụ và mặc định
 
@@ -108,8 +101,8 @@ Agent có context riêng và không giới hạn số lượt; dừng agent bằ
 - MCP: không cài. MCP, codemode và `tool_search` dựng sẵn của Pi được tắt trong `extensions` của settings (`-builtin:mcp`, `-builtin:codemode`, `-builtin:tool-search`); provider llama.cpp dựng sẵn cũng tắt (`-builtin:llama.cpp`). Khi cần một server, bật MCP trong `pi config` (Built-in), thêm server bằng `pi mcp add` (ghi `<agent-dir>/mcp.json`) với `"exposure": "direct"`; mỗi tool là `mcp__<server>__<tool>` và đi qua cổng permission như tool khác.
 - Giao diện fullscreen (mặc định từ Pi 1.0): cuộn bằng chuột/trackpad trong Pi (số dòng mỗi nấc theo `fullscreenWheelScrollLines` của Pi, mặc định `auto`), tìm trong transcript bằng **Alt+S** (Ctrl+Shift+F là ô tìm của WezTerm), khi thoát in lại transcript. Muốn giữ scrollback bình thường của terminal thì đặt `"tuiMode": "regular"` trong `settings.json` (cài lại vẫn giữ).
 - Native compaction bật: reserve 16.384, giữ gần nhất 20.000 token. Với cửa sổ 1M, auto-compaction chạy rất muộn; xem context ở footer và chọn ranh giới pha quanh mép 150k.
-- Cache warming tắt. Advisor, goal auditor và Oracle bật như mô tả ở trên. Jev của auto mode chỉ chạy khi bạn đã lưu key TypeSafe (tính theo token đầu vào, khoảng $0,0001 mỗi lần sàng lọc). Goal và background follow-up chỉ chạy theo thao tác/cấu hình đã chọn.
-- Codex fast mode bật mặc định (`codexFastMode:true`): mọi request tới GPT-6.1 Sol (worker, debugger) và GPT-6 Astra (reviewer, advisor, goal auditor, Oracle) đi hàng `priority`; GPT-6 Sol cũng vậy khi bạn đặt một vai sang model này. Theo catalog của Codex, Sol nhanh khoảng 1,5 lần, Astra khoảng 2 lần; đổi lại tốn quota Codex nhiều hơn (Pi tính chi phí gấp đôi). Tắt bằng `/fast` khi phiên đang dùng model Codex, hoặc `/usage` → Settings → Codex Fast mode khi đang dùng Opus. Footer hiện `fast` khi phiên đang dùng model Codex có fast.
+- Cache warming tắt. Advisor bật như mô tả ở trên. Jev của auto mode chỉ chạy khi bạn đã lưu key TypeSafe (tính theo token đầu vào, khoảng $0,0001 mỗi lần sàng lọc). Background follow-up chỉ chạy theo thao tác/cấu hình đã chọn.
+- Codex fast mode bật mặc định (`codexFastMode:true`): mọi request tới GPT-6.1 Sol (worker) và GPT-6 Astra (reviewer, advisor) đi hàng `priority`; GPT-6 Sol cũng vậy khi bạn đặt một vai sang model này. Theo catalog của Codex, Sol nhanh khoảng 1,5 lần, Astra khoảng 2 lần; đổi lại tốn quota Codex nhiều hơn (Pi tính chi phí gấp đôi). Tắt bằng `/fast` khi phiên đang dùng model Codex, hoặc `/usage` → Settings → Codex Fast mode khi đang dùng Opus. Footer hiện `fast` khi phiên đang dùng model Codex có fast.
 - Header/footer/editor do pi-open-tui quản lý. Footer hiển thị model, thinking, quota (Codex qua pi-usage; Claude từ header phản hồi và `/api/oauth/usage` khi mở phiên, 15 phút một lần nếu header đã cũ; chi tiết bằng `/claude-usage`), context % kèm token/cửa sổ, token/cost và trạng thái công cụ liên quan (giữ màu extension đặt cho trạng thái). Palette terminal theo theme của phiên và được phục hồi khi thoát.
 - Dán ảnh: `@pi-archimedes/image-paste`, dùng **Ctrl+V** trên macOS/Linux hoặc **Alt+V** trên Windows. Copy ảnh vào clipboard, dán để có marker `[Image #1]`, rồi gửi cùng prompt. Xóa marker để bỏ ảnh; giới hạn 20 MiB/ảnh. Preview chỉ hiện trong UI, ảnh được gửi tới model đúng một lần. Phím dán ảnh tích hợp của Pi được tắt trong `keybindings.json` để tránh xử lý trùng.
 - Ảnh đọc qua clipboard native của pi-tui. Linux cần desktop X11/Wayland; `wl-clipboard`/`xclip` là các reader thay thế. Terminal không hỗ trợ ảnh inline vẫn gửi được ảnh, chỉ thiếu preview. Chỉ nạp image-paste; phần giao diện của bộ Archimedes không được nạp.
@@ -117,7 +110,7 @@ Agent có context riêng và không giới hạn số lượt; dừng agent bằ
 - Hàng đợi tin nhắn: `Enter` khi Pi đang chạy để chỉnh hướng, `Alt+Enter` hoặc **Ctrl+Enter** để xếp follow-up, `Alt+Up` để lấy lại tin đang chờ. Ctrl+Enter được thêm vì terminal của Orca gửi Alt+Enter thành Shift+Enter.
 - Nhiều phiên song song, mỗi task một worktree: dùng Orca. Cài đặt, phím và các giới hạn xem [docs/orca.md](docs/orca.md).
 
-`pi-doctor` kiểm dependency và checksum bản vá, in model/thinking của mọi vai theo `model-roles.json` (kèm giá trị đang có hiệu lực khi khác và kết quả kiểm catalog của Pi) cùng trạng thái advisor, goal và auto mode (kèm nguồn key Jev, không in key), và báo lỗi khi hai danh sách provider trong `web-search.json` lệch nhau (pi-web-access sẽ không nạp web tools). `pi-test` kiểm workflow và Agent bằng provider giả trong thư mục tạm, không gọi model trả phí.
+`pi-doctor` kiểm dependency và checksum bản vá, in model/thinking của mọi vai theo `model-roles.json` (kèm giá trị đang có hiệu lực khi khác và kết quả kiểm catalog của Pi) cùng trạng thái advisor và auto mode (kèm nguồn key Jev, không in key), và báo lỗi khi hai danh sách provider trong `web-search.json` lệch nhau (pi-web-access sẽ không nạp web tools). `pi-test` kiểm workflow và Agent bằng provider giả trong thư mục tạm, không gọi model trả phí.
 
 Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều hành: bộ phân loại có thể sai. Luật `permissions.deny` (file bí mật, `sudo`...) áp dụng ở cả hai mode, theo đường dẫn có trong lệnh: glob hay tìm cả cây chạm tới file bị deny thì bị chặn, tool `grep` của Pi bỏ các dòng thuộc file đó khỏi kết quả, lệnh có tập đích không kiểm được (biến, `xargs`...) thì auto mode giao bộ phân loại, bypass hỏi bạn. Chương trình tùy ý (`node`, `python -c`...) vẫn tự mở được file; xem [giới hạn đọc](docs/auto-mode.md#giới-hạn-đọc-khi-có-deny-đường-dẫn). Bypass vẫn hỏi trước lệnh xoá đệ quy ra ngoài thư mục tạm (`rm -fr`, `find -delete`, `git clean`...) và lệnh rủi ro (`~/.bashrc`, git hook, crontab, `curl -k`, `/etc`...). Project cần được trust trước khi dùng cấu hình của project; settings của project không bật được bypass hay thêm luật allow. Nguồn web là dữ liệu để tham khảo, không phải instruction.
 
@@ -132,7 +125,6 @@ Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều
 | `@juicesharp/rpiv-ask-user-question`, `rpiv-todo` | 2.12.0 |
 | `@narumitw/pi-usage` | 0.61.2 |
 | `pi-background-tasks` | 2.6.9 |
-| `pi-goal-x` | 0.32.3 |
 | `pi-advisor-flow` | 0.10.0 |
 | `pi-open-tui` | 0.3.11 |
 | `@pi-archimedes/image-paste` | 2.9.0 |
@@ -151,7 +143,7 @@ Installer chỉ quản lý bản cài có `install-state.json` phù hợp. Với
 node install.mjs --root /duong-dan/platform --agent-dir /duong-dan/agent --bin-dir /duong-dan/bin --no-path
 ```
 
-Role, subagents, goal settings, advisor settings và cấu hình công cụ cùng nằm trong agent directory. Một runtime Pi duy nhất ở `runtimes/current`; Firecrawl CLI ở `tools/firecrawl`.
+Role, subagents, advisor settings và cấu hình công cụ cùng nằm trong agent directory. Một runtime Pi duy nhất ở `runtimes/current`; Firecrawl CLI ở `tools/firecrawl`.
 
 Khi chạy lại, installer dùng lockfile và checksum để kiểm tính nhất quán; runtime được cài lại khi lockfile hoặc kết quả bản vá đổi, để bản vá luôn áp lên file gốc. Bản runtime và nguồn cũ được chuyển vào `<root>/backups` trong lúc cài và xoá khi cài xong (muốn quay lại thì cài lại commit cũ của repo); 3 lần gỡ tài nguyên gần nhất được giữ lại, bản sao file cấu hình trước khi ghi đè giữ 20 bản mới nhất cho mỗi file.
 

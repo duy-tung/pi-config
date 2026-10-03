@@ -7,9 +7,8 @@ Model và mức thinking của mọi vai đặt ở một chỗ: `<agent-dir>/mo
 | Vai | Dùng ở | File gốc installer sinh ra |
 |---|---|---|
 | `main` | Phiên chính (parent) | `settings.json` (`defaultProvider`, `defaultModel`, `defaultThinkingLevel`) và `executor` trong `advisor.json` |
-| `researcher`, `worker`, `debugger`, `reviewer` | Agent của pi-subagents | dòng `model:`/`thinking:` trong `agents/<vai>.md` |
+| `researcher`, `worker`, `reviewer` | Agent của pi-subagents | dòng `model:`/`thinking:` trong `agents/<vai>.md` |
 | `advisor` | pi-advisor-flow | `advisor`, `advisorEffort` trong `advisor.json` |
-| `auditor`, `oracle` | Goal auditor và Oracle của pi-goal-x | `provider`/`model`/`thinkingLevel` và khối `oracle` trong `pi-goal-x-settings.json` |
 | `autoMode` | Bộ phân loại LLM của auto mode | `autoMode.model`, `autoMode.stage2Reasoning` trong `settings.json` |
 
 `enabledModels` (danh sách của Ctrl+P và `scopeModels` của pi-subagents) và `modelThinkingLevels` (mức thinking khi đổi sang một model) được suy ra từ các vai: model của `main` đứng đầu, model của auto mode không vào danh sách.
@@ -30,15 +29,13 @@ Preset có sẵn nằm ở `assets/configs/model-presets.json` và cập nhật 
 |---|---|---|
 | `main` | Claude Opus 5.5 / high | Claude Opus 5.5 / high |
 | `researcher` | GLM-5.3-Flash / max | Claude Sonnet 5.5 / high |
-| `worker`, `debugger` | GPT-6.1 Sol / max | Claude Opus 5.5 / high |
+| `worker` | GPT-6.1 Sol / max | Claude Opus 5.5 / high |
 | `reviewer` | GPT-6 Astra / high | Claude Fable 5.1 / high |
 | `advisor` | GPT-6 Astra / high | Claude Fable 5.1 / high |
-| `auditor` | GPT-6 Astra / high | Claude Sonnet 5.5 / high |
-| `oracle` | GPT-6 Astra / high | Claude Fable 5.1 / high |
 | `autoMode` | Claude Sonnet 5.5 / low | Claude Sonnet 5.5 / low |
 
 - **`default`:** cần đăng nhập Claude, Codex và OpenCode Go.
-- **`claude`:** chỉ cần Claude. Reviewer, advisor và Oracle dùng một model khác với model viết code.
+- **`claude`:** chỉ cần Claude. Reviewer và advisor dùng một model khác với model viết code.
 
 Chọn preset: `/models` → **Chọn preset…**. Lần cài đầu dùng `default`; muốn dùng `claude` ngay thì mở `pi`, đăng nhập Claude (`/login`) rồi chọn preset.
 
@@ -51,7 +48,7 @@ Chọn preset: `/models` → **Chọn preset…**. Lần cài đầu dùng `defa
 
 Menu còn có mục chọn preset, và khi có vai lệch, mục đưa các vai lệch về `model-roles.json` ([xem dưới](#giá-trị-đổi-ngoài-model-rolesjson)). Mọi thay đổi được xem trước, và chỉ ghi khi bạn xác nhận. Phiên không có giao diện (vd chế độ RPC không có UI) thì `/models` chỉ in bảng các vai.
 
-- **Áp ngay.** Thay đổi sửa `model-roles.json` rồi áp phần model vào `settings.json`, `advisor.json`, `pi-goal-x-settings.json` và `agents/*.md`, không cần chạy lại installer. Cách gộp giống installer: phần khác bạn đã sửa trong các file đó được giữ, file bị ghi lại có backup trong `<root>/backups`, và lần cài sau không phải ghi lại gì.
+- **Áp ngay.** Thay đổi sửa `model-roles.json` rồi áp phần model vào `settings.json`, `advisor.json` và `agents/*.md`, không cần chạy lại installer. Cách gộp giống installer: phần khác bạn đã sửa trong các file đó được giữ, file bị ghi lại có backup trong `<root>/backups`, và lần cài sau không phải ghi lại gì.
 - **Vai bị ép.** Vai mà thay đổi đổi giá trị (vai bạn chọn, hoặc các vai preset mới khác preset cũ) nhận giá trị mới trong file gốc kể cả khi bạn đã đổi vai đó qua `/model` hay `/agents`; bản xem trước in giá trị bị thay. Vai khác giữ giá trị bạn đã đổi.
 - **Kiểm tra.** Kiểm như installer (xem [Kiểm tra](#kiểm-tra)), bằng catalog và credential mà phiên đang dùng; có lỗi thì không ghi gì. Provider chưa đăng nhập thì gợi ý `/login`.
 - **Khóa.** `/models` và installer dùng chung khóa `<root>/.install.lock`, nên không ghi cùng lúc.
@@ -61,9 +58,8 @@ Menu còn có mục chọn preset, và khi có vai lệch, mục đưa các vai 
   |---|---|---|
   | `main` | Ngay: phiên này chuyển sang model và thinking mới. Nếu provider chưa đăng nhập thì phiên giữ model cũ và `/models` báo lại | Phiên Pi mở sau |
   | `autoMode` | Từ lần phân loại kế tiếp của auto mode | Phiên Pi mở sau |
-  | `researcher`, `worker`, `debugger`, `reviewer` | Từ lần gọi `Agent` kế tiếp | Từ lần gọi `Agent` kế tiếp |
+  | `researcher`, `worker`, `reviewer` | Từ lần gọi `Agent` kế tiếp | Từ lần gọi `Agent` kế tiếp |
   | `advisor` | Từ lần hỏi advisor kế tiếp | Từ lần hỏi advisor kế tiếp |
-  | `auditor`, `oracle` | Từ phiên mới (`/new`, `/resume`) hoặc phiên Pi mở sau | Phiên Pi mở sau |
 
   `/models` không tự chạy `/reload`, vì reload dừng các subagent đang chạy.
 
@@ -83,6 +79,7 @@ Installer tạo file này ở lần cài đầu với `{"preset": "default", "ro
 
 - **`preset`:** tên preset có sẵn (`default` hoặc `claude`). Preset riêng (khóa `presets`) không còn được hỗ trợ: installer và `/models` báo lỗi; chuyển các vai của preset riêng vào `roles`.
 - **`roles.<vai>`:** `model` dạng `provider/id` (xem `/model` hoặc `pi --list-models`), `thinking` là một trong `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Có thể đặt riêng từng trường.
+- Ghi đè của vai đã gỡ (`auditor`, `oracle`, `debugger`; worker nay gồm cả sửa lỗi) không phải lỗi: installer, `/models` và `pi-doctor` bỏ qua và in một dòng cảnh báo; xoá khỏi file để hết cảnh báo.
 
 Sửa tay file này xong thì chạy lại installer, hoặc mở `/models`: vai bạn sửa hiện là vai lệch, và mục đưa vai lệch về `model-roles.json` áp file vào các file gốc.
 
@@ -92,7 +89,7 @@ Installer và `/models` dừng trước khi ghi cấu hình khi:
 - `model-roles.json` không phải JSON, có khóa, vai hay mức thinking không hỗ trợ, hoặc chọn preset không tồn tại. Từng lỗi được báo riêng.
 - Model không có trong catalog của Pi. Catalog gồm model có sẵn, model khai báo trong `models.json` và catalog Pi đã tải về. Sai tên model rất tốn kém, vì pi-subagents sẽ lặng lẽ chạy vai đó bằng model của parent.
 
-Mức thinking mà model không hỗ trợ không làm dừng việc ghi; chỉ có báo mức Pi sẽ dùng; ví dụ GLM không có `medium`, nên dùng `high`. pi-goal-x chỉ nhận tới `xhigh`, nên `max` của `auditor` và `oracle` được ghi thành `xhigh`.
+Mức thinking mà model không hỗ trợ không làm dừng việc ghi; chỉ có báo mức Pi sẽ dùng; ví dụ GLM không có `medium`, nên dùng `high`.
 
 `/models` và `pi-doctor` in bảng model của mọi vai và kiểm catalog, không gọi mạng. Model sai tên là lỗi, kể cả model nằm trong file gốc. `pi-doctor` không đọc `auth.json`; `/models` cảnh báo thêm provider của vai chưa đăng nhập theo credential của phiên.
 
@@ -100,7 +97,6 @@ Mức thinking mà model không hỗ trợ không làm dừng việc ghi; chỉ 
 
 Các giao diện sẵn có vẫn đổi được model:
 - **`/model`:** Pi chỉ đổi cho phiên hiện tại (Ctrl+S mới lưu mặc định). Nhưng advisor luôn bật lưu model đó vào `executor`, nên phiên sau cũng dùng model này.
-- **`/goal-settings`:** ghi `pi-goal-x-settings.json`.
 - **`/agents`:** sửa file role.
 - Sửa tay các file gốc.
 

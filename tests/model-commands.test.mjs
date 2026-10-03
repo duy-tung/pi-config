@@ -49,16 +49,10 @@ test('ép mọi vai (apply --reset): giá trị đổi ngoài model-roles.json t
   const advisor = readJson(f.file('advisor.json'));
   Object.assign(advisor, {executor: 'anthropic/claude-sonnet-5-5', alwaysOn: true});
   fs.writeFileSync(f.file('advisor.json'), JSON.stringify(advisor));
-  const goal = readJson(f.file('pi-goal-x-settings.json'));
-  Object.assign(goal, {thinking_level: 'low', maxAutonomousRuns: 3});
-  delete goal.thinkingLevel;
-  fs.writeFileSync(f.file('pi-goal-x-settings.json'), JSON.stringify(goal));
   const roles = resolveModelRoles(presets).roles;
   const {plans} = planModelFiles({root: f.root, agentDir: f.agentDir, state: f.state(), roles, force: ROLES});
   writeModelFiles({root: f.root, statePath: f.statePath, state: f.state(), plans});
   assert.deepEqual([readJson(f.file('advisor.json')).executor, readJson(f.file('advisor.json')).alwaysOn], ['anthropic/claude-opus-5-5', true]);
-  const goalNow = readJson(f.file('pi-goal-x-settings.json'));
-  assert.deepEqual([goalNow.thinkingLevel, goalNow.thinking_level, goalNow.maxAutonomousRuns], ['high', undefined, 3]);
 });
 
 test('thiếu base thì báo cần chạy lại installer', t => {
@@ -118,8 +112,8 @@ test('whenApplied gom các vai theo thời điểm có hiệu lực; thời đi�
   assert.deepEqual(whenApplied(['main', 'worker', 'reviewer', 'advisor', 'autoMode']), [
     'Có hiệu lực: main, autoMode ở phiên Pi mở sau; worker, reviewer ở lần gọi Agent kế tiếp; advisor ở lần hỏi advisor kế tiếp.',
   ]);
-  assert.deepEqual(whenApplied(['auditor', 'oracle', 'worker'], {auditor: 'ở phiên mới', oracle: 'ở phiên mới'}), [
-    'Có hiệu lực: auditor, oracle ở phiên mới; worker ở lần gọi Agent kế tiếp.',
+  assert.deepEqual(whenApplied(['autoMode', 'worker'], {autoMode: 'ở lần phân loại kế tiếp'}), [
+    'Có hiệu lực: autoMode ở lần phân loại kế tiếp; worker ở lần gọi Agent kế tiếp.',
   ]);
 });
 
@@ -153,7 +147,7 @@ test('catalog và effects của phiên: kiểm model, xem trước, ghi đè, pr
   const preset = await run({preset: 'claude'});
   assert.equal(preset.status, 0, preset.text);
   assert.match(preset.text, /^preset: default → claude$/mu);
-  assert.deepEqual(applied[1], ['researcher', 'worker', 'debugger', 'reviewer', 'advisor', 'auditor', 'oracle']);
+  assert.deepEqual(applied[1], ['researcher', 'worker', 'reviewer', 'advisor']);
   {
     const advisor = readJson(f.file('advisor.json'));
     assert.deepEqual([advisor.advisorMaxCallsPerSession, advisor.advisorFallbackModel, advisor.advisorDisableSameModel, advisor.advisorAgentsMdContext],
@@ -183,4 +177,19 @@ test('catalog và effects của phiên: kiểm model, xem trước, ghi đè, pr
   const synced = await run({apply: true});
   assert.equal(synced.status, 0, synced.text);
   assert.match(synced.text, /^model-roles\.json không đổi\.\nFile gốc đã khớp, không cần ghi\.$/mu);
+});
+
+test('/models: ghi đè còn sót của vai đã gỡ chỉ là cảnh báo; bảng và thay đổi vẫn chạy', async t => {
+  const f = install(t);
+  fs.writeFileSync(f.file('model-roles.json'), JSON.stringify({preset: 'default', roles: {auditor: {thinking: 'max'}, oracle: {model: 'openai-codex/gpt-6-astra'}}}));
+  const run = runner(f);
+  const warning = /^cảnh báo: .*model-roles\.json: roles: bỏ qua auditor, oracle \(vai đã gỡ khỏi pi-config\); xoá khỏi model-roles\.json để hết cảnh báo$/mu;
+  const shown = await run();
+  assert.equal(shown.status, 0, shown.text);
+  assert.match(shown.text, warning);
+  assert.doesNotMatch(shown.text, /^ {2}(auditor|oracle):/mu);
+  const set = await run({role: 'worker', thinking: 'high'});
+  assert.equal(set.status, 0, set.text);
+  assert.match(set.text, warning);
+  assert.deepEqual(readJson(f.file('model-roles.json')).roles.worker, {thinking: 'high'});
 });

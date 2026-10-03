@@ -17,7 +17,6 @@
     "pi-open-tui": "0.3.11",
     "pi-web-access": "0.35.0",
     "typescript": "5.9.3",
-    "pi-goal-x": "0.32.3",
     "pi-background-tasks": "file:../../vendor/pi-background-tasks-2.6.9-pi100.tgz",
     "@pi-archimedes/image-paste": "2.9.0"
   },

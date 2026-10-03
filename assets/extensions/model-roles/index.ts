@@ -17,7 +17,6 @@ import { type Action, type Change, levelOf, levelOptions, mainMenu, type Menu, r
 
 // pi-auto-mode đọc lại model của bộ phân loại khi nhận sự kiện này và ghi "autoMode" vào applied.
 const MODEL_ROLES_EVENT = "pi-config:model-roles-changed";
-const GOAL_WHEN = "ở phiên mới (/new, /resume) hoặc phiên Pi mở sau";
 const AUTH_SOURCES: Record<string, string> = {
   runtime: "key của phiên", environment: "biến môi trường", fallback: "key mặc định",
   models_json_key: "key trong models.json", models_json_command: "lệnh trong models.json",
@@ -40,6 +39,7 @@ interface Resolved {
   preset: string;
   roles: Record<string, RoleValue>;
   errors: string[];
+  warnings: string[];
 }
 type Presets = Record<string, { description?: string; roles: Record<string, RoleValue> }>;
 // Hàm của runtime/model-roles.mjs và runtime/models.mjs (chép vào <root>/bin khi cài).
@@ -144,7 +144,7 @@ async function switchSession(pi: ExtensionAPI, ctx: ExtensionContext, install: I
 
 /** effects của runModels trong phiên: áp ngay main và auto mode, báo thời điểm của các vai còn lại. */
 async function applyToSession(pi: ExtensionAPI, ctx: ExtensionContext, install: Install, changed: string[]): Promise<string[]> {
-  const when: Record<string, string> = { auditor: GOAL_WHEN, oracle: GOAL_WHEN };
+  const when: Record<string, string> = {};
   if (changed.includes("autoMode")) {
     const payload = { applied: [] as string[] };
     pi.events.emit(MODEL_ROLES_EVENT, payload);
@@ -306,6 +306,7 @@ async function openMenu(pi: ExtensionAPI, ctx: ExtensionCommandContext, install:
     show(ctx, await capture(run));
     return;
   }
+  if (resolved.warnings.length) ctx.ui.notify(resolved.warnings.map((warning) => `cảnh báo: ${current.file}: ${warning}`).join("\n"), "warning");
   const effective = roles.effectiveModelRoles(install.agentDir);
   const drifted = Object.fromEntries(roles.driftedRoles(resolved.roles, effective).map((name) => [name, effective[name]]));
   const action = await choose(ctx, mainMenu({
