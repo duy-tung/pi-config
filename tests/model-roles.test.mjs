@@ -23,9 +23,9 @@ test('preset có sẵn đặt đủ model và thinking cho mọi vai; default l�
   assert.deepEqual(Object.keys(presets), ['default', 'claude']);
   assert.deepEqual(table(resolveModelRoles(presets).roles), {
     main: 'anthropic/claude-opus-5-5 high', researcher: 'opencode-go/glm-5.3-flash max',
-    worker: 'openai-codex/gpt-6-sol max', debugger: 'openai-codex/gpt-6-sol max', reviewer: 'openai-codex/gpt-6-astra high',
+    worker: 'openai-codex/gpt-6.1-sol max', debugger: 'openai-codex/gpt-6.1-sol max', reviewer: 'openai-codex/gpt-6-astra high',
     advisor: 'openai-codex/gpt-6-astra high', auditor: 'openai-codex/gpt-6-astra high', oracle: 'openai-codex/gpt-6-astra high',
-    autoMode: 'anthropic/claude-sonnet-5 low',
+    autoMode: 'anthropic/claude-sonnet-5-5 low',
   });
   // Preset claude chỉ cần đăng nhập Claude; reviewer khác model với worker.
   const claude = resolveModelRoles(presets, {preset: 'claude'}).roles;
@@ -39,13 +39,13 @@ test('preset có sẵn đặt đủ model và thinking cho mọi vai; default l�
 
 test('ghi đè theo vai và từng trường trên preset có sẵn', () => {
   const resolved = resolveModelRoles(presets, {
-    preset: 'claude', roles: {worker: {thinking: 'max'}, researcher: {model: 'openai-codex/gpt-6-sol', thinking: 'low'}},
+    preset: 'claude', roles: {worker: {thinking: 'max'}, researcher: {model: 'openai-codex/gpt-6.1-sol', thinking: 'low'}},
   });
   assert.deepEqual(resolved.errors, []);
   assert.equal(resolved.preset, 'claude');
   assert.deepEqual([resolved.roles.worker.model, resolved.roles.worker.thinking], ['anthropic/claude-opus-5-5', 'max']);
   assert.deepEqual(resolved.roles.worker.source, {model: 'preset', thinking: 'override'});
-  assert.deepEqual([resolved.roles.researcher.model, resolved.roles.researcher.thinking], ['openai-codex/gpt-6-sol', 'low']);
+  assert.deepEqual([resolved.roles.researcher.model, resolved.roles.researcher.thinking], ['openai-codex/gpt-6.1-sol', 'low']);
   assert.deepEqual([resolved.roles.reviewer.model, resolved.roles.reviewer.source.model], ['anthropic/claude-fable-5-1', 'preset']);
 });
 
@@ -64,13 +64,13 @@ test('cấu hình sai: báo từng lỗi, vẫn trả đủ vai theo preset mặ
     'roles: không có vai "coder" (có main, researcher, worker, debugger, reviewer, advisor, auditor, oracle, autoMode)',
     'preset "claud" không có (có default, claude)',
   ]);
-  assert.equal(resolved.roles.worker.model, 'openai-codex/gpt-6-sol');
+  assert.equal(resolved.roles.worker.model, 'openai-codex/gpt-6.1-sol');
   assert.deepEqual(resolveModelRoles(presets, []).errors, ['model-roles.json phải là một object JSON']);
   // Tên preset như "__proto__" hay "toString" không phải preset có sẵn.
   for (const name of ['__proto__', 'toString']) {
     assert.deepEqual(resolveModelRoles(presets, {preset: name}).errors, [`preset "${name}" không có (có default, claude)`]);
   }
-  assert.deepEqual(parseModelRef('openrouter/anthropic/claude-sonnet-5'), {provider: 'openrouter', id: 'anthropic/claude-sonnet-5'});
+  assert.deepEqual(parseModelRef('openrouter/anthropic/claude-sonnet-5-5'), {provider: 'openrouter', id: 'anthropic/claude-sonnet-5-5'});
   for (const bad of ['opus', '/x', 'x/', 'a /b', 42]) assert.equal(parseModelRef(bad), undefined);
 });
 
@@ -79,38 +79,38 @@ test('giá trị cho từng file gốc: phiên chính, advisor luôn cùng model
   assert.deepEqual(values.settings, {
     defaultProvider: 'anthropic', defaultModel: 'claude-opus-5-5', defaultThinkingLevel: 'high',
     modelThinkingLevels: {
-      'anthropic/claude-opus-5-5': 'high', 'openai-codex/gpt-6-sol': 'max', 'openai-codex/gpt-6-astra': 'high', 'opencode-go/glm-5.3-flash': 'max',
+      'anthropic/claude-opus-5-5': 'high', 'openai-codex/gpt-6.1-sol': 'max', 'openai-codex/gpt-6-astra': 'high', 'opencode-go/glm-5.3-flash': 'max',
     },
-    enabledModels: ['anthropic/claude-opus-5-5', 'openai-codex/gpt-6-sol', 'openai-codex/gpt-6-astra', 'opencode-go/glm-5.3-flash'],
+    enabledModels: ['anthropic/claude-opus-5-5', 'openai-codex/gpt-6.1-sol', 'openai-codex/gpt-6-astra', 'opencode-go/glm-5.3-flash'],
   });
-  assert.deepEqual(values.autoMode, {model: 'anthropic/claude-sonnet-5', stage2Reasoning: 'low'});
+  assert.deepEqual(values.autoMode, {model: 'anthropic/claude-sonnet-5-5', stage2Reasoning: 'low'});
   assert.deepEqual(values.advisor, {
     executor: 'anthropic/claude-opus-5-5', executorEffort: 'high', advisor: 'openai-codex/gpt-6-astra', advisorEffort: 'high',
   });
   const custom = nativeValues(resolveModelRoles(presets, {preset: 'claude', roles: {auditor: {thinking: 'max'}, main: {thinking: 'xhigh'}}}).roles);
   assert.deepEqual(custom.goal, {
-    provider: 'anthropic', model: 'claude-sonnet-5', thinkingLevel: 'xhigh',
+    provider: 'anthropic', model: 'claude-sonnet-5-5', thinkingLevel: 'xhigh',
     oracle: {provider: 'anthropic', model: 'claude-fable-5-1', thinkingLevel: 'high'},
   });
   assert.deepEqual([custom.advisor.executor, custom.advisor.executorEffort], ['anthropic/claude-opus-5-5', 'xhigh']);
   // Model của auto mode không vào danh sách Ctrl+P; model dùng chung chỉ xuất hiện một lần, phiên chính đứng đầu.
-  assert.deepEqual(custom.settings.enabledModels, ['anthropic/claude-opus-5-5', 'anthropic/claude-fable-5-1', 'anthropic/claude-sonnet-5']);
+  assert.deepEqual(custom.settings.enabledModels, ['anthropic/claude-opus-5-5', 'anthropic/claude-fable-5-1', 'anthropic/claude-sonnet-5-5']);
   assert.equal(custom.settings.modelThinkingLevels['anthropic/claude-opus-5-5'], 'xhigh');
 });
 
 test('frontmatter của file role: đặt model/thinking, giữ phần còn lại, thêm khi thiếu, CRLF', () => {
-  const text = role('openai-codex/gpt-6-sol', 'max');
-  assert.equal(setRoleModel(text, {model: 'openai-codex/gpt-6-sol', thinking: 'max'}), text);
+  const text = role('openai-codex/gpt-6.1-sol', 'max');
+  assert.equal(setRoleModel(text, {model: 'openai-codex/gpt-6.1-sol', thinking: 'max'}), text);
   assert.equal(setRoleModel(text, {model: 'anthropic/claude-opus-5-5', thinking: 'high'}), role('anthropic/claude-opus-5-5', 'high'));
   const bare = '---\nname: worker\ndescription: Viết code.\ntools: "read, bash"\n---\n\nPrompt của role.\n';
-  assert.equal(setRoleModel(bare, {model: 'openai-codex/gpt-6-sol', thinking: 'max'}), text);
-  assert.equal(setRoleModel(text.replaceAll('\n', '\r\n'), {model: 'openai-codex/gpt-6-sol', thinking: 'max'}), text);
+  assert.equal(setRoleModel(bare, {model: 'openai-codex/gpt-6.1-sol', thinking: 'max'}), text);
+  assert.equal(setRoleModel(text.replaceAll('\n', '\r\n'), {model: 'openai-codex/gpt-6.1-sol', thinking: 'max'}), text);
   // Dòng đã có (kể cả do người dùng dời chỗ) được sửa tại chỗ; dòng còn thiếu thêm ngay sau dòng kia.
-  const moved = '---\nname: worker\ntools: read\nmodel: openai-codex/gpt-6-sol\n---\nPrompt.\n';
+  const moved = '---\nname: worker\ntools: read\nmodel: openai-codex/gpt-6.1-sol\n---\nPrompt.\n';
   assert.equal(setRoleModel(moved, {model: 'anthropic/claude-opus-5-5', thinking: 'high'}),
     '---\nname: worker\ntools: read\nmodel: anthropic/claude-opus-5-5\nthinking: high\n---\nPrompt.\n');
-  assert.deepEqual(roleModel(text), {model: 'openai-codex/gpt-6-sol', thinking: 'max'});
-  assert.deepEqual(splitRole(text).fields, {name: 'worker', description: 'Viết code.', model: 'openai-codex/gpt-6-sol', thinking: 'max', tools: '"read, bash"'});
+  assert.deepEqual(roleModel(text), {model: 'openai-codex/gpt-6.1-sol', thinking: 'max'});
+  assert.deepEqual(splitRole(text).fields, {name: 'worker', description: 'Viết code.', model: 'openai-codex/gpt-6.1-sol', thinking: 'max', tools: '"read, bash"'});
   for (const bad of ['Không có frontmatter', '---\nname: a\n  tiếp dòng\n---\n', '---\nname: a\nname: b\n---\n']) {
     assert.equal(splitRole(bad), undefined);
     assert.throws(() => setRoleModel(bad, {model: 'a/b', thinking: 'high'}), /frontmatter/u);
@@ -123,7 +123,7 @@ test('giá trị đang có hiệu lực theo file gốc và vai bị lệch so v
   const values = nativeValues(resolveModelRoles(presets).roles);
   const write = (name, value) => fs.writeFileSync(path.join(agentDir, name), typeof value === 'string' ? value : JSON.stringify(value));
   fs.mkdirSync(path.join(agentDir, 'agents'));
-  write('settings.json', {...values.settings, defaultModel: 'claude-sonnet-5', autoMode: values.autoMode});
+  write('settings.json', {...values.settings, defaultModel: 'claude-sonnet-5-5', autoMode: values.autoMode});
   write('advisor.json', {...values.advisor, alwaysOn: true});
   // /goal-settings ghi thinking_level; goal không nhận max nên xhigh là đúng cấu hình max.
   write('pi-goal-x-settings.json', {provider: 'openai-codex', model: 'gpt-6-astra', thinking_level: 'high', oracle: values.goal.oracle});

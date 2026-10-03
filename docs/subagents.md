@@ -5,8 +5,8 @@ Pi dùng tool `Agent` của `@tintinweb/pi-subagents` 0.19.0. Parent Claude Opus
 | Role | Model/effort (preset `default`) | Quyền và trách nhiệm |
 |---|---|---|
 | `researcher` | GLM-5.3-Flash/max | Khảo sát code/docs/log, lịch sử git và web (`web_search`, `fetch_content`); chỉ đọc (bash cho lệnh đọc như `git log`, `rg`, `jq`) và trả bằng chứng |
-| `worker` | GPT-6 Sol/max | Triển khai phần việc đã chốt, sửa file và kiểm thử |
-| `debugger` | GPT-6 Sol/max | Tái hiện, xác định nguyên nhân, sửa và kiểm hồi quy |
+| `worker` | GPT-6.1 Sol/max | Triển khai phần việc đã chốt, sửa file và kiểm thử |
+| `debugger` | GPT-6.1 Sol/max | Tái hiện, xác định nguyên nhân, sửa và kiểm hồi quy |
 | `reviewer` | GPT-6 Astra/high | Review độc lập, chỉ đọc; bash để chạy `git diff`, test sẵn có và script thử trong `/tmp` |
 
 GLM dùng provider `opencode-go` trực tiếp trong Pi. Opus 5.5 và GLM dùng context 1M của catalog; Astra/Sol nâng lên 872K. File role nằm trong `agents/` của Pi; model/thinking của chúng sinh từ `model-roles.json` ([models.md](models.md)). `pi-doctor` in model/thinking thật của từng role, cảnh báo role lệch so với `model-roles.json` và đánh dấu role đã sửa so với bản cài.
@@ -36,7 +36,7 @@ Role không giới hạn số lượt (`max_turns: 0` trong file role, `defaultM
 
 `backgroundByDefault:true`: researcher và reviewer chạy nền, lời gọi `Agent` trả ID ngay, thông báo completion mở lượt mới cho parent kèm trích đoạn kết quả; `get_subagent_result` lấy toàn văn. Worker và debugger ghim `run_in_background: false` nên luôn chạy foreground và trả kết quả ngay trong tool call; parent không đổi được. Background tối đa 4 agent, foreground tối đa 2; vượt giới hạn thì xếp hàng. Nhiều lời gọi `Agent` foreground trong cùng một lượt chạy song song; các phiên Pi quản lý pool riêng.
 
-Codex fast mode (`service_tier: "priority"`) áp dụng cho request của GPT-6 Sol (worker, debugger), GPT-6 Astra (reviewer) và GPT-6.1 Sol khi một vai dùng model này. Bản vá pi-usage bọc `ModelRuntime` dùng chung của phiên chính, nên request không đi qua hook của phiên (advisor, goal auditor, Oracle, agent con) cũng theo cài đặt fast và chọn hàng theo model của chính request. Worker, debugger và reviewer nạp `pi-usage` để chi phí của request fast được tính đúng; bản vá bỏ truy vấn quota và timer của pi-usage trong phiên không có UI.
+Codex fast mode (`service_tier: "priority"`) áp dụng cho request của GPT-6.1 Sol (worker, debugger), GPT-6 Astra (reviewer) và GPT-6 Sol khi một vai dùng model này. Bản vá pi-usage bọc `ModelRuntime` dùng chung của phiên chính, nên request không đi qua hook của phiên (advisor, goal auditor, Oracle, agent con) cũng theo cài đặt fast và chọn hàng theo model của chính request. Worker, debugger và reviewer nạp `pi-usage` để chi phí của request fast được tính đúng; bản vá bỏ truy vấn quota và timer của pi-usage trong phiên không có UI.
 
 Researcher nạp `pi-web-access`. Package này khai extension là thư mục `./dist`; bản vá pi-subagents cho entry thư mục khớp tên package, nếu không `extensions`/`ext:pi-web-access` của role không nạp được web tools.
 

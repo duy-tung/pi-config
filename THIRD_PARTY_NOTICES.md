@@ -15,7 +15,7 @@
 | @gotgenes/pi-anthropic-auth | [gotgenes/pi-anthropic-auth](https://github.com/gotgenes/pi-anthropic-auth) | [MIT — Christopher D. Lasher](vendor/pi-anthropic-auth.LICENSE) |
 | @narumitw/pi-usage | [narumiruna/pi-extensions](https://github.com/narumiruna/pi-extensions) | [MIT — narumiruna](vendor/pi-usage.LICENSE) |
 
-Các tarball `vendor/*-pi100.tgz` giữ source npm và giấy phép gốc, chỉ bổ sung `1.0.0` vào peer metadata của pi-background-tasks và pi-advisor-flow. Phiên bản của từng thành phần: bảng trong [README](README.md#phiên-bản). URL/integrity upstream và SHA256 bản đóng gói được ghi trong `manifests/current/package.json`. Script `scripts/rebuild-vendor.py` kiểm nguồn và tái tạo các tarball trên môi trường phát triển có Python 3.12 trở lên và curl; máy cài Pi không cần Python.
+Các tarball `vendor/*-pi100.tgz` giữ source npm và giấy phép gốc, chỉ bổ sung `1.0.0` vào peer metadata của pi-background-tasks. Phiên bản của từng thành phần: bảng trong [README](README.md#phiên-bản). URL/integrity upstream và SHA256 bản đóng gói được ghi trong `manifests/current/package.json`. Script `scripts/rebuild-vendor.py` kiểm nguồn và tái tạo các tarball trên môi trường phát triển có Python 3.12 trở lên và curl; máy cài Pi không cần Python.
 
 Nguồn bổ sung: [pi-goal-x](https://github.com/tmonk/pi-goal-x), [pi-background-tasks](https://github.com/ismailsaleekh/pi-background-tasks). Giấy phép của các package nằm nguyên trong package npm hoặc tarball.
 
@@ -31,7 +31,7 @@ Mười bản vá runtime: footer tối giản, quota Codex/Claude cạnh model,
 
 Các manifest `manifests/current`, `manifests/firecrawl` liệt kê phiên bản chính xác; `package-lock.json` ghi integrity và giấy phép dependency khi npm cung cấp metadata. Installer tải package trực tiếp từ registry npm, không tái cấp phép package của bên thứ ba. Override Axios 1.20.0 chỉ thuộc runtime Firecrawl CLI.
 
-Các skill của [firecrawl/cli](https://github.com/firecrawl/cli) (ISC theo package manifest) và [firecrawl/firecrawl-workflows](https://github.com/firecrawl/firecrawl-workflows) (ISC) được tải từ commit ghim cùng repository và thông tin giấy phép gốc.
+Các skill của [firecrawl/cli](https://github.com/firecrawl/cli) (ISC theo package manifest) được tải từ commit ghim cùng repository và thông tin giấy phép gốc.
 
 ## Git guard
 

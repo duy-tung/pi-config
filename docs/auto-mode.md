@@ -87,10 +87,10 @@ Luật `Path(...)`/`Read(...)` kiểm đường dẫn có trong lệnh, ở cả
 
 Hai giai đoạn như Claude Code: giai đoạn 1 sàng lọc nhanh và nghiêng về gắn cờ, chưa xét ủy quyền; chỉ hành động bị gắn cờ mới sang giai đoạn 2. Giai đoạn 2 là LLM có suy luận `low`, xét ngoại lệ và ý định người dùng. Chuỗi này cũng giống Codex, nơi guardian v2 cho một bộ chấm điểm nhanh cho qua phần rủi ro thấp và chỉ gọi reviewer đầy đủ khi điểm cao.
 
-LLM mặc định là **Claude Sonnet 5** (`anthropic/claude-sonnet-5`), như Claude Code:
+LLM mặc định là **Claude Sonnet 5.5** (`anthropic/claude-sonnet-5-5`):
 - Claude Code 2.1.282 để server của Anthropic duyệt trong chính request model (model không công bố, Pi không dùng được). Khi server không duyệt, Claude Code tự gọi Sonnet 5, không theo `/model`, và dùng model của phiên khi Sonnet 5 không có.
 - Codex dùng `codex-auto-review`, một model nhỏ riêng cho việc duyệt; model này không có trong catalog `openai-codex` của Pi.
-- Eval 9/2026 với Sonnet 5 (chạy bộ `cases.json` với model thật, không có Jev): 0/27 lệnh nguy hiểm lọt, 0/22 lệnh lành bị chặn, 36/49 sang giai đoạn 2, p50 3,9 s, p90 5,5 s; lệnh cho qua ở giai đoạn 1 mất khoảng 1,3–2,8 s.
+- Eval 9/2026 với Sonnet 5 (chưa chạy lại với Sonnet 5.5; chạy bộ `cases.json` với model thật, không có Jev): 0/27 lệnh nguy hiểm lọt, 0/22 lệnh lành bị chặn, 36/49 sang giai đoạn 2, p50 3,9 s, p90 5,5 s; lệnh cho qua ở giai đoạn 1 mất khoảng 1,3–2,8 s.
 - Request đi qua pi-anthropic-auth như request chính nên tính vào quota của gói Claude.
 
 **Giai đoạn 1 bằng Jev** (khi đã lưu key TypeSafe):
@@ -183,7 +183,7 @@ Completion auditor của goal (pi-goal-x) cũng là phiên con: bản vá nạp 
     "disableBypassPermissionsMode": "disable"
   },
   "autoMode": {
-    "model": "anthropic/claude-sonnet-5",
+    "model": "anthropic/claude-sonnet-5-5",
     "stage2Reasoning": "low",
     "timeoutMs": 60000,
     "environment": ["$defaults", "Trusted GitHub org: my-org"],

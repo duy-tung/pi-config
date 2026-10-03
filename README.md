@@ -26,8 +26,8 @@ Chi tiết kiến trúc CPU, công cụ hệ thống và tùy chọn đường d
 
 ## Đăng nhập dịch vụ
 
-1. Chạy `pi`, dùng `/login` và chọn **Anthropic** cho parent Claude Opus 5.5 (gói Pro/Max) và bộ phân loại của auto mode (Claude Sonnet 5), hoặc đặt `ANTHROPIC_API_KEY`. Xem [docs/claude-setup.md](docs/claude-setup.md).
-2. Trong `/login`, chọn **OpenAI Codex (legacy)** cho worker/debugger (GPT-6 Sol) và reviewer (GPT-6 Astra). Pi 0.99 đổi tên hiển thị; provider vẫn là `openai-codex`. "Sign in with ChatGPT" của provider **OpenAI** là provider khác (`openai`), preset không dùng.
+1. Chạy `pi`, dùng `/login` và chọn **Anthropic** cho parent Claude Opus 5.5 (gói Pro/Max) và bộ phân loại của auto mode (Claude Sonnet 5.5), hoặc đặt `ANTHROPIC_API_KEY`. Xem [docs/claude-setup.md](docs/claude-setup.md).
+2. Trong `/login`, chọn **OpenAI Codex (legacy)** cho worker/debugger (GPT-6.1 Sol) và reviewer (GPT-6 Astra). Pi 0.99 đổi tên hiển thị; provider vẫn là `openai-codex`. "Sign in with ChatGPT" của provider **OpenAI** là provider khác (`openai`), preset không dùng.
 3. Trong `/login`, chọn **OpenCode Go** và nhập API key cho GLM. Pi cũng nhận biến môi trường `OPENCODE_API_KEY`.
 4. Chạy `firecrawl login --browser` để đăng nhập dịch vụ web.
 5. Tuỳ chọn: tạo API key TypeSafe tại [console.typesafe.ai](https://console.typesafe.ai), thêm `export TYPESAFE_API_KEY="<key>"` vào `~/.zshrc` hoặc `~/.bashrc` (Windows: `setx TYPESAFE_API_KEY "<key>"`) rồi mở terminal mới, để auto mode sàng lọc bằng Jev. Đây là cách tài liệu TypeSafe và đa số package Jev hướng dẫn. Chưa có key thì bộ phân loại LLM làm cả hai giai đoạn như trước.
@@ -50,7 +50,8 @@ Chạy `pi` để mở Claude Opus 5.5/high với toàn bộ công cụ. Các wo
 
 Advisor (pi-advisor-flow) luôn bật khi mở phiên: executor là Opus/high của phiên, advisor là GPT-6 Astra/high.
 - System prompt dặn Opus gọi `ask_advisor` sau hai lần thử tương đương cùng thất bại và trước khi báo xong việc không nhỏ. Tối đa 5 lần mỗi phiên; không có gate cứng chặn phiên. Đổi gate và số lượt bằng `/advisor-settings`; cài lại giữ giá trị đã đổi.
-- Advisor không có tool. Nó thấy tối đa 60.000 ký tự gồm hội thoại gần nhất và diff chưa commit (diff tối đa 20.000 ký tự, đã che secret). Thay đổi lớn vẫn nên giao reviewer.
+- Advisor không có tool. Nó thấy tối đa 60.000 ký tự gồm hội thoại gần nhất và diff chưa commit (diff tối đa 20.000 ký tự, đã che secret); không gửi kèm `AGENTS.md` (`advisorAgentsMdContext: false`). Thay đổi lớn vẫn nên giao reviewer.
+- Request tới GPT-6 Astra lỗi thì thử lại một lần với Opus 5.5 (`advisorFallbackModel`, cùng mức thinking của advisor), tính là một lượt. Fallback trùng model của phiên chính nên `advisorDisableSameModel` tắt: nếu đổi phiên chính sang chính model advisor, advisor vẫn được gọi thay vì bỏ qua.
 - Bản vá giữ system prompt không đổi sau mỗi lần hỏi, để Opus không mất prompt cache.
 - `/advisor-off` tắt hẳn, kể cả các phiên sau (bản vá: Pi tự bật mọi tool của extension khi mở phiên, nên advisor chỉ bật khi Always on kích hoạt được); bật lại ở `/advisor-settings` → Always on. Khi advisor đang bật, `/model` lưu model mới làm executor vào `advisor.json`; cài lại giữ giá trị này.
 - Mở phiên khi chưa đăng nhập Claude hoặc Codex thì Pi báo `Advisor models are not configured or available` và phiên chạy không có advisor; đăng nhập rồi chạy `/advisor`.
@@ -66,7 +67,7 @@ Rewind (`pi-rewind`, extension của repo) theo giao diện `/rewind` của Clau
 
 Permission (`pi-auto-mode`, extension của repo) có hai mode như Claude Code. **Auto** là mặc định: thao tác đọc, lệnh chỉ đọc và sửa file trong project chạy ngay; lệnh khác qua bộ phân loại hai giai đoạn.
 - Giai đoạn 1 là **Jev**, model System One của TypeSafe, khi có key. Jev không sinh chữ: mỗi lệnh là một request (khoảng 120 ms) trả xác suất cho 17 loại rủi ro và một thang mức hại, code so với ngưỡng. Lệnh thường chạy luôn, không gọi LLM. Khi hiệu chỉnh với Jev thật, cả 168 lệnh rủi ro đều bị gắn cờ; khoảng 1/10 lệnh thường phải gọi LLM.
-- Giai đoạn 2 là Claude Sonnet 5 có suy luận (model Claude Code dùng cho bộ phân loại của nó), chỉ xét lệnh bị gắn cờ và chỉ thấy tin nhắn của người dùng cùng lệnh của agent. Không có key Jev thì Sonnet 5 làm cả hai giai đoạn.
+- Giai đoạn 2 là Claude Sonnet 5.5 có suy luận, chỉ xét lệnh bị gắn cờ và chỉ thấy tin nhắn của người dùng cùng lệnh của agent. Không có key Jev thì Sonnet 5 làm cả hai giai đoạn.
 - Jev cũng quét kết quả web, MCP và subagent để tìm prompt injection và cảnh báo agent.
 - Lệnh bị chặn trả lý do cho agent để đi đường an toàn hơn; 3 lần chặn liên tiếp hoặc 20 lần trong phiên thì hỏi người dùng.
 
@@ -83,8 +84,8 @@ Pi dùng `Agent` của **@tintinweb/pi-subagents**:
 | Role | Model/effort | Phạm vi |
 |---|---|---|
 | `researcher` | GLM-5.3-Flash/max | Đọc code trong workspace, tra docs/log/web và lịch sử git, thu thập bằng chứng; chỉ đọc (bash cho lệnh đọc) |
-| `worker` | GPT-6 Sol/max | Triển khai và kiểm thử phần việc đã chốt |
-| `debugger` | GPT-6 Sol/max | Tái hiện lỗi, tìm nguyên nhân, sửa và kiểm hồi quy |
+| `worker` | GPT-6.1 Sol/max | Triển khai và kiểm thử phần việc đã chốt |
+| `debugger` | GPT-6.1 Sol/max | Tái hiện lỗi, tìm nguyên nhân, sửa và kiểm hồi quy |
 | `reviewer` | GPT-6 Astra/high | Review độc lập; chỉ đọc, bash để chạy diff, test và script thử |
 
 Parent Claude Opus 5.5/high giữ thiết kế, quyết định quan trọng và nghiệm thu cuối. GLM chạy trực tiếp qua OpenCode Go trong Pi.
@@ -104,14 +105,15 @@ Agent có context riêng và không giới hạn số lượt; dừng agent bằ
 ## Công cụ và mặc định
 
 - Web: `web_search` dùng native search của model hiện tại: provider `openai` cho Codex/OpenAI (Astra, Sol), `anthropic` cho Claude (bản vá pi-web-access); model khác (GLM) dùng Exa (endpoint MCP miễn phí, không cần key) rồi Firecrawl; lỗi mạng, quota, phản hồi hỏng chuyển sang provider kế tiếp. `fetch_content`, `get_search_content` dùng Firecrawl và kho kết quả. Phiên mới hiện `web_enable` để model bật web tools. CLI và skills hỗ trợ workflow bổ sung. Chi tiết: [docs/claude-setup.md](docs/claude-setup.md).
-- MCP: không cài. MCP, codemode và `tool_search` dựng sẵn của Pi được tắt trong `extensions` của settings (`-builtin:mcp`, `-builtin:codemode`, `-builtin:tool-search`). Khi cần một server, bật MCP trong `pi config` (Built-in), thêm server bằng `pi mcp add` (ghi `<agent-dir>/mcp.json`) với `"exposure": "direct"`; mỗi tool là `mcp__<server>__<tool>` và đi qua cổng permission như tool khác.
-- Giao diện fullscreen (mặc định từ Pi 1.0): cuộn bằng chuột/trackpad trong Pi, khi thoát in lại transcript. Muốn giữ scrollback bình thường của terminal thì đặt `"tuiMode": "regular"` trong `settings.json` (cài lại vẫn giữ).
+- MCP: không cài. MCP, codemode và `tool_search` dựng sẵn của Pi được tắt trong `extensions` của settings (`-builtin:mcp`, `-builtin:codemode`, `-builtin:tool-search`); provider llama.cpp dựng sẵn cũng tắt (`-builtin:llama.cpp`). Khi cần một server, bật MCP trong `pi config` (Built-in), thêm server bằng `pi mcp add` (ghi `<agent-dir>/mcp.json`) với `"exposure": "direct"`; mỗi tool là `mcp__<server>__<tool>` và đi qua cổng permission như tool khác.
+- Giao diện fullscreen (mặc định từ Pi 1.0): cuộn bằng chuột/trackpad trong Pi (số dòng mỗi nấc theo `fullscreenWheelScrollLines` của Pi, mặc định `auto`), tìm trong transcript bằng **Alt+S** (Ctrl+Shift+F là ô tìm của WezTerm), khi thoát in lại transcript. Muốn giữ scrollback bình thường của terminal thì đặt `"tuiMode": "regular"` trong `settings.json` (cài lại vẫn giữ).
 - Native compaction bật: reserve 16.384, giữ gần nhất 20.000 token. Với cửa sổ 1M, auto-compaction chạy rất muộn; xem context ở footer và chọn ranh giới pha quanh mép 150k.
 - Cache warming tắt. Advisor, goal auditor và Oracle bật như mô tả ở trên. Jev của auto mode chỉ chạy khi bạn đã lưu key TypeSafe (tính theo token đầu vào, khoảng $0,0001 mỗi lần sàng lọc). Goal và background follow-up chỉ chạy theo thao tác/cấu hình đã chọn.
-- Codex fast mode bật mặc định (`codexFastMode:true`): mọi request tới GPT-6 Sol (worker, debugger) và GPT-6 Astra (reviewer, advisor, goal auditor, Oracle) đi hàng `priority`; GPT-6.1 Sol cũng vậy khi bạn đặt một vai sang model này. Theo catalog của Codex, Sol nhanh khoảng 1,5 lần, Astra khoảng 2 lần; đổi lại tốn quota Codex nhiều hơn (Pi tính chi phí gấp đôi). Tắt bằng `/fast` khi phiên đang dùng model Codex, hoặc `/usage` → Settings → Codex Fast mode khi đang dùng Opus. Footer hiện `fast` khi phiên đang dùng model Codex có fast.
-- Header/footer/editor do pi-open-tui quản lý. Footer hiển thị model, thinking, quota (Codex qua pi-usage; Claude từ header phản hồi và `/api/oauth/usage` khi mở phiên, 15 phút một lần nếu header đã cũ; chi tiết bằng `/claude-usage`), context % kèm token/cửa sổ, token/cost và trạng thái công cụ liên quan. Palette terminal theo theme của phiên và được phục hồi khi thoát.
+- Codex fast mode bật mặc định (`codexFastMode:true`): mọi request tới GPT-6.1 Sol (worker, debugger) và GPT-6 Astra (reviewer, advisor, goal auditor, Oracle) đi hàng `priority`; GPT-6 Sol cũng vậy khi bạn đặt một vai sang model này. Theo catalog của Codex, Sol nhanh khoảng 1,5 lần, Astra khoảng 2 lần; đổi lại tốn quota Codex nhiều hơn (Pi tính chi phí gấp đôi). Tắt bằng `/fast` khi phiên đang dùng model Codex, hoặc `/usage` → Settings → Codex Fast mode khi đang dùng Opus. Footer hiện `fast` khi phiên đang dùng model Codex có fast.
+- Header/footer/editor do pi-open-tui quản lý. Footer hiển thị model, thinking, quota (Codex qua pi-usage; Claude từ header phản hồi và `/api/oauth/usage` khi mở phiên, 15 phút một lần nếu header đã cũ; chi tiết bằng `/claude-usage`), context % kèm token/cửa sổ, token/cost và trạng thái công cụ liên quan (giữ màu extension đặt cho trạng thái). Palette terminal theo theme của phiên và được phục hồi khi thoát.
 - Dán ảnh: `@pi-archimedes/image-paste`, dùng **Ctrl+V** trên macOS/Linux hoặc **Alt+V** trên Windows. Copy ảnh vào clipboard, dán để có marker `[Image #1]`, rồi gửi cùng prompt. Xóa marker để bỏ ảnh; giới hạn 20 MiB/ảnh. Preview chỉ hiện trong UI, ảnh được gửi tới model đúng một lần. Phím dán ảnh tích hợp của Pi được tắt trong `keybindings.json` để tránh xử lý trùng.
 - Ảnh đọc qua clipboard native của pi-tui. Linux cần desktop X11/Wayland; `wl-clipboard`/`xclip` là các reader thay thế. Terminal không hỗ trợ ảnh inline vẫn gửi được ảnh, chỉ thiếu preview. Chỉ nạp image-paste; phần giao diện của bộ Archimedes không được nạp.
+- Phím trùng phím mặc định của WezTerm được đổi: bảng hoạt động web **Alt+W** (thay Ctrl+Shift+W), thu gọn todo **Alt+O** (thay Ctrl+Shift+T; đặt trong `~/.config/rpiv-todo/config.json`, file của rpiv-todo nằm ngoài agent dir nên installer không ghi).
 - Hàng đợi tin nhắn: `Enter` khi Pi đang chạy để chỉnh hướng, `Alt+Enter` hoặc **Ctrl+Enter** để xếp follow-up, `Alt+Up` để lấy lại tin đang chờ. Ctrl+Enter được thêm vì terminal của Orca gửi Alt+Enter thành Shift+Enter.
 - Nhiều phiên song song, mỗi task một worktree: dùng Orca. Cài đặt, phím và các giới hạn xem [docs/orca.md](docs/orca.md).
 
@@ -131,13 +133,13 @@ Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều
 | `@narumitw/pi-usage` | 0.61.2 |
 | `pi-background-tasks` | 2.6.9 |
 | `pi-goal-x` | 0.32.3 |
-| `pi-advisor-flow` | 0.9.1 |
-| `pi-open-tui` | 0.3.10 |
+| `pi-advisor-flow` | 0.10.0 |
+| `pi-open-tui` | 0.3.11 |
 | `@pi-archimedes/image-paste` | 2.9.0 |
 | Firecrawl CLI | 1.25.1 |
 | Firecrawl skills | Commit trong [sources.lock.json](sources.lock.json) |
 
-Các manifest và lockfile nằm trong [manifests](manifests). Hai package có peer range chưa gồm Pi 1.0.0 (pi-background-tasks, pi-advisor-flow) được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json). Quy trình nâng phiên bản (vendor, lockfile, tính lại checksum bản vá): [docs/upgrade.md](docs/upgrade.md).
+Các manifest và lockfile nằm trong [manifests](manifests). pi-background-tasks có peer range chưa gồm Pi 1.0.0 nên được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json). Quy trình nâng phiên bản (vendor, lockfile, tính lại checksum bản vá): [docs/upgrade.md](docs/upgrade.md).
 
 ## Quản lý cấu hình
 
@@ -151,7 +153,7 @@ node install.mjs --root /duong-dan/platform --agent-dir /duong-dan/agent --bin-d
 
 Role, subagents, goal settings, advisor settings và cấu hình công cụ cùng nằm trong agent directory. Một runtime Pi duy nhất ở `runtimes/current`; Firecrawl CLI ở `tools/firecrawl`.
 
-Khi chạy lại, installer dùng lockfile và checksum để kiểm tính nhất quán; runtime được cài lại khi lockfile hoặc kết quả bản vá đổi, để bản vá luôn áp lên file gốc. Bản runtime và nguồn cũ được chuyển vào `<root>/backups` trong lúc cài và xoá khi cài xong (muốn quay lại thì cài lại commit cũ của repo); 3 lần gỡ tài nguyên gần nhất và bản sao file cấu hình trước khi ghi đè thì giữ lại.
+Khi chạy lại, installer dùng lockfile và checksum để kiểm tính nhất quán; runtime được cài lại khi lockfile hoặc kết quả bản vá đổi, để bản vá luôn áp lên file gốc. Bản runtime và nguồn cũ được chuyển vào `<root>/backups` trong lúc cài và xoá khi cài xong (muốn quay lại thì cài lại commit cũ của repo); 3 lần gỡ tài nguyên gần nhất được giữ lại, bản sao file cấu hình trước khi ghi đè giữ 20 bản mới nhất cho mỗi file.
 
 File JSON cấu hình trong agent directory, kể cả `settings.json` mà Pi ghi lại khi đổi model hay thinking, được gộp ba chiều với mặc định của lần cài trước (lưu ở `<root>/state/defaults`):
 - Giá trị bạn chưa đổi nhận mặc định mới; giá trị bạn đã đổi được giữ. Nếu mặc định mới cũng đổi chính giá trị đó, installer giữ của bạn và báo xung đột kèm mặc định mới.

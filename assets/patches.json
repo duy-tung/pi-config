@@ -4,11 +4,11 @@
     {
       "package": "pi-open-tui",
       "versions": {
-        "current": "0.3.10"
+        "current": "0.3.11"
       },
       "file": "extensions/open-tui/footer.ts",
-      "originalSha256": "bc25b0a4aa6560ab6a27eb6e364600087595b0d00cf5cef27cc14e8765809ded",
-      "patchedSha256": "5a8a6cd4adbe56fadf9ba8455972ac4fe543996ef10005e511d63d45ad2f45dc",
+      "originalSha256": "8b4e89150ae3b95988efa0b99bea9aa17745522ee90dff718dfee769387d1472",
+      "patchedSha256": "387484ff7a86a81690619a0880da61e2324c02d86113fe42a7669f66d5d746c2",
       "edits": [
         {
           "before": "stats.push(theme.fg(\"warning\", `${glyphs.cost} $${totals.cost.toFixed(3)}`));",
@@ -61,13 +61,13 @@
           "count": 1
         },
         {
-          "before": ".map(([, text]) => sanitizeStatus(text))",
-          "after": ".filter(([key]) => key !== \"usage\" && key !== \"claude-usage\")\n\t\t.map(([, text]) => sanitizeStatus(text))",
+          "before": ".map(([, text]) => sanitizeStatusPreservingStyles(text))",
+          "after": ".filter(([key]) => key !== \"usage\" && key !== \"claude-usage\")\n\t\t.map(([, text]) => sanitizeStatusPreservingStyles(text))",
           "count": 1
         },
         {
           "before": "\tconst modelBlock = modelParts.join(theme.fg(\"dim\", \" · \"));",
-          "after": "\tconst usageStatuses = footerData.getExtensionStatuses();\n\tconst usageStatus = segments.extensionStatuses\n\t\t? sanitizeStatus(usageStatuses.get(\"usage\") || usageStatuses.get(\"claude-usage\") || \"\").replace(/^(?:codex|claude)\\s+/i, \"\")\n\t\t: \"\";\n\tif (usageStatus) modelParts.push(theme.fg(\"muted\", usageStatus));\n\tconst modelBlock = modelParts.join(theme.fg(\"dim\", \" · \"));",
+          "after": "\tconst usageStatuses = footerData.getExtensionStatuses();\n\tconst usageStatus = segments.extensionStatuses\n\t\t? sanitizeStatusPreservingStyles(usageStatuses.get(\"usage\") || usageStatuses.get(\"claude-usage\") || \"\")\n\t\t\t.replace(/^((?:\\x1b\\[[0-9;:]*m)*)(?:codex|claude)\\s+/i, \"$1\")\n\t\t: \"\";\n\tif (usageStatus) modelParts.push(renderStatusText(theme, usageStatus));\n\tconst modelBlock = modelParts.join(theme.fg(\"dim\", \" · \"));",
           "count": 1
         }
       ]
@@ -188,11 +188,11 @@
     {
       "package": "pi-advisor-flow",
       "versions": {
-        "current": "0.9.1"
+        "current": "0.10.0"
       },
       "file": "dist/index.js",
-      "originalSha256": "a05aaed4d5c0ba33cd586124685a707bef7feb01fad4af0a2b129d1b8c427f2b",
-      "patchedSha256": "7c4e6b0eca9cca19e641f3ea3107e57dbf2ff2a8d3d3a2a59cce1b26687e360b",
+      "originalSha256": "f93cf6c8d202b7678e9271002f02e8c026f9bcd2170d03df4ca449dd215db9d1",
+      "patchedSha256": "3561097c11e6fd2e404b5c5dbeb44e388dcc6bb0e499fa0a7cda2ceb5f5d229c",
       "edits": [
         {
           "before": "    ref\n  };\n};\nvar ADVISOR_STREAM_UPDATE_INTERVAL_MS",

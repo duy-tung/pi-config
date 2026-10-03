@@ -905,7 +905,7 @@ test("cấu hình: đọc settings người dùng, bỏ qua giá trị sai", () 
     fs.mkdirSync(agentDir, { recursive: true });
     fs.writeFileSync(path.join(agentDir, "settings.json"), JSON.stringify({
       permissions: { defaultMode: "bypassPermissions", deny: ["Bash(sudo *)", 3], disableBypassPermissionsMode: "disable" },
-      autoMode: { model: "openai-codex/gpt-6-sol", timeoutMs: 10, environment: ["x"] },
+      autoMode: { model: "openai-codex/gpt-6.1-sol", timeoutMs: 10, environment: ["x"] },
       skills: ["~/skills", 3, ""],
     }));
     const config = loadConfig(agentDir, {});
@@ -914,7 +914,7 @@ test("cấu hình: đọc settings người dùng, bỏ qua giá trị sai", () 
     assert.deepEqual(config.deny, ["Bash(sudo *)"]);
     assert.equal(config.timeoutMs, 60_000);
     assert.deepEqual(config.environment, ["x"]);
-    assert.equal(config.model, "openai-codex/gpt-6-sol");
+    assert.equal(config.model, "openai-codex/gpt-6.1-sol");
     assert.deepEqual(config.skills, ["~/skills"]);
     assert.equal(loadConfig(agentDir, { PI_AUTO_MODE_DISABLE: "1" }).enabled, false);
   } finally {

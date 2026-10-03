@@ -52,7 +52,7 @@ const settingsPath=path.join(agentDir,'settings.json'),settingsBase=defaultsOf(s
 assert.deepEqual(readJson(settingsBase),readJson(settingsPath));
 const settings=readJson(settingsPath),base=readJson(settingsBase);
 // Pi ghi lại settings.json khi người dùng đổi theme/model (không có newline cuối); người dùng thêm một luật deny.
-Object.assign(settings,{theme:'rose-pine-dawn',defaultProvider:'openai-codex',defaultModel:'gpt-6-sol'});
+Object.assign(settings,{theme:'rose-pine-dawn',defaultProvider:'openai-codex',defaultModel:'gpt-6.1-sol'});
 settings.permissions.deny.push('Path(~/notes/private/**)');
 // Mặc định của bản cũ hơn: chưa có luật deny ~/.gnupg/**, Esc Esc mở /tree, còn compaction và defaultProjectTrust (nay
 // bỏ vì trùng mặc định của Pi). Người dùng chưa đổi các mục này nên nhận mặc định mới, khóa đã bỏ thì bỏ theo; riêng
@@ -85,7 +85,7 @@ function install(extra=[]){
 }
 const reinstall=install();
 const merged=readJson(settingsPath);
-assert.deepEqual([merged.theme,merged.defaultProvider,merged.defaultModel],['rose-pine-dawn','openai-codex','gpt-6-sol']);
+assert.deepEqual([merged.theme,merged.defaultProvider,merged.defaultModel],['rose-pine-dawn','openai-codex','gpt-6.1-sol']);
 assert.ok(merged.permissions.deny.includes('Path(~/notes/private/**)'));
 assert.ok(merged.permissions.deny.includes(gnupg),'luật deny mới của mặc định vào được file người dùng đã sửa');
 assert.deepEqual([merged.doubleEscapeAction,merged.compaction,merged.defaultProjectTrust],['none',undefined,'always']);
@@ -114,15 +114,15 @@ const debuggerPath=path.join(agentDir,'agents','debugger.md');
 fs.writeFileSync(debuggerPath,fs.readFileSync(debuggerPath,'utf8').replace(/^tools: .*$/mu,'tools: "read, grep, find, ls, bash"'));
 const switched=install();
 const frontmatter=role=>fs.readFileSync(path.join(agentDir,'agents',`${role}.md`),'utf8').split('\n---\n')[0];
-for(const [role,model,thinking] of [['worker','claude-opus-5-5','high'],['debugger','claude-opus-5-5','high'],['researcher','claude-sonnet-5','max'],['reviewer','claude-fable-5-1','high']]){
+for(const [role,model,thinking] of [['worker','claude-opus-5-5','high'],['debugger','claude-opus-5-5','high'],['researcher','claude-sonnet-5-5','max'],['reviewer','claude-fable-5-1','high']]){
   assert.match(frontmatter(role),new RegExp(`^model: anthropic/${model}\\nthinking: ${thinking}$`,'mu'),role);
 }
 assert.match(frontmatter('debugger'),/^tools: "read, grep, find, ls, bash"$/mu);
 assert.ok(switched.includes(`Đã gộp mặc định mới vào ${debuggerPath}, giữ phần bạn đã sửa:`),switched);
 const advisorNow=readJson(path.join(agentDir,'advisor.json')),goalNow=readJson(path.join(agentDir,'pi-goal-x-settings.json'));
 assert.deepEqual([advisorNow.executor,advisorNow.advisor],['anthropic/claude-opus-5-5','anthropic/claude-fable-5-1']);
-assert.deepEqual([goalNow.provider,goalNow.model,goalNow.thinkingLevel,goalNow.oracle.model],['anthropic','claude-sonnet-5','high','claude-fable-5-1']);
-assert.deepEqual(readJson(settingsPath).enabledModels,['anthropic/claude-opus-5-5','anthropic/claude-fable-5-1','anthropic/claude-sonnet-5']);
+assert.deepEqual([goalNow.provider,goalNow.model,goalNow.thinkingLevel,goalNow.oracle.model],['anthropic','claude-sonnet-5-5','high','claude-fable-5-1']);
+assert.deepEqual(readJson(settingsPath).enabledModels,['anthropic/claude-opus-5-5','anthropic/claude-fable-5-1','anthropic/claude-sonnet-5-5']);
 const doctorModels=spawnSync(process.execPath,[path.join(root,'bin/launch.mjs'),'doctor'],{encoding:'utf8'});
 assert.equal(doctorModels.status,0,doctorModels.stdout+doctorModels.stderr);
 assert.match(doctorModels.stdout,/^preset claude \(/mu);
@@ -137,10 +137,10 @@ assert.deepEqual(snapshot(),beforeFailure);
 writeJson(modelRolesPath,{preset:'claude',roles:{researcher:{thinking:'max'}}});
 // /model lưu Sonnet vào executor của advisor, /advisor-settings đổi số lượt: pi-doctor báo vai lệch và chỉ tới /models.
 const advisorPath=path.join(agentDir,'advisor.json');
-writeJson(advisorPath,{...readJson(advisorPath),executor:'anthropic/claude-sonnet-5',advisorMaxCallsPerSession:9});
+writeJson(advisorPath,{...readJson(advisorPath),executor:'anthropic/claude-sonnet-5-5',advisorMaxCallsPerSession:9});
 const drifted=spawnSync(process.execPath,[path.join(root,'bin/launch.mjs'),'doctor'],{encoding:'utf8'});
 assert.equal(drifted.status,0,drifted.stdout+drifted.stderr);
-assert.match(drifted.stderr,/main đang dùng anthropic\/claude-sonnet-5 \(high\) theo advisor\.json, khác model-roles\.json \(anthropic\/claude-opus-5-5 \(high\)\)\. Trong \/models: /u);
+assert.match(drifted.stderr,/main đang dùng anthropic\/claude-sonnet-5-5 \(high\) theo advisor\.json, khác model-roles\.json \(anthropic\/claude-opus-5-5 \(high\)\)\. Trong \/models: /u);
 assert.match(drifted.stdout,/tối đa 9 lần\/phiên/u);
 // Lần cài cuối không có gì mới: không ghi file cấu hình, base hay backup, không báo gộp.
 function snapshot(){
@@ -161,14 +161,14 @@ writeJson(installState,{...readJson(installState),sources:{...readJson(installSt
 const retiring=install();
 assert.match(retiring,/Nguồn mattpocock-skills không còn dùng: đã chuyển vào /u);
 // Cài lại giữ giá trị đổi qua /model và /advisor-settings (gộp ba chiều).
-assert.deepEqual([readJson(advisorPath).executor,readJson(advisorPath).advisorMaxCallsPerSession],['anthropic/claude-sonnet-5',9]);
+assert.deepEqual([readJson(advisorPath).executor,readJson(advisorPath).advisorMaxCallsPerSession],['anthropic/claude-sonnet-5-5',9]);
 assert.equal(fs.existsSync(retiredSource),false);
 assert.ok(!Object.hasOwn(readJson(installState).sources,'mattpocock-skills'));
 const beforeThird=snapshot();
 const third=install();
 assert.deepEqual(snapshot(),beforeThird);
 assert.doesNotMatch(third,/Đã gộp|Chưa có mặc định|xung đột|Giữ phần bạn đã sửa|Giữ nguyên các file/u);
-const state=readJson(path.join(root,'install-state.json'));assert.deepEqual(Object.keys(state.sources).sort(),['firecrawl-cli-source','firecrawl-workflows']);
+const state=readJson(path.join(root,'install-state.json'));assert.deepEqual(Object.keys(state.sources).sort(),['firecrawl-cli-source']);
 // Không cài skill quy trình: Pi chỉ nạp skill Firecrawl.
 assert.ok(!fs.existsSync(path.join(root,'assets','skills')));
 assert.ok(readJson(path.join(agentDir,'settings.json')).skills.every(entry=>entry.includes(path.join('sources','firecrawl-'))));

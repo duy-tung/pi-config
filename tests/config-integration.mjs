@@ -74,7 +74,7 @@ writeJson(advisorFile, advisor);
 // Claude cho model khác Claude để kiểm cả hai nhánh của provider anthropic.
 const webConfig = readJson(path.join(configuration.agentDir, "web-search.json"));
 writeJson(path.join(agentDir, "web-search.json"), { ...webConfig, firecrawlApiKey: "fixture-never-used",
-  anthropicSearch: { modelForNonClaude: "anthropic/claude-sonnet-5" } });
+  anthropicSearch: { modelForNonClaude: "anthropic/claude-sonnet-5-5" } });
 writeJson(path.join(cwd, "package.json"), { name: "pi-config-integration-fixture", private: true, type: "module" });
 // Git worktree để pi-rewind theo dõi được file bash sửa (git status trước/sau tool).
 childProcess.execFileSync("git", ["init", "-q"], { cwd, stdio: "ignore" });
@@ -230,14 +230,14 @@ await check("single session exposes slash commands and only one model delegation
   assert.ok(!loader.getExtensions().extensions.some(extension => extension.path?.includes("anthropic-attribution")));
   // Không dùng MCP: MCP, codemode và tool_search dựng sẵn bị tắt, không có /mcp hay tool MCP nào.
   const loaded = loader.getExtensions().extensions.map(extension => extension.path);
-  for (const name of ["builtin:mcp", "builtin:codemode", "builtin:tool-search"]) assert.ok(!loaded.includes(name), `${name} must be disabled`);
+  for (const name of ["builtin:mcp", "builtin:codemode", "builtin:tool-search", "builtin:llama.cpp"]) assert.ok(!loaded.includes(name), `${name} must be disabled`);
   assert.ok(!session.extensionRunner.getRegisteredCommands().some(command => command.name === "mcp"));
   assert.ok(!tools.some(name => name === "mcp" || name.startsWith("mcp__")));
   assert.ok(!session.getActiveToolNames().includes("codemode"));
   assert.equal(control.seen.length, 0, "Startup must not call any model");
 });
 await check("Claude: web_search provider anthropic, quota footer from headers and /claude-usage", async () => {
-  const claude = runtime.getModel("anthropic", "claude-sonnet-5");
+  const claude = runtime.getModel("anthropic", "claude-sonnet-5-5");
   const webSearch = session.extensionRunner.getToolDefinition("web_search");
   assert.match(webSearch?.description ?? "", /^Search the web with OpenAI, Anthropic, Exa, Firecrawl\./u);
   const search = async () => {
@@ -261,7 +261,7 @@ await check("Claude: web_search provider anthropic, quota footer from headers an
       await session.setModel(model);
       const text = await search();
       assert.equal(searchRequests.length, 1, `${model.id}: ${text.slice(0, 300)}`);
-      assert.equal(searchRequests[0].body.model, "claude-sonnet-5");
+      assert.equal(searchRequests[0].body.model, "claude-sonnet-5-5");
       assert.deepEqual(searchRequests[0].body.tools, [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }]);
       assert.match(searchRequests[0].body.system[0].text, /^x-anthropic-billing-header:/u, "pi-anthropic-auth phải shape request tìm kiếm");
       assert.match(text, /\*\*Provider:\*\* anthropic/u);

@@ -633,6 +633,85 @@ test("hộp thoại Rewind: phiên trước ở trên, Redo dưới (current), m
   assert.match(new RewindDialog(options([]), theme, deps).render(80).join("\n"), /Nothing to rewind to yet/u);
 });
 
+test("hộp thoại Rewind: terminal thấp vẫn thấy gợi ý phím và mục đang chọn", async () => {
+  // Overlay của pi-tui (maxHeight) và khung fullscreen đều cắt phần dưới khi hộp thoại cao hơn
+  // terminal: hộp thoại tự co vào terminalRows, bỏ dòng trống và chi tiết trước.
+  const theme = { fg: (_color, text) => text, bold: (text) => text, italic: (text) => text };
+  const wrap = (text, width) => {
+    const lines = [];
+    let line = "";
+    for (const word of text.split(" ")) {
+      if (line && line.length + 1 + word.length > width) {
+        lines.push(line);
+        line = word;
+      } else line = line ? `${line} ${word}` : word;
+    }
+    return [...lines, line];
+  };
+  const deps = { truncate: (text, width) => text.slice(0, width), width: (text) => text.length, wrap, is: (data, key) => data === key };
+  const rows = Array.from({ length: 12 }, (_, index) => ({
+    entryId: `u${index}`, text: `prompt ${index}\nsecond line\nthird line\nfourth line`, timestamp: 0, checkpointed: true,
+  }));
+  const resume = {
+    key: "resume", position: "top", label: "Resume previous session", detail: "fix the login bug · 2 minutes ago",
+    title: "Confirm you want to resume the previous session",
+    lines: ["fix the login bug and also the flaky signup test that fails on CI every other run"],
+    options: [{ value: "resume", label: "Resume previous session" }, { value: "fork", label: "Fork previous session" }],
+  };
+  const open = (height) => new RewindDialog({
+    rows, items: [resume], canSummarize: true, bashTracked: false, terminalRows: () => height, now: () => 60000,
+    rowStats: async () => ({ filesChanged: ["/w/a.ts"], insertions: 1, deletions: 1 }),
+    restoreStats: async () => ({ filesChanged: ["/w/a.ts", "/w/b.ts"], insertions: 3, deletions: 1 }),
+    execute: async () => {}, runItem: async () => {}, done: () => {}, requestRender: () => {},
+  }, theme, deps);
+  const settle = () => new Promise((resolve) => setImmediate(resolve));
+  const check = (dialog, width, height, hint, selected) => {
+    const lines = dialog.render(width);
+    const label = `${height}x${width} ${selected}`;
+    assert.ok(lines.length <= height, `${label}: ${lines.length} dòng`);
+    assert.match(lines.at(-1), /^─+$/u, label);
+    assert.ok(lines.at(-2).includes(hint), label);
+    assert.ok(lines.some((line) => line.includes(`❯ ${selected}`)), label);
+    return lines;
+  };
+  for (const height of [12, 16, 24, 30]) {
+    for (const width of [60, 80]) {
+      const dialog = open(height);
+      await settle();
+      for (let step = 0; step < 4; step++) dialog.handleInput("up");
+      check(dialog, width, height, "enter to continue · esc to cancel", "prompt 8");
+      dialog.handleInput("enter");
+      await settle();
+      check(dialog, width, height, "enter to select · esc to go back", "1. Restore code and conversation");
+      for (let step = 0; step < 5; step++) dialog.handleInput("down");
+      check(dialog, width, height, "enter to select · esc to go back", "6. Never mind");
+      dialog.handleInput("escape");
+      dialog.handleInput("home");
+      dialog.handleInput("enter");
+      check(dialog, width, height, "enter to select · esc to go back", "1. Resume previous session");
+    }
+  }
+  // Đủ chỗ thì không bỏ dòng nào: 24x80 vẫn đủ trích dẫn prompt, thời gian và cảnh báo bash.
+  const roomy = open(24);
+  await settle();
+  roomy.handleInput("up");
+  roomy.handleInput("enter");
+  await settle();
+  const screen = check(roomy, 80, 24, "enter to select · esc to go back", "1. Restore code and conversation").join("\n");
+  for (const text of ["fourth line", "(1 minute ago)", "The code will be restored +3 -1 in a.ts and b.ts.", "Rewinding does not affect files edited manually or via bash."]) {
+    assert.ok(screen.includes(text), text);
+  }
+  // Thiếu chỗ: bỏ dòng phụ trước, giữ dòng đầu của prompt.
+  const tight = open(14);
+  await settle();
+  tight.handleInput("up");
+  tight.handleInput("enter");
+  await settle();
+  const short = check(tight, 60, 14, "enter to select · esc to go back", "1. Restore code and conversation").join("\n");
+  assert.match(short, /│ prompt 11/u);
+  assert.doesNotMatch(short, /fourth line|1 minute ago/u);
+});
+
 test("nhật ký phục hồi: chỉ nhận lần khôi phục của process đã chết, hoàn tất/hoàn tác không đè file đã đổi", async () => {
   const { dir, work, store, capturer, cleanup } = sandbox();
   try {

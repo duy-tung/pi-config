@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {buildConfiguration} from './lib/config.mjs';
 import {applyPatches} from './lib/patches.mjs';
 import {pruneBackups} from './lib/backups.mjs';
+import {prunePlatformPackages} from './lib/platform-prune.mjs';
 import {backupFile,describeMerge,reconcileConfigFile,writeAtomic} from './runtime/merge.mjs';
 import {acquireInstallLock} from './runtime/install-lock.mjs';
 import {mergesConfig,reconcileResources} from './lib/resources.mjs';
@@ -89,7 +90,9 @@ async function installRuntime(name,relative){
     .map(spec=>`${spec.package}/${spec.file}@${spec.patchedSha256}`).sort();
   const lockfile=fs.readFileSync(path.join(source,'package-lock.json'));
   const manifestHash=sha256(patched.length?Buffer.concat([lockfile,Buffer.from(`\n${patched.join('\n')}`)]):lockfile);
-  if(previous?.runtimes[name]===manifestHash && fs.existsSync(path.join(dest,'node_modules'))){console.log(`${name}: giữ runtime đã cài`);return;}
+  // Binary optional của nền tảng khác: xoá cả ở runtime giữ lại, để bản cài trước bản sửa này cũng nhẹ đi.
+  const prunePlatforms=dir=>{const removed=prunePlatformPackages(dir);if(removed.length)console.log(`${name}: bỏ ${removed.length} package optional của nền tảng khác`);};
+  if(previous?.runtimes[name]===manifestHash && fs.existsSync(path.join(dest,'node_modules'))){console.log(`${name}: giữ runtime đã cài`);prunePlatforms(dest);return;}
   const stage=path.join(path.dirname(dest),`.${path.basename(dest)}-stage-${process.pid}`);
   fs.mkdirSync(stage,{recursive:true});
   for(const file of ['package.json','package-lock.json'])fs.copyFileSync(path.join(source,file),path.join(stage,file));
@@ -99,6 +102,7 @@ async function installRuntime(name,relative){
       cwd:stage,timeout:npmTimeout(),
       timeoutHint:'Tải package từ registry npm quá chậm. Chạy lại installer (gói đã tải nằm trong cache của npm), hoặc tăng giới hạn bằng PI_CONFIG_NPM_TIMEOUT_MINUTES (mặc định 30).',
     });
+    prunePlatforms(stage);
     if(fs.existsSync(dest))moveToBackups(dest,`runtime-${name}`);
     fs.renameSync(stage,dest);state.runtimes[name]=manifestHash;writeJson(statePath,state);
   }catch(error){fs.rmSync(stage,{recursive:true,force:true});throw error;}
@@ -188,7 +192,7 @@ try{
   reconcileResources({root,agentDir,binDir,state,wanted});
   state.installedAt=new Date().toISOString();writeJson(statePath,state);
   const pruned=pruneBackups(root);
-  if(pruned.length)console.log(`Đã xoá ${pruned.length} bản runtime/nguồn/tài nguyên cũ trong ${path.join(root,'backups')}.`);
+  if(pruned.length)console.log(`Đã xoá ${pruned.length} bản backup cũ (runtime, nguồn, tài nguyên, file cấu hình) trong ${path.join(root,'backups')}.`);
   console.log(`\nĐã cài Pi vào ${root}. Mở terminal mới rồi chạy pi.`);
   const jevKey=process.platform==='win32'?'setx TYPESAFE_API_KEY "<key>"':'export TYPESAFE_API_KEY="<key>" trong ~/.zshrc hoặc ~/.bashrc';
   console.log(`Đăng nhập: pi → /login. Firecrawl: firecrawl login --browser. Jev cho auto mode: ${jevKey}.`);

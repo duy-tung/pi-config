@@ -172,17 +172,17 @@ test('only JSON files in the agent directory, and role files, are merged',t=>{
 test('role files keep their own default copy; a model edit no longer freezes the prompt',t=>{
   const f=fixture(t),file=path.join(f.agentDir,'agents','worker.md');
   const role=(model,prompt)=>`---\nname: worker\ndescription: Viết code.\nmodel: ${model}\nthinking: max\n---\n\n${prompt}\n`;
-  const first=reconcileConfigFile({root:f.root,file,content:role('openai-codex/gpt-6-sol','Prompt v1.')});
+  const first=reconcileConfigFile({root:f.root,file,content:role('openai-codex/gpt-6.1-sol','Prompt v1.')});
   assert.equal(first.written,true);
   assert.equal(path.extname(defaultsFile(f.root,file)),'.md');
-  assert.equal(fs.readFileSync(defaultsFile(f.root,file),'utf8'),role('openai-codex/gpt-6-sol','Prompt v1.'));
+  assert.equal(fs.readFileSync(defaultsFile(f.root,file),'utf8'),role('openai-codex/gpt-6.1-sol','Prompt v1.'));
   // Người dùng đổi model trong file role; bản mới đổi prompt: prompt mới vào, model của người dùng được giữ.
   fs.writeFileSync(file,role('anthropic/claude-opus-5-5','Prompt v1.'));
-  const merged=reconcileConfigFile({root:f.root,file,content:role('openai-codex/gpt-6-sol','Prompt v2.'),recorded:first.recorded});
+  const merged=reconcileConfigFile({root:f.root,file,content:role('openai-codex/gpt-6.1-sol','Prompt v2.'),recorded:first.recorded});
   assert.equal(fs.readFileSync(file,'utf8'),role('anthropic/claude-opus-5-5','Prompt v2.'));
   assert.deepEqual([merged.written,merged.conflicts],[true,[]]);
   // Frontmatter không đọc được: giữ nguyên file như trước.
   fs.writeFileSync(file,'Không còn frontmatter\n');
-  assert.equal(reconcileConfigFile({root:f.root,file,content:role('openai-codex/gpt-6-sol','Prompt v3.'),recorded:merged.recorded}).preserved,'invalid');
+  assert.equal(reconcileConfigFile({root:f.root,file,content:role('openai-codex/gpt-6.1-sol','Prompt v3.'),recorded:merged.recorded}).preserved,'invalid');
   assert.equal(fs.readFileSync(file,'utf8'),'Không còn frontmatter\n');
 });
