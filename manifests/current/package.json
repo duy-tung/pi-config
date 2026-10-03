@@ -14,7 +14,7 @@
     "@narumitw/pi-usage": "0.61.2",
     "@tintinweb/pi-subagents": "0.19.0",
     "pi-advisor-flow": "0.10.0",
-    "pi-open-tui": "0.3.10",
+    "pi-open-tui": "0.3.11",
     "pi-web-access": "0.35.0",
     "typescript": "5.9.3",
     "pi-goal-x": "0.32.3",
