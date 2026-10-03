@@ -1,15 +1,6 @@
 import type { PermissionMode } from "./config.ts";
-import type { GitGuardBlock } from "./git-guard.ts";
 
 /** Câu chữ gửi cho model và hiển thị cho người dùng (tiếng Anh, như Claude Code/Codex). */
-
-/** Lệnh bị git guard chặn: lý do, cách an toàn hơn, và cách người dùng tự chạy (`!` trong ô nhập của Pi). */
-export function gitGuardDenial(block: GitGuardBlock): string {
-  const note = block.substitution
-    ? " Note: that command sits inside backticks or $(...), which the shell runs. For literal text use single quotes, or write it to a file (for example gh pr create --body-file)."
-    : "";
-  return `BLOCKED by git guard: ${block.reason}. ${block.alternative} If the user really wants this, they can run it themselves in Pi's editor with !<command>.${note}`;
-}
 
 export function classifierDenial(rule: string | undefined, reason: string): string {
   const label = rule ? `[${rule}] ` : "";
@@ -36,6 +27,11 @@ export const USER_DENIED = "The user denied permission for this action. Do not r
 /** Manual mode: người dùng chọn Deny (hoặc đóng hộp thoại) cho một lời gọi cần duyệt. */
 export const MANUAL_DECLINED = "The user declined this action in manual permission mode. Do not retry it unchanged or work around it (no other tool, script, encoded or split command, or sub-agent to get the same effect). Take a different approach, or ask the user how they want to proceed.";
 
+/** Người dùng từ chối kèm lời nhắn ("No, and tell Pi what to do differently"). */
+export function manualDeclinedWith(comment: string): string {
+  return `The user declined this action and said: ${JSON.stringify(comment)}. Follow that guidance instead. Do not retry the declined action unchanged or work around it.`;
+}
+
 /** Manual mode không có ai trả lời (print/JSON, hoặc subagent mà phiên gốc không có UI): chặn. */
 export const MANUAL_NO_APPROVER = "Manual permission mode needs the user's approval for this action, but no one can answer in this session (no interactive UI), so it was not run. Continue with other work and report what you needed to the user; unattended runs should use --permission-mode auto.";
 
@@ -54,14 +50,16 @@ export function approvalGranted(summary: string): string {
 
 /** Mục system prompt cho agent chính theo mode. */
 export function modeInstructions(mode: PermissionMode): string {
-  if (mode === "manual") {
+  if (mode === "manual" || mode === "acceptEdits") {
     return [
-      "Manual permission mode is active: reads, read-only commands and edits inside the working directory run right away; other tool calls (commands that change things, network access, edits outside the project, sub-agents) show the user an approval prompt before they run.",
+      mode === "manual"
+        ? "Manual permission mode is active: reads and read-only commands run right away; other tool calls (file edits, commands that change things, network access, sub-agents) show the user an approval prompt before they run."
+        : "Accept-edits permission mode is active: reads, read-only commands, file edits inside the working directory and mkdir/touch/cp/mv there run right away; other tool calls (commands that change things, network access, edits outside the project, sub-agents) show the user an approval prompt before they run.",
       "Just make the tool call; do not ask for permission in text first. If the user declines an action, do not retry it unchanged or work around it; take a different approach or ask the user how to proceed.",
     ].join(" ");
   }
   if (mode === "bypass") {
-    return "Bypass permissions mode is active: tool calls run without permission checks, except the user's deny and ask rules; the user is asked before recursive deletes outside the system temp directory. Take extra care with destructive, irreversible or external actions, and confirm with the user when their intent is unclear.";
+    return "Bypass permissions mode is active: tool calls run without permission checks, except the user's deny and ask rules; the user is asked before removing the root, home or working directory. Take extra care with destructive, irreversible or external actions, and confirm with the user when their intent is unclear.";
   }
   return [
     "Auto mode is active: an automatic permission classifier checks riskier tool calls before they run, and there are no approval prompts. Keep working without asking for routine confirmations.",
@@ -73,7 +71,7 @@ export function modeInstructions(mode: PermissionMode): string {
 export const BYPASS_WARNING = [
   "WARNING: Pi running in Bypass Permissions mode",
   "",
-  "In Bypass Permissions mode, Pi will not check or ask before running potentially dangerous commands. Only your deny and ask rules still apply, and Pi still asks before recursive deletes outside the temp directory.",
+  "In Bypass Permissions mode, Pi will not check or ask before running potentially dangerous commands. Only your deny and ask rules still apply, and Pi still asks before removing the root, home or working directory.",
   "Use it only in a sandboxed container or VM with restricted internet access that can easily be restored if damaged.",
   "By proceeding, you accept all responsibility for actions taken in Bypass Permissions mode.",
 ].join("\n");

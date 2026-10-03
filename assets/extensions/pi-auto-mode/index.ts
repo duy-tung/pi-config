@@ -6,10 +6,11 @@ import { fileURLToPath } from "node:url";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { type ExtensionAPI, type ExtensionContext, getAgentDir, getPackageDir, parseFrontmatter, type ToolResultEventResult } from "@earendil-works/pi-coding-agent";
 import { classifyWithFallback, type ClassifierResult, type Complete, type ScreenOutcome } from "./lib/classifier.ts";
-import { JEV_MODEL, loadConfig, MODES, nextMode, parseMode, type PermissionMode, readState, saveClassifier, writeState } from "./lib/config.ts";
+import { JEV_MODEL, loadConfig, MODES, nextMode, parseMode, type PermissionMode, prompts, readState, saveClassifier, writeState } from "./lib/config.ts";
 import { evaluate, JEV_PRICE_PER_MTOK, JEV_TUNING, type JevAccess, JevError, resolveAccess } from "./lib/jev.ts";
 import { parsePermissionsArgs, permissionsCompletions } from "./lib/command.ts";
-import { answerOf, MANUAL_CHOICES, type ManualAnswer, manualApproval, manualTitle } from "./lib/manual.ts";
+import { answerOf, type ManualAnswer, manualApproval, manualOptions, manualTitle, NO, YES } from "./lib/manual.ts";
+import { addProjectRules, describeRules, fetchRules, projectRoot, projectRules, removeProjectRule, shellRules } from "./lib/project-rules.ts";
 import * as text from "./lib/messages.ts";
 import { type CallFacts, decide, describeCall, filterDeniedGrep, type PolicyContext, SAFE_TOOLS, type ToolCall } from "./lib/policy.ts";
 import { resolveToolPath, temporaryRoots } from "./lib/paths.ts";
@@ -28,9 +29,10 @@ import { buildTranscript, ENTRY_TYPE, humanMessages, type SessionEntryLike, text
 const WIDGET = "pi-auto-mode";
 /** Dòng mode dưới ô nhập (và tiêu đề /permissions). */
 const MODE_LABELS: Record<PermissionMode, string> = {
-  manual: "⏸ manual mode on", auto: "⏵⏵ auto mode on", bypass: "⏵⏵ bypass permissions on",
+  manual: "⏸ manual mode on", acceptEdits: "⏵⏵ accept edits on", auto: "⏵⏵ auto mode on", bypass: "⏵⏵ bypass permissions on",
 };
-const MODE_COLORS = { manual: "accent", auto: "warning", bypass: "error" } as const;
+const MODE_COLORS = { manual: "accent", acceptEdits: "success", auto: "warning", bypass: "error" } as const;
+const WRITE_TOOL_NAMES = new Set(["edit", "write"]);
 const DESTRUCTIVE_GIT = /\b(?:rm|rmdir|rimraf|git\s+(?:reset|checkout|restore|clean|stash|push|commit|add|rebase|branch\s+-[dD]))\b|\s-delete\b/u;
 
 function ownDirectory(): string | undefined {
@@ -38,6 +40,14 @@ function ownDirectory(): string | undefined {
     return path.dirname(fileURLToPath(import.meta.url));
   } catch {
     return undefined;
+  }
+}
+
+function isDirectory(file: string): boolean {
+  try {
+    return fs.statSync(file).isDirectory();
+  } catch {
+    return false;
   }
 }
 
@@ -56,6 +66,8 @@ export default function piAutoMode(pi: ExtensionAPI) {
 
   let mode: PermissionMode = "auto";
   let sessionId = "";
+  /** Thư mục làm việc của phiên, cho luật lưu theo project khi không có ctx (trạng thái của /permissions). */
+  let sessionCwd = process.cwd();
   let child = false;
   let contextFiles: { path: string; content: string }[] = [];
   let facts: string[] = [];
@@ -81,7 +93,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
   let lastScreen: ScreenVerdict | undefined;
 
   pi.registerFlag("permission-mode", {
-    type: "string", description: "Permission mode at startup: manual, auto or bypass (Claude Code's default and bypassPermissions also work)",
+    type: "string", description: "Permission mode at startup: manual, acceptEdits, auto or bypass (Claude Code's default and bypassPermissions also work)",
   });
   pi.registerFlag("dangerously-skip-permissions", { type: "boolean", description: "Start in bypass permissions mode (no permission checks)" });
 
@@ -142,7 +154,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
     return true;
   }
 
-  /** Shift+Tab: manual → auto → bypass → manual. Bypass bị tắt thì bỏ qua; từ chối cảnh báo thì sang manual. */
+  /** Shift+Tab: manual → acceptEdits → auto → bypass → manual. Bypass bị tắt thì bỏ qua; từ chối cảnh báo thì sang manual. */
   async function cycle(ctx: ExtensionContext): Promise<void> {
     if (child) return;
     const next = nextMode(mode);
@@ -171,10 +183,13 @@ export default function piAutoMode(pi: ExtensionAPI) {
   // Chính sách
   // ---------------------------------------------------------------------------
 
-  /** Luật permission; manual dùng cả luật allow chạy code tùy ý (như mode default của Claude Code), auto bỏ chúng. */
-  function rules() {
-    const set = buildRuleSet(config.allow, config.ask, config.deny);
-    return currentMode() === "manual" ? { ...set, allow: [...set.allow, ...set.stripped] } : set;
+  /**
+   * Luật permission: settings.json của người dùng cộng luật lưu cho project bằng "Yes, and don't ask again". Manual và
+   * acceptEdits dùng cả luật allow chạy code tùy ý (như mode default của Claude Code), auto bỏ chúng.
+   */
+  function rules(cwd = sessionCwd) {
+    const set = buildRuleSet([...config.allow, ...projectRules(config.stateDir, cwd)], config.ask, config.deny);
+    return prompts(currentMode()) ? { ...set, allow: [...set.allow, ...set.stripped] } : set;
   }
 
   function selfPaths(): string[] {
@@ -199,14 +214,15 @@ export default function piAutoMode(pi: ExtensionAPI) {
     } catch {
       /* không xác định được thư mục package */
     }
-    return [...roots(cwd), ...config.skills.map((dir) => resolveToolPath(dir, agentDir)).filter((dir): dir is string => !!dir), ...docs, agentDir];
+    const approved = (child ? rootFor(sessionId)?.sessionReadRoots() : undefined) ?? state.sessionReadRoots;
+    return [...roots(cwd), ...config.skills.map((dir) => resolveToolPath(dir, agentDir)).filter((dir): dir is string => !!dir), ...docs, agentDir, ...approved];
   }
 
   function policyContext(ctx: ExtensionContext): PolicyContext {
     return {
-      mode: currentMode(), cwd: ctx.cwd, roots: roots(ctx.cwd), readRoots: readRoots(ctx.cwd), rules: rules(), selfPaths: selfPaths(),
+      mode: currentMode(), cwd: ctx.cwd, roots: roots(ctx.cwd), readRoots: readRoots(ctx.cwd), rules: rules(ctx.cwd), selfPaths: selfPaths(),
       agentIsUngated: (input) => agentIsUngated(input, { cwd: ctx.cwd, agentDir, parse: (source) => parseFrontmatter(source).frontmatter }),
-      tempRoots: temporaryRoots(), gitGuard: config.gitGuard,
+      tempRoots: temporaryRoots(),
     };
   }
 
@@ -226,12 +242,72 @@ export default function piAutoMode(pi: ExtensionAPI) {
   async function askUser(ctx: ExtensionContext, title: string): Promise<boolean | undefined> {
     const choose = chooser(ctx);
     if (!choose) return undefined;
-    return (await choose(title, [MANUAL_CHOICES.once, MANUAL_CHOICES.deny])) === MANUAL_CHOICES.once;
+    return (await choose(title, [YES, NO])) === YES;
   }
 
   /** Lời gọi được cho phép tới hết phiên (manual): child dùng chung tập của phiên gốc. */
   function sessionApprovals(): Set<string> {
     return (child ? rootFor(sessionId)?.sessionApprovals() : undefined) ?? state.sessionApprovals;
+  }
+
+  /** Đổi mode từ hộp hỏi (phiên gốc, hoặc child qua phiên gốc); không dùng để vào bypass. */
+  function modeSetter(): ((next: PermissionMode) => void) | undefined {
+    return child ? rootFor(sessionId)?.setMode : setMode;
+  }
+
+  /**
+   * Hộp hỏi của manual/acceptEdits, lựa chọn như Claude Code. "Don't ask again": lệnh shell và fetch_content lưu luật
+   * allow theo tiền tố lệnh/domain cho project; sửa file ở manual chuyển sang acceptEdits; tool khác nhớ đúng lời gọi
+   * tới hết phiên. Hành động có ghi chú rủi ro (rm vào đường dẫn quan trọng, lệnh rủi ro, đường dẫn được bảo vệ) không
+   * có lựa chọn này, như Claude Code không đề xuất luật cho chúng.
+   */
+  async function manualGate(ctx: ExtensionContext, call: ToolCall, key: string, facts: CallFacts, notes: string[], risky: boolean) {
+    const choose = chooser(ctx);
+    const setModeFromPrompt = modeSetter();
+    const cwd = ctx.cwd;
+    let always: string | undefined;
+    let remember: (() => void) | undefined;
+    if (!risky) {
+      const saved = facts.kind === "shell" && call.toolName === "bash" ? shellRules(facts.analysis as ShellAnalysis)
+        : facts.kind === "network" && call.toolName === "fetch_content" ? fetchRules(facts.target.urls) : undefined;
+      if (saved) {
+        const project = path.basename(projectRoot(cwd)) || projectRoot(cwd);
+        always = call.toolName === "bash"
+          ? `Yes, and don't ask again for ${describeRules(saved)} commands in ${project}`
+          : `Yes, and don't ask again for ${describeRules(saved)}`;
+        remember = () => {
+          try {
+            addProjectRules(config.stateDir, cwd, saved);
+            notify(ctx, `Saved for ${projectRoot(cwd)}: ${saved.join(", ")} (/permissions → Rules to remove)`, "info");
+          } catch (error) {
+            notify(ctx, `Could not save the rule: ${error instanceof Error ? error.message : String(error)}`, "warning");
+          }
+          log({ event: "rule saved", rules: saved });
+        };
+      } else if (facts.kind === "read") {
+        // Như Claude Code: cho đọc thư mục đó (thư mục chứa file) tới hết phiên.
+        const dirs = [...new Set(facts.paths.map((file) => (isDirectory(file) ? file : path.dirname(file))))];
+        const approved = (child ? rootFor(sessionId)?.sessionReadRoots() : undefined) ?? state.sessionReadRoots;
+        always = `Yes, allow reading from ${dirs.map((dir) => `${dir}${path.sep}`).join(", ")} during this session`;
+        remember = () => {
+          for (const dir of dirs) approved.add(dir);
+        };
+      } else if (WRITE_TOOL_NAMES.has(call.toolName) && currentMode() === "manual" && setModeFromPrompt) {
+        always = "Yes, allow all edits during this session";
+        remember = () => setModeFromPrompt("acceptEdits");
+      } else {
+        always = "Yes, and don't ask again this session";
+      }
+    }
+    const input = child ? rootFor(sessionId)?.input : ctx.hasUI ? (title: string) => ctx.ui.input(title, "") : undefined;
+    const options = manualOptions({ always, auto: !!setModeFromPrompt, comment: !!input });
+    return manualApproval({
+      key, title: manualTitle(call.toolName, facts.summary, notes), approvals: sessionApprovals(), options,
+      ask: choose ? async (title, items): Promise<ManualAnswer> => answerOf(items, await choose(title, items.map((item) => item.label))) : undefined,
+      always: remember,
+      switchToAuto: setModeFromPrompt ? () => setModeFromPrompt("auto") : undefined,
+      comment: input ? () => input("Tell Pi what to do differently") : undefined,
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -490,17 +566,15 @@ export default function piAutoMode(pi: ExtensionAPI) {
     if (state.consumeApproval(key)) {
       return allowed(call, "user approval");
     }
-    // Manual: hỏi người dùng thay cho bộ phân loại (không gọi model nào).
-    if (currentMode() === "manual") {
-      const choose = chooser(ctx);
-      const options = [MANUAL_CHOICES.once, MANUAL_CHOICES.session, MANUAL_CHOICES.deny];
-      const result = await manualApproval({
-        key, title: manualTitle(call.toolName, facts.summary, decision.notes), approvals: sessionApprovals(),
-        ask: choose ? async (title): Promise<ManualAnswer> => answerOf(await choose(title, options)) : undefined,
-      });
+    // Manual và acceptEdits: hỏi người dùng thay cho bộ phân loại (không gọi model nào).
+    if (prompts(currentMode())) {
+      const result = await manualGate(ctx, call, key, facts, decision.notes, !!decision.escalate);
       log({ event: "manual", tool: call.toolName, result: result.kind === "allow" ? result.via : result.declined ? "declined" : "no approver" });
       if (result.kind === "allow") return allowed(call, result.via);
-      if (result.declined) state.recordDenied({ toolName: call.toolName, summary: facts.summary, reason: "Declined by you", key }, false);
+      if (result.declined) {
+        const reason = result.comment ? `Declined by you: ${result.comment}` : "Declined by you";
+        state.recordDenied({ toolName: call.toolName, summary: facts.summary, reason, key }, false);
+      }
       return { block: true, reason: result.reason };
     }
     const result = await runClassifier(ctx, call, toolCallId, decision.notes, !!decision.escalate, facts.analysis);
@@ -638,6 +712,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     config = loadConfig(agentDir);
     sessionId = ctx.sessionManager.getSessionId();
+    sessionCwd = ctx.cwd;
     child = isChild(sessionId);
     state = new PermissionState();
     pendingRelayed = [];
@@ -659,14 +734,19 @@ export default function piAutoMode(pi: ExtensionAPI) {
       mode: () => mode,
       humanMessages: () => humanMessages(ctx.sessionManager.getBranch() as SessionEntryLike[]),
       ask: ctx.hasUI ? (title: string, options: string[]) => ctx.ui.select(`[subagent] ${title}`, options) : undefined,
+      input: ctx.hasUI ? (title: string) => ctx.ui.input(`[subagent] ${title}`, "") : undefined,
+      setMode: (next: PermissionMode) => {
+        if (next !== "bypass") setMode(next);
+      },
       sessionApprovals: () => state.sessionApprovals,
+      sessionReadRoots: () => state.sessionReadRoots,
       classifier: () => ({ model: config.model, stage2Reasoning: config.stage2Reasoning }),
     };
     registerRoot(handle);
     // Không bao giờ khôi phục bypass từ phiên cũ; chỉ cờ dòng lệnh hoặc settings người dùng.
     const flagBypass = pi.getFlag("dangerously-skip-permissions") === true;
     const wanted = flagBypass ? "bypass" : parseMode(pi.getFlag("permission-mode")) ?? config.defaultMode;
-    setMode(wanted === "manual" ? "manual" : "auto");
+    setMode(wanted === "bypass" ? "auto" : wanted);
     installWidget(ctx);
     if (wanted === "bypass") {
       void canEnterBypass(ctx, true, "No, stay in auto mode").then((ok) => {
@@ -703,7 +783,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
 
   // Shift+Tab như Claude Code; bộ cài chuyển mức thinking của Pi sang Alt+T. Nếu keybindings.json vẫn gán
   // Shift+Tab cho thinking, Pi bỏ phím này của extension (kèm chẩn đoán) và mode đổi bằng /permissions.
-  pi.registerShortcut("shift+tab" as never, { description: "Switch permission mode (manual → auto → bypass)", handler: (ctx) => cycle(ctx) });
+  pi.registerShortcut("shift+tab" as never, { description: "Switch permission mode (manual → accept edits → auto → bypass)", handler: (ctx) => cycle(ctx) });
 
   function modelLabel(): string {
     const llm = `${config.model ?? "session model"} · ${config.stage2Reasoning}`;
@@ -719,7 +799,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
       `Jev (System One): ${jevLabel()}${jevStats.calls || jevStats.failures ? `\n  ${jevUsage()}` : ""}`,
       ...(injectionSuspect ? [`Possible prompt injection in a ${injectionSuspect} result since your last message: actions go straight to careful review`] : []),
       `Denials: ${state.consecutive} in a row, ${state.total} this session (limits ${LIMITS.consecutive}/${LIMITS.total})`,
-      `Rules: ${set.allow.length} allow, ${set.ask.length} ask, ${set.deny.length} deny${set.stripped.length && currentMode() !== "manual" ? `, ${set.stripped.length} ignored in auto mode` : ""}`,
+      `Rules: ${set.allow.length} allow, ${set.ask.length} ask, ${set.deny.length} deny${set.stripped.length && !prompts(currentMode()) ? `, ${set.stripped.length} ignored in auto mode` : ""}`,
     ];
   }
 
@@ -735,7 +815,8 @@ export default function piAutoMode(pi: ExtensionAPI) {
     }
     const notes = decision.notes.length ? ` Note: ${decision.notes.join("; ")}.` : "";
     if (currentMode() !== "auto") {
-      notify(ctx, `${currentMode() === "manual" ? "Manual mode: Pi would ask you before running this" : "Bypass mode: this runs without a check"} (no classifier call).${notes}`, "info");
+      const how = prompts(currentMode()) ? `${currentMode() === "manual" ? "Manual" : "Accept-edits"} mode: Pi would ask you before running this` : "Bypass mode: this runs without a check";
+      notify(ctx, `${how} (no classifier call).${notes}`, "info");
       return;
     }
     notify(ctx, "Asking the classifier…", "info");
@@ -782,16 +863,22 @@ export default function piAutoMode(pi: ExtensionAPI) {
 
   async function showRules(ctx: ExtensionContext): Promise<void> {
     const set = buildRuleSet(config.allow, config.ask, config.deny);
+    const saved = projectRules(config.stateDir, ctx.cwd);
     const choice = await ctx.ui.select("Rules", [
       `Your rules: ${set.allow.length + set.stripped.length} allow, ${set.ask.length} ask, ${set.deny.length} deny`,
+      `Saved for this project: ${saved.length} allow…`,
       "Built-in classifier rules (auto mode defaults)",
     ]);
     if (!choice) return;
+    if (choice.startsWith("Saved for this project")) {
+      await savedRules(ctx);
+      return;
+    }
     if (choice.startsWith("Your rules")) {
       const list = (items: { raw: string }[]) => (items.length ? items.map((rule) => `  ${rule.raw}`).join("\n") : "  (none)");
       const body = [
         `Allow:\n${list(set.allow)}`, `Ask:\n${list(set.ask)}`, `Deny:\n${list(set.deny)}`,
-        ...(set.stripped.length ? [`Allow rules ignored in auto mode (they would bypass the classifier; manual mode uses them):\n${list(set.stripped)}`] : []),
+        ...(set.stripped.length ? [`Allow rules ignored in auto mode (they would bypass the classifier; manual and accept-edits modes use them):\n${list(set.stripped)}`] : []),
         `Settings: ${config.source}`,
       ].join("\n\n");
       await ctx.ui.editor("Permission rules (read-only view)", body);
@@ -805,6 +892,28 @@ export default function piAutoMode(pi: ExtensionAPI) {
       "Customize in settings.json → autoMode.environment / hard_deny / soft_deny / allow; include \"$defaults\" to keep these.",
     ].join("\n");
     await ctx.ui.editor("Auto mode classifier rules (read-only view)", body);
+  }
+
+  /** Luật "Yes, and don't ask again" của project: chọn một luật để bỏ. */
+  async function savedRules(ctx: ExtensionContext): Promise<void> {
+    const root = projectRoot(ctx.cwd);
+    const saved = projectRules(config.stateDir, ctx.cwd);
+    if (!saved.length) {
+      ctx.ui.notify(`No rules saved for ${root}. "Yes, and don't ask again" in an approval prompt saves one here.`, "info");
+      return;
+    }
+    const stripped = new Set(buildRuleSet(saved, [], []).stripped.map((rule) => rule.raw));
+    const labels = saved.map((rule) => `${rule}${stripped.has(rule) ? " (ignored in auto mode)" : ""}`);
+    const picked = await ctx.ui.select(`Saved for ${root} — pick one to remove`, labels);
+    const rule = picked ? saved[labels.indexOf(picked)] : undefined;
+    if (!rule) return;
+    if (await ctx.ui.select(`Remove ${rule}?`, ["Remove", "Cancel"]) !== "Remove") return;
+    try {
+      removeProjectRule(config.stateDir, ctx.cwd, rule);
+      ctx.ui.notify(`Removed ${rule}`, "info");
+    } catch (error) {
+      ctx.ui.notify(`Could not remove the rule: ${error instanceof Error ? error.message : String(error)}`, "error");
+    }
   }
 
   async function recentlyDenied(ctx: ExtensionContext): Promise<void> {
@@ -856,7 +965,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
         case 0: {
           if (child) return;
           const labels = MODES.map((item) => `${MODE_LABELS[item]}${item === currentMode() ? " (current)" : ""}`);
-          const picked = await ctx.ui.select("Permission mode (Shift+Tab cycles manual → auto → bypass)", labels);
+          const picked = await ctx.ui.select("Permission mode (Shift+Tab cycles manual → accept edits → auto → bypass)", labels);
           if (picked) await switchMode(ctx, MODES[labels.indexOf(picked)]);
           return;
         }

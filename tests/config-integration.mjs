@@ -181,7 +181,7 @@ const ui = {
       const wanted = rewindAnswers.shift();
       return options.find((option) => option === wanted || new RegExp(`CASE:${wanted}(?:\\s|$)`, "u").test(option));
     }
-    return options.find((option) => /^Allow once|^Approve once/u.test(option)) ?? options[0];
+    return options.find((option) => /^Yes$|^Approve once/u.test(option)) ?? options[0];
   },
   confirm: async (title) => { prompts.push({ kind: "confirm", title }); return true; },
   notify: (message, type) => notices.push({ message, type }),

@@ -14,8 +14,14 @@ export interface RootHandle {
   humanMessages(): string[];
   /** Hỏi người dùng ở phiên gốc với các lựa chọn cho trước; trả lựa chọn (undefined khi bỏ qua). Không có khi gốc không có UI. */
   ask?(title: string, options: string[]): Promise<string | undefined>;
+  /** Ô nhập ở phiên gốc (lời nhắn khi từ chối); không có khi gốc không có UI. */
+  input?(title: string): Promise<string | undefined>;
+  /** Đổi mode của phiên gốc từ hộp hỏi của child ("allow all edits", "switch to auto mode"); không vào bypass. */
+  setMode?(mode: PermissionMode): void;
   /** Lời gọi được cho phép tới hết phiên ở manual mode, dùng chung cho phiên gốc và mọi child. */
   sessionApprovals(): Set<string>;
+  /** Thư mục cho đọc tới hết phiên, dùng chung cho phiên gốc và mọi child. */
+  sessionReadRoots(): Set<string>;
   /** Model phân loại và mức suy luận của phiên gốc: đổi trong /permissions thì child dùng ngay. */
   classifier(): { model?: string; stage2Reasoning: string };
 }

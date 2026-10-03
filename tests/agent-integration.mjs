@@ -124,6 +124,8 @@ const sdk = await import(pathToFileURL(path.join(modules, "@earendil-works", "pi
 const control = { plans: {}, seen: [], classifier: [] };
 globalThis[Symbol.for("pi-config:test")] = control;
 const errors = [], prompts = [], notices = [], results = [];
+// Câu trả lời xếp sẵn cho hộp chọn (regex của lựa chọn) và ô nhập; hết thì chọn Yes/Approve once như trước.
+const selectAnswers = [], inputAnswers = [];
 const loader = new sdk.DefaultResourceLoader({ cwd, agentDir });
 await loader.reload();
 assert.deepEqual(loader.getExtensions().errors, []);
@@ -133,10 +135,14 @@ const { session } = await sdk.createAgentSession({ cwd, agentDir, resourceLoader
 // Automatic approvals are restricted to our isolated fixture and fake model.
 const ui = {
   ...Object.fromEntries(["setStatus", "setWorkingMessage", "setWorkingVisible", "setWorkingIndicator", "setHiddenThinkingLabel", "setWidget", "setFooter", "setHeader", "setTitle", "pasteToEditor", "setEditorText", "addAutocompleteProvider", "setEditorComponent", "setToolsExpanded"].map((key) => [key, () => {}])),
-  onTerminalInput: () => () => {}, input: async () => undefined, editor: async () => undefined,
+  onTerminalInput: () => () => {}, input: async (title) => { prompts.push({ kind: "input", title }); return inputAnswers.shift(); }, editor: async () => undefined,
   getEditorComponent: () => undefined, getAllThemes: () => [], setTheme: () => ({ success: true }),
   theme: { fg: (_color, text) => text, bg: (_color, text) => text, bold: (text) => text, italic: (text) => text, dim: (text) => text },
-  select: async (title, options) => { prompts.push({ kind: "select", title }); return options.find((option) => /^Allow once|^Approve once/u.test(option)) ?? options[0]; },
+  select: async (title, options) => {
+    prompts.push({ kind: "select", title, options });
+    const wanted = selectAnswers.shift();
+    return wanted ? options.find((option) => wanted.test(option)) : options.find((option) => /^Yes$|^Approve once/u.test(option)) ?? options[0];
+  },
   confirm: async (title) => { prompts.push({ kind: "confirm", title }); return true; },
   notify: (message, type) => notices.push({ message, type }),
   custom: async () => { throw new Error("Unexpected TUI dialog in RPC fixture"); },
@@ -436,6 +442,46 @@ await check('three Jev outages in a row turn Jev off for the session instead of 
     assert.equal(jevControl.requests.length-before.jev,6,'3 lần gọi × 2 lần thử, lệnh thứ tư không gọi Jev');
     assert.ok(notices.slice(before.notices).some(n=>/Jev is unavailable \(3 failures in a row/.test(n.message)));
   }finally{jevControl.failures.length=0;await closeSession(outage);}
+});
+await check('manual mode asks like Claude Code: edits ask, No with a message, reading a directory, saved project rule, allow all edits',async()=>{
+  const permissions=async(...steps)=>{selectAnswers.push(...steps);await session.prompt('/permissions');assert.equal(selectAnswers.length,0);};
+  await permissions(/^Mode: /u,/^⏸ manual mode on$/u);
+  const asked=()=>prompts.filter(p=>p.kind==='select'&&/^Allow /u.test(p.title));
+  // Sửa file trong workspace cũng hỏi ở manual; No kèm lời nhắn: không ghi, lời nhắn tới Pi.
+  let before=asked().length;
+  selectAnswers.push(/^No, and tell Pi/u);inputAnswers.push('write notes.md instead');
+  let out=await turn('manual-edit',[[tool('write',{path:'manual-edit.txt',content:'x'})],final('DONE')]);
+  assert.equal(out[0]?.isError,true,JSON.stringify(out));assert.match(JSON.stringify(out),/write notes\.md instead/);
+  assert.equal(fs.existsSync(path.join(cwd,'manual-edit.txt')),false);
+  const editPrompt=asked().at(-1);
+  assert.equal(asked().length-before,1);
+  assert.deepEqual(editPrompt.options,['Yes','Yes, allow all edits during this session','Yes, and switch to auto mode','No','No, and tell Pi what to do differently…']);
+  // Đọc ngoài workspace: "allow reading from <thư mục>/ during this session"; lần sau trong thư mục đó không hỏi.
+  // File hệ thống có sẵn ngoài thư mục tạm (fixture nằm trong thư mục tạm, vốn được đọc tự do).
+  const [outsideDir,outsideFiles]=process.platform==='win32'?[path.join(process.env.SystemRoot??'C:\\Windows'),['win.ini','system.ini']]:['/etc',['hosts','shells']];
+  before=asked().length;
+  selectAnswers.push(/^Yes, allow reading from .* during this session$/u);
+  out=await turn('manual-read',outsideFiles.map(name=>[tool('read',{path:path.join(outsideDir,name)})]).concat([final('DONE')]));
+  assert.ok(out.length===2&&out.every(m=>!m.isError),JSON.stringify(out));
+  assert.equal(asked().length-before,1,'chỉ hỏi lần đọc đầu');
+  // mkdir/touch trong workspace hỏi ở manual; "don't ask again" lưu Bash(touch *) cho project, lần sau không hỏi.
+  before=asked().length;
+  selectAnswers.push(/^Yes, and don't ask again for `touch` commands in fixture workspace$/u);
+  out=await turn('manual-touch',[[tool('bash',{command:'touch manual-a.txt',timeout:10})],[tool('bash',{command:'touch manual-b.txt',timeout:10})],final('DONE')]);
+  assert.ok(out.length===2&&out.every(m=>!m.isError),JSON.stringify(out));
+  assert.equal(asked().length-before,1,'chỉ hỏi lần đầu');
+  const saved=readJson(path.join(fixture,'auto-mode','project-rules.json'));
+  assert.deepEqual(saved,{projects:{[cwd]:{allow:['Bash(touch *)']}}});
+  // "Allow all edits during this session": chuyển sang acceptEdits, lần sửa sau không hỏi.
+  before=asked().length;
+  selectAnswers.push(/^Yes, allow all edits during this session$/u);
+  out=await turn('manual-accept',[[tool('write',{path:'manual-c.txt',content:'c'})],[tool('write',{path:'manual-d.txt',content:'d'})],final('DONE')]);
+  assert.ok(out.length===2&&out.every(m=>!m.isError),JSON.stringify(out));
+  assert.equal(asked().length-before,1);
+  // Không lựa chọn nào khớp: huỷ menu, chỉ xem tiêu đề.
+  await permissions(/(?!)/u);
+  assert.equal(prompts.filter(p=>p.kind==='select').at(-1).title,'Permissions · ⏵⏵ accept edits on');
+  await permissions(/^Mode: /u,/^⏵⏵ auto mode on$/u);
 });
 await session.extensionRunner.emit({type:'session_shutdown',reason:'quit'});session.dispose();
 const failed=results.some(r=>r.status==='FAIL')||errors.length>0||networkAttempts.length>0;

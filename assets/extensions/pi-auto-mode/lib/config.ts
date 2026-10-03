@@ -2,13 +2,17 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * manual: hỏi người dùng thay cho bộ phân loại (như mode default của Claude Code); auto: bộ phân loại duyệt;
- * bypass: không kiểm, trừ luật deny/ask và vài lớp bảo vệ.
+ * Như Claude Code: manual (mode default) hỏi người dùng thay cho bộ phân loại, kể cả sửa file; acceptEdits như manual
+ * nhưng sửa file và mkdir/touch/cp/mv trong workspace chạy ngay; auto: bộ phân loại duyệt; bypass: không kiểm, trừ
+ * luật deny/ask và vài lớp bảo vệ.
  */
-export type PermissionMode = "manual" | "auto" | "bypass";
+export type PermissionMode = "manual" | "acceptEdits" | "auto" | "bypass";
 
-/** Thứ tự Shift+Tab: manual → auto → bypass → manual. */
-export const MODES: PermissionMode[] = ["manual", "auto", "bypass"];
+/** Thứ tự Shift+Tab: manual → acceptEdits → auto → bypass → manual. */
+export const MODES: PermissionMode[] = ["manual", "acceptEdits", "auto", "bypass"];
+
+/** Mode hỏi người dùng thay cho bộ phân loại (không gọi model nào để duyệt). */
+export const prompts = (mode: PermissionMode): boolean => mode === "manual" || mode === "acceptEdits";
 
 export function nextMode(mode: PermissionMode): PermissionMode {
   return MODES[(MODES.indexOf(mode) + 1) % MODES.length];
@@ -22,13 +26,6 @@ export interface JevConfig {
   enabled: boolean;
   /** Model ghim phiên bản (ngưỡng được chỉnh theo phiên bản). */
   model: string;
-}
-
-/** Git guard tất định (lib/git-guard.ts): áp dụng ở cả auto và bypass, trước bộ phân loại. */
-export interface GitGuardConfig {
-  enabled: boolean;
-  /** Thay danh sách nhánh được bảo vệ mặc định; undefined = mặc định. */
-  protectedBranches?: string[];
 }
 
 export interface AutoModeConfig {
@@ -54,7 +51,6 @@ export interface AutoModeConfig {
   /** File settings.json đã đọc (hiện ở /permissions → Rules). */
   source: string;
   jev: JevConfig;
-  gitGuard: GitGuardConfig;
 }
 
 const DEFAULTS = {
@@ -71,26 +67,19 @@ export function parseJev(value: unknown): JevConfig {
   return { enabled: value !== false && raw.enabled !== false, model };
 }
 
-/** `autoMode.gitGuard`: false tắt; object {enabled, protectedBranches}; giá trị sai dùng mặc định (bật). */
-export function parseGitGuard(value: unknown): GitGuardConfig {
-  if (value === false) return { enabled: false };
-  const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
-  const branches = strings(raw.protectedBranches)?.map((branch) => branch.trim());
-  return { enabled: raw.enabled !== false, protectedBranches: branches?.length ? branches : undefined };
-}
-
 function strings(value: unknown): string[] | undefined {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim() !== "") : undefined;
 }
 
 /**
- * `manual`, `auto`, `bypass` và tên của Claude Code (`default` = manual, `bypassPermissions` = bypass), bỏ khoảng
- * trắng hai đầu; giá trị khác là undefined.
+ * `manual`, `acceptEdits`, `auto`, `bypass` và tên của Claude Code (`default` = manual, `bypassPermissions` = bypass),
+ * bỏ khoảng trắng hai đầu; giá trị khác là undefined.
  */
 export function parseMode(value: unknown): PermissionMode | undefined {
   const text = typeof value === "string" ? value.trim() : value;
   if (text === "bypassPermissions" || text === "bypass") return "bypass";
   if (text === "manual" || text === "default") return "manual";
+  if (text === "acceptEdits") return "acceptEdits";
   if (text === "auto") return "auto";
   return undefined;
 }
@@ -136,7 +125,6 @@ export function loadConfig(agentDir: string, env: NodeJS.ProcessEnv = process.en
     log: auto.log === true || env.PI_AUTO_MODE_LOG === "1",
     source: path.join(agentDir, "settings.json"),
     jev: parseJev(auto.jev),
-    gitGuard: parseGitGuard(auto.gitGuard),
   };
 }
 

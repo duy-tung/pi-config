@@ -34,6 +34,8 @@ export class PermissionState {
   private readonly approvals = new Map<string, number>();
   /** Manual mode: lời gọi người dùng đã cho phép tới hết phiên (cùng khóa callKey). */
   readonly sessionApprovals = new Set<string>();
+  /** Manual mode: thư mục ngoài workspace người dùng cho đọc tới hết phiên ("allow reading from"). */
+  readonly sessionReadRoots = new Set<string>();
 
   recordAllowed(): void {
     this.consecutive = 0;
