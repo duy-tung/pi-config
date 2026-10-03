@@ -32,8 +32,8 @@ for(const patch of read(path.join(root,'patches/manifest.json'))){
 // Key Jev cho auto mode: TYPESAFE_API_KEY như pi-auto-mode; chỉ báo có hay không, không in key.
 const jevKey=process.env.TYPESAFE_API_KEY?.trim()?'key từ TYPESAFE_API_KEY':'chưa có key: đặt TYPESAFE_API_KEY';
 const s=read(path.join(state.agentDir,'settings.json'));
-// Model/thinking của mọi vai theo model-roles.json, giá trị đang có hiệu lực khi khác, và kiểm catalog của Pi.
-const models=await modelRolesReport({root,agentDir:state.agentDir,modules:path.join(root,'runtimes','current','node_modules')});
+// Model/thinking đang có hiệu lực của mọi vai theo file gốc, chỗ đổi, và kiểm catalog của Pi.
+const models=await modelRolesReport({agentDir:state.agentDir,modules:path.join(root,'runtimes','current','node_modules')});
 console.log(models.lines.join('\n') || 'không đọc được cấu hình model');
 errors.push(...models.errors);warnings.push(...models.warnings);
 for(const pkg of s.packages)if(!fs.existsSync(typeof pkg==='string'?pkg:pkg.source))errors.push(`Thiếu package: ${typeof pkg==='string'?pkg:pkg.source}`);
@@ -47,19 +47,17 @@ if(fs.existsSync(webSearch)){
   const outside=Array.isArray(providers)&&Array.isArray(allowed)?providers.filter(item=>!allowed.includes(item)):[];
   if(outside.length)errors.push(`web-search.json: ${outside.join(', ')} có trong searchRouting.providers nhưng không có trong webSearch.allowedProviders; pi-web-access sẽ không nạp web tools. Thêm vào cả hai danh sách hoặc bỏ khỏi cả hai`);
 }
-// Model/thinking của file role đã được kiểm ở bảng model phía trên (lệch so với model-roles.json, catalog).
+// Model/thinking của file role đã được kiểm ở bảng model phía trên (catalog).
 for(const role of SUBAGENT_ROLES)if(!fs.existsSync(path.join(state.agentDir,'agents',role+'.md')))errors.push(`thiếu role ${role}`);
 const advisorFile=path.join(state.agentDir,'advisor.json');
 if(fs.existsSync(advisorFile)){
-  const advisor=read(advisorFile),main=`${s.defaultProvider}/${s.defaultModel}`;
+  // executor (model của phiên chính mà /model lưu khi advisor luôn bật) đã nằm trong bảng model ở trên.
+  const advisor=read(advisorFile);
   const gates=[['advisorPlanGate','trước plan'],['advisorFailureGate','lỗi lặp'],['advisorCompletionGate','trước khi xong']].filter(([key])=>advisor[key]!==false).map(([,text])=>text);
   console.log(`  advisor ${advisor.alwaysOn===true?`luôn bật, gate: ${gates.join(', ')||'không (chỉ khi được gọi)'}; tối đa ${advisor.advisorMaxCallsPerSession??'∞'} lần/phiên`:'tắt'}`);
-  // alwaysOn đặt model của phiên thành executor mỗi lần mở phiên.
-  if(advisor.alwaysOn===true&&advisor.executor&&advisor.executor!==main)
-    warnings.push(`advisor.json bật alwaysOn với executor ${advisor.executor}; mỗi phiên sẽ chuyển từ ${main} sang model này`);
 }
 const auto=s.autoMode??{},jev=auto.jev===false||auto.jev?.enabled===false?undefined:auto.jev??{};
-// Model phân loại đặt trong /permissions → Classifier (autoMode.model của settings.json), không thuộc model-roles.json.
+// Model phân loại đặt trong /permissions → Classifier (autoMode.model của settings.json), không phải một vai.
 const classifier=`${typeof auto.model==='string'&&auto.model.trim()?auto.model.trim():'model của phiên'} (${auto.stage2Reasoning??'low'})`;
 console.log(`  auto mode: bước 1 ${jev?`Jev${jev.model?` ${jev.model}`:''} (${jevKey})`:`LLM ${classifier} (Jev tắt)`}; bước 2 LLM ${classifier}; đổi trong /permissions → Classifier`);
 for(const source of Object.keys(state.sources))if(!fs.existsSync(path.join(root,'sources',source)))errors.push(`Thiếu skills source: ${source}`);

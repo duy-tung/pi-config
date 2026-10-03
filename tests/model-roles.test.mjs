@@ -5,107 +5,35 @@ import path from 'node:path';
 import test from 'node:test';
 import {fileURLToPath} from 'node:url';
 import {
-  ROLES, changedRoles, checkCatalog, copyConfig, driftedRoles, effectiveModelRoles, loadModelDefaults, nativeValues, parseModelRef,
-  readModelRoles, resolveModelRoles, roleModel, setRoleModel, splitRole, withRole, withoutRoles, writeModelRoles,
+  CHANGE_AT, ROLES, THINKING_LEVELS, checkCatalog, effectiveModelRoles, loadModelDefaults, nativeValues, parseModelRef, rebaseModels,
+  roleModel, setRoleModel, splitRole,
 } from '../runtime/model-roles.mjs';
-import {claudeOnly} from './install-fixture.mjs';
 
 const defaults = loadModelDefaults(fileURLToPath(new URL('../', import.meta.url)));
 const table = roles => Object.fromEntries(ROLES.map(name => [name, `${roles[name].model} ${roles[name].thinking}`]));
 const role = (model, thinking) => `---\nname: worker\ndescription: Viết code.\nmodel: ${model}\nthinking: ${thinking}\ntools: "read, bash"\n---\n\nPrompt của role.\n`;
-const presetWarning = value => `bỏ qua "preset": ${value} (preset đã gỡ khỏi pi-config: mọi vai dùng mặc định, chỉ ghi đè trong roles có tác dụng); xoá khóa này khỏi model-roles.json để hết cảnh báo`;
+/** Mặc định với vài vai đổi model/thinking. */
+const withRoles = changes => Object.fromEntries(ROLES.map(name => [name, {...defaults[name], ...changes[name]}]));
 
-test('mặc định đặt đủ model và thinking hợp lệ cho mọi vai; là bảng phân vai chuẩn', () => {
+test('mặc định đặt đủ model và thinking hợp lệ cho mọi vai; mỗi vai có chỗ đổi', () => {
   assert.deepEqual(Object.keys(defaults), ROLES);
-  // Kiểm như ghi đè trong roles: cùng dạng model, mức thinking và tên trường.
-  assert.deepEqual(resolveModelRoles(defaults, {roles: defaults}).errors, []);
-  assert.deepEqual(table(resolveModelRoles(defaults).roles), {
+  assert.deepEqual(table(defaults), {
     main: 'anthropic/claude-opus-5-5 high', researcher: 'opencode-go/glm-5.3-flash max',
     worker: 'openai-codex/gpt-6.1-sol max', reviewer: 'openai-codex/gpt-6-astra high',
     advisor: 'openai-codex/gpt-6-astra high',
   });
-  assert.ok(ROLES.every(name => Object.values(resolveModelRoles(defaults).roles[name].source).every(source => source === 'default')));
-  // Ghi đè chỉ dùng Claude (docs/models.md): reviewer khác model với worker.
-  const claude = resolveModelRoles(defaults, {roles: claudeOnly}).roles;
-  assert.ok(ROLES.every(name => claude[name].model.startsWith('anthropic/')));
-  assert.notEqual(claude.reviewer.model, claude.worker.model);
-});
-
-test('ghi đè theo vai và từng trường trên mặc định', () => {
-  const resolved = resolveModelRoles(defaults, {
-    roles: {worker: {thinking: 'high'}, researcher: {model: 'openai-codex/gpt-6.1-sol', thinking: 'low'}},
-  });
-  assert.deepEqual([resolved.errors, resolved.warnings], [[], []]);
-  assert.deepEqual([resolved.roles.worker.model, resolved.roles.worker.thinking], ['openai-codex/gpt-6.1-sol', 'high']);
-  assert.deepEqual(resolved.roles.worker.source, {model: 'default', thinking: 'override'});
-  assert.deepEqual([resolved.roles.researcher.model, resolved.roles.researcher.thinking], ['openai-codex/gpt-6.1-sol', 'low']);
-  assert.deepEqual([resolved.roles.reviewer.model, resolved.roles.reviewer.source.model], ['openai-codex/gpt-6-astra', 'default']);
-});
-
-test('khóa preset còn sót (preset đã gỡ): bỏ qua kèm một dòng cảnh báo, chỉ ghi đè trong roles có tác dụng', () => {
-  // Preset claude cũ cùng một ghi đè researcher: mọi vai về mặc định, trừ ghi đè đó.
-  const resolved = resolveModelRoles(defaults, {preset: 'claude', roles: {researcher: {model: 'anthropic/claude-sonnet-5-5'}}});
-  assert.deepEqual(resolved.errors, []);
-  assert.deepEqual(resolved.warnings, [presetWarning('"claude"')]);
-  assert.deepEqual(resolved.roles, resolveModelRoles(defaults, {roles: {researcher: {model: 'anthropic/claude-sonnet-5-5'}}}).roles);
-  assert.deepEqual(table(resolved.roles), {
-    ...table(resolveModelRoles(defaults).roles), researcher: 'anthropic/claude-sonnet-5-5 max',
-  });
-  // Giá trị nào cũng chỉ là cảnh báo, kể cả tên không còn hay không phải chuỗi.
-  for (const [value, shown] of [['default', '"default"'], ['__proto__', '"__proto__"'], [null, 'null'], [42, '42']]) {
-    const other = resolveModelRoles(defaults, {preset: value});
-    assert.deepEqual([other.errors, other.warnings], [[], [presetWarning(shown)]], shown);
+  for (const name of ROLES) {
+    assert.deepEqual(Object.keys(defaults[name]), ['model', 'thinking'], name);
+    assert.ok(parseModelRef(defaults[name].model), name);
+    assert.ok(THINKING_LEVELS.includes(defaults[name].thinking), name);
   }
-  // Cùng lúc với ghi đè của vai đã gỡ: mỗi loại một dòng.
-  assert.equal(resolveModelRoles(defaults, {preset: 'claude', roles: {debugger: {thinking: 'low'}}}).warnings.length, 2);
-});
-
-test('cấu hình sai: báo từng lỗi, vẫn trả đủ vai theo mặc định', () => {
-  const resolved = resolveModelRoles(defaults, {
-    extra: true,
-    roles: {worker: {model: 'opus', thinking: 'ultra', effort: 'high'}, coder: {}},
-    presets: {mine: {extends: 'claude'}},
-  });
-  assert.deepEqual(resolved.errors, [
-    'không có khóa "extra" (chỉ có roles)',
-    'không có khóa "presets" (chỉ có roles)',
-    'roles.worker.model phải có dạng "provider/id" (vd "anthropic/claude-opus-5-5"), đang là "opus"',
-    'roles.worker.thinking phải là một trong off, minimal, low, medium, high, xhigh, max, đang là "ultra"',
-    'roles.worker: không có khóa "effort" (chỉ có model, thinking)',
-    'roles: không có vai "coder" (có main, researcher, worker, reviewer, advisor)',
-  ]);
-  assert.equal(resolved.roles.worker.model, 'openai-codex/gpt-6.1-sol');
-  assert.deepEqual(resolveModelRoles(defaults, []).errors, ['model-roles.json phải là một object JSON']);
-  assert.deepEqual(resolved.warnings, []);
+  assert.deepEqual(CHANGE_AT, {main: '/model', researcher: '/agents', worker: '/agents', reviewer: '/agents', advisor: '/advisor-models'});
   assert.deepEqual(parseModelRef('openrouter/anthropic/claude-sonnet-5-5'), {provider: 'openrouter', id: 'anthropic/claude-sonnet-5-5'});
-  for (const bad of ['opus', '/x', 'x/', 'a /b', 42]) assert.equal(parseModelRef(bad), undefined);
+  for (const bad of ['opus', '/x', 'a/', 'a /b', 42]) assert.equal(parseModelRef(bad), undefined, String(bad));
 });
 
-test('ghi đè còn sót của vai đã gỡ (auditor, oracle, debugger): bỏ qua kèm một dòng cảnh báo, cấu hình vẫn dùng được', () => {
-  const resolved = resolveModelRoles(defaults, {roles: {auditor: {thinking: 'max'}, oracle: {model: 'x'}, debugger: {thinking: 'low'}, worker: {thinking: 'high'}}});
-  assert.deepEqual(resolved.errors, []);
-  assert.deepEqual(resolved.warnings, ['roles: bỏ qua auditor, oracle, debugger (vai đã gỡ khỏi pi-config); xoá khỏi model-roles.json để hết cảnh báo']);
-  assert.deepEqual(Object.keys(resolved.roles), ROLES);
-  assert.deepEqual(resolved.roles, resolveModelRoles(defaults, {roles: {worker: {thinking: 'high'}}}).roles);
-});
-
-test('ghi đè còn sót của vai autoMode (model phân loại đã chuyển sang /permissions): bỏ qua kèm một dòng cảnh báo chỉ chỗ mới', () => {
-  const resolved = resolveModelRoles(defaults, {roles: {autoMode: {model: 'anthropic/claude-haiku-4-5', thinking: 'low'}, worker: {thinking: 'high'}}});
-  assert.deepEqual(resolved.errors, []);
-  assert.deepEqual(resolved.warnings, [
-    'roles: bỏ qua autoMode (model của bộ phân loại auto mode giờ đặt trong /permissions → Classifier); xoá khỏi model-roles.json để hết cảnh báo',
-  ]);
-  assert.deepEqual(Object.keys(resolved.roles), ROLES);
-  assert.ok(!ROLES.includes('autoMode'));
-  assert.deepEqual(resolved.roles, resolveModelRoles(defaults, {roles: {worker: {thinking: 'high'}}}).roles);
-  // Giá trị sai dạng cũng chỉ là cảnh báo: vai không còn được kiểm.
-  assert.deepEqual(resolveModelRoles(defaults, {roles: {autoMode: 'x'}}).errors, []);
-  // Cùng lúc với vai đã gỡ: mỗi loại một dòng.
-  assert.equal(resolveModelRoles(defaults, {roles: {autoMode: {}, debugger: {}}}).warnings.length, 2);
-});
-
-test('giá trị cho từng file gốc: phiên chính, advisor luôn cùng model, danh sách model', () => {
-  const values = nativeValues(resolveModelRoles(defaults).roles);
+test('giá trị cho từng file gốc: phiên chính, advisor không đặt thinking của phiên, danh sách model', () => {
+  const values = nativeValues(defaults);
   assert.deepEqual(values.settings, {
     defaultProvider: 'anthropic', defaultModel: 'claude-opus-5-5', defaultThinkingLevel: 'high',
     modelThinkingLevels: {
@@ -113,14 +41,12 @@ test('giá trị cho từng file gốc: phiên chính, advisor luôn cùng model
     },
     enabledModels: ['anthropic/claude-opus-5-5', 'openai-codex/gpt-6.1-sol', 'openai-codex/gpt-6-astra', 'opencode-go/glm-5.3-flash'],
   });
-  assert.deepEqual(values.advisor, {
-    executor: 'anthropic/claude-opus-5-5', executorEffort: 'high', advisor: 'openai-codex/gpt-6-astra', advisorEffort: 'high',
-  });
-  const custom = nativeValues(resolveModelRoles(defaults, {roles: {...claudeOnly, main: {thinking: 'xhigh'}}}).roles);
-  assert.deepEqual(Object.keys(custom), ['settings', 'subagents', 'advisor']);
-  assert.deepEqual([custom.advisor.executor, custom.advisor.executorEffort], ['anthropic/claude-opus-5-5', 'xhigh']);
-  // Model dùng chung chỉ xuất hiện một lần, phiên chính đứng đầu.
-  assert.deepEqual(custom.settings.enabledModels, ['anthropic/claude-opus-5-5', 'anthropic/claude-fable-5-1', 'anthropic/claude-sonnet-5-5']);
+  // Không có executorEffort: advisor alwaysOn không đặt lại thinking mà /model hay /thinking của Pi đã chọn.
+  assert.deepEqual(values.advisor, {executor: 'anthropic/claude-opus-5-5', advisor: 'openai-codex/gpt-6-astra', advisorEffort: 'high'});
+  assert.deepEqual(values.subagents.worker, {model: 'openai-codex/gpt-6.1-sol', thinking: 'max'});
+  const custom = nativeValues(withRoles({main: {thinking: 'xhigh'}, reviewer: {model: 'anthropic/claude-opus-5-5'}}));
+  // Model dùng chung chỉ xuất hiện một lần, phiên chính đứng đầu và giữ thinking của phiên chính.
+  assert.deepEqual(custom.settings.enabledModels, ['anthropic/claude-opus-5-5', 'openai-codex/gpt-6.1-sol', 'opencode-go/glm-5.3-flash', 'openai-codex/gpt-6-astra']);
   assert.equal(custom.settings.modelThinkingLevels['anthropic/claude-opus-5-5'], 'xhigh');
 });
 
@@ -143,70 +69,62 @@ test('frontmatter của file role: đặt model/thinking, giữ phần còn lạ
   }
 });
 
-test('giá trị đang có hiệu lực theo file gốc và vai bị lệch so với cấu hình', t => {
+test('giá trị đang có hiệu lực theo file gốc: executor của advisor thắng settings.json khi luôn bật', t => {
   const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-model-roles-'));
   t.after(() => fs.rmSync(agentDir, {recursive: true, force: true}));
-  const values = nativeValues(resolveModelRoles(defaults).roles);
+  const values = nativeValues(defaults);
   const write = (name, value) => fs.writeFileSync(path.join(agentDir, name), typeof value === 'string' ? value : JSON.stringify(value));
   fs.mkdirSync(path.join(agentDir, 'agents'));
   write('settings.json', {...values.settings, defaultModel: 'claude-sonnet-5-5', autoMode: {model: 'anthropic/claude-haiku-4-5'}});
   write('advisor.json', {...values.advisor, alwaysOn: true});
   for (const [name, value] of Object.entries(values.subagents)) write(`agents/${name}.md`, role(value.model, value.thinking));
-  const roles = resolveModelRoles(defaults).roles;
   const effective = effectiveModelRoles(agentDir);
-  // advisor alwaysOn: executor thắng settings.json (Sonnet trong settings không phải model thật của phiên).
+  // advisor alwaysOn: executor thắng settings.json (Sonnet trong settings không phải model thật của phiên); thinking
+  // theo settings.json khi advisor không có executorEffort.
   assert.deepEqual(effective.main, {model: 'anthropic/claude-opus-5-5', thinking: 'high', file: 'advisor.json'});
   assert.deepEqual(Object.keys(effective), ROLES);
-  assert.deepEqual(driftedRoles(roles, effective), []);
+  assert.deepEqual(effective.worker, {model: 'openai-codex/gpt-6.1-sol', thinking: 'max', file: 'agents/worker.md'});
+  assert.deepEqual(effective.advisor, {model: 'openai-codex/gpt-6-astra', thinking: 'high', file: 'advisor.json'});
+  write('advisor.json', {...values.advisor, executorEffort: 'low', alwaysOn: true});
+  assert.equal(effectiveModelRoles(agentDir).main.thinking, 'low');
   write('advisor.json', {...values.advisor, alwaysOn: false});
-  write('agents/worker.md', role('anthropic/claude-opus-5-5', 'max'));
-  assert.deepEqual(driftedRoles(roles, effectiveModelRoles(agentDir)), ['main', 'worker']);
-  assert.deepEqual(readModelRoles(agentDir), {file: path.join(agentDir, 'model-roles.json'), exists: false, config: {roles: {}}});
-  write('model-roles.json', '﻿{"roles": {}}');
-  assert.deepEqual(readModelRoles(agentDir).config, {roles: {}});
-  write('model-roles.json', '{"roles": ');
-  assert.match(readModelRoles(agentDir).error, /model-roles\.json không phải JSON hợp lệ/u);
+  assert.deepEqual(effectiveModelRoles(agentDir).main, {model: 'anthropic/claude-sonnet-5-5', thinking: 'high', file: 'settings.json'});
+});
+
+test('chuyển đổi model-roles.json: base mới mang model mặc định thuần, giữ phần còn lại của base', () => {
+  const overridden = nativeValues(withRoles({main: {thinking: 'xhigh'}, reviewer: {model: 'anthropic/claude-fable-5-1'}, advisor: {model: 'anthropic/claude-fable-5-1'}}));
+  // Base của bản trước: advisor có executorEffort, settings có khóa khác.
+  const settings = JSON.stringify({theme: 'rose-pine-moon', ...overridden.settings}, null, 2);
+  const advisor = JSON.stringify({alwaysOn: true, ...overridden.advisor, executorEffort: 'xhigh'}, null, 2);
+  const pure = nativeValues(defaults);
+  assert.deepEqual(JSON.parse(rebaseModels('settings', settings, defaults)), {theme: 'rose-pine-moon', ...pure.settings});
+  assert.deepEqual(JSON.parse(rebaseModels('advisor', advisor, defaults)), {alwaysOn: true, ...pure.advisor, executorEffort: 'xhigh'});
+  assert.equal(rebaseModels('reviewer', role('anthropic/claude-fable-5-1', 'high'), defaults), role('openai-codex/gpt-6-astra', 'high'));
+  assert.throws(() => rebaseModels('reviewer', 'không có frontmatter', defaults), /frontmatter/u);
 });
 
 const root = process.env.PI_CONFIG_TEST_ROOT;
-test('catalog của runtime: mặc định và ghi đè chỉ dùng Claude hợp lệ, model sai tên là lỗi, mức thinking bị hạ là ghi chú, không ghi file', {skip: !root}, async t => {
+test('catalog của runtime: mặc định và model chỉ Claude hợp lệ, model sai tên là lỗi kèm chỗ đổi, mức thinking bị hạ là ghi chú, không ghi file', {skip: !root}, async t => {
   const modules = path.join(root, 'runtimes', 'current', 'node_modules');
   const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-model-catalog-'));
   t.after(() => fs.rmSync(agentDir, {recursive: true, force: true}));
-  for (const [name, roles] of [['mặc định', {}], ['chỉ Claude', claudeOnly]]) {
-    assert.deepEqual(await checkCatalog({modules, agentDir, roles: resolveModelRoles(defaults, {roles}).roles}), {errors: [], notes: [], loggedOut: []}, name);
+  const claude = withRoles({
+    researcher: {model: 'anthropic/claude-sonnet-5-5', thinking: 'high'}, worker: {model: 'anthropic/claude-opus-5-5', thinking: 'high'},
+    reviewer: {model: 'anthropic/claude-fable-5-1'}, advisor: {model: 'anthropic/claude-fable-5-1'},
+  });
+  for (const [name, roles] of [['mặc định', defaults], ['chỉ Claude', claude]]) {
+    assert.deepEqual(await checkCatalog({modules, agentDir, roles}), {errors: [], notes: []}, name);
   }
-  const roles = resolveModelRoles(defaults, {roles: {reviewer: {model: 'openai-codex/gpt-6-astr'}, researcher: {thinking: 'medium'}}}).roles;
+  const roles = withRoles({reviewer: {model: 'openai-codex/gpt-6-astr'}, researcher: {thinking: 'medium'}});
+  roles.reviewer.file = 'agents/reviewer.md';
   assert.deepEqual(await checkCatalog({modules, agentDir, roles}), {
-    errors: ['reviewer: không có model openai-codex/gpt-6-astr trong catalog của Pi; kiểm tên provider/id, hoặc khai báo model trong models.json'],
+    errors: ['reviewer: không có model openai-codex/gpt-6-astr trong catalog của Pi (theo agents/reviewer.md; đổi bằng /agents); kiểm tên provider/id, hoặc khai báo model trong models.json'],
     notes: ['researcher: opencode-go/glm-5.3-flash không hỗ trợ thinking medium; Pi dùng high'],
-    loggedOut: [],
   });
   // Model tự khai báo trong models.json của agent dir là hợp lệ.
   fs.writeFileSync(path.join(agentDir, 'models.json'), JSON.stringify({providers: {local: {
     baseUrl: 'http://127.0.0.1:9', api: 'openai-completions', apiKey: 'unused', models: [{id: 'coder'}],
   }}}));
-  const local = resolveModelRoles(defaults, {roles: {worker: {model: 'local/coder', thinking: 'off'}}}).roles;
-  assert.deepEqual((await checkCatalog({modules, agentDir, roles: local})).errors, []);
+  assert.deepEqual((await checkCatalog({modules, agentDir, roles: withRoles({worker: {model: 'local/coder', thinking: 'off'}})})).errors, []);
   assert.deepEqual(fs.readdirSync(agentDir), ['models.json']);
-});
-
-test('thay đổi của /models: ghi đè, bỏ ghi đè, bỏ khóa preset cũ, không sửa object gốc; vai đổi giữa hai kết quả', t => {
-  const config = {roles: {worker: {thinking: 'max'}}};
-  assert.deepEqual(withRole(config, 'worker', {model: 'anthropic/claude-opus-5-5'}).roles, {worker: {thinking: 'max', model: 'anthropic/claude-opus-5-5'}});
-  assert.deepEqual(withRole({preset: 'claude'}, 'main', {thinking: 'xhigh'}), {roles: {main: {thinking: 'xhigh'}}});
-  assert.deepEqual(withoutRoles({preset: 'default', ...config}, ['worker', 'main']), {roles: {}});
-  assert.deepEqual(copyConfig({preset: 'claude', roles: {debugger: {thinking: 'low'}}}), {roles: {debugger: {thinking: 'low'}}});
-  assert.deepEqual(withRole('hỏng', 'main', {thinking: 'low'}), {roles: {main: {thinking: 'low'}}});
-  assert.deepEqual(config, {roles: {worker: {thinking: 'max'}}});
-  const before = resolveModelRoles(defaults).roles;
-  assert.deepEqual(changedRoles(before, before), []);
-  assert.deepEqual(changedRoles(before, resolveModelRoles(defaults, {roles: {worker: {thinking: 'high'}, main: {model: 'anthropic/claude-opus-5-5'}}}).roles), ['worker']);
-  const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-model-write-'));
-  t.after(() => fs.rmSync(agentDir, {recursive: true, force: true}));
-  const file = path.join(agentDir, 'model-roles.json');
-  writeModelRoles(file, {roles: {worker: {thinking: 'high'}}});
-  assert.equal(fs.readFileSync(file, 'utf8'), '{\n  "roles": {\n    "worker": {\n      "thinking": "high"\n    }\n  }\n}\n');
-  if (process.platform !== 'win32') assert.equal(fs.statSync(file).mode & 0o777, 0o600);
-  assert.deepEqual(fs.readdirSync(agentDir), ['model-roles.json']);
 });

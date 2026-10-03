@@ -7,10 +7,10 @@ import {buildConfiguration} from './lib/config.mjs';
 import {applyPatches} from './lib/patches.mjs';
 import {pruneBackups} from './lib/backups.mjs';
 import {prunePlatformPackages} from './lib/platform-prune.mjs';
-import {backupFile,describeMerge,reconcileConfigFile,writeAtomic} from './runtime/merge.mjs';
+import {backupFile,defaultsFile,describeMerge,reconcileConfigFile,writeAtomic} from './runtime/merge.mjs';
 import {acquireInstallLock} from './runtime/install-lock.mjs';
 import {mergesConfig,reconcileResources} from './lib/resources.mjs';
-import {checkCatalog,loadModelDefaults,readModelRoles,resolveModelRoles,writeModelRoles} from './runtime/model-roles.mjs';
+import {LEGACY_MODEL_ROLES,SUBAGENT_ROLES,checkCatalog,loadModelDefaults,rebaseModels} from './runtime/model-roles.mjs';
 import {run,download,npmCli,npmTimeout,readJson,writeJson,sha256,shellQuote,assertSafePath} from './lib/system.mjs';
 
 const repoDir=path.dirname(fileURLToPath(import.meta.url));
@@ -67,14 +67,26 @@ function managedJson(file,content){
   if(result.changes.length||result.conflicts.length)merged.push({file,...result});
   if(state.files[file]!==result.recorded){state.files[file]=result.recorded;writeJson(statePath,state);}
 }
-/** Model/thinking của mọi vai: mặc định và ghi đè trong <agent-dir>/model-roles.json. Lỗi thì dừng trước khi ghi. */
-function modelRolesPlan(){
-  const current=readModelRoles(agentDir);
-  if(current.error)throw new Error(`${current.error}\nSửa file, hoặc xoá để dùng mặc định.`);
-  const resolved=resolveModelRoles(loadModelDefaults(repoDir),current.config);
-  if(resolved.errors.length)throw new Error(`${current.file} không hợp lệ:\n- ${resolved.errors.join('\n- ')}`);
-  for(const warning of resolved.warnings)console.warn(`cảnh báo: ${current.file}: ${warning}`);
-  return {file:current.file,exists:current.exists,config:current.config,roles:resolved.roles};
+/**
+ * model-roles.json của bản trước (mặc định + ghi đè, đổi bằng /models): giá trị của nó đã nằm trong các file gốc. Đưa
+ * base của các file đó về mặc định thuần của lần cài trước, để gộp ba chiều coi ghi đè là giá trị người dùng đã chọn và
+ * giữ lại ở lần cài này lẫn các lần sau, rồi chuyển file vào backups. Chạy trước khi chép assets mới vào root.
+ */
+function retireModelRoles(){
+  const file=path.join(agentDir,LEGACY_MODEL_ROLES);
+  if(!fs.existsSync(file))return;
+  const roles=loadModelDefaults(fs.existsSync(path.join(root,'assets','configs','model-defaults.json'))?root:repoDir);
+  for(const [kind,name] of [['settings','settings.json'],['advisor','advisor.json'],...SUBAGENT_ROLES.map(role=>[role,path.join('agents',`${role}.md`)])]){
+    const target=path.join(agentDir,name),baseFile=defaultsFile(root,target);
+    if(!fs.existsSync(baseFile))continue;
+    let base;
+    try{base=rebaseModels(kind,fs.readFileSync(baseFile,'utf8'),roles);}catch{continue;}
+    writeAtomic(baseFile,Buffer.from(base),0o600);
+    state.files[target]=sha256(base);
+  }
+  writeJson(statePath,state);
+  backup(file);fs.unlinkSync(file);
+  console.log(`Đã chuyển ${file} vào ${path.join(root,'backups')}: model giữ nguyên như đang chạy; giờ đổi bằng /model (phiên chính), /agents (researcher, worker, reviewer) và /advisor-models.`);
 }
 function copyTree(from,to){
   for(const entry of fs.readdirSync(from,{withFileTypes:true})){
@@ -163,8 +175,9 @@ async function addPath(){
   }
 }
 try{
-  const models=modelRolesPlan();
   writeJson(statePath,state);
+  retireModelRoles();
+  const models=loadModelDefaults(repoDir);
   copyTree(path.join(repoDir,'assets'),path.join(root,'assets'));
   copyTree(path.join(repoDir,'vendor'),path.join(root,'vendor'));
   await installRuntime('current','runtimes/current');
@@ -179,12 +192,10 @@ try{
   for(const filename of ['config-integration.mjs','agent-integration.mjs','scripted-provider.ts','agent-provider.ts','search-fixtures.mjs'])
     managed(path.join(root,'tests',filename),fs.readFileSync(path.join(repoDir,'tests',filename)));
   // Model sai tên thì pi-subagents lặng lẽ dùng model của parent: kiểm trong catalog của runtime trước khi ghi cấu hình.
-  const catalog=await checkCatalog({modules:path.join(root,'runtimes','current','node_modules'),agentDir,roles:models.roles});
-  if(catalog.errors.length)throw new Error(`Model trong ${models.file} không dùng được:\n- ${catalog.errors.join('\n- ')}`);
-  const files=buildConfiguration({root,agentDir,nodePath,platform:process.platform,home,repoDir,shellPath:state.shellPath,modelRoles:models.roles});
+  const catalog=await checkCatalog({modules:path.join(root,'runtimes','current','node_modules'),agentDir,roles:models});
+  if(catalog.errors.length)throw new Error(`Model mặc định trong assets/configs/model-defaults.json không dùng được:\n- ${catalog.errors.join('\n- ')}`);
+  const files=buildConfiguration({root,agentDir,nodePath,platform:process.platform,home,repoDir,shellPath:state.shellPath,modelDefaults:models});
   for(const file of files)(mergesConfig(file.path,{agentDir})?managedJson:managed)(file.path,file.content);
-  // model-roles.json thuộc về người dùng: chỉ tạo khi chưa có, không nằm trong danh sách file installer quản lý.
-  if(!models.exists)writeModelRoles(models.file,models.config);
   for(const [name,action] of Object.entries({'pi':'main','pi-doctor':'doctor','pi-test':'test','firecrawl':'firecrawl'}))launcher(name,action);
   const auth=path.join(agentDir,'auth.json');
   if(!fs.existsSync(auth)){fs.mkdirSync(agentDir,{recursive:true,mode:0o700});fs.writeFileSync(auth,'{}\n',{mode:0o600});}

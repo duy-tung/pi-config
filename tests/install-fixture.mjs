@@ -6,20 +6,12 @@ import {fileURLToPath} from 'node:url';
 import {buildConfiguration} from '../lib/config.mjs';
 import {mergesConfig} from '../lib/resources.mjs';
 import {reconcileConfigFile} from '../runtime/merge.mjs';
-import {loadModelDefaults, resolveModelRoles} from '../runtime/model-roles.mjs';
+import {loadModelDefaults} from '../runtime/model-roles.mjs';
 
-// Bản cài giả cho test của /models; không chạy installer, không cài runtime.
+// Bản cài giả cho test cấu hình và phiên Pi thật; không chạy installer, không cài runtime.
 export const repoDir = fileURLToPath(new URL('../', import.meta.url));
-export const defaults = loadModelDefaults(repoDir);
-/** Model/thinking mặc định của mọi vai, như installer khi chưa có model-roles.json. */
-export const defaultRoles = resolveModelRoles(defaults).roles;
-/** Ghi đè để chỉ cần đăng nhập Claude (ví dụ trong docs/models.md); reviewer, advisor khác model với worker. */
-export const claudeOnly = {
-  researcher: {model: 'anthropic/claude-sonnet-5-5', thinking: 'high'},
-  worker: {model: 'anthropic/claude-opus-5-5', thinking: 'high'},
-  reviewer: {model: 'anthropic/claude-fable-5-1', thinking: 'high'},
-  advisor: {model: 'anthropic/claude-fable-5-1', thinking: 'high'},
-};
+/** Model/thinking mặc định của mọi vai (assets/configs/model-defaults.json). */
+export const modelDefaults = loadModelDefaults(repoDir);
 export const sha256 = data => crypto.createHash('sha256').update(data).digest('hex');
 export const readJson = file => JSON.parse(fs.readFileSync(file, 'utf8'));
 
@@ -27,7 +19,7 @@ export const readJson = file => JSON.parse(fs.readFileSync(file, 'utf8'));
  * File cấu hình, base và checksum như installer ghi, cùng model mặc định trong <root>/assets.
  * full: chép cả assets và runtime/*.mjs (vào <root>/bin) như installer, để nạp extension của bản cài.
  */
-export function simulatedInstall(t, {roles = defaultRoles, full = false} = {}) {
+export function simulatedInstall(t, {full = false} = {}) {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-model-commands-'));
   t.after(() => fs.rmSync(temp, {recursive: true, force: true}));
   const root = path.join(temp, 'root'), agentDir = path.join(temp, 'agent');
@@ -38,7 +30,7 @@ export function simulatedInstall(t, {roles = defaultRoles, full = false} = {}) {
     fs.mkdirSync(path.join(root, 'bin'), {recursive: true});
     for (const name of fs.readdirSync(path.join(repoDir, 'runtime'))) fs.copyFileSync(path.join(repoDir, 'runtime', name), path.join(root, 'bin', name));
   }
-  for (const {path: file, content} of buildConfiguration({...options, modelRoles: roles})) {
+  for (const {path: file, content} of buildConfiguration({...options, modelDefaults})) {
     if (mergesConfig(file, {agentDir})) {
       state.files[file] = reconcileConfigFile({root, file, content, recorded: state.files[file]}).recorded;
     } else {

@@ -34,7 +34,7 @@ Khi Orca khởi động lại hoặc gắn lại một pane, terminal quên ch�
 
 Orca ghi `orca-agent-status.ts`, `orca-titlebar-spinner.ts` và `orca-prefill.ts` (có marker `@orca-managed`) vào `~/.pi/agent/extensions/`. Ba file này chỉ chạy khi có `ORCA_PANE_KEY`, tức là trong terminal của Orca. Phiên Pi ở terminal khác không bị ảnh hưởng, và pi-doctor không báo lỗi về chúng.
 
-Khi một extension mở hộp thoại, chẳng hạn hộp thoại hỏi quyền của auto mode hay `/models`, Pi phát `ui_prompt_start`. Orca bắt sự kiện này, đánh dấu phiên là **Needs input** và gửi thông báo macOS.
+Khi một extension mở hộp thoại, chẳng hạn hộp thoại hỏi quyền của auto mode hay menu của `/agents`, Pi phát `ui_prompt_start`. Orca bắt sự kiện này, đánh dấu phiên là **Needs input** và gửi thông báo macOS.
 
 Orca cũng cài hook trạng thái cho các agent khác nó tìm thấy. Với Claude Code, đó là 13 hook trong `~/.claude/settings.json`; Codex và OpenCode cũng có hook tương ứng. Các hook này thoát ngay khi không chạy trong Orca. Xem trạng thái bằng `orca agent hooks status`.
 

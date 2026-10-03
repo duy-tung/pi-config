@@ -6,12 +6,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { buildConfiguration, CLASSIFIER, PACKAGES } from "../lib/config.mjs";
-import { SUBAGENT_ROLES, changedRoles, forceNativeModels, loadModelDefaults, nativeValues, nextModelDefault, resolveModelRoles } from "../runtime/model-roles.mjs";
-import { claudeOnly } from "./install-fixture.mjs";
+import { loadModelDefaults } from "../runtime/model-roles.mjs";
 
 const repoDir = fileURLToPath(new URL("../", import.meta.url));
-const defaults = loadModelDefaults(repoDir);
-const modelRoles = resolveModelRoles(defaults).roles;
+const modelDefaults = loadModelDefaults(repoDir);
 function fixture(platform) {
   const p = platform === "win32" ? path.win32 : path.posix;
   const home = platform === "win32" ? "C:\\Users\\Dev Example" : "/home/dev example";
@@ -19,7 +17,7 @@ function fixture(platform) {
   const agentDir = p.join(home, "Custom Agent");
   const nodePath = platform === "win32" ? "C:\\Program Files\\nodejs\\node.exe" : "/opt/node/bin/node";
   const shellPath = platform === "win32" ? "C:\\Program Files\\Git\\bin\\bash.exe" : "/bin/bash";
-  const options = { root, agentDir, nodePath, platform, home, repoDir, shellPath, modelRoles };
+  const options = { root, agentDir, nodePath, platform, home, repoDir, shellPath, modelDefaults };
   const files = buildConfiguration(options);
   const read = (file) => {
     const found = files.find((entry) => entry.path === file);
@@ -50,7 +48,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       // Chỉ skill của Firecrawl; pi-config không cài skill quy trình.
       assert.deepEqual(settings.skills, [p.join(options.root, "sources", "firecrawl-cli-source", "skills")]);
       assert.ok(!settings.skills.some((entry) => entry.includes("mattpocock")));
-      assert.deepEqual(settings.extensions, [...["rose-pine-palette.ts", "pi-rewind", "claude-usage", "model-roles", "pi-auto-mode"]
+      assert.deepEqual(settings.extensions, [...["rose-pine-palette.ts", "pi-rewind", "claude-usage", "pi-auto-mode"]
         .map((entry) => p.join(options.root, "assets", "extensions", entry)), "-builtin:mcp", "-builtin:codemode", "-builtin:tool-search", "-builtin:llama.cpp"]);
       assert.equal(settings.doubleEscapeAction, "none");
       assert.deepEqual(settings.rewind, { storageDir: p.join(options.root, "state", "rewind") }, "retentionDays theo mặc định 30 ngày của pi-rewind");
@@ -85,6 +83,8 @@ for (const platform of ["darwin", "linux", "win32"]) {
       }
       const subagents = json(p.join(profile.agentDir, "subagents.json"));
       assert.deepEqual([subagents.maxConcurrent, subagents.maxConcurrentForeground], [4, 2]);
+      // Model của vai ghim trong file role, đổi bằng /agents; không giới hạn theo enabledModels (Ctrl+P của phiên chính).
+      assert.equal(subagents.scopeModels, undefined);
       // Mặc định của pi-subagents: không giới hạn lượt, chạy nền, nhớ agent giữa các lần gọi.
       assert.deepEqual([subagents.defaultMaxTurns, subagents.backgroundByDefault, subagents.rememberAgents], [undefined, undefined, undefined]);
       assert.equal(files.filter(file=>file.path.startsWith(p.join(profile.agentDir,"agents")+p.sep)).length,3);
@@ -170,7 +170,8 @@ for (const platform of ["darwin", "linux", "win32"]) {
       // Luôn bật với executor là chính model mặc định (Opus/high), nên mở phiên không đổi model.
       assert.equal(advisor.alwaysOn, true);
       assert.equal(advisor.executor, `${settings.defaultProvider}/${settings.defaultModel}`);
-      assert.equal(advisor.executorEffort, settings.defaultThinkingLevel);
+      // Không có executorEffort: thinking của phiên chính theo settings.json (/model, /thinking của Pi).
+      assert.equal(advisor.executorEffort, undefined);
       assert.equal(advisor.advisor, "openai-codex/gpt-6-astra");
       assert.equal(advisor.advisorEffort, "high");
       // Khi request tới Astra lỗi, thử lại một lần với Opus (cùng advisorEffort). Fallback trùng model của phiên chính,
@@ -208,7 +209,7 @@ test("POSIX credential helper chạy đúng khi root chứa khoảng trắng, nh
     fs.mkdirSync(path.join(root, "bin"), { recursive: true });
     fs.writeFileSync(path.join(root, "bin", "firecrawl-key.cjs"), 'process.stdout.write("fixture-credential");\n');
     const agentDir = path.join(dir, "Agent");
-    const generated = buildConfiguration({ root, agentDir, nodePath: process.execPath, platform: "linux", home: dir, repoDir, modelRoles });
+    const generated = buildConfiguration({ root, agentDir, nodePath: process.execPath, platform: "linux", home: dir, repoDir, modelDefaults });
     const config = JSON.parse(generated.find(({ path: file }) => file === path.join(agentDir, "web-search.json")).content);
     const output = execFileSync("/bin/sh", ["-c", config.firecrawlApiKey.slice(1)], { cwd: dir, encoding: "utf8" });
     assert.equal(output, "fixture-credential");
@@ -232,7 +233,7 @@ test("Windows credential helper chạy thật qua cmd với đường dẫn có 
     fs.mkdirSync(path.join(root, "bin"), { recursive: true });
     fs.writeFileSync(path.join(root, "bin", "firecrawl-key.cjs"), 'process.stdout.write("fixture-credential");\n');
     const agentDir = path.join(dir, "Agent");
-    const generated = buildConfiguration({ root, agentDir, nodePath: process.execPath, platform: "win32", home: dir, repoDir, modelRoles });
+    const generated = buildConfiguration({ root, agentDir, nodePath: process.execPath, platform: "win32", home: dir, repoDir, modelDefaults });
     const config = JSON.parse(generated.find(({ path: file }) => file === path.join(agentDir, "web-search.json")).content);
     assert.equal(execSync(config.firecrawlApiKey.slice(1), { cwd: dir, encoding: "utf8", windowsHide: true }), "fixture-credential");
   } finally {
@@ -245,69 +246,24 @@ test("Đầu vào tương đối bị từ chối để không ghi nhầm worksp
   assert.throws(() => buildConfiguration({ ...options, agentDir: ".pi/agent" }), /agentDir phải là đường dẫn tuyệt đối/u);
 });
 
-test("model-roles: ghi đè đi tới mọi file gốc (settings, file role, advisor); model phân loại không phải một vai", () => {
-  const { roles } = resolveModelRoles(defaults, { roles: { ...claudeOnly, worker: { model: "anthropic/claude-opus-5-5", thinking: "max" } } });
+test("model mặc định đi tới mọi file gốc (settings, file role, advisor); model phân loại không phải một vai", () => {
   const root = "/home/dev/pi", agentDir = "/home/dev/agent";
-  const files = buildConfiguration({ root, agentDir, nodePath: "/opt/node", platform: "linux", home: "/home/dev", repoDir, modelRoles: roles });
+  const files = buildConfiguration({ root, agentDir, nodePath: "/opt/node", platform: "linux", home: "/home/dev", repoDir, modelDefaults });
   const read = (name) => files.find((entry) => entry.path === path.posix.join(agentDir, name)).content;
   const settings = JSON.parse(read("settings.json"));
   assert.deepEqual([settings.defaultProvider, settings.defaultModel, settings.defaultThinkingLevel], ["anthropic", "claude-opus-5-5", "high"]);
-  assert.deepEqual(settings.enabledModels, ["anthropic/claude-opus-5-5", "anthropic/claude-fable-5-1", "anthropic/claude-sonnet-5-5"]);
-  assert.deepEqual(settings.modelThinkingLevels, { "anthropic/claude-opus-5-5": "high", "anthropic/claude-fable-5-1": "high", "anthropic/claude-sonnet-5-5": "high" });
+  assert.deepEqual(settings.enabledModels, ["anthropic/claude-opus-5-5", "openai-codex/gpt-6.1-sol", "openai-codex/gpt-6-astra", "opencode-go/glm-5.3-flash"]);
   assert.deepEqual(CLASSIFIER, { model: "anthropic/claude-sonnet-5-5", stage2Reasoning: "low" });
   assert.deepEqual([settings.autoMode.model, settings.autoMode.stage2Reasoning, settings.autoMode.jev.model], ["anthropic/claude-sonnet-5-5", "low", "jev-1.13.0"]);
   const frontmatter = (role) => read(`agents/${role}.md`).split("\n---\n")[0];
-  assert.match(frontmatter("worker"), /^model: anthropic\/claude-opus-5-5\nthinking: max$/mu);
-  assert.match(frontmatter("reviewer"), /^model: anthropic\/claude-fable-5-1\nthinking: high$/mu);
-  assert.match(frontmatter("researcher"), /^model: anthropic\/claude-sonnet-5-5\nthinking: high$/mu);
+  assert.match(frontmatter("worker"), /^model: openai-codex\/gpt-6\.1-sol\nthinking: max$/mu);
+  assert.match(frontmatter("reviewer"), /^model: openai-codex\/gpt-6-astra\nthinking: high$/mu);
+  assert.match(frontmatter("researcher"), /^model: opencode-go\/glm-5\.3-flash\nthinking: max$/mu);
+  // Model của từng vai đổi thẳng trong file gốc (/model, /agents, /advisor-models): không còn lớp cấu hình hay lệnh riêng.
+  assert.ok(!files.some((entry) => /model-roles/u.test(entry.path)));
+  assert.ok(!settings.extensions.some((entry) => entry.endsWith("model-roles")));
   const advisor = JSON.parse(read("advisor.json"));
-  assert.deepEqual([advisor.executor, advisor.executorEffort, advisor.advisor, advisor.advisorEffort, advisor.alwaysOn],
-    ["anthropic/claude-opus-5-5", "high", "anthropic/claude-fable-5-1", "high", true]);
-});
-
-test("/models dựng mặc định mới từ base của cấu hình khác: giống hệt file installer sinh cho các ghi đè đó", () => {
-  for (const platform of ["linux", "win32"]) {
-    const { p, options } = fixture(platform);
-    // Loại file gốc chứa model (như danh sách file của planModelFiles trong runtime/models.mjs).
-    const kindOf = new Map([
-      ["settings.json", "settings"], ["advisor.json", "advisor"],
-      ...SUBAGENT_ROLES.map((role) => [p.join("agents", `${role}.md`), role]),
-    ].map(([name, kind]) => [p.join(options.agentDir, name), kind]));
-    const before = resolveModelRoles(defaults).roles;
-    const after = resolveModelRoles(defaults, { roles: { ...claudeOnly, worker: { model: "anthropic/claude-opus-5-5", thinking: "max" } } }).roles;
-    const old = buildConfiguration({ ...options, modelRoles: before });
-    const fresh = new Map(buildConfiguration({ ...options, modelRoles: after }).map((entry) => [entry.path, entry.content]));
-    const kinds = [];
-    for (const entry of old) {
-      const kind = kindOf.get(entry.path);
-      if (!kind) {
-        // File không chứa model thì không đổi theo ghi đè.
-        assert.equal(fresh.get(entry.path), entry.content, entry.path);
-        continue;
-      }
-      kinds.push(kind);
-      assert.equal(nextModelDefault(kind, entry.content, nativeValues(after)), fresh.get(entry.path), entry.path);
-    }
-    assert.deepEqual(kinds.sort(), ["advisor", "researcher", "reviewer", "settings", "worker"]);
-    assert.deepEqual(changedRoles(before, after), ["researcher", "worker", "reviewer", "advisor"]);
-  }
-});
-
-test("ép giá trị của vai trong file gốc người dùng đã đổi: chỉ vai được nêu, bỏ khóa khiến vai dùng giá trị khác", () => {
-  const models = nativeValues(resolveModelRoles(defaults, { roles: claudeOnly }).roles);
-  const settings = JSON.stringify({ theme: "rose-pine-dawn", defaultProvider: "openai-codex", defaultModel: "gpt-6.1-sol", defaultThinkingLevel: "max",
-    enabledModels: ["user/model"], autoMode: { model: "openai-codex/gpt-6.1-sol", stage2Reasoning: "high", log: true } });
-  const onlyMain = JSON.parse(forceNativeModels("settings", settings, models, ["main"]));
-  assert.deepEqual([onlyMain.theme, onlyMain.defaultProvider, onlyMain.defaultModel, onlyMain.defaultThinkingLevel], ["rose-pine-dawn", "anthropic", "claude-opus-5-5", "high"]);
-  // Danh sách suy ra (enabledModels) và vai không nêu giữ nguyên; bước gộp ba chiều lo phần đó.
-  // Model phân loại (đổi trong /permissions) không bao giờ bị /models ép.
-  assert.deepEqual([onlyMain.enabledModels, onlyMain.autoMode], [["user/model"], { model: "openai-codex/gpt-6.1-sol", stage2Reasoning: "high", log: true }]);
-  assert.equal(forceNativeModels("settings", settings, models, ["worker"]), settings);
-  const advisor = JSON.parse(forceNativeModels("advisor", JSON.stringify({ executor: "anthropic/claude-sonnet-5-5", executorEffort: "low", advisor: "x/y", alwaysOn: true }), models, ["main"]));
-  assert.deepEqual(advisor, { executor: "anthropic/claude-opus-5-5", executorEffort: "high", advisor: "x/y", alwaysOn: true });
-  const role = "---\nname: worker\ntools: read\nmodel: openai-codex/gpt-6.1-sol\n---\n\nPrompt.\n";
-  assert.equal(forceNativeModels("worker", role, models, ["worker"]), "---\nname: worker\ntools: read\nmodel: anthropic/claude-opus-5-5\nthinking: high\n---\n\nPrompt.\n");
-  assert.equal(forceNativeModels("worker", role, models, ["main"]), role);
-  // Không đọc được thì trả nguyên văn: bước gộp giữ file và báo lại.
-  for (const [kind, text] of [["settings", "{ hỏng"], ["settings", "[]"], ["worker", "không có frontmatter"]]) assert.equal(forceNativeModels(kind, text, models, ["main", "worker"]), text);
+  assert.deepEqual([advisor.executor, advisor.advisor, advisor.advisorEffort, advisor.alwaysOn],
+    ["anthropic/claude-opus-5-5", "openai-codex/gpt-6-astra", "high", true]);
+  assert.ok(!Object.hasOwn(advisor, "executorEffort"), "advisor không đặt lại thinking của phiên chính");
 });

@@ -32,10 +32,10 @@ for (const dir of [agentDir, cwd]) fs.mkdirSync(dir, { recursive: true });
 for (const name of ["settings.json", "keybindings.json", "models.json", "advisor.json", "subagents.json", "open-tui.json", "pi-usage.json"]) {
   if (fs.existsSync(path.join(configuration.agentDir, name))) fs.copyFileSync(path.join(configuration.agentDir, name), path.join(agentDir, name));
 }
-// Kiểm cơ chế của bản cài với model mặc định (provider giả chỉ có các model này), dù model-roles.json ghi đè
-// model khác; model/thinking bạn chọn được pi-doctor kiểm trong catalog của Pi.
+// Kiểm cơ chế của bản cài với model mặc định (provider giả chỉ có các model này), dù file gốc đã đổi sang model
+// khác (/model, /agents, /advisor-models); model/thinking bạn chọn được pi-doctor kiểm trong catalog của Pi.
 const modelRoles = await import(pathToFileURL(path.join(installRoot, "bin", "model-roles.mjs")).href);
-const defaults = modelRoles.nativeValues(modelRoles.resolveModelRoles(modelRoles.loadModelDefaults(installRoot)).roles);
+const defaults = modelRoles.nativeValues(modelRoles.loadModelDefaults(installRoot));
 const modelId = (ref) => modelRoles.parseModelRef(ref).id;
 fs.mkdirSync(path.join(agentDir, "agents"));
 for (const name of modelRoles.SUBAGENT_ROLES) {
