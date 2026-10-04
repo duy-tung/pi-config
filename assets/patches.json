@@ -203,11 +203,11 @@
     {
       "package": "pi-advisor-flow",
       "versions": {
-        "current": "0.10.0"
+        "current": "0.11.0"
       },
       "file": "dist/index.js",
-      "originalSha256": "f93cf6c8d202b7678e9271002f02e8c026f9bcd2170d03df4ca449dd215db9d1",
-      "patchedSha256": "3561097c11e6fd2e404b5c5dbeb44e388dcc6bb0e499fa0a7cda2ceb5f5d229c",
+      "originalSha256": "aedb03fecc1d4179153b74b9d1e9573cbac1c9a3a0f569c9a037ca8808c1edf3",
+      "patchedSha256": "7356e59fb482ffbf8fbfad021d92cf8a0bcf1dc993a128ce5057c904e8814fa2",
       "edits": [
         {
           "before": "    ref\n  };\n};\nvar ADVISOR_STREAM_UPDATE_INTERVAL_MS",
