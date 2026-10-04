@@ -107,8 +107,7 @@ Agent có context riêng và không giới hạn số lượt; dừng agent bằ
 - Dán ảnh: `@pi-archimedes/image-paste`, dùng **Ctrl+V** trên macOS/Linux hoặc **Alt+V** trên Windows. Copy ảnh vào clipboard, dán để có marker `[Image #1]`, rồi gửi cùng prompt. Xóa marker để bỏ ảnh; giới hạn 20 MiB/ảnh. Preview chỉ hiện trong UI, ảnh được gửi tới model đúng một lần. Phím dán ảnh tích hợp của Pi được tắt trong `keybindings.json` để tránh xử lý trùng.
 - Ảnh đọc qua clipboard native của pi-tui. Linux cần desktop X11/Wayland; `wl-clipboard`/`xclip` là các reader thay thế. Terminal không hỗ trợ ảnh inline vẫn gửi được ảnh, chỉ thiếu preview. Chỉ nạp image-paste; phần giao diện của bộ Archimedes không được nạp.
 - Phím trùng phím mặc định của WezTerm được đổi: bảng hoạt động web **Alt+W** (thay Ctrl+Shift+W), thu gọn todo **Alt+O** (thay Ctrl+Shift+T; đặt trong `~/.config/rpiv-todo/config.json`, file của rpiv-todo nằm ngoài agent dir nên installer không ghi).
-- Hàng đợi tin nhắn: `Enter` khi Pi đang chạy để chỉnh hướng, `Alt+Enter` hoặc **Ctrl+Enter** để xếp follow-up, `Alt+Up` để lấy lại tin đang chờ. Ctrl+Enter được thêm vì terminal của Orca gửi Alt+Enter thành Shift+Enter.
-- Nhiều phiên song song, mỗi task một worktree: dùng Orca. Cài đặt, phím và các giới hạn xem [docs/orca.md](docs/orca.md).
+- Hàng đợi tin nhắn: `Enter` khi Pi đang chạy để chỉnh hướng, `Alt+Enter` để xếp follow-up, `Alt+Up` để lấy lại tin đang chờ.
 
 `pi-doctor` kiểm dependency và checksum bản vá, in model/thinking đang có hiệu lực của mọi vai (kèm file quyết định giá trị đó và kết quả kiểm catalog của Pi) cùng trạng thái advisor và auto mode (model phân loại theo `settings.json`, nguồn key Jev, không in key), và báo lỗi khi hai danh sách provider trong `web-search.json` lệch nhau (pi-web-access sẽ không nạp web tools). `pi-test` kiểm workflow và Agent bằng provider giả trong thư mục tạm, không gọi model trả phí.
 
