@@ -4,7 +4,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {spawnSync} from 'node:child_process';
-import {run,npmTimeout,readJson,writeJson,sha256} from '../lib/system.mjs';
+import {run,npmCli,npmTimeout,readJson,writeJson,sha256} from '../lib/system.mjs';
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const temporary=fs.mkdtempSync(path.join(os.tmpdir(),'pi-config-smoke-'));
 const root=path.join(temporary,'platform with spaces'),agentDir=path.join(temporary,'agent'),binDir=path.join(temporary,'bin');
@@ -43,7 +43,12 @@ fs.renameSync(advisorAside,advisorDir);
 assert.equal(missing.status,1,missing.stdout+missing.stderr);
 assert.match(missing.stderr,/^current\/pi-advisor-flow: chưa cài \(thiếu /mu);
 assert.doesNotMatch(missing.stderr,/ENOENT|at file:/u);
-await run(process.execPath,['--test',...['extensions-typecheck','models','glm-wire','native-search-wire','claude-effort-wire','rewind-session','subagent-markdown','patched-typecheck','model-roles','agent-models'].map(name=>path.join(repo,`tests/${name}.test.mjs`))],{env:{...process.env,PI_CONFIG_TEST_ROOT:root}});
+// TypeScript chỉ dùng để kiểm kiểu, không thuộc runtime: cài manifests/typecheck (ghim bằng lockfile) vào thư mục tạm.
+const typecheck=path.join(temporary,'typecheck');
+fs.cpSync(path.join(repo,'manifests','typecheck'),typecheck,{recursive:true});
+await run(process.execPath,[npmCli(),'ci','--ignore-scripts','--no-audit','--no-fund'],{cwd:typecheck,timeout:npmTimeout()});
+const tsc=path.join(typecheck,'node_modules','typescript','bin','tsc');
+await run(process.execPath,['--test',...['extensions-typecheck','models','glm-wire','native-search-wire','claude-effort-wire','rewind-session','subagent-markdown','patched-typecheck','model-roles','agent-models'].map(name=>path.join(repo,`tests/${name}.test.mjs`))],{env:{...process.env,PI_CONFIG_TEST_ROOT:root,PI_CONFIG_TSC:tsc}});
 await run(process.execPath,[path.join(repo,'tests/config-integration.mjs'),root]);
 await run(process.execPath,[path.join(repo,'tests/agent-integration.mjs'),root]);
 // Cài lại gộp ba chiều file JSON cấu hình: base là mặc định lần cài trước, lưu riêng trong <root>/state/defaults.

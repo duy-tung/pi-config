@@ -7,8 +7,9 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 // Extension của repo (assets/extensions) chạy bằng type stripping, không ai biên dịch: kiểm kiểu strict bằng
-// TypeScript và type của Pi trong runtime đã cài. Chạy trong smoke (PI_CONFIG_TEST_ROOT).
+// TypeScript (manifests/typecheck, PI_CONFIG_TSC) trên type của Pi trong runtime đã cài. Chạy trong smoke (PI_CONFIG_TEST_ROOT).
 const root = process.env.PI_CONFIG_TEST_ROOT;
+const tsc = process.env.PI_CONFIG_TSC ?? "";
 const modules = root ? path.join(root, "runtimes", "current", "node_modules") : "";
 const extensions = fileURLToPath(new URL("../assets/extensions/", import.meta.url));
 
@@ -30,7 +31,8 @@ test("assets/extensions không có lỗi kiểu (tsc --strict trên type của P
     },
     include: ["extensions/**/*.ts"],
   }));
-  const result = spawnSync(process.execPath, [path.join(modules, "typescript", "bin", "tsc"), "-p", workspace, "--pretty", "false"], {
+  assert.ok(fs.existsSync(tsc), "PI_CONFIG_TSC phải trỏ tới tsc của manifests/typecheck");
+  const result = spawnSync(process.execPath, [tsc, "-p", workspace, "--pretty", "false"], {
     cwd: workspace, encoding: "utf8", windowsHide: true,
   });
   assert.equal(result.status, 0, result.stdout + result.stderr);

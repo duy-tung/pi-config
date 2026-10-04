@@ -7,11 +7,12 @@ import test from "node:test";
 import { loadPatchData, sourceHash } from "../lib/patches.mjs";
 
 // Bản vá file .ts không được thêm lỗi kiểu mà upstream không có. Với mỗi package có file .ts được vá, biên dịch
-// source (cùng thư mục gốc với file vá) hai lần bằng TypeScript của runtime, trên type của Pi đã cài: bản đã vá
-// của runtime và bản gốc dựng lại bằng cách đảo các edit. Lỗi sẵn có của upstream được bỏ qua; chỉ lỗi bản vá
+// source (cùng thư mục gốc với file vá) hai lần bằng TypeScript của manifests/typecheck (PI_CONFIG_TSC), trên type
+// của Pi đã cài: bản đã vá của runtime và bản gốc dựng lại bằng cách đảo các edit. Lỗi sẵn có của upstream được bỏ qua; chỉ lỗi bản vá
 // thêm vào (so theo nội dung, không theo số dòng, tính cả số lần lặp) làm test thất bại. Chạy trong smoke.
 const root = process.env.PI_CONFIG_TEST_ROOT;
 const modules = root ? path.join(root, "runtimes", "current", "node_modules") : "";
+const tsc = process.env.PI_CONFIG_TSC ?? "";
 const { patches } = await loadPatchData();
 const normalize = (text) => text.replace(/\r\n/g, "\n");
 
@@ -116,7 +117,6 @@ function compile(directory, files, bundler) {
     },
     files,
   }, null, 2));
-  const tsc = path.join(modules, "typescript", "bin", "tsc");
   return limited(() => new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [tsc, "-p", config, "--pretty", "false"], { cwd: directory, windowsHide: true });
     let output = "";
@@ -203,11 +203,11 @@ test("mỗi file .ts được vá dựng lại được bản gốc theo origina
 });
 
 test("bản vá TypeScript không thêm lỗi kiểu so với bản gốc", { skip: !root, timeout: 600_000, concurrency: true }, async (t) => {
-  assert.ok(fs.existsSync(path.join(modules, "typescript", "bin", "tsc")), "runtime thiếu TypeScript");
+  assert.ok(fs.existsSync(tsc), "PI_CONFIG_TSC phải trỏ tới tsc của manifests/typecheck");
   // realpath: macOS đổi /var thành /private/var trong đường dẫn lỗi.
   const workspace = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pi-patch-typecheck-"))), links = [];
   t.after(() => { for (const file of links) unlink(file); fs.rmSync(workspace, { recursive: true, force: true }); });
   link(modules, path.join(workspace, "node_modules"), links);
-  assert.ok(fs.existsSync(path.join(workspace, "node_modules", "typescript", "package.json")), "workspace không thấy node_modules của runtime");
+  assert.ok(fs.existsSync(path.join(workspace, "node_modules", "@earendil-works", "pi-coding-agent", "package.json")), "workspace không thấy node_modules của runtime");
   await Promise.all(groups.map((group, index) => t.test(`${group.package} (${group.top}/)`, () => checkGroup(group, workspace, index, links))));
 });
