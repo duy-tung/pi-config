@@ -1,6 +1,6 @@
 {
   "dependencies": {
-    "firecrawl-cli": "1.25.1"
+    "firecrawl-cli": "1.25.3"
   },
   "name": "pi-config-firecrawl",
   "version": "1.0.0",
