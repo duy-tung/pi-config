@@ -771,3 +771,35 @@ export function optionOutputs(command: SimpleCommand): string[] {
 export function commandText(command: SimpleCommand): string {
   return command.words.join(" ");
 }
+
+/**
+ * Wrapper Claude Code bỏ trước khi so luật allow (`Bash(npm test *)` khớp `timeout 30 npm test`) và khi xét lệnh file
+ * của acceptEdits. sudo, env, xargs, sh -c không thuộc danh sách.
+ */
+export const STRIPPED_WRAPPERS = new Set(["timeout", "gtimeout", "time", "nice", "nohup", "stdbuf"]);
+
+/**
+ * Lệnh dùng để so luật allow và xét lệnh file: bóc các wrapper trong STRIPPED_WRAPPERS ở đầu lệnh (`timeout 10 nice
+ * mkdir x` → `mkdir x`) nhưng giữ biến môi trường và chuyển hướng của lệnh ngoài, để `LD_PRELOAD=x timeout 1 mkdir` hay
+ * `timeout 1 touch x >> ~/.zshrc` vẫn bị kiểm. Lệnh bên trong mà analyzeShell đã bóc sẵn từ các wrapper này bị bỏ (đã
+ * có trong lệnh vừa bóc). Luật deny/ask vẫn xét cả danh sách gốc.
+ */
+export function ruleUnits(analysis: ShellAnalysis): SimpleCommand[] {
+  return analysis.commands.flatMap((command) => {
+    if (command.wrapped && STRIPPED_WRAPPERS.has(command.wrapped)) return [];
+    let unit = command;
+    while (STRIPPED_WRAPPERS.has(unit.words[0] ?? "")) {
+      const start = innerStart(unit.words);
+      if (start === undefined) break;
+      unit = { ...unit, words: unit.words.slice(start), literal: unit.literal.slice(start), glob: unit.glob.slice(start) };
+    }
+    return [unit];
+  });
+}
+
+/** Biến môi trường an toàn đặt trước lệnh (`LANG=C`, `NO_COLOR=1`): chỉ đổi ngôn ngữ, màu, múi giờ. */
+const SAFE_ENV = /^(?:LANG|LANGUAGE|LC_[A-Z]+|NO_COLOR|FORCE_COLOR|CLICOLOR|CLICOLOR_FORCE|TERM|COLUMNS|TZ)=[\w.:@+-]*$/u;
+
+export function safeAssignments(command: SimpleCommand): boolean {
+  return command.assignments.every((assignment) => SAFE_ENV.test(assignment));
+}

@@ -43,7 +43,7 @@ Chạy `pi` để mở Claude Opus 5.5/high với toàn bộ công cụ. Các wo
 | Shell job nền | `/bg --name "Dev server" npm run dev`, `/jobs`, `/logs`, `/kill` |
 | Ý kiến cố vấn | `/advisor-manual`, `/advisor-settings`, `/advisor-off`, `/advisor` |
 | Rewind code/hội thoại | `Esc Esc`, `/rewind` (`/checkpoint`, `/undo`), `/redo`; `/clear` mở phiên mới |
-| Permission | `Shift+Tab` (manual → accept edits → auto → bypass), `/permissions` (mode, model phân loại, lệnh bị chặn, luật, `test <lệnh>`) |
+| Permission | `Shift+Tab` (manual → accept edits → [bypass] → auto), `/permissions` (mode, model phân loại, lệnh bị chặn, luật, `test <lệnh>`), `/add-dir` |
 | Model và reasoning | `/model`, `/thinking`, `Alt+T` đổi mức thinking |
 | Công cụ và giao diện | `/agents`, `/usage`, `/claude-usage`, `/open-tui` |
 
@@ -59,15 +59,15 @@ Background cung cấp shell jobs. Khi job kết thúc (xong, lỗi hoặc bị d
 
 Rewind (`pi-rewind`, extension của repo) theo giao diện `/rewind` của Claude Code: mỗi prompt có checkpoint; `Esc Esc` hoặc `/rewind` mở danh sách prompt kèm số dòng đã đổi, rồi chọn khôi phục code, hội thoại, cả hai, hoặc tóm tắt từ/đến prompt đó. File do `edit`/`write` sửa luôn được theo dõi; file do `bash`/`Agent` sửa được theo dõi trong git worktree. Mục Redo trong menu (hoặc `/redo`) hoàn tác lần rewind gần nhất, và ngay sau Redo có mục Undo redo để lấy lại việc đã làm sau lần rewind. `/clear` mở phiên mới như `/new`, và menu của phiên mới có mục quay lại phiên cũ. Nếu Pi thoát giữa lúc khôi phục code, menu cho hoàn tất hoặc hoàn tác lần khôi phục đó. Chi tiết và giới hạn: [docs/rewind.md](docs/rewind.md).
 
-Permission (`pi-auto-mode`, extension của repo) có bốn mode như Claude Code. **Auto** là mặc định: thao tác đọc, lệnh chỉ đọc và sửa file trong project chạy ngay; lệnh khác qua bộ phân loại hai giai đoạn.
+Permission (`pi-auto-mode`, extension của repo) có bốn mode như Claude Code. **Auto** là mặc định: thao tác đọc, lệnh chỉ đọc và sửa file trong project chạy ngay; đọc file ngoài project chỉ hỏi một lần đầu; lệnh khác qua bộ phân loại hai giai đoạn.
 - Giai đoạn 1 là **Jev**, model System One của TypeSafe, khi có key. Jev không sinh chữ: mỗi lệnh là một request (khoảng 120 ms) trả xác suất cho 17 loại rủi ro và một thang mức hại, code so với ngưỡng. Lệnh thường chạy luôn, không gọi LLM. Khi hiệu chỉnh với Jev thật, cả 168 lệnh rủi ro đều bị gắn cờ; khoảng 1/10 lệnh thường phải gọi LLM.
 - Giai đoạn 2 là Claude Sonnet 5.5 có suy luận, chỉ xét lệnh bị gắn cờ và chỉ thấy tin nhắn của người dùng cùng lệnh của agent. Không có key Jev thì Sonnet 5 làm cả hai giai đoạn.
 - Jev cũng quét kết quả web, MCP và subagent để tìm prompt injection và cảnh báo agent.
 - Lệnh bị chặn trả lý do cho agent để đi đường an toàn hơn; 3 lần chặn liên tiếp hoặc 20 lần trong phiên thì hỏi người dùng.
 
-**Manual** (mode default của Claude Code) quyết định như auto nhưng hỏi bạn thay cho bộ phân loại, kể cả khi sửa file và đọc ngoài workspace (cho đọc cả thư mục tới hết phiên); không gọi model nào, không có UI thì chặn. Hộp hỏi có Yes; Yes, and don't ask again (lệnh shell lưu luật theo tiền tố cho project, ngoài repo; sửa file thì chuyển sang accept edits); Yes, and switch to auto mode; No; No, and tell Pi what to do differently. **Accept edits** như manual nhưng sửa file và `mkdir`/`touch`/`cp`/`mv` trong workspace chạy ngay.
+**Manual** (mode default của Claude Code) quyết định như auto nhưng hỏi bạn thay cho bộ phân loại, kể cả khi sửa file và đọc ngoài workspace (cho đọc cả thư mục tới hết phiên); không gọi model nào, không có UI thì chặn. Hộp hỏi có Yes; Yes, and don't ask again (lệnh shell lưu luật theo tiền tố cho repo, dùng chung mọi worktree, ngoài repo; sửa file thì chuyển sang accept edits); Yes, and switch to auto mode (lệnh shell); No (dừng lượt); No, and tell Pi what to do differently. **Accept edits** như manual nhưng sửa file và `mkdir`/`touch`/`rm`/`rmdir`/`mv`/`cp`/`sed -i` trong workspace chạy ngay.
 
-**Bypass** như Claude Code: chạy mọi thứ trừ luật deny và ask; `rm` vào `/`, `~` hay thư mục làm việc thì hỏi bạn trước. Không có lớp chặn riêng cho git phá huỷ: auto để bộ phân loại xét, manual hỏi, bypass chạy. `Shift+Tab` đổi mode. `/permissions` là menu duy nhất: đổi mode, model phân loại, xem trạng thái và chi phí Jev, duyệt lại lệnh bị chặn, xem luật và chạy thử một lệnh. Chi tiết: [docs/auto-mode.md](docs/auto-mode.md).
+**Bypass** như Claude Code: chỉ có khi mở Pi bằng `--dangerously-skip-permissions` (hoặc `--permission-mode bypass`, `--allow-dangerously-skip-permissions`); chạy mọi thứ trừ luật deny và ask. `rm` vào `/`, `~` hay thư mục làm việc thì hỏi bạn trước, ở auto và bypass có đếm ngược 2 phút. Không có lớp chặn riêng cho git phá huỷ: auto để bộ phân loại xét, manual hỏi, bypass chạy. `Shift+Tab` đổi mode; `/add-dir` thêm thư mục làm việc. `/permissions` là menu duy nhất: đổi mode, model phân loại, xem trạng thái và chi phí Jev, duyệt lại lệnh bị chặn, xem luật và chạy thử một lệnh. Chi tiết: [docs/auto-mode.md](docs/auto-mode.md).
 
 Opus 5.5 và GLM dùng context **1M** của catalog; Astra/Sol nâng lên **872K**. Theme Rosé Pine Moon.
 

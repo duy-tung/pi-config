@@ -7,10 +7,15 @@ import test from "node:test";
 import { pathToFileURL } from "node:url";
 import { classify, classifyWithFallback } from "../assets/extensions/pi-auto-mode/lib/classifier.ts";
 import { parsePermissionsArgs, permissionsCompletions, TEST_USAGE } from "../assets/extensions/pi-auto-mode/lib/command.ts";
-import { loadConfig, MODES, nextMode, parseMode, prompts, saveClassifier, spliceDefaults, withClassifier } from "../assets/extensions/pi-auto-mode/lib/config.ts";
+import {
+  availableModes, loadConfig, MODES, nextMode, parseMode, prompts, saveClassifier, spliceDefaults, withBlockedOutsideReads, withClassifier,
+} from "../assets/extensions/pi-auto-mode/lib/config.ts";
 import { answerOf, manualApproval, manualOptions, manualTitle } from "../assets/extensions/pi-auto-mode/lib/manual.ts";
 import { MANUAL_DECLINED, MANUAL_NO_APPROVER, manualDeclinedWith, modeInstructions } from "../assets/extensions/pi-auto-mode/lib/messages.ts";
-import { addProjectRules, commandPrefix, describeRules, fetchRules, projectRoot, projectRules, removeProjectRule, shellRules } from "../assets/extensions/pi-auto-mode/lib/project-rules.ts";
+import {
+  addProjectDirectory, addProjectRules, commandPrefix, describeRules, fetchRules, projectDirectories, projectRoot, projectRules, removeProjectDirectory,
+  removeProjectRule, shellRules,
+} from "../assets/extensions/pi-auto-mode/lib/project-rules.ts";
 import { criticalPathReason, protectedReason, resolveShellPath } from "../assets/extensions/pi-auto-mode/lib/paths.ts";
 import { decide, describeCall, filterDeniedGrep } from "../assets/extensions/pi-auto-mode/lib/policy.ts";
 import { buildSystemPrompt, DEFAULT_SOFT_DENY, parseVerdict, resolveSlots } from "../assets/extensions/pi-auto-mode/lib/prompt.ts";
@@ -220,9 +225,18 @@ test("chính sách: lối đi nhanh, luật, bypass và tự bảo vệ", () => 
     assert.equal(decide({ toolName: "edit", input: { path: "../other/a.ts", edits: [] } }, auto).kind, "classify");
     assert.equal(decide({ toolName: "write", input: { path: ".git/hooks/pre-commit", content: "x" } }, auto).kind, "classify");
     assert.equal(decide(bash("git status && ls"), auto).kind, "allow");
-    // Đọc ngoài workspace (tool hoặc lệnh chỉ đọc) qua bộ phân loại; thư mục đọc thêm thì cho qua.
-    assert.equal(decide({ toolName: "grep", input: { pattern: "TOKEN", path: "~/" } }, auto).kind, "classify");
-    assert.equal(decide({ toolName: "read", input: { path: "/etc/hosts" } }, auto).kind, "classify");
+    // Như Claude Code: tool đọc file ngoài workspace ở auto hỏi một lần đầu, chọn "keep allowing" thì cho đọc;
+    // blockReadsOutsideWorkingDirectories chặn ở mọi mode, kể cả bypass. Lệnh shell chỉ đọc ra ngoài qua bộ phân loại.
+    assert.deepEqual(decide({ toolName: "grep", input: { pattern: "TOKEN", path: "~/" } }, auto).outsideRead, [ws.home]);
+    assert.equal(decide({ toolName: "read", input: { path: "/etc/hosts" } }, auto).kind, "ask");
+    assert.deepEqual(decide({ toolName: "read", input: { path: "/etc/hosts" } }, { ...auto, outsideReadsAccepted: true }), { kind: "allow", via: "read outside the working directories" });
+    for (const mode of ["auto", "manual", "bypass"]) {
+      const blocked = { ...auto, mode, blockOutsideReads: true, outsideReadsAccepted: true };
+      assert.equal(decide({ toolName: "read", input: { path: "/etc/hosts" } }, blocked).kind, "deny", mode);
+      assert.equal(decide({ toolName: "read", input: { path: "src/a.ts" } }, blocked).kind, "allow", mode);
+      assert.equal(decide(bash("cat /etc/hosts"), blocked).kind, "ask", mode);
+    }
+    assert.equal(decide({ toolName: "read", input: { path: "/etc/hosts" } }, { ...auto, mode: "manual" }).kind, "classify", "manual hỏi (cho đọc thư mục tới hết phiên)");
     assert.equal(decide(bash("grep -rn TOKEN ~/ 2>/dev/null"), auto).kind, "classify");
     assert.equal(decide(bash("cat ../other/README.md"), auto).kind, "classify");
     const skills = path.join(ws.dir, "skills");
@@ -232,9 +246,12 @@ test("chính sách: lối đi nhanh, luật, bypass và tự bảo vệ", () => 
     assert.equal(decide(bash("npm install"), auto).kind, "classify");
     assert.equal(decide(bash("bun pm pack"), auto).kind, "classify");
     // rm vào đường dẫn quan trọng (như Claude Code): auto hỏi bộ phân loại kèm ghi chú, bypass hỏi người dùng.
+    // Như Claude Code: rm vào đường dẫn quan trọng ở auto hỏi người dùng (đếm ngược), không đưa bộ phân loại.
     const critical = decide(bash("rm -rf ~"), auto);
-    assert.equal(critical.kind, "classify");
-    assert.match(critical.notes.join(" "), /home directory/u);
+    assert.deepEqual([critical.kind, critical.critical], ["ask", true]);
+    assert.match(critical.reason, /home directory/u);
+    assert.equal(decide(bash("rm -rf ~"), { ...auto, rules: buildRuleSet(["Bash(rm *)"], [], []) }).kind, "ask", "luật allow không cho qua");
+    assert.equal(decide(bash("rm -rf ~/old"), auto).kind, "classify", "thư mục con của ~ không phải đường dẫn quan trọng");
     assert.equal(decide(bash("rm -rf *"), { ...auto, mode: "bypass" }).kind, "ask");
     // find đọc điểm bắt đầu như find (sau -H/-L/-P).
     assert.equal(decide(bash("find -L ~ -name x -delete"), { ...auto, mode: "bypass" }).kind, "ask");
@@ -704,9 +721,13 @@ test("giới hạn chặn 3 liên tiếp / 20 tổng và duyệt một lần", (
   assert.equal(state.consumeApproval(key), false);
 });
 
-test("mode: bốn mode như Claude Code, Shift+Tab xoay vòng manual → acceptEdits → auto → bypass", () => {
-  assert.deepEqual(MODES, ["manual", "acceptEdits", "auto", "bypass"]);
-  assert.deepEqual(MODES.map(nextMode), ["acceptEdits", "auto", "bypass", "manual"]);
+test("mode: bốn mode như Claude Code, Shift+Tab xoay vòng manual → acceptEdits → [bypass] → auto", () => {
+  assert.deepEqual(MODES, ["manual", "acceptEdits", "bypass", "auto"]);
+  // Bypass chỉ có trong vòng khi phiên được mở với bypass; đang ở bypass thì vẫn đi tiếp được.
+  assert.deepEqual(MODES.map((mode) => nextMode(mode, true)), ["acceptEdits", "bypass", "auto", "manual"]);
+  assert.deepEqual(["manual", "acceptEdits", "auto"].map((mode) => nextMode(mode)), ["acceptEdits", "auto", "manual"]);
+  assert.equal(nextMode("bypass"), "auto");
+  assert.deepEqual(availableModes(false), ["manual", "acceptEdits", "auto"]);
   assert.deepEqual(MODES.map(prompts), [true, true, false, false]);
   for (const [value, mode] of [["manual", "manual"], [" default ", "manual"], ["acceptEdits", "acceptEdits"], ["auto", "auto"], ["bypass", "bypass"], ["bypassPermissions", "bypass"]]) {
     assert.equal(parseMode(value), mode, value);
@@ -739,7 +760,7 @@ test("manual hỏi cả khi sửa file; acceptEdits cho sửa file và mkdir/tou
       assert.equal(risky.kind, "classify", mode);
       assert.equal(risky.escalate, true, mode);
       assert.match(manualTitle("bash", "echo 'x' >> ~/.bashrc", risky.notes), /^Allow bash: echo 'x' >> ~\/\.bashrc\?\n\nNote: this command .+\.$/su);
-      assert.equal(decide(bash("rm -rf ~/old"), pc).kind, "classify", mode);
+      assert.deepEqual(decide(bash("rm -rf ~"), pc), { kind: "classify", notes: [`this command rm targets the home directory`], escalate: true }, mode);
     }
     const manual = (call) => decide(call, context(ws, { mode: "manual" }));
     const accept = (call) => decide(call, context(ws, { mode: "acceptEdits" }));
@@ -752,7 +773,11 @@ test("manual hỏi cả khi sửa file; acceptEdits cho sửa file và mkdir/tou
     // Luật allow chạy code tùy ý (auto bỏ) có hiệu lực ở manual khi index.ts gộp lại phần stripped.
     const set = buildRuleSet(["Agent", "Bash(npm run *)"], [], []);
     const withStripped = context(ws, { mode: "manual", rules: { ...set, allow: [...set.allow, ...set.stripped] } });
-    assert.deepEqual(decide({ toolName: "Agent", input: { prompt: "x" } }, withStripped), { kind: "allow", via: "allow rule" });
+    // Như Claude Code: tool Agent không cần hỏi ở manual/acceptEdits (lệnh của subagent vẫn qua cổng).
+    for (const pc of [withStripped, context(ws, { mode: "manual" }), context(ws, { mode: "acceptEdits" })]) {
+      assert.deepEqual(decide({ toolName: "Agent", input: { prompt: "x" } }, pc), { kind: "allow", via: "subagent (its actions are checked)" });
+    }
+    assert.equal(decide({ toolName: "Agent", input: { prompt: "x" } }, context(ws, { mode: "manual", agentIsUngated: () => true })).kind, "deny");
     assert.deepEqual(decide(bash("npm run build"), withStripped), { kind: "allow", via: "allow rule" });
     assert.equal(decide({ toolName: "Agent", input: { prompt: "x" } }, context(ws, { rules: set })).kind, "classify", "auto bỏ luật allow Agent");
   } finally {
@@ -982,3 +1007,114 @@ test("bộ đánh giá: dữ liệu hợp lệ, quyết định tất định kh
   }
 });
 
+
+test("acceptEdits như Claude Code: mkdir/touch/rm/rmdir/mv/cp/sed -i trong workspace, kể cả sau LANG=C và timeout/nice/nohup", () => {
+  const ws = workspace();
+  try {
+    const accept = context(ws, { mode: "acceptEdits" });
+    const auto = context(ws);
+    const manual = context(ws, { mode: "manual" });
+    for (const command of [
+      "rm src/a.txt", "rm -rf build", "rmdir build/empty", "sed -i 's/a/b/g' src/a.ts", "sed -i.bak -e 's/a/b/' src/a.ts",
+      "LANG=C mkdir -p build", "NO_COLOR=1 timeout 10 mkdir build", "nice -n 5 cp src/a.ts src/b.ts", "nohup touch build/x", "mkdir build && rm -r build",
+    ]) {
+      assert.deepEqual(decide(bash(command), accept), { kind: "allow", via: "workspace file operation" }, command);
+      assert.equal(decide(bash(command), manual).kind, "classify", `manual hỏi: ${command}`);
+    }
+    // Auto giữ mkdir/touch/cp/mv; rm, sed -i vẫn qua bộ phân loại.
+    assert.equal(decide(bash("timeout 10 mkdir build"), auto).kind, "allow");
+    assert.equal(decide(bash("rm src/a.txt"), auto).kind, "classify");
+    for (const command of [
+      "rm ../other/a", "rm -rf .git/hooks", "sed 's/a/b/' src/a.ts", "sed -i s/a/b/ /etc/hosts", "PATH=/tmp mkdir build", "sudo mkdir build",
+      "rm -rf .", "rm -rf ~", "cd src && rm a.txt", "rm src/a > log", "xargs rm",
+      // Biến môi trường và chuyển hướng của lệnh có wrapper vẫn bị kiểm; giá trị của tùy chọn cũng là đường dẫn.
+      "PATH=/tmp timeout 10 mkdir build", "timeout 1 touch x >> ~/.zshrc", "LD_PRELOAD=./x.so nice mkdir build", "timeout 1 sudo mkdir build",
+      "cp --target-directory=/etc a", "cp -t/etc a", "mv -t /etc a",
+    ]) assert.notEqual(decide(bash(command), accept).kind, "allow", command);
+    assert.equal(decide(bash("LD_PRELOAD=./x.so timeout 1 mkdir build"), auto).kind, "classify");
+    assert.deepEqual(decide(bash("timeout 10 nice -n 2 mkdir build"), accept), { kind: "allow", via: "workspace file operation" });
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("wrapper timeout/time/nice/nohup/stdbuf bị bỏ khi so luật allow và khi lưu luật; sudo/env thì không", () => {
+  const ws = workspace();
+  try {
+    const pc = context(ws, { mode: "manual", rules: buildRuleSet(["Bash(npm test *)"], ["Bash(git push *)"], []) });
+    for (const command of ["timeout 30 npm test", "nice -n 5 npm test", "nohup npm test", "time npm test", "stdbuf -oL npm test"]) {
+      assert.deepEqual(decide(bash(command), pc), { kind: "allow", via: "allow rule" }, command);
+    }
+    for (const command of ["sudo npm test", "env FOO=1 npm test", "xargs npm test"]) assert.equal(decide(bash(command), pc).kind, "classify", command);
+    assert.equal(decide(bash("timeout 60 git push origin x"), pc).kind, "ask", "luật ask vẫn khớp lệnh bên trong");
+    const rules = (command) => shellRules(analyzeShell(command));
+    assert.deepEqual(rules("timeout 30 npm install"), ["Bash(npm install *)"]);
+    assert.deepEqual(rules("nice cargo build --release"), ["Bash(cargo build *)"]);
+    assert.equal(rules("sudo npm install"), undefined);
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("đường dẫn được bảo vệ theo danh sách của Claude Code (cộng .pi, .agents của Pi)", () => {
+  const ws = workspace();
+  const roots = [ws.cwd];
+  const guarded = (file) => protectedReason(path.join(ws.cwd, file), roots);
+  for (const file of [".git/config", ".claude/settings.json", ".pi/settings.json", ".agents/agents/x.md", ".vscode/tasks.json", ".bashrc", ".npmrc", "pyrightconfig.json", ".bazelversion", ".mcp.json"]) {
+    assert.ok(guarded(file), file);
+  }
+  assert.match(protectedReason(path.join(ws.home, ".config", "git", "config"), roots), /\.config\/git\//u);
+  for (const file of ["AGENTS.md", "CLAUDE.md", ".github/workflows/ci.yml", ".gitlab-ci.yml", ".gitattributes", ".codex/config.toml", "src/a.ts"]) {
+    assert.equal(guarded(file), undefined, file);
+  }
+  ws.cleanup();
+});
+
+test("luật đã lưu dùng chung cho mọi worktree của repo (gốc là checkout chính); luật cũ lưu theo worktree vẫn dùng được", () => {
+  const ws = workspace();
+  try {
+    const repo = path.join(ws.dir, "repo");
+    fs.mkdirSync(repo);
+    const git = (...args) => assert.equal(spawnSync("git", args, { cwd: repo, encoding: "utf8" }).status, 0, args.join(" "));
+    git("init", "-q");
+    git("-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init");
+    const tree = path.join(ws.dir, "tree");
+    git("worktree", "add", "-q", tree);
+    const state = path.join(ws.dir, "state");
+    assert.equal(fs.realpathSync(projectRoot(tree)), fs.realpathSync(repo));
+    fs.mkdirSync(path.join(state), { recursive: true });
+    // Bản trước lưu theo thư mục worktree.
+    fs.writeFileSync(path.join(state, "project-rules.json"), JSON.stringify({ projects: { [tree]: { allow: ["Bash(make *)"] } } }));
+    assert.deepEqual(projectRules(state, tree), ["Bash(make *)"]);
+    addProjectRules(state, tree, ["Bash(npm test *)"]);
+    assert.deepEqual(projectRules(state, repo), ["Bash(make *)", "Bash(npm test *)"], "lưu dưới gốc repo, gộp luật cũ");
+    assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(state, "project-rules.json"), "utf8")).projects), [projectRoot(tree)]);
+    addProjectDirectory(state, repo, "/data/shared");
+    assert.deepEqual(projectDirectories(state, tree), ["/data/shared"]);
+    removeProjectDirectory(state, tree, "/data/shared");
+    assert.deepEqual(projectDirectories(state, repo), []);
+    // Submodule (gitdir trong .git/modules) giữ gốc riêng.
+    const sub = path.join(repo, "sub");
+    fs.mkdirSync(sub);
+    fs.writeFileSync(path.join(sub, ".git"), "gitdir: ../.git/modules/sub\n");
+    assert.equal(projectRoot(sub), sub);
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("web_search: don't ask again lưu luật WebSearch; blockReadsOutsideWorkingDirectories ghi vào settings.json", () => {
+  const ws = workspace();
+  try {
+    assert.deepEqual(describeRules(["WebSearch"]), "`WebSearch`");
+    assert.deepEqual(decide({ toolName: "web_search", input: { query: "x" } }, context(ws, { mode: "manual", rules: buildRuleSet(["WebSearch"], [], []) })), { kind: "allow", via: "allow rule" });
+    const source = '{\n  "permissions": { "allow": ["x"] },\n  "theme": "dark"\n}\n';
+    const next = JSON.parse(withBlockedOutsideReads(source));
+    assert.deepEqual(next, { permissions: { allow: ["x"], blockReadsOutsideWorkingDirectories: true }, theme: "dark" });
+    fs.mkdirSync(path.join(ws.home, ".pi", "agent"), { recursive: true });
+    fs.writeFileSync(path.join(ws.home, ".pi", "agent", "settings.json"), withBlockedOutsideReads(source));
+    assert.equal(loadConfig(path.join(ws.home, ".pi", "agent"), {}).blockOutsideReads, true);
+  } finally {
+    ws.cleanup();
+  }
+});

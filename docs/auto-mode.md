@@ -5,13 +5,14 @@
 | Mode | Dòng dưới ô nhập | Hành vi |
 |---|---|---|
 | **Manual** | `⏸ manual mode on` | Như mode default của Claude Code: đọc, lệnh chỉ đọc và luật `allow` chạy ngay. Mọi thao tác khác, kể cả sửa file, đều hỏi bạn. Không gọi model nào để duyệt |
-| **Accept edits** | `⏵⏵ accept edits on` (xanh) | Như manual, nhưng sửa file và `mkdir`/`touch`/`cp`/`mv` trong workspace chạy ngay (trừ đường dẫn được bảo vệ) |
-| **Auto** (mặc định) | `⏵⏵ auto mode on` (vàng) | Thao tác an toàn chạy ngay. Thao tác còn lại do bộ phân loại hai giai đoạn duyệt, không hỏi người dùng: Jev (model System One của TypeSafe) sàng lọc, LLM xét kỹ phần bị gắn cờ |
-| **Bypass** | `⏵⏵ bypass permissions on` (đỏ) | Không kiểm tra, trừ luật `deny`, luật `ask` và `rm` vào đường dẫn quan trọng (`/`, `~`, thư mục làm việc…) |
+| **Accept edits** | `⏵⏵ accept edits on` (xanh) | Như manual, nhưng sửa file và `mkdir`/`touch`/`rm`/`rmdir`/`mv`/`cp`/`sed -i` trong workspace chạy ngay (trừ đường dẫn được bảo vệ) |
+| **Auto** (mặc định) | `⏵⏵ auto mode on` (vàng) | Thao tác an toàn chạy ngay. Thao tác còn lại do bộ phân loại hai giai đoạn duyệt, không hỏi người dùng: Jev (model System One của TypeSafe) sàng lọc, LLM xét kỹ phần bị gắn cờ. Chỉ hỏi ở lần đầu đọc file ngoài workspace và khi `rm` vào đường dẫn quan trọng |
+| **Bypass** | `⏵⏵ bypass permissions on` (đỏ) | Chỉ có khi mở Pi với bypass. Không kiểm tra, trừ luật `deny`, luật `ask` và `rm` vào đường dẫn quan trọng (`/`, `~`, thư mục làm việc…) |
 
 ## Dùng
 
-- `Shift+Tab` đổi mode theo vòng manual → accept edits → auto → bypass → manual. Lần đầu vào bypass hiện cảnh báo cần đồng ý; lựa chọn được nhớ, từ chối thì sang manual. Bypass bị bỏ qua (vòng đi thẳng sang manual) khi chạy bằng root (trừ `IS_SANDBOX=1`) hoặc khi `permissions.disableBypassPermissionsMode` là `"disable"`.
+- `Shift+Tab` đổi mode theo vòng manual → accept edits → bypass → auto → manual, như Claude Code. Bypass chỉ có trong vòng (và trong `/permissions` → Mode) khi phiên được mở với bypass: `--dangerously-skip-permissions`, `--permission-mode bypass`, `permissions.defaultMode: "bypass"` trong settings của bạn, hoặc `--allow-dangerously-skip-permissions` (có bypass trong vòng nhưng không bắt đầu ở đó). Lần đầu vào bypass hiện cảnh báo cần đồng ý; lựa chọn được nhớ, từ chối thì sang auto. Bypass bị bỏ qua khi chạy bằng root (trừ `IS_SANDBOX=1`) hoặc khi `permissions.disableBypassPermissionsMode` là `"disable"`.
+- `/add-dir <thư mục>` (như Claude Code) thêm thư mục làm việc: đọc tự do, sửa theo mode. Chọn **Yes, for this session** hoặc **Yes, and remember this directory** (lưu cho repo như luật "don't ask again"; bỏ trong `/permissions` → Rules → Saved for this project). Không đối số thì liệt kê thư mục làm việc. Khi mở: `pi --add-dir <thư mục>` (nhiều thư mục: nối bằng `:`, Windows `;`).
 - Mức thinking chuyển sang `Alt+T` (như Option+T của Claude Code; trên macOS terminal cần gửi Option như Alt — WezTerm mặc định với Option trái) hoặc `/thinking`.
 - `/permissions` là menu duy nhất của cổng permission (thay `/auto-mode` cũ):
 
@@ -24,7 +25,7 @@
   ├─ Recently denied (N)          chọn một lệnh để duyệt cho một lần thử lại
   ├─ Rules…
   │    ├─ Your rules: allow / ask / deny (chỉ xem)
-  │    ├─ Saved for this project (luật "don't ask again"; chọn một luật để bỏ)
+  │    ├─ Saved for this project (luật "don't ask again" và thư mục /add-dir; chọn một mục để bỏ)
   │    └─ Built-in classifier rules (bộ luật mặc định của auto mode)
   └─ Test a command…              chạy thử quyết định cho một lệnh bash
   ```
@@ -39,19 +40,21 @@
 
 Như mode default và acceptEdits của Claude Code: lớp chính sách quyết định giống hệt auto (luật `deny` chặn, luật `ask` hỏi, lối đi nhanh ở bước 7 chạy ngay), nhưng mọi thứ auto gửi bộ phân loại (bước 8, kể cả phần đi thẳng giai đoạn 2) thì hỏi bạn. Không gọi Jev hay LLM để duyệt, nên không tốn token; probe prompt injection cũng không chạy.
 
-- **Manual** hỏi cả khi sửa file trong workspace và khi chạy `mkdir`/`touch`/`cp`/`mv` ở đó. **Accept edits** cho các việc này chạy ngay; sửa file ngoài workspace hoặc vào đường dẫn được bảo vệ (`.git/`, `.pi/`, `.claude/`, file rc của shell, `AGENTS.md`…) vẫn hỏi.
+- **Manual** hỏi cả khi sửa file trong workspace và khi chạy lệnh file ở đó. **Accept edits** cho chạy ngay sửa file và `mkdir`, `touch`, `rm`, `rmdir`, `mv`, `cp`, `sed -i` với mọi đối số trong workspace, kể cả khi đứng sau biến môi trường an toàn (`LANG=C`, `NO_COLOR=1`) hoặc `timeout`, `time`, `nice`, `nohup`, `stdbuf`; sửa file ngoài workspace, vào đường dẫn được bảo vệ (`.git/`, `.pi/`, `.claude/`, file rc của shell…) hoặc `rm` vào đường dẫn quan trọng vẫn hỏi.
+- Spawn subagent (`Agent`) không hỏi, như Claude Code; từng lệnh của subagent vẫn qua cổng và hỏi qua phiên gốc.
 - Hộp thoại `Allow <tool>: <tóm tắt>?` có các lựa chọn như Claude Code:
   - **Yes**: chạy lần này.
   - **Yes, and don't ask again…**, tùy loại lời gọi:
-    - Lệnh shell: lưu luật allow theo tiền tố lệnh cho project, vd `Bash(npm install *)`, `Bash(git commit *)`, `Bash(npm run build *)`. Lệnh ghép thì mỗi lệnh con không chỉ đọc một luật. Luật được lưu ở `<stateDir>/project-rules.json`, theo gốc project (thư mục có `.git`, không có thì thư mục làm việc). File này nằm ngoài repo, như `.claude/settings.local.json` của Claude Code; agent không tự sửa được, và settings của project không thêm được luật allow. Xem và bỏ luật trong `/permissions` → Rules → Saved for this project. Luật cho chạy code tùy ý (`npm run *`, `python *`…) vẫn bị bỏ qua ở auto mode như luật trong settings.
+    - Lệnh shell: lưu luật allow theo tiền tố lệnh cho project, vd `Bash(npm install *)`, `Bash(git commit *)`, `Bash(npm run build *)`. Lệnh ghép thì mỗi lệnh con không chỉ đọc một luật; `timeout`/`nice`/`nohup`… phía trước bị bỏ (`timeout 30 npm test` lưu `Bash(npm test *)`, và luật này cũng khớp lệnh có wrapper). Luật được lưu ở `<stateDir>/project-rules.json`, theo gốc repo như Claude Code: worktree dùng chung luật của checkout chính, submodule có gốc riêng, ngoài repo thì thư mục làm việc. Luật bản trước lưu theo worktree vẫn được dùng và chuyển về gốc repo ở lần lưu sau. File này nằm ngoài repo, như `.claude/settings.local.json` của Claude Code; agent không tự sửa được, và settings của project không thêm được luật allow. Xem và bỏ luật trong `/permissions` → Rules → Saved for this project. Luật cho chạy code tùy ý (`npm run *`, `python *`…) vẫn bị bỏ qua ở auto mode như luật trong settings.
     - `fetch_content`: lưu `WebFetch(domain:<host>)` khi mọi URL cùng một host.
+    - `web_search`: lưu `WebSearch` cho project (installer đã cho `web_search` chạy sẵn, nên chỉ gặp khi bạn bỏ luật đó).
     - Sửa file ở manual: **Yes, allow all edits during this session** chuyển sang accept edits.
     - Tool khác (MCP, `Agent`, `bg_run`…): không hỏi lại đúng lời gọi đó (cùng tool, cùng input sau chuẩn hóa) tới hết phiên.
     - Đọc ngoài workspace: **Yes, allow reading from `<thư mục>/` during this session** (thư mục chứa file), như Claude Code.
     - Lệnh không đề xuất được tiền tố (biến, `$()`, `sudo`, `bash -c`, chương trình theo đường dẫn, chuyển hướng, glob) chỉ nhớ đúng lời gọi tới hết phiên. Hành động có ghi chú rủi ro (`rm` vào đường dẫn quan trọng, lệnh rủi ro, đường dẫn được bảo vệ, cấu hình của Pi) không có lựa chọn này.
-  - **Yes, and switch to auto mode**: chạy lần này rồi chuyển sang auto.
-  - **No** (hoặc Esc): chặn. Agent được báo bạn đã từ chối và không được thử lại y nguyên hay lách; lần từ chối hiện trong `/permissions` → Recently denied.
-  - **No, and tell Pi what to do differently…**: chặn, kèm lời nhắn bạn gõ gửi tới agent (và hiện trong Recently denied).
+  - **Yes, and switch to auto mode** (chỉ ở hộp hỏi lệnh shell, như Claude Code): chạy lần này rồi chuyển sang auto.
+  - **No** (hoặc Esc): chặn và dừng lượt, như Claude Code; agent chờ tin nhắn tiếp theo của bạn và lượt sau thấy bạn đã từ chối. Hỏi từ subagent thì chỉ chặn, subagent làm tiếp. Lần từ chối hiện trong `/permissions` → Recently denied.
+  - **No, and tell Pi what to do differently…**: chặn, kèm lời nhắn bạn gõ gửi tới agent; agent làm tiếp theo lời nhắn (và lời nhắn hiện trong Recently denied).
 - Lời gọi có ghi chú rủi ro (`rm` vào đường dẫn quan trọng, lệnh rủi ro, đường dẫn được bảo vệ, cấu hình của Pi) hỏi kèm ghi chú trong hộp thoại.
 - Luật `allow` có hiệu lực đầy đủ, kể cả luật cho chạy code tùy ý (`Bash(npm run *)`, `Bash(python *)`) mà auto bỏ qua.
 - Không có UI (print, JSON, RPC không có client UI) thì lời gọi cần hỏi bị chặn và agent được báo lý do; chạy không người trông nên dùng `--permission-mode auto`.
@@ -59,11 +62,11 @@ Như mode default và acceptEdits của Claude Code: lớp chính sách quyết 
 
 ## Auto mode quyết định thế nào
 
-Mỗi tool call đi qua các bước sau, dừng ở bước đầu tiên có kết quả (thứ tự của Claude Code). Manual và accept edits đi qua đúng các bước của auto; chỗ auto gửi bộ phân loại thì hai mode này hỏi bạn. Riêng manual, sửa file và `mkdir`/`touch`/`cp`/`mv` trong workspace ở bước 7 cũng hỏi.
+Mỗi tool call đi qua các bước sau, dừng ở bước đầu tiên có kết quả (thứ tự của Claude Code). Manual và accept edits đi qua đúng các bước của auto; chỗ auto gửi bộ phân loại thì hai mode này hỏi bạn. Riêng manual, sửa file và lệnh file trong workspace ở bước 7 cũng hỏi.
 
 1. **Luật `deny`** → chặn, ở mọi mode. Áp dụng cho tool file, đường dẫn ghi rõ trong lệnh shell (đối số, đích chuyển hướng, kể cả trong `$()`, `bash -c`, `sudo`) và tham số đường dẫn của MCP. Glob, đọc cả cây thư mục và đối số chỉ biết lúc chạy không được quét, như Claude Code; xem [deny đường dẫn](#deny-đường-dẫn-với-lệnh-shell).
 2. **Luật `ask`** → hỏi người dùng (không có UI thì chặn).
-3. **`rm`/`rmdir`/`find -delete` vào `/`, thư mục cấp đầu, `~`, thư mục con trực tiếp của `~`, thư mục làm việc hoặc thư mục cha của nó** → auto: gửi bộ phân loại kèm ghi chú; bypass: hỏi người dùng (như Claude Code, luật allow không cho qua).
+3. **`rm`/`rmdir`/`find -delete` vào `/`, thư mục cấp đầu, `~`, thư mục làm việc hoặc thư mục cha của nó, hay vào glob dưới biến (`"$DIR"/*`)** → hỏi người dùng ở mọi mode, luật allow không cho qua (như Claude Code). Ở auto và bypass hộp hỏi đếm ngược 2 phút: hết giờ thì chặn và agent làm tiếp (được dặn báo lại điều muốn xoá); 3 lần hết giờ thì chặn luôn tới tin nhắn tiếp theo của bạn; không có UI thì chặn. Manual và accept edits hỏi không giới hạn thời gian, không có "don't ask again".
 4. **Lệnh rủi ro** (`lib/risks.ts`): auto ghi chú cho bộ phân loại, bỏ qua Jev và đi thẳng giai đoạn 2; manual và accept edits hỏi kèm ghi chú. Đây chỉ là gợi ý cho bước duyệt, không chặn; bypass cho chạy như Claude Code. Nhận ra tất định, kể cả trong `sudo`, `bash -c`, `$()` và sau `cd`:
    - **cài cơ chế tự chạy**:
      - ghi file khởi động của shell trong HOME (`~/.bashrc`, `~/.zshrc`, `~/.profile`, profile PowerShell…) hoặc thư mục autostart (`~/Library/LaunchAgents`, `~/.config/autostart`, `~/.config/systemd/user`);
@@ -84,12 +87,22 @@ Mỗi tool call đi qua các bước sau, dừng ở bước đầu tiên có k�
 5. **Bypass** → cho chạy.
 6. **Cấu hình của Pi** (như `.claude/` của Claude Code): ghi vào `settings.json`, `keybindings.json`, `mcp.json`, `extensions/` của agent, thư mục trạng thái (kể cả luật đã lưu) hoặc mã của chính extension → auto: bộ phân loại giai đoạn 2 kèm ghi chú; manual và accept edits: hỏi.
 7. **Lối đi nhanh** (không gọi model):
-   - `read`, `grep`, `find`, `ls` trong thư mục làm việc, `additionalDirectories`, thư mục tạm, thư mục skill đã cấu hình, tài liệu của Pi và agent dir; todo, `ask_user_question`, `web_enable`, `get_search_content`, advisor, xem tiến trình nền (`bg_status`, `bg_logs`);
-   - `edit`/`write` trong thư mục làm việc, `additionalDirectories` hoặc thư mục tạm, trừ đường dẫn được bảo vệ (`.git/`, `.pi/`, `.claude/`, `.github/`, `.vscode/`, file rc của shell, `.npmrc`, `AGENTS.md`, `CLAUDE.md`…);
+   - `read`, `grep`, `find`, `ls` trong thư mục làm việc, `additionalDirectories`, thư mục `/add-dir`, thư mục tạm, thư mục skill đã cấu hình, tài liệu của Pi và agent dir. Ở auto, tool đọc file đọc ngoài các thư mục này cũng chạy (xem [lần đọc đầu ngoài workspace](#lần-đọc-đầu-ngoài-workspace)); todo, `ask_user_question`, `web_enable`, `get_search_content`, advisor, xem tiến trình nền (`bg_status`, `bg_logs`);
+   - `edit`/`write` trong thư mục làm việc, `additionalDirectories` hoặc thư mục tạm, trừ đường dẫn được bảo vệ theo danh sách của Claude Code (`.git/`, `.claude/`, `.vscode/`, `.idea/`, `.husky/`, `.cargo/`, `.devcontainer/`, `.yarn/`, `.mvn/`, `.config/git/`, file rc của shell, `.gitconfig`, `.npmrc`, `.mcp.json`…) cộng `.pi/` và `.agents/` của Pi;
    - lệnh shell chứng minh được là chỉ đọc: toàn chữ thuần (không biến, `$()`, subshell, heredoc, gán biến môi trường), mọi lệnh con nằm trong danh sách đọc (`ls`, `cat`, `rg`, `git status/log/diff/show`, `gh pr view`…, `sed -n 1,20p`, `find` không `-exec/-delete`) và không có cờ ghi file (`sort -o`, `base64 -o`, `tree -o`, `yq -i`/`-s`, kể cả cụm cờ `-uoFILE` và tên dài viết tắt `--out=`), chuyển hướng chỉ tới `/dev/null`, và mọi đường dẫn nằm trong các thư mục đọc tự do ở trên;
-   - `mkdir`/`touch`/`cp`/`mv` với mọi đích trong workspace (không có `cd` trong chuỗi lệnh);
-   - luật `allow` hẹp. Khi ở auto mode, luật allow cho phép chạy code tùy ý bị bỏ qua (`Bash(*)`, `python *`, `node *`, `npm run *`, `bash`, `sudo`, `Agent`…), như Claude Code.
-8. **Bộ phân loại** cho mọi thứ khác: đọc ngoài workspace (vd `grep` token trong `~/` — tool `grep` của Pi tìm cả file ẩn), lệnh shell còn lại, `bg_run`, `bg_kill` (dừng tiến trình nền), `fetch_content` (trừ domain trong allow), spawn `Agent`, từng lời gọi tool MCP (`mcp__<server>__<tool>`, khi bạn bật MCP dựng sẵn của Pi), sửa file ngoài workspace hoặc vào đường dẫn được bảo vệ, tool lạ.
+   - `mkdir`/`touch`/`cp`/`mv` với mọi đối số trong workspace (không có `cd` trong chuỗi lệnh), cả ở auto; accept edits thêm `rm`, `rmdir`, `sed -i`;
+   - luật `allow` hẹp (`timeout`, `time`, `nice`, `nohup`, `stdbuf` phía trước bị bỏ khi so luật). Khi ở auto mode, luật allow cho phép chạy code tùy ý bị bỏ qua (`Bash(*)`, `python *`, `node *`, `npm run *`, `bash`, `sudo`, `Agent`…), như Claude Code.
+8. **Bộ phân loại** cho mọi thứ khác: lệnh shell chỉ đọc ra ngoài workspace (vd `grep -r TOKEN ~/`), lệnh shell còn lại, `bg_run`, `bg_kill` (dừng tiến trình nền), `fetch_content` (trừ domain trong allow), spawn `Agent`, từng lời gọi tool MCP (`mcp__<server>__<tool>`, khi bạn bật MCP dựng sẵn của Pi), sửa file ngoài workspace hoặc vào đường dẫn được bảo vệ, tool lạ.
+
+### Lần đọc đầu ngoài workspace
+
+Như Claude Code: ở auto, lần đầu tool `read`/`grep`/`find`/`ls` đọc ngoài các thư mục làm việc, Pi hỏi một lần:
+
+- **Yes, and keep allowing any reads outside the working directories**: cho đọc, lưu câu trả lời (`<stateDir>/state.json`), không hỏi lại.
+- **No, and block reads outside the working directories from now on**: chặn, và đặt `permissions.blockReadsOutsideWorkingDirectories: true` trong `settings.json` của bạn. Khi đó tool đọc file từ chối đọc ngoài thư mục làm việc ở mọi mode, kể cả bypass, và lệnh shell chỉ đọc ra ngoài thì hỏi. Muốn đọc một thư mục thì `/add-dir`, hoặc bỏ khóa đó.
+- **No, and ask again next time** / **Yes, but ask again next time**: chặn hoặc cho lần này, không lưu gì.
+
+Agent làm tiếp dù bạn chọn gì. Không có UI (print, JSON) thì cho đọc như trước. Manual và accept edits vẫn hỏi từng thư mục (Yes, allow reading from `<thư mục>/` during this session).
 
 ### Git lệnh phá huỷ
 
@@ -131,9 +144,9 @@ LLM mặc định là **Claude Sonnet 5.5** (`anthropic/claude-sonnet-5-5`):
 
   Jev không bao giờ tự chặn, vì nó không đọc tin nhắn của người dùng nên không biết lệnh có được yêu cầu hay không.
 - Đi thẳng giai đoạn 2, không hỏi Jev:
-  - lớp chính sách đã thấy rủi ro (`rm` vào đường dẫn quan trọng, ghi file được bảo vệ hoặc cấu hình của Pi, lệnh rủi ro ở bước 4);
+  - lớp chính sách đã thấy rủi ro (ghi file được bảo vệ hoặc cấu hình của Pi, lệnh rủi ro ở bước 4);
   - kể từ tin nhắn gần nhất của người dùng đã có kết quả tool nghi prompt injection (xem dưới).
-- Phạm vi: `bash`, `bg_run`, `powershell`, đọc ngoài workspace, `write`/`edit`, `fetch_content`, lời gọi MCP. `Agent` và tool lạ vẫn qua giai đoạn 1 bằng LLM.
+- Phạm vi: `bash`, `bg_run`, `powershell`, `write`/`edit`, `fetch_content`, lời gọi MCP. `Agent` và tool lạ vẫn qua giai đoạn 1 bằng LLM.
 - Lỗi:
   - lỗi tạm thời (mạng, quá 5 giây, 429/529/5xx; thử lại một lần) → lần đó giai đoạn 1 bằng LLM; 3 lần liên tiếp thì tắt Jev tới hết phiên;
   - key bị từ chối hoặc câu trả lời sai kiểu → tắt Jev tới hết phiên và báo.
@@ -186,7 +199,7 @@ LLM mặc định là **Claude Sonnet 5.5** (`anthropic/claude-sonnet-5-5`):
 - bộ phân loại của child lấy tin nhắn của người dùng ở phiên gốc làm ý định, coi task và `steer_subagent` là lời của agent;
 - câu hỏi (luật ask, chạm giới hạn, mọi câu hỏi của manual và accept edits) hiện ở UI của phiên gốc, gắn nhãn `[subagent]`.
 
-Spawn `Agent` luôn qua bộ phân loại (xét nội dung task); ở manual và accept edits thì hỏi bạn. Trong mọi mode trừ bypass, agent `isolated: true`, `extensions: false` hoặc danh sách extension thiếu `pi-auto-mode` bị chặn vì child sẽ chạy không có cổng. Định nghĩa agent được đọc như pi-subagents nạp: `.pi/agents/`, `.agents/agents/` của thư mục làm việc và `agents/` của agent dir (theo thứ tự ưu tiên đó), tên agent là `name:` trong frontmatter (không có thì tên file), không phân biệt hoa thường; `isolated` của frontmatter thắng tham số của lời gọi. Liên kết cha–con dùng sự kiện `subagents:child:session-created` do bản vá runtime của pi-subagents phát.
+Spawn `Agent` ở auto qua bộ phân loại (xét nội dung task); ở manual và accept edits chạy ngay như Claude Code, lệnh của subagent vẫn bị hỏi. Trong mọi mode trừ bypass, agent `isolated: true`, `extensions: false` hoặc danh sách extension thiếu `pi-auto-mode` bị chặn vì child sẽ chạy không có cổng. Định nghĩa agent được đọc như pi-subagents nạp: `.pi/agents/`, `.agents/agents/` của thư mục làm việc và `agents/` của agent dir (theo thứ tự ưu tiên đó), tên agent là `name:` trong frontmatter (không có thì tên file), không phân biệt hoa thường; `isolated` của frontmatter thắng tham số của lời gọi. Liên kết cha–con dùng sự kiện `subagents:child:session-created` do bản vá runtime của pi-subagents phát.
 
 ## Cấu hình
 
@@ -242,6 +255,8 @@ Spawn `Agent` luôn qua bộ phân loại (xét nội dung task); ở manual và
 - Tiếng Anh là ngôn ngữ chính của Jev. Giai đoạn 1 không đọc tin nhắn người dùng nên không bị ảnh hưởng; probe trên nội dung không phải tiếng Anh kém chính xác hơn.
 - Probe chỉ chạy khi có key Jev và chỉ với kết quả mang nội dung bên ngoài. File đọc trong workspace (kể cả repo vừa clone) không được quét. Nội dung dài hơn 24.000 ký tự chỉ được quét phần đầu và phần cuối.
 - Kết quả subagent trả về được probe quét, nhưng không xét lại cả lịch sử hành động của subagent như Claude Code.
+- **No** chỉ dừng lượt khi mọi lời gọi trong cùng một lô tool song song đều bị chặn kiểu này (cách `terminate` của Pi); lời gọi khác trong lô đã được duyệt vẫn chạy.
+- Accept edits cho `sed -i` chạy theo đối số, như Claude Code: script của `sed` có thể tự ghi file khác (lệnh `w`) hoặc chạy lệnh (`e` của GNU sed) mà không bị hỏi.
 - Bước 4 chỉ nhận ra các lệnh shell ở trên. Script tự xoá thư mục (`python -c "shutil.rmtree(...)"`, `node -e`...) hoặc lệnh xoá trên máy khác (`ssh`, `docker exec`) không bị hỏi.
 - Bước 5 cũng vậy:
   - chỉ thấy đích là chữ thuần, `$HOME/…` và đường dẫn tương đối sau `cd`;

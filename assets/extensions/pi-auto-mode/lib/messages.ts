@@ -27,6 +27,22 @@ export const USER_DENIED = "The user denied permission for this action. Do not r
 /** Manual mode: người dùng chọn Deny (hoặc đóng hộp thoại) cho một lời gọi cần duyệt. */
 export const MANUAL_DECLINED = "The user declined this action in manual permission mode. Do not retry it unchanged or work around it (no other tool, script, encoded or split command, or sub-agent to get the same effect). Take a different approach, or ask the user how they want to proceed.";
 
+/** Người dùng chọn No (không lời nhắn) ở phiên chính: lượt dừng lại như Claude Code. */
+export const MANUAL_STOPPED = "The user declined this action and stopped the turn. Do not retry it; wait for the user's next message.";
+
+/** rm vào đường dẫn quan trọng: hết giờ hỏi, người dùng không trả lời, hoặc không ai trả lời được. */
+export function criticalDenied(why: "timeout" | "repeated" | "unattended"): string {
+  const head = why === "timeout"
+    ? "This removal targets a critical path and the user did not answer the approval prompt in time, so it was not run."
+    : why === "repeated"
+      ? "This removal targets a critical path. Earlier approval prompts went unanswered, so critical-path removals are denied until the user sends a new message."
+      : "This removal targets a critical path and needs the user's approval, but no one can answer in this session, so it was not run.";
+  return `${head} Do not try another way to remove it. Report what you wanted to delete and why, and leave the removal to the user. If the command uses a variable, rewrite it with a literal path or a guard such as "\${DIR:?}".`;
+}
+
+/** Lần đọc đầu ngoài workspace ở auto mode bị từ chối. */
+export const OUTSIDE_READ_DECLINED = "The user did not allow this read outside the working directories. Continue without it; if you need the file, ask the user to add its directory with /add-dir.";
+
 /** Người dùng từ chối kèm lời nhắn ("No, and tell Pi what to do differently"). */
 export function manualDeclinedWith(comment: string): string {
   return `The user declined this action and said: ${JSON.stringify(comment)}. Follow that guidance instead. Do not retry the declined action unchanged or work around it.`;
@@ -53,8 +69,8 @@ export function modeInstructions(mode: PermissionMode): string {
   if (mode === "manual" || mode === "acceptEdits") {
     return [
       mode === "manual"
-        ? "Manual permission mode is active: reads and read-only commands run right away; other tool calls (file edits, commands that change things, network access, sub-agents) show the user an approval prompt before they run."
-        : "Accept-edits permission mode is active: reads, read-only commands, file edits inside the working directory and mkdir/touch/cp/mv there run right away; other tool calls (commands that change things, network access, edits outside the project, sub-agents) show the user an approval prompt before they run.",
+        ? "Manual permission mode is active: reads and read-only commands run right away; other tool calls (file edits, commands that change things, network access) show the user an approval prompt before they run. Sub-agents start without a prompt, but their tool calls are checked the same way."
+        : "Accept-edits permission mode is active: reads, read-only commands, file edits inside the working directory and mkdir/touch/rm/rmdir/mv/cp/sed -i there run right away; other tool calls (commands that change things, network access, edits outside the project) show the user an approval prompt before they run.",
       "Just make the tool call; do not ask for permission in text first. If the user declines an action, do not retry it unchanged or work around it; take a different approach or ask the user how to proceed.",
     ].join(" ");
   }

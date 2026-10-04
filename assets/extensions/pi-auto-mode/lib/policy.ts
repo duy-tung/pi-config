@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import type { PermissionMode } from "./config.ts";
+import { type PermissionMode, prompts } from "./config.ts";
 import {
   criticalPathReason, insideAny, isSelfProtected, protectedReason, resolveShellPath, resolveToolPath, temporaryRoots, URL_LIKE,
 } from "./paths.ts";
@@ -8,8 +8,8 @@ import { detectPowerShellRisks, detectRisks } from "./risks.ts";
 import { type DeniedPath, denies, searchReadPaths } from "./read-scope.ts";
 import { allowCoversShell, firstMatch, type RuleMatchTarget, type RuleSet } from "./rules.ts";
 import {
-  analyzeShell, commandName, commandText, findRemoval, isReadOnlyCommand, isReadOnlyShell, optionOutputs, removeArgs, type ShellAnalysis,
-  type SimpleCommand,
+  analyzeShell, commandName, commandText, findRemoval, isReadOnlyCommand, isReadOnlyShell, optionOutputs, removeArgs, ruleUnits,
+  safeAssignments, type ShellAnalysis, type SimpleCommand,
 } from "./shell.ts";
 import { READ_TOOLS, SHELL_TOOLS, WRITE_TOOLS } from "./tools.ts";
 
@@ -22,7 +22,8 @@ import { READ_TOOLS, SHELL_TOOLS, WRITE_TOOLS } from "./tools.ts";
 export type Decision =
   | { kind: "allow"; via: string }
   | { kind: "deny"; reason: string; rule?: string; message?: string }
-  | { kind: "ask"; reason: string }
+  /** critical: rm vào đường dẫn quan trọng ở auto/bypass (hỏi có đếm ngược); outsideRead: lần đọc đầu ngoài workspace ở auto. */
+  | { kind: "ask"; reason: string; critical?: boolean; outsideRead?: string[] }
   | { kind: "classify"; notes: string[]; escalate?: boolean };
 
 export interface PolicyContext {
@@ -40,6 +41,10 @@ export interface PolicyContext {
   agentIsUngated?: (input: Record<string, unknown>) => boolean;
   /** Thư mục tạm (cho lib/risks.ts); mặc định temporaryRoots(). */
   tempRoots?: string[];
+  /** permissions.blockReadsOutsideWorkingDirectories: tool đọc file từ chối đọc ngoài workspace ở mọi mode. */
+  blockOutsideReads?: boolean;
+  /** Người dùng đã chọn "keep allowing" ở lần đọc đầu ngoài workspace của auto mode. */
+  outsideReadsAccepted?: boolean;
 }
 
 export interface ToolCall {
@@ -58,6 +63,7 @@ export const SAFE_TOOLS = new Set([
   "tool_search",
 ]);
 const FS_WRITE_COMMANDS = new Set(["mkdir", "touch", "cp", "mv"]);
+const ACCEPT_EDITS_COMMANDS = new Set([...FS_WRITE_COMMANDS, "rm", "rmdir", "sed"]);
 const DIRECTORY_CHANGERS = new Set(["cd", "pushd", "popd"]);
 
 export interface CallFacts {
@@ -231,15 +237,28 @@ function readable(file: string, pc: PolicyContext): boolean {
   return DEVICES.has(file) || insideAny(pc.readRoots ?? pc.roots, file);
 }
 
-/** mkdir/touch/cp/mv với mọi đích nằm trong workspace, không phải đường dẫn được bảo vệ. */
+/**
+ * Lệnh file với mọi đối số nằm trong workspace, không phải đường dẫn được bảo vệ: mkdir/touch/cp/mv (acceptEdits và
+ * auto), thêm rm/rmdir/sed -i ở acceptEdits như Claude Code. Cho phép biến môi trường an toàn (`LANG=C`) và wrapper
+ * timeout/time/nice/nohup/stdbuf đứng trước.
+ */
 function workspaceFileOps(commands: SimpleCommand[], pc: PolicyContext, home: string): boolean {
   if (commands.some((command) => DIRECTORY_CHANGERS.has(commandName(command)))) return false;
+  const allowed = pc.mode === "acceptEdits" ? ACCEPT_EDITS_COMMANDS : FS_WRITE_COMMANDS;
   let sawWrite = false;
   for (const command of commands) {
-    if (isReadOnlyCommand(command)) continue;
+    if (!safeAssignments(command)) return false;
+    if (isReadOnlyCommand({ ...command, assignments: [] })) continue;
     const name = commandName(command);
-    if (!FS_WRITE_COMMANDS.has(name) || command.words[0] !== name || command.redirects.length || command.wrapped) return false;
-    const args = command.words.slice(1).filter((word) => !word.startsWith("-"));
+    if (!allowed.has(name) || command.words[0] !== name || command.redirects.length || command.wrapped) return false;
+    if (name === "sed" && !command.words.some((word) => /^-i|^--in-place(?:=|$)/u.test(word))) return false;
+    // Đối số và giá trị của tùy chọn (`--target-directory=DIR`, `-tDIR` của cp/mv) đều phải nằm trong workspace.
+    const args = command.words.slice(1).flatMap((word) => {
+      if (!word.startsWith("-")) return [word];
+      const eq = word.startsWith("--") ? word.indexOf("=") : -1;
+      if (eq > 0) return [word.slice(eq + 1)];
+      return (name === "cp" || name === "mv") && /^-t./u.test(word) ? [word.slice(2)] : [];
+    });
     if (!args.length) return false;
     for (const word of args) {
       const file = resolveShellPath(word, pc.cwd, home);
@@ -302,14 +321,27 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
   if (ask) return { kind: "ask", reason: `The rule ${ask.raw} requires your confirmation.` };
 
   if (facts.critical) {
-    // Claude Code: auto mode đưa cho bộ phân loại, bypass vẫn phải hỏi người dùng.
-    if (pc.mode === "bypass") return { kind: "ask", reason: `This command ${facts.critical}.` };
+    // Claude Code: auto và bypass hỏi người dùng (đếm ngược 2 phút), không đưa bộ phân loại; manual/acceptEdits hỏi như
+    // mọi lời gọi khác, không có "don't ask again". Không luật allow nào cho qua.
+    if (pc.mode === "auto" || pc.mode === "bypass") return { kind: "ask", reason: `This command ${facts.critical}.`, critical: true };
     notes.push(`this command ${facts.critical}`);
   }
 
   // Riêng pi-config: cơ chế tự chạy, tắt kiểm TLS, ghi đường dẫn hệ thống: ghi chú cho bộ phân loại (bỏ qua Jev, xem
   // classify ở trên); manual/acceptEdits hỏi kèm ghi chú. Bypass cho chạy như Claude Code.
   if (facts.risks?.length) notes.push(...facts.risks.map((risk) => `this command ${risk}`));
+
+  // Như Claude Code: blockReadsOutsideWorkingDirectories chặn tool đọc file ngoài workspace ở mọi mode, kể cả bypass;
+  // lệnh shell chỉ đọc vào đó thì hỏi.
+  if (pc.blockOutsideReads && (facts.kind === "read" || (facts.kind === "shell" && facts.readOnly)) && !facts.paths.every((file) => readable(file, pc))) {
+    if (facts.kind === "read") {
+      return {
+        kind: "deny", rule: "blockReadsOutsideWorkingDirectories",
+        reason: "Reads outside the working directories are blocked by permissions.blockReadsOutsideWorkingDirectories. Ask the user to add the directory with /add-dir if you need it.",
+      };
+    }
+    return { kind: "ask", reason: "This command reads outside the working directories, which permissions.blockReadsOutsideWorkingDirectories blocks for file tools." };
+  }
 
   if (pc.mode === "bypass") return { kind: "allow", via: "bypass" };
 
@@ -324,8 +356,13 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
     case "safe":
       return { kind: "allow", via: "safe tool" };
     case "read": {
-      // Đọc ngoài workspace (vd grep ~/ tìm token) qua bộ phân loại; Claude Code cũng không tự cho qua.
       if (facts.paths.every((file) => readable(file, pc))) return { kind: "allow", via: "safe tool" };
+      // Như Claude Code: auto cho tool đọc file đọc ngoài workspace, chỉ hỏi một lần đầu; manual/acceptEdits hỏi (cho
+      // đọc cả thư mục tới hết phiên).
+      if (pc.mode === "auto") {
+        if (pc.outsideReadsAccepted) return { kind: "allow", via: "read outside the working directories" };
+        return { kind: "ask", reason: "Claude Code-style first read outside the working directories.", outsideRead: facts.paths };
+      }
       notes.push("reads outside the working directory");
       return classify();
     }
@@ -350,9 +387,13 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
           notes.push("reads outside the working directory");
         }
         if (analysis.plain) {
-          const commands = analysis.commands.filter((command) => !isReadOnlyCommand(command));
+          const commands = ruleUnits(analysis).filter((command) => !isReadOnlyCommand(command));
           if (allowCoversShell(pc.rules.allow, commands.map(commandText))) return { kind: "allow", via: "allow rule" };
-          if (pc.mode !== "manual" && workspaceFileOps(analysis.commands, pc, home)) return { kind: "allow", via: "workspace file operation" };
+        }
+        // Biến môi trường an toàn (LANG=C) đứng trước lệnh file không làm mất lối đi nhanh của acceptEdits/auto.
+        const plainExceptEnv = analysis.plain || analysis.problems.every((problem) => problem === "environment assignment");
+        if (pc.mode !== "manual" && plainExceptEnv && workspaceFileOps(ruleUnits(analysis), pc, home)) {
+          return { kind: "allow", via: "workspace file operation" };
         }
       }
       if (!analysis.plain && analysis.problems.length) notes.push(`shell constructs: ${analysis.problems.slice(0, 4).join(", ")}`);
@@ -373,7 +414,9 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
           reason: "This subagent would run without extensions (isolated), so the permission gate could not check its actions. Spawn it without isolated/extensions:false, or ask the user to run it in bypass mode.",
         };
       }
-      // Luật allow `Agent` chỉ có ở manual (auto bỏ luật này, xem isDangerousAllow).
+      // Như Claude Code: tool Agent không cần hỏi ở manual/acceptEdits; từng lệnh của subagent vẫn qua cổng (hỏi
+      // qua phiên gốc). Auto xét nội dung task lúc spawn. Luật allow `Agent` chỉ có hiệu lực ngoài auto (isDangerousAllow).
+      if (prompts(pc.mode)) return { kind: "allow", via: "subagent (its actions are checked)" };
       if (firstMatch(pc.rules.allow, facts.target, pc.cwd, home)) return { kind: "allow", via: "allow rule" };
       return classify();
     default: {
