@@ -103,9 +103,10 @@ test('/agents và /permissions trong phiên Pi thật: Model/Thinking của agen
     keystrokes.push(row('worker'), [...'anthropic/claude-sonnet-5-5', '\r'], ['\x1b']);
     await agents(/^Agent types \(3\)$/u, /^Model: /u, /^medium$/u, /^Thinking: medium$/u, /^high$/u);
     const detail = titles.indexOf('worker');
-    assert.deepEqual(menus[detail], ['Model: openai-codex/gpt-6.1-sol', 'Thinking: max', 'Edit', 'Disable', 'Delete', 'Back']);
+    assert.deepEqual(menus[detail], ['Model: anthropic/claude-opus-5-5', 'Thinking: high', 'Edit', 'Disable', 'Delete', 'Back']);
     assert.equal(titles[detail + 1], 'Thinking for worker (anthropic/claude-sonnet-5-5)');
-    assert.ok(menus[detail + 1].includes('medium') && menus[detail + 1].includes('high'), menus[detail + 1].join(' | '));
+    // Mức đang dùng được đánh dấu "(current)".
+    assert.ok(['medium', 'high'].every(level => menus[detail + 1].some(option => option.split(' ')[0] === level)), menus[detail + 1].join(' | '));
     assert.deepEqual(menus[detail + 2].slice(0, 2), ['Model: anthropic/claude-sonnet-5-5', 'Thinking: medium']);
     assert.ok(menus[detail + 3].includes('medium (current)'), menus[detail + 3].join(' | '));
     assert.deepEqual(notices.filter(item => item.message.startsWith('worker: ')).map(item => item.message), [

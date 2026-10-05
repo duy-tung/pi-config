@@ -25,10 +25,10 @@ Installer ghi mặc định trong `assets/configs/model-defaults.json` vào các
 | Vai | Mặc định |
 |---|---|
 | `main` | Claude Opus 5.5 / high |
-| `researcher` | GLM-5.3-Flash / max |
-| `worker` | GPT-6.1 Sol / max |
-| `reviewer` | GPT-6 Astra / high |
-| `advisor` | GPT-6 Astra / high |
+| `researcher` | Claude Sonnet 5.5 / high |
+| `worker` | Claude Opus 5.5 / high |
+| `reviewer` | Claude Fable 5.1 / high |
+| `advisor` | Claude Fable 5.1 / high |
 
 `enabledModels` (danh sách của Ctrl+P) và `modelThinkingLevels` (mức thinking khi đổi sang một model) được suy ra từ các mặc định này, model của `main` đứng đầu. Đổi bằng `/scoped-models` của Pi.
 
@@ -37,12 +37,7 @@ Cài lại gộp ba chiều các file đó:
 - Vai bạn chưa đổi nhận mặc định mới.
 - Nếu bạn đã đổi một vai mà bản mới cũng đổi mặc định của vai đó, installer giữ giá trị của bạn và báo xung đột kèm mặc định mới.
 
-Mặc định cần đăng nhập Claude, Codex và OpenCode Go. Chỉ có Claude thì sau khi cài, đăng nhập Claude (`/login`) rồi đổi các vai còn lại sang Claude, ví dụ:
-- researcher dùng Sonnet 5.5;
-- worker dùng Opus 5.5;
-- reviewer và advisor dùng Fable 5.1, khác model với worker.
-
-Model phân loại của auto mode mặc định đã là Claude.
+Mặc định chỉ cần đăng nhập Claude, kể cả model phân loại của auto mode (Sonnet 5.5). Reviewer và advisor dùng Fable 5.1, khác model với worker và phiên chính. Muốn một vai dùng GPT (OpenAI Codex) hay GLM (OpenCode Go) thì đăng nhập provider đó rồi đổi vai như trên.
 
 Advisor mặc định khác `main`, vì hỏi chính mình không thêm góc nhìn. Tuy vậy, chặn advisor trùng model (`advisorDisableSameModel`) vẫn được tắt trong `advisor.json`, vì fallback `advisorFallbackModel` (Opus 5.5, dùng khi request tới advisor lỗi) trùng model của phiên chính. Ảnh trong hội thoại được gửi kèm cho advisor khi model advisor nhận ảnh.
 
@@ -52,7 +47,7 @@ Gate là thời điểm system prompt dặn phiên chính gọi `ask_advisor`. I
 - bật gate `failure`: sau hai lần thử giống nhau đều thất bại, hoặc hai bước liền không tiến triển;
 - bật gate `completion`: trước khi báo xong một việc không nhỏ;
 - tắt gate `plan`;
-- tối đa 5 lần gọi mỗi phiên.
+- không giới hạn số lần gọi mỗi phiên.
 
 Đổi bằng `/advisor-settings` của pi-advisor-flow. Cài lại giữ giá trị bạn đã đổi.
 
