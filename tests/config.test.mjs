@@ -41,12 +41,11 @@ for (const platform of ["darwin", "linux", "win32"]) {
       const settings = json(p.join(profile.agentDir, "settings.json"));
       assert.deepEqual([profile.runtime, settings.defaultProvider, settings.defaultModel, settings.defaultThinkingLevel, settings.theme], expected[name]);
       assert.deepEqual(settings.modelThinkingLevels, {
-        "anthropic/claude-opus-5-5": "high", "openai-codex/gpt-6.1-sol": "max",
-        "openai-codex/gpt-6-astra": "high", "opencode-go/glm-5.3-flash": "max",
+        "anthropic/claude-opus-5-5": "high", "anthropic/claude-fable-5-1": "high", "anthropic/claude-sonnet-5-5": "high",
       });
       assert.equal(settings.shellPath, options.shellPath);
-      // Chỉ skill của Firecrawl; pi-config không cài skill quy trình.
-      assert.deepEqual(settings.skills, [p.join(options.root, "sources", "firecrawl-cli-source", "skills")]);
+      // Chỉ skill firecrawl gốc (nó dẫn tới các skill firecrawl-* cùng thư mục); pi-config không cài skill quy trình.
+      assert.deepEqual(settings.skills, [p.join(options.root, "sources", "firecrawl-cli-source", "skills", "firecrawl")]);
       assert.ok(!settings.skills.some((entry) => entry.includes("mattpocock")));
       assert.deepEqual(settings.extensions, [...["rose-pine-palette.ts", "pi-rewind", "claude-usage", "pi-auto-mode"]
         .map((entry) => p.join(options.root, "assets", "extensions", entry)), "-builtin:mcp", "-builtin:codemode", "-builtin:tool-search", "-builtin:llama.cpp"]);
@@ -59,11 +58,11 @@ for (const platform of ["darwin", "linux", "win32"]) {
       const providers = json(p.join(profile.agentDir, "models.json")).providers;
       assert.deepEqual(Object.keys(providers), ["openai-codex"], "Opus 5.5 dùng context 1M của catalog");
       assert.deepEqual(providers["openai-codex"].modelOverrides, { "gpt-6-sol": { contextWindow: 872000 }, "gpt-6.1-sol": { contextWindow: 872000 }, "gpt-6-astra": { contextWindow: 872000 } });
-      assert.deepEqual(settings.enabledModels, ["anthropic/claude-opus-5-5", "openai-codex/gpt-6.1-sol", "openai-codex/gpt-6-astra", "opencode-go/glm-5.3-flash"]);
+      assert.deepEqual(settings.enabledModels, ["anthropic/claude-opus-5-5", "anthropic/claude-fable-5-1", "anthropic/claude-sonnet-5-5"]);
       if (name === "main") {
       const roles = {
-        researcher: ["opencode-go/glm-5.3-flash", "max"], worker: ["openai-codex/gpt-6.1-sol", "max"],
-        reviewer: ["openai-codex/gpt-6-astra", "high"],
+        researcher: ["anthropic/claude-sonnet-5-5", "high"], worker: ["anthropic/claude-opus-5-5", "high"],
+        reviewer: ["anthropic/claude-fable-5-1", "high"],
       };
       for (const [role, [model, thinking]] of Object.entries(roles)) {
         const agent = read(p.join(profile.agentDir, "agents", `${role}.md`)).replaceAll("\r\n", "\n");
@@ -74,11 +73,11 @@ for (const platform of ["darwin", "linux", "win32"]) {
         assert.equal(field("inherit_context"), "false");
         assert.equal(field("isolated"), "false");
         assert.equal(field("max_turns"), "0", "Không giới hạn số lượt");
-        // Worker ghi file: chạy foreground. Role Codex (Sol, Astra) nạp
-        // pi-usage để request fast có chi phí đúng.
+        // Worker ghi file: chạy foreground. Worker và reviewer nạp pi-usage để request fast có chi phí đúng
+        // khi người dùng đổi vai đó sang model Codex.
         const foreground = role === "worker";
         assert.equal(field("run_in_background"), foreground ? "false" : undefined, role);
-        assert.equal(JSON.parse(field("extensions")).includes("pi-usage"), model.startsWith("openai-codex/"), role);
+        assert.equal(JSON.parse(field("extensions")).includes("pi-usage"), role !== "researcher", role);
         assert.equal(JSON.parse(field("extensions")).includes("pi-web-access"), role === "researcher", role);
       }
       const subagents = json(p.join(profile.agentDir, "subagents.json"));
@@ -171,9 +170,9 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.equal(advisor.executor, `${settings.defaultProvider}/${settings.defaultModel}`);
       // Không có executorEffort: thinking của phiên chính theo settings.json (/model, /thinking của Pi).
       assert.equal(advisor.executorEffort, undefined);
-      assert.equal(advisor.advisor, "openai-codex/gpt-6-astra");
+      assert.equal(advisor.advisor, "anthropic/claude-fable-5-1");
       assert.equal(advisor.advisorEffort, "high");
-      // Khi request tới Astra lỗi, thử lại một lần với Opus (cùng advisorEffort). Fallback trùng model của phiên chính,
+      // Khi request tới advisor lỗi, thử lại một lần với Opus (cùng advisorEffort). Fallback trùng model của phiên chính,
       // nên phải tắt chặn advisor trùng model; mặc định đặt advisor khác main nên lượt gọi chính không đổi.
       assert.equal(advisor.advisorFallbackModel, "anthropic/claude-opus-5-5");
       assert.equal(advisor.advisorDisableSameModel, false);
@@ -182,7 +181,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.deepEqual([advisor.advisorPlanGate, advisor.advisorFailureGate, advisor.advisorCompletionGate], [false, true, true]);
       assert.equal(advisor.advisorAutoLoopGate, false);
       assert.equal(advisor.gateFailureMode, "warn-and-continue");
-      assert.equal(advisor.advisorMaxCallsPerSession, 5);
+      assert.equal(advisor.advisorMaxCallsPerSession, undefined, "không giới hạn số lần gọi mỗi phiên");
       // Diff đầy đủ chiếm tối đa một nửa contextMaxChars: 20.000 ký tự diff, còn ít nhất 40.000 cho hội thoại.
       assert.equal(advisor.advisorGitContext, "full");
       assert.equal(advisor.advisorGitContextMaxChars, undefined, "mặc định 20.000 của pi-advisor-flow");
@@ -251,18 +250,18 @@ test("model mặc định đi tới mọi file gốc (settings, file role, advis
   const read = (name) => files.find((entry) => entry.path === path.posix.join(agentDir, name)).content;
   const settings = JSON.parse(read("settings.json"));
   assert.deepEqual([settings.defaultProvider, settings.defaultModel, settings.defaultThinkingLevel], ["anthropic", "claude-opus-5-5", "high"]);
-  assert.deepEqual(settings.enabledModels, ["anthropic/claude-opus-5-5", "openai-codex/gpt-6.1-sol", "openai-codex/gpt-6-astra", "opencode-go/glm-5.3-flash"]);
+  assert.deepEqual(settings.enabledModels, ["anthropic/claude-opus-5-5", "anthropic/claude-fable-5-1", "anthropic/claude-sonnet-5-5"]);
   assert.deepEqual(CLASSIFIER, { model: "anthropic/claude-sonnet-5-5", stage2Reasoning: "low" });
   assert.deepEqual([settings.autoMode.model, settings.autoMode.stage2Reasoning, settings.autoMode.jev.model], ["anthropic/claude-sonnet-5-5", "low", "jev-1.13.0"]);
   const frontmatter = (role) => read(`agents/${role}.md`).split("\n---\n")[0];
-  assert.match(frontmatter("worker"), /^model: openai-codex\/gpt-6\.1-sol\nthinking: max$/mu);
-  assert.match(frontmatter("reviewer"), /^model: openai-codex\/gpt-6-astra\nthinking: high$/mu);
-  assert.match(frontmatter("researcher"), /^model: opencode-go\/glm-5\.3-flash\nthinking: max$/mu);
+  assert.match(frontmatter("worker"), /^model: anthropic\/claude-opus-5-5\nthinking: high$/mu);
+  assert.match(frontmatter("reviewer"), /^model: anthropic\/claude-fable-5-1\nthinking: high$/mu);
+  assert.match(frontmatter("researcher"), /^model: anthropic\/claude-sonnet-5-5\nthinking: high$/mu);
   // Model của từng vai đổi thẳng trong file gốc (/model, /agents, /advisor-models): không còn lớp cấu hình hay lệnh riêng.
   assert.ok(!files.some((entry) => /model-roles/u.test(entry.path)));
   assert.ok(!settings.extensions.some((entry) => entry.endsWith("model-roles")));
   const advisor = JSON.parse(read("advisor.json"));
   assert.deepEqual([advisor.executor, advisor.advisor, advisor.advisorEffort, advisor.alwaysOn],
-    ["anthropic/claude-opus-5-5", "openai-codex/gpt-6-astra", "high", true]);
+    ["anthropic/claude-opus-5-5", "anthropic/claude-fable-5-1", "high", true]);
   assert.ok(!Object.hasOwn(advisor, "executorEffort"), "advisor không đặt lại thinking của phiên chính");
 });

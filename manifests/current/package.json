@@ -13,7 +13,7 @@
     "@juicesharp/rpiv-todo": "2.12.0",
     "@narumitw/pi-usage": "0.61.2",
     "@tintinweb/pi-subagents": "0.19.0",
-    "pi-advisor-flow": "0.11.0",
+    "pi-advisor-flow": "0.11.1",
     "pi-open-tui": "0.3.11",
     "pi-web-access": "0.35.0",
     "pi-background-tasks": "file:../../vendor/pi-background-tasks-2.6.9-pi102.tgz",

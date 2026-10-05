@@ -203,22 +203,12 @@
     {
       "package": "pi-advisor-flow",
       "versions": {
-        "current": "0.11.0"
+        "current": "0.11.1"
       },
       "file": "dist/index.js",
-      "originalSha256": "aedb03fecc1d4179153b74b9d1e9573cbac1c9a3a0f569c9a037ca8808c1edf3",
-      "patchedSha256": "7356e59fb482ffbf8fbfad021d92cf8a0bcf1dc993a128ce5057c904e8814fa2",
+      "originalSha256": "ffcb1b3e02a715012319e9cb3bfdf9ad1dc97b3b91fe476b9cbe0d66bbedcf42",
+      "patchedSha256": "1379437d2a066f975b594af281e680ed24f0f2c6eee29cf0a159f1ebdc23522f",
       "edits": [
-        {
-          "before": "    ref\n  };\n};\nvar ADVISOR_STREAM_UPDATE_INTERVAL_MS",
-          "after": "    ref,\n    streamModel: (() => {\n      const runtime = ctx.modelRegistry.runtime;\n      if (!runtime?.streamSimple) throw new Error(\"Pi ModelRuntime transport unavailable; refusing unshaped advisor request\");\n      return runtime.streamSimple.bind(runtime);\n    })()\n  };\n};\nvar ADVISOR_STREAM_UPDATE_INTERVAL_MS",
-          "count": 1
-        },
-        {
-          "before": "var collectTextStream = async (resolved, options, streamModel = stream) => {",
-          "after": "var collectTextStream = async (resolved, options, streamModel = resolved.streamModel) => {",
-          "count": 1
-        },
         {
           "before": "    const budget = isSimpleMode() ? undefined : session.remainingCalls(getAdvisorMaxCallsPerSession());\n    if (budget !== undefined) {\n      guidelines.push(`Advisor calls remaining this session: ${budget}.\nReserve calls for material decisions, repeated failures, or final review.`);\n",
           "after": "    // Local integration: a fixed budget line keeps the system prompt, and so the executor's prompt cache,\n    // unchanged after each consultation; ask_advisor itself reports when the budget is exhausted.\n    const budget = isSimpleMode() ? undefined : getAdvisorMaxCallsPerSession();\n    if (budget !== undefined) {\n      guidelines.push(`Advisor calls are limited to ${budget} per session; ask_advisor reports when none remain.\nReserve calls for material decisions, repeated failures, or final review.`);\n",

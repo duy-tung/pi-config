@@ -2,7 +2,6 @@
   "advisorPlanGate": false,
   "advisorFailureGate": true,
   "advisorCompletionGate": true,
-  "advisorMaxCallsPerSession": 5,
   "alwaysOn": true,
   "advisorFallbackModel": "anthropic/claude-opus-5-5",
   "advisorDisableSameModel": false,

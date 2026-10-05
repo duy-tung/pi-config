@@ -32,10 +32,16 @@ for (const dir of [agentDir, cwd]) fs.mkdirSync(dir, { recursive: true });
 for (const name of ["settings.json", "keybindings.json", "models.json", "advisor.json", "subagents.json", "open-tui.json", "pi-usage.json"]) {
   if (fs.existsSync(path.join(configuration.agentDir, name))) fs.copyFileSync(path.join(configuration.agentDir, name), path.join(agentDir, name));
 }
-// Kiểm cơ chế của bản cài với model mặc định (provider giả chỉ có các model này), dù file gốc đã đổi sang model
-// khác (/model, /agents, /advisor-models); model/thinking bạn chọn được pi-doctor kiểm trong catalog của Pi.
+// Kiểm cơ chế của bản cài với các vai đặt sang model của provider giả (GLM, GPT-6.1 Sol, GPT-6 Astra như khi người dùng
+// chọn chúng), dù mặc định và file gốc dùng Claude; model/thinking thật được pi-doctor kiểm trong catalog của Pi.
 const modelRoles = await import(pathToFileURL(path.join(installRoot, "bin", "model-roles.mjs")).href);
-const defaults = modelRoles.nativeValues(modelRoles.loadModelDefaults(installRoot));
+const defaults = modelRoles.nativeValues({
+  ...modelRoles.loadModelDefaults(installRoot),
+  researcher: { model: "opencode-go/glm-5.3-flash", thinking: "max" },
+  worker: { model: "openai-codex/gpt-6.1-sol", thinking: "max" },
+  reviewer: { model: "openai-codex/gpt-6-astra", thinking: "high" },
+  advisor: { model: "openai-codex/gpt-6-astra", thinking: "high" },
+});
 const modelId = (ref) => modelRoles.parseModelRef(ref).id;
 fs.mkdirSync(path.join(agentDir, "agents"));
 for (const name of modelRoles.SUBAGENT_ROLES) {
@@ -61,7 +67,8 @@ if (settings.rewind) settings.rewind.storageDir = path.join(fixture, "rewind");
 writeJson(path.join(agentDir, "settings.json"), settings);
 // Advisor luôn bật của bản cài, executor là model giả của parent thay cho Opus (fixture không có auth Claude).
 const advisorFile = path.join(agentDir, "advisor.json");
-writeJson(advisorFile, { ...readJson(advisorFile), executor: "config-test/parent", advisor: defaults.advisor.advisor, advisorEffort: defaults.advisor.advisorEffort });
+// Đặt giới hạn số lượt (mặc định không giới hạn) để kiểm bản vá giữ dòng giới hạn cố định trong system prompt.
+writeJson(advisorFile, { ...readJson(advisorFile), executor: "config-test/parent", advisor: defaults.advisor.advisor, advisorEffort: defaults.advisor.advisorEffort, advisorMaxCallsPerSession: 5 });
 writeJson(path.join(agentDir, "auth.json"), {});
 // Explicitly replace web config rather than copying a live credential command.
 writeJson(path.join(agentDir, "web-search.json"), {

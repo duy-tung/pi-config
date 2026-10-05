@@ -1,9 +1,9 @@
 {
   "roles": {
     "main": { "model": "anthropic/claude-opus-5-5", "thinking": "high" },
-    "researcher": { "model": "opencode-go/glm-5.3-flash", "thinking": "max" },
-    "worker": { "model": "openai-codex/gpt-6.1-sol", "thinking": "max" },
-    "reviewer": { "model": "openai-codex/gpt-6-astra", "thinking": "high" },
-    "advisor": { "model": "openai-codex/gpt-6-astra", "thinking": "high" }
+    "researcher": { "model": "anthropic/claude-sonnet-5-5", "thinking": "high" },
+    "worker": { "model": "anthropic/claude-opus-5-5", "thinking": "high" },
+    "reviewer": { "model": "anthropic/claude-fable-5-1", "thinking": "high" },
+    "advisor": { "model": "anthropic/claude-fable-5-1", "thinking": "high" }
   }
 }

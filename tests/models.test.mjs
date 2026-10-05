@@ -8,7 +8,7 @@ import {buildConfiguration} from '../lib/config.mjs';
 import {modelDefaults} from './install-fixture.mjs';
 
 const root = process.env.PI_CONFIG_TEST_ROOT;
-test('Pi: Opus 5.5/high 1M mặc định, Codex Sol/Astra 872K và advisor payload', {skip: !root}, async () => {
+test('Pi: Opus 5.5/high 1M mặc định, advisor Fable trong catalog, Codex Sol/Astra 872K và payload khi được chọn', {skip: !root}, async () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-models-'));
   const savedOffline = process.env.PI_OFFLINE;
   const savedFetch = globalThis.fetch;
@@ -45,11 +45,11 @@ test('Pi: Opus 5.5/high 1M mặc định, Codex Sol/Astra 872K và advisor paylo
       assert.equal(model.maxTokens, 128000);
       assert.equal(model.api, 'anthropic-messages');
       assert.ok(getSupportedThinkingLevels(model).includes(settings.defaultThinkingLevel));
-      for (const [id, level] of [['gpt-6.1-sol', 'max'], ['gpt-6-astra', 'high']]) {
-        const codex = runtime.getModel('openai-codex', id);
-        assert.equal(codex.contextWindow, 872000);
-        assert.equal(settings.modelThinkingLevels[`openai-codex/${id}`], level);
-        assert.ok(getSupportedThinkingLevels(codex).includes(level));
+      // Model Codex không còn là mặc định của vai nào, nhưng models.json vẫn nâng context khi người dùng chọn chúng.
+      for (const id of ['gpt-6.1-sol', 'gpt-6-astra']) assert.equal(runtime.getModel('openai-codex', id).contextWindow, 872000);
+      for (const [ref, level] of Object.entries(settings.modelThinkingLevels)) {
+        const [provider, id] = ref.split('/');
+        assert.ok(getSupportedThinkingLevels(runtime.getModel(provider, id)).includes(level), ref);
       }
       const settingsManager = SettingsManager.inMemory({...settings, packages: [], extensions: [], skills: [], themes: []});
       const resourceLoader = new DefaultResourceLoader({cwd: temp, agentDir, settingsManager, noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true});
@@ -63,11 +63,12 @@ test('Pi: Opus 5.5/high 1M mặc định, Codex Sol/Astra 872K và advisor paylo
       const advisorConfig = get('advisor.json');
       const [advisorProvider, advisorId] = advisorConfig.advisor.split('/');
       const advisorModel = runtime.getModel(advisorProvider, advisorId);
-      assert.equal(advisorModel.contextWindow, 872000);
-      assert.equal(advisorModel.provider, 'openai-codex');
-      assert.equal(advisorModel.id, 'gpt-6-astra');
+      assert.deepEqual([advisorModel.provider, advisorModel.id], ['anthropic', 'claude-fable-5-1']);
+      assert.ok(getSupportedThinkingLevels(advisorModel).includes(advisorConfig.advisorEffort));
+      // Khi một vai được đổi sang Codex: payload mang đúng model và mức reasoning.
+      const astra = runtime.getModel('openai-codex', 'gpt-6-astra');
       let captured;
-      const response = await streamSimple(advisorModel, {messages: [{role: 'user', content: 'Offline fixture', timestamp: 1}]}, {
+      const response = await streamSimple(astra, {messages: [{role: 'user', content: 'Offline fixture', timestamp: 1}]}, {
         apiKey: jwt, reasoning: 'high', transport: 'sse',
         onPayload(payload) { captured = payload; throw new Error('OFFLINE_CAPTURE'); },
       }).result();
