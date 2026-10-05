@@ -43,6 +43,15 @@ fs.renameSync(advisorAside,advisorDir);
 assert.equal(missing.status,1,missing.stdout+missing.stderr);
 assert.match(missing.stderr,/^current\/pi-advisor-flow: chưa cài \(thiếu /mu);
 assert.doesNotMatch(missing.stderr,/ENOENT|at file:/u);
+// Package người dùng thêm: npm:/git: do Pi tự cài khi mở phiên nên doctor không báo; đường dẫn không tồn tại thì báo.
+const userSettings=path.join(agentDir,'settings.json'),settingsBytes=fs.readFileSync(userSettings);
+const withPackages=readJson(userSettings);
+withPackages.packages.push({source:'git:github.com/example/skills@v1.0.0',skills:['!skills/misc/**']},'npm:@example/pi-tools@1.0.0',path.join(temporary,'no-such-package'));
+writeJson(userSettings,withPackages);
+const userPackages=spawnSync(process.execPath,[path.join(root,'bin/launch.mjs'),'doctor'],{encoding:'utf8'});
+fs.writeFileSync(userSettings,settingsBytes);
+assert.equal(userPackages.status,1,userPackages.stdout+userPackages.stderr);
+assert.deepEqual(userPackages.stderr.split('\n').filter(line=>line.startsWith('Thiếu package')),[`Thiếu package: ${path.join(temporary,'no-such-package')}`]);
 // TypeScript chỉ dùng để kiểm kiểu, không thuộc runtime: cài manifests/typecheck (ghim bằng lockfile) vào thư mục tạm.
 const typecheck=path.join(temporary,'typecheck');
 fs.cpSync(path.join(repo,'manifests','typecheck'),typecheck,{recursive:true});

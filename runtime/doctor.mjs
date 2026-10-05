@@ -36,7 +36,13 @@ const s=read(path.join(state.agentDir,'settings.json'));
 const models=await modelRolesReport({agentDir:state.agentDir,modules:path.join(root,'runtimes','current','node_modules')});
 console.log(models.lines.join('\n') || 'không đọc được cấu hình model');
 errors.push(...models.errors);warnings.push(...models.warnings);
-for(const pkg of s.packages)if(!fs.existsSync(typeof pkg==='string'?pkg:pkg.source))errors.push(`Thiếu package: ${typeof pkg==='string'?pkg:pkg.source}`);
+// Chỉ kiểm package là đường dẫn (của installer hoặc người dùng). Package npm:, git: hay URL do người dùng thêm thì Pi tự
+// cài khi mở phiên nếu còn thiếu.
+const remotePackage=source=>/^(?:npm:|git:|git@|https?:\/\/|ssh:\/\/)/u.test(source);
+for(const pkg of s.packages){
+  const source=typeof pkg==='string'?pkg:pkg.source;
+  if(!remotePackage(source)&&!fs.existsSync(path.resolve(state.agentDir,source)))errors.push(`Thiếu package: ${source}`);
+}
 for(const entry of s.extensions??[])if(typeof entry==='string'&&!entry.startsWith('-')&&path.isAbsolute(entry)&&!fs.existsSync(entry))errors.push(`Thiếu extension: ${entry}`);
 const webSearch=path.join(state.agentDir,'web-search.json');
 if(fs.existsSync(webSearch)){
