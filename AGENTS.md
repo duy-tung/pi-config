@@ -12,3 +12,10 @@ Giao tiếp và tài liệu vận hành bằng tiếng Việt. Repo mô tả b�
 - Dùng root, agent-dir và bin-dir tạm để kiểm thử; không chạy installer đè lên Pi đang dùng trên máy phát triển.
 - Kiểm thử bằng fixture, chặn mạng model và không dùng credential thật. Chạy check, unit và smoke phù hợp; xác nhận CI trên ba hệ điều hành trước khi phát hành.
 - Tài liệu trình bày hành vi, cấu hình, cách vận hành và giới hạn hiện tại. Giữ nội dung ngắn, thống nhất với manifest và source.
+
+## Xong khi
+
+- `npm run check && npm test && npm run smoke` đều đạt; báo bằng output thật (dòng PASS, số test pass/fail), không bằng lời tóm tắt.
+- Thay đổi hành vi có test ở đúng tầng (unit hoặc smoke/pi-test); sửa lỗi có kiểm tra đỏ trước, xanh sau.
+- Không nới assertion, bỏ test hay sửa checksum để qua; đổi package có bản vá thì chạy `node scripts/rehash-patches.mjs` và đọc từng dòng NEW/FAIL.
+- README và `docs/` khớp hành vi mới; thay đổi không nhỏ có reviewer (Agent) đọc diff trước khi báo xong.
