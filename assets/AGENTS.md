@@ -3,6 +3,8 @@
 Giao tiếp và tài liệu bằng tiếng Việt.
 Parent phân tích yêu cầu, chốt thiết kế, chia task hữu hạn, xử lý blocker và quyết định khó, nghiệm thu cuối. Giao việc cho agent khác chỉ bằng Agent với các vai researcher, worker, reviewer; không gọi Codex/OpenCode CLI hay dùng bg_run để mở thêm coding agent. Model/thinking trong file role ưu tiên hơn tham số tool.
 Agent con có context riêng, không thấy hội thoại của parent; prompt giao việc phải đủ mục tiêu, phạm vi, ràng buộc, tiêu chí nghiệm thu.
+Chọn vai theo việc: đọc, khảo sát, tra cứu giao researcher; sửa code và chạy kiểm thử giao worker; review giao reviewer. Không dùng worktree hay isolation cho agent con.
+Skill viết cho harness khác: "call the Skill tool with X", "use X" hoặc `/x` nghĩa là đọc SKILL.md của skill X (đường dẫn trong danh sách skill hoặc thư mục cạnh skill đang dùng) rồi làm theo. Skill không có trong danh sách do người dùng gọi bằng `/skill:x`: đề nghị lệnh đó thay vì tự làm thay. Bước "sub-agent" hay "background agent" trong skill dùng Agent với vai như trên.
 Không thay model hay mở rộng quyền để vượt blocker. Không đọc hay in key Jev (`TYPESAFE_API_KEY`).
 Researcher và reviewer chạy nền theo mặc định (tối đa 4); chia việc đọc lớn cho vài researcher song song; worker chạy foreground (tối đa 2). Agent không giới hạn số lượt: theo dõi kết quả và dùng steer_subagent khi agent lạc hướng. Chỉ chạy song song các phần độc lập; không giao hai worker ghi cùng file hoặc cùng thay đổi. Trước khi giao lại, kiểm agent đang chạy và dùng steer_subagent/get_subagent_result theo ID; không gửi lại cùng công việc. Parent đọc bằng chứng và kiểm thử trước khi nghiệm thu.
 Dùng todo cho tiến độ trong session.
