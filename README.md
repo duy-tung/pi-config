@@ -2,7 +2,7 @@
 
 [![Kiểm thử cài đặt](https://github.com/duy-tung/pi-config/actions/workflows/test.yml/badge.svg)](https://github.com/duy-tung/pi-config/actions/workflows/test.yml)
 
-Bộ cài **Pi 1.0.2** cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, native web search theo model (Codex, Claude) với Exa và Firecrawl dự phòng, quota Claude trong footer, permission kiểu Claude Code (manual, accept edits, auto mode và bypass) và giao diện Rosé Pine. Chỉ cài skill của công cụ (Firecrawl); không kèm bộ skill quy trình. Dependency, nguồn skills và bản vá được ghim để tái lập cấu hình.
+Bộ cài **Pi 1.1.0** cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, native web search theo model (GPT, Claude) với Exa và Firecrawl dự phòng, quota Claude trong footer, permission kiểu Claude Code (manual, accept edits, auto mode và bypass) và giao diện Rosé Pine. Chỉ cài skill của công cụ (Firecrawl); không kèm bộ skill quy trình. Dependency, nguồn skills và bản vá được ghim để tái lập cấu hình.
 
 ## Cài đặt
 
@@ -27,7 +27,7 @@ Chi tiết kiến trúc CPU, công cụ hệ thống và tùy chọn đường d
 ## Đăng nhập dịch vụ
 
 1. Chạy `pi`, dùng `/login` và chọn **Anthropic** (gói Pro/Max), hoặc đặt `ANTHROPIC_API_KEY`. Mọi vai mặc định là Claude: parent và worker Opus 5.5, researcher Sonnet 5.5, reviewer và advisor Fable 5.1, bộ phân loại của auto mode Sonnet 5.5. Xem [docs/claude-setup.md](docs/claude-setup.md).
-2. Tuỳ chọn, khi muốn đặt một vai sang GPT: trong `/login`, chọn **OpenAI Codex (legacy)** (provider `openai-codex`). "Sign in with ChatGPT" của provider **OpenAI** là provider khác (`openai`), pi-config không dùng. Model của OpenCode Go (vd GLM) cũng dùng được sau khi `/login` → **OpenCode Go** hoặc đặt `OPENCODE_API_KEY`.
+2. Tuỳ chọn, khi muốn đặt một vai sang GPT: `/login` → **OpenAI** → **Sign in with ChatGPT** (provider `openai`, dùng gói ChatGPT qua Responses API của `api.openai.com`), rồi chọn model `openai/…` (vd `openai/gpt-6.1-sol`). Đăng nhập mở trình duyệt và nhận callback ở cổng 1455 (cổng Codex CLI cũng dùng; Pi báo lỗi nếu cổng bận); máy không có trình duyệt thì dán URL chuyển hướng cuối vào Pi. **OpenAI Codex (legacy)** (`openai-codex`) vẫn dùng được cho vai đã đặt sang nó và là cách duy nhất có Codex fast mode. Model của OpenCode Go (vd GLM) cũng dùng được sau khi `/login` → **OpenCode Go** hoặc đặt `OPENCODE_API_KEY`.
 3. Chạy `firecrawl login --browser` để đăng nhập dịch vụ web.
 4. Tuỳ chọn: tạo API key TypeSafe tại [console.typesafe.ai](https://console.typesafe.ai), thêm `export TYPESAFE_API_KEY="<key>"` vào `~/.zshrc` hoặc `~/.bashrc` (Windows: `setx TYPESAFE_API_KEY "<key>"`) rồi mở terminal mới, để auto mode sàng lọc bằng Jev. Đây là cách tài liệu TypeSafe và đa số package Jev hướng dẫn. Chưa có key thì bộ phân loại LLM làm cả hai giai đoạn như trước.
 
@@ -68,7 +68,7 @@ Permission (`pi-auto-mode`, extension của repo) có bốn mode như Claude Cod
 
 **Bypass** như Claude Code: chỉ có khi mở Pi bằng `--dangerously-skip-permissions` (hoặc `--permission-mode bypass`, `--allow-dangerously-skip-permissions`); chạy mọi thứ trừ luật deny và ask. `rm` vào `/`, `~` hay thư mục làm việc thì hỏi bạn trước, ở auto và bypass có đếm ngược 2 phút. Không có lớp chặn riêng cho git phá huỷ: auto để bộ phân loại xét, manual hỏi, bypass chạy. `Shift+Tab` đổi mode; `/add-dir` thêm thư mục làm việc. `/permissions` là menu duy nhất: đổi mode, model phân loại, xem trạng thái và chi phí Jev, duyệt lại lệnh bị chặn, xem luật và chạy thử một lệnh. Chi tiết: [docs/auto-mode.md](docs/auto-mode.md).
 
-Claude dùng context của catalog (Opus 5.5 1M); model Codex (Astra, Sol) nâng lên **872K** khi bạn chọn. Theme Rosé Pine Moon.
+Claude dùng context của catalog (Opus 5.5 1M); model Codex (Astra, Sol) của `openai-codex` nâng lên **872K** khi bạn chọn; `openai/…` qua Sign in with ChatGPT dùng 272K của catalog Pi. Theme Rosé Pine Moon.
 
 ## Agent
 
@@ -96,13 +96,13 @@ Agent có context riêng và không giới hạn số lượt; dừng agent bằ
 
 ## Công cụ và mặc định
 
-- Web: `web_search` dùng native search của model hiện tại: provider `openai` cho Codex/OpenAI (Astra, Sol), `anthropic` cho Claude (bản vá pi-web-access); model khác (vd GLM) dùng Exa (endpoint MCP miễn phí, không cần key) rồi Firecrawl; lỗi mạng, quota, phản hồi hỏng chuyển sang provider kế tiếp. `fetch_content`, `get_search_content` dùng Firecrawl và kho kết quả. Phiên mới hiện `web_enable` để model bật web tools. CLI và skills hỗ trợ workflow bổ sung. Chi tiết: [docs/claude-setup.md](docs/claude-setup.md).
+- Web: `web_search` dùng native search của model hiện tại: provider `openai` cho GPT (Astra, Sol) qua Sign in with ChatGPT hoặc OpenAI Codex (legacy), `anthropic` cho Claude (bản vá pi-web-access); model khác (vd GLM) dùng Exa (endpoint MCP miễn phí, không cần key) rồi Firecrawl; lỗi mạng, quota, phản hồi hỏng chuyển sang provider kế tiếp. `fetch_content`, `get_search_content` dùng Firecrawl và kho kết quả. Phiên mới hiện `web_enable` để model bật web tools. CLI và skills hỗ trợ workflow bổ sung. Chi tiết: [docs/claude-setup.md](docs/claude-setup.md).
 - MCP: không cài. MCP, codemode và `tool_search` dựng sẵn của Pi được tắt trong `extensions` của settings (`-builtin:mcp`, `-builtin:codemode`, `-builtin:tool-search`); provider llama.cpp dựng sẵn cũng tắt (`-builtin:llama.cpp`). Khi cần một server, bật MCP trong `pi config` (Built-in), thêm server bằng `pi mcp add` (ghi `<agent-dir>/mcp.json`) với `"exposure": "direct"`; mỗi tool là `mcp__<server>__<tool>` và đi qua cổng permission như tool khác.
 - Giao diện fullscreen (mặc định từ Pi 1.0): cuộn bằng chuột/trackpad trong Pi (số dòng mỗi nấc theo `fullscreenWheelScrollLines` của Pi, mặc định `auto`), tìm trong transcript bằng **Alt+S** (Ctrl+Shift+F là ô tìm của WezTerm), khi thoát in lại transcript. Muốn giữ scrollback bình thường của terminal thì đặt `"tuiMode": "regular"` trong `settings.json` (cài lại vẫn giữ).
 - Native compaction bật: reserve 16.384, giữ gần nhất 20.000 token. Với cửa sổ 1M, auto-compaction chạy rất muộn; xem context ở footer và chọn ranh giới pha quanh mép 150k.
 - Cache warming tắt. Advisor bật như mô tả ở trên. Jev của auto mode chỉ chạy khi bạn đã lưu key TypeSafe (tính theo token đầu vào, khoảng $0,0001 mỗi lần sàng lọc). Background follow-up chỉ chạy theo thao tác/cấu hình đã chọn.
-- Codex fast mode bật mặc định (`codexFastMode:true`): khi bạn đặt một vai sang model Codex (GPT-6.1 Sol, GPT-6 Astra, GPT-6 Sol), request của nó đi hàng `priority`. Theo catalog của Codex, Sol nhanh khoảng 1,5 lần, Astra khoảng 2 lần; đổi lại tốn quota Codex nhiều hơn (Pi tính chi phí gấp đôi). Tắt bằng `/fast` khi phiên đang dùng model Codex, hoặc `/usage` → Settings → Codex Fast mode khi đang dùng Opus. Footer hiện `fast` khi phiên đang dùng model Codex có fast.
-- Header/footer/editor do pi-open-tui quản lý. Footer hiển thị model, thinking, quota (Codex qua pi-usage; Claude từ header phản hồi và `/api/oauth/usage` khi mở phiên, 15 phút một lần nếu header đã cũ; chi tiết bằng `/claude-usage`), context % kèm token/cửa sổ, token/cost và trạng thái công cụ liên quan (giữ màu extension đặt cho trạng thái). Palette terminal theo theme của phiên và được phục hồi khi thoát.
+- Codex fast mode bật mặc định (`codexFastMode:true`) nhưng chỉ áp cho provider `openai-codex` (legacy): khi bạn đặt một vai sang model Codex (GPT-6.1 Sol, GPT-6 Astra, GPT-6 Sol), request của nó đi hàng `priority`. Model `openai/…` qua Sign in with ChatGPT không có fast: pi-usage chưa hỗ trợ, và tài liệu Sign in with ChatGPT của OpenAI không nêu `service_tier`. Theo catalog của Codex, Sol nhanh khoảng 1,5 lần, Astra khoảng 2 lần; đổi lại tốn quota Codex nhiều hơn (Pi tính chi phí gấp đôi). Tắt bằng `/fast` khi phiên đang dùng model Codex, hoặc `/usage` → Settings → Codex Fast mode khi đang dùng Opus. Footer hiện `fast` khi phiên đang dùng model Codex có fast.
+- Header/footer/editor do pi-open-tui quản lý. Footer hiển thị model, thinking, quota (GPT qua pi-usage: `openai-codex` hiện quota Codex; `openai` hiện `chatgpt plan …` khi có thêm `/login openai-codex` cùng tài khoản và workspace ChatGPT, không thì `chatgpt usage: web only`; Claude từ header phản hồi và `/api/oauth/usage` khi mở phiên, 15 phút một lần nếu header đã cũ; chi tiết bằng `/claude-usage`), context % kèm token/cửa sổ, token/cost và trạng thái công cụ liên quan (giữ màu extension đặt cho trạng thái). Palette terminal theo theme của phiên và được phục hồi khi thoát.
 - Dán ảnh: `@pi-archimedes/image-paste`, dùng **Ctrl+V** trên macOS/Linux hoặc **Alt+V** trên Windows. Copy ảnh vào clipboard, dán để có marker `[Image #1]`, rồi gửi cùng prompt. Xóa marker để bỏ ảnh; giới hạn 20 MiB/ảnh. Preview chỉ hiện trong UI, ảnh được gửi tới model đúng một lần. Phím dán ảnh tích hợp của Pi được tắt trong `keybindings.json` để tránh xử lý trùng.
 - Ảnh đọc qua clipboard native của pi-tui. Linux cần desktop X11/Wayland; `wl-clipboard`/`xclip` là các reader thay thế. Terminal không hỗ trợ ảnh inline vẫn gửi được ảnh, chỉ thiếu preview. Chỉ nạp image-paste; phần giao diện của bộ Archimedes không được nạp.
 - Phím trùng phím mặc định của WezTerm được đổi: bảng hoạt động web **Alt+W** (thay Ctrl+Shift+W), thu gọn todo **Alt+O** (thay Ctrl+Shift+T; đặt trong `~/.config/rpiv-todo/config.json`, file của rpiv-todo nằm ngoài agent dir nên installer không ghi).
@@ -116,20 +116,20 @@ Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều
 
 | Thành phần | Phiên bản |
 |---|---|
-| Pi (`@earendil-works/pi-coding-agent`, `pi-ai`, `pi-agent-core`, `pi-tui`) | 1.0.2 |
+| Pi (`@earendil-works/pi-coding-agent`, `pi-ai`, `pi-agent-core`, `pi-tui`) | 1.1.0 |
 | `@tintinweb/pi-subagents` | 0.19.0 |
 | `@gotgenes/pi-anthropic-auth` | 3.4.2 |
-| `pi-web-access` | 0.35.0 |
+| `pi-web-access` | 0.37.0 |
 | `@juicesharp/rpiv-ask-user-question`, `rpiv-todo` | 2.12.0 |
-| `@narumitw/pi-usage` | 0.61.2 |
+| `@narumitw/pi-usage` | 0.64.1 |
 | `pi-background-tasks` | 2.6.9 |
-| `pi-advisor-flow` | 0.11.1 |
+| `pi-advisor-flow` | 0.12.0 |
 | `pi-open-tui` | 0.3.11 |
-| `@pi-archimedes/image-paste` | 2.9.0 |
-| Firecrawl CLI | 1.25.3 |
+| `@pi-archimedes/image-paste` | 2.9.3 |
+| Firecrawl CLI | 1.26.3 |
 | Firecrawl skills | Commit trong [sources.lock.json](sources.lock.json) |
 
-Các manifest và lockfile nằm trong [manifests](manifests). pi-background-tasks có peer range chưa gồm Pi 1.0.2 nên được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json). Quy trình nâng phiên bản (vendor, lockfile, tính lại checksum bản vá): [docs/upgrade.md](docs/upgrade.md).
+Các manifest và lockfile nằm trong [manifests](manifests). pi-background-tasks có peer range chưa gồm Pi 1.1.0 nên được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json). Quy trình nâng phiên bản (vendor, lockfile, tính lại checksum bản vá): [docs/upgrade.md](docs/upgrade.md).
 
 ## Quản lý cấu hình
 

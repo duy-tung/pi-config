@@ -56,7 +56,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.equal(settings.lastChangelogVersion, manifest.dependencies["@earendil-works/pi-coding-agent"]);
       assert.ok(settings.packages.every((entry) => (typeof entry === "string" ? entry : entry.source).startsWith(p.join(options.root, "runtimes", profile.runtime, "node_modules"))));
       const providers = json(p.join(profile.agentDir, "models.json")).providers;
-      assert.deepEqual(Object.keys(providers), ["openai-codex"], "Opus 5.5 dùng context 1M của catalog");
+      assert.deepEqual(Object.keys(providers), ["openai-codex"], "Opus 5.5 và openai (Sign in with ChatGPT) dùng context của catalog");
       assert.deepEqual(providers["openai-codex"].modelOverrides, { "gpt-6-sol": { contextWindow: 872000 }, "gpt-6.1-sol": { contextWindow: 872000 }, "gpt-6-astra": { contextWindow: 872000 } });
       assert.deepEqual(settings.enabledModels, ["anthropic/claude-opus-5-5", "anthropic/claude-fable-5-1", "anthropic/claude-sonnet-5-5"]);
       if (name === "main") {

@@ -4,31 +4,31 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@earendil-works/pi-agent-core": "1.0.2",
-    "@earendil-works/pi-ai": "1.0.2",
-    "@earendil-works/pi-coding-agent": "1.0.2",
-    "@earendil-works/pi-tui": "1.0.2",
+    "@earendil-works/pi-agent-core": "1.1.0",
+    "@earendil-works/pi-ai": "1.1.0",
+    "@earendil-works/pi-coding-agent": "1.1.0",
+    "@earendil-works/pi-tui": "1.1.0",
     "@gotgenes/pi-anthropic-auth": "3.4.2",
     "@juicesharp/rpiv-ask-user-question": "2.12.0",
     "@juicesharp/rpiv-todo": "2.12.0",
-    "@narumitw/pi-usage": "0.61.2",
+    "@narumitw/pi-usage": "0.64.1",
     "@tintinweb/pi-subagents": "0.19.0",
-    "pi-advisor-flow": "0.11.1",
+    "pi-advisor-flow": "0.12.0",
     "pi-open-tui": "0.3.11",
-    "pi-web-access": "0.35.0",
-    "pi-background-tasks": "file:../../vendor/pi-background-tasks-2.6.9-pi102.tgz",
-    "@pi-archimedes/image-paste": "2.9.0"
+    "pi-web-access": "0.37.0",
+    "pi-background-tasks": "file:../../vendor/pi-background-tasks-2.6.9-pi110.tgz",
+    "@pi-archimedes/image-paste": "2.9.3"
   },
   "overrides": {},
   "piPlatform": {
     "localPackages": {
       "pi-background-tasks": {
         "version": "2.6.9",
-        "source": "../../vendor/pi-background-tasks-2.6.9-pi102.tgz",
-        "sha256": "95303dcfad842b933096661c62e4c8dcc2baf1c7e21b0ba1248e5107a5cc392e",
+        "source": "../../vendor/pi-background-tasks-2.6.9-pi110.tgz",
+        "sha256": "184b19ae725aba9069178e06eca949316e54b19651230d485ef44475a13c38c0",
         "upstreamIntegrity": "sha512-5dma6xvO7jeAimRaCNCzfe5y+b4bVBYPxnJ/0RnGS+mj6B6SzgA4FcORKuAtZaoGvC29dlyof3NtX7/QD4Ywew==",
         "upstreamTarball": "https://registry.npmjs.org/pi-background-tasks/-/pi-background-tasks-2.6.9.tgz",
-        "reason": "Peer metadata adds exactly Pi 1.0.2; runtime changes are tracked separately in assets/patches.json."
+        "reason": "Peer metadata adds exactly Pi 1.1.0; runtime changes are tracked separately in assets/patches.json."
       }
     }
   }

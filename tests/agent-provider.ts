@@ -4,8 +4,10 @@ import * as ai from "@earendil-works/pi-ai";
 // openai-codex giữ api/baseUrl của Codex thật để extension nhận ra model Codex chính thức
 // (pi-usage thêm service_tier khi fast mode bật); request vẫn chỉ đi qua streamSimple giả.
 const codex = { api: "openai-codex-responses", baseUrl: "https://chatgpt.com/backend-api" };
+// openai giữ api/baseUrl của Responses API chính thức như Sign in with ChatGPT: pi-usage không thêm Fast cho provider này.
+const chatgpt = { api: "openai-responses", baseUrl: "https://api.openai.com/v1" };
 export default function (pi) {
-  for (const [provider,ids,wire] of [["config-test",["parent"]],["openai-codex",["gpt-6.1-sol","gpt-6-astra","gpt-6-sol"],codex],["opencode-go",["glm-5.3-flash"]]]) pi.registerProvider(provider, {
+  for (const [provider,ids,wire] of [["config-test",["parent"]],["openai-codex",["gpt-6.1-sol","gpt-6-astra","gpt-6-sol"],codex],["openai",["gpt-6.1-sol"],chatgpt],["opencode-go",["glm-5.3-flash"]]]) pi.registerProvider(provider, {
     api: wire?.api ?? "anthropic-messages",
     baseUrl: wire?.baseUrl ?? "http://127.0.0.1:9",
     apiKey: "local-fixture-no-network",
@@ -32,7 +34,7 @@ export default function (pi) {
         const payload = typeof options?.onPayload === "function" ? await options.onPayload({ model: model.id }, model) : undefined;
         // Pi 0.87 khai báo tool cho model bằng system message trong transcript.
         const tools = ai.getCurrentTools(context.messages).map((tool) => tool.name);
-        control.seen.push({ key, model: model.id, options, payload, tools, messages: context.messages, systemPrompt: context.systemPrompt });
+        control.seen.push({ key, model: model.id, provider: model.provider, options, payload, tools, messages: context.messages, systemPrompt: context.systemPrompt });
         const content = classifier
           ? [{ type: "text", text: control.classifier?.shift() ?? "<block>no</block>" }]
           : control.plans[key]?.shift() ?? [{ type: "text", text: "SCRIPT_COMPLETE" }];
