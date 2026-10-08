@@ -8,7 +8,7 @@ import {buildConfiguration} from '../lib/config.mjs';
 import {modelDefaults} from './install-fixture.mjs';
 
 const root = process.env.PI_CONFIG_TEST_ROOT;
-test('Pi: Opus 5.5/high 1M mặc định, advisor Fable trong catalog, GPT Sol/Astra 872K qua Sign in with ChatGPT và payload khi được chọn', {skip: !root}, async () => {
+test('Pi: Opus 5.5/high 1M mặc định, advisor Fable trong catalog, GPT qua Sign in with ChatGPT và Codex Sol/Astra 872K, payload khi được chọn', {skip: !root}, async () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-models-'));
   const savedOffline = process.env.PI_OFFLINE;
   const savedFetch = globalThis.fetch;
@@ -49,10 +49,11 @@ test('Pi: Opus 5.5/high 1M mặc định, advisor Fable trong catalog, GPT Sol/A
       assert.equal(model.maxTokens, 128000);
       assert.equal(model.api, 'anthropic-messages');
       assert.ok(getSupportedThinkingLevels(model).includes(settings.defaultThinkingLevel));
-      // GPT không là mặc định của vai nào, nhưng models.json nâng context khi người dùng chọn: provider openai
-      // (Sign in with ChatGPT) và openai-codex (legacy) như nhau.
-      for (const provider of ['openai', 'openai-codex']) {
-        for (const id of ['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-astra']) assert.equal(runtime.getModel(provider, id).contextWindow, 872000, `${provider}/${id}`);
+      // GPT không là mặc định của vai nào. models.json nâng context của openai-codex (legacy) khi người dùng chọn;
+      // openai (Sign in with ChatGPT) giữ cửa sổ của catalog Pi.
+      for (const id of ['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-astra']) {
+        assert.equal(runtime.getModel('openai-codex', id).contextWindow, 872000, `openai-codex/${id}`);
+        assert.equal(runtime.getModel('openai', id).contextWindow, 272000, `openai/${id}`);
       }
       for (const [ref, level] of Object.entries(settings.modelThinkingLevels)) {
         const [provider, id] = ref.split('/');
@@ -97,7 +98,7 @@ test('Pi: Opus 5.5/high 1M mặc định, advisor Fable trong catalog, GPT Sol/A
         onPayload(payload) { captured = payload; throw new Error('OFFLINE_CAPTURE'); },
       }).result();
       assert.deepEqual([captured.model, captured.reasoning.effort, captured.store, captured.stream], ['gpt-6.1-sol', 'max', false, true]);
-      assert.equal(captured.max_output_tokens, undefined);
+      assert.deepEqual([captured.max_output_tokens, captured.prompt_cache_retention], [undefined, undefined]);
       assert.match(native.errorMessage, /OFFLINE_CAPTURE/);
     }
   } finally {

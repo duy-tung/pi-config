@@ -215,20 +215,25 @@ await check('researcher gets pi-web-access tools from its role and reads code wi
   for(const name of ['write','edit'])assert.ok(!reader[0].tools.includes(name),JSON.stringify(reader[0].tools));
   assert.ok(reader.at(-1).messages.some(m=>m.role==='toolResult'&&!m.isError&&JSON.stringify(m.content).includes('SAFE_CONTENT')),'researcher đọc được code');
 });
-await check('Codex fast mode reaches Sol, Astra and GPT-6.1 Sol role requests; other providers are untouched',async()=>{
+await check('Codex fast mode reaches Sol, Astra and GPT-6.1 Sol role requests; openai (Sign in with ChatGPT) and other providers are untouched',async()=>{
   // Vai tạm dùng GPT-6.1 Sol (như khi người dùng đặt worker sang model này): pi-subagents đọc lại file role mỗi lần gọi.
-  const sol61=path.join(agentDir,'agents','sol61.md');
-  fs.writeFileSync(sol61,fs.readFileSync(path.join(agentDir,'agents','worker.md'),'utf8').replace(/^name: .*$/mu,'name: sol61').replace(/^model: .*$/mu,'model: openai-codex/gpt-6.1-sol'));
+  // sol61 qua openai-codex (legacy, có Fast); chatgpt qua openai của Sign in with ChatGPT (pi-usage không có Fast).
+  const temporary=[['sol61','openai-codex/gpt-6.1-sol'],['chatgpt','openai/gpt-6.1-sol']].map(([name,model])=>{
+    const file=path.join(agentDir,'agents',`${name}.md`);
+    fs.writeFileSync(file,fs.readFileSync(path.join(agentDir,'agents','worker.md'),'utf8').replace(/^name: .*$/mu,`name: ${name}`).replace(/^model: .*$/mu,`model: ${model}`));
+    return file;
+  });
   try{
-    for(const [role,tier,model] of [['worker','priority'],['reviewer','priority'],['researcher',undefined],['sol61','priority','gpt-6.1-sol']]){
+    for(const [role,tier,model,provider] of [['worker','priority'],['reviewer','priority'],['researcher',undefined],['sol61','priority','gpt-6.1-sol','openai-codex'],['chatgpt',undefined,'gpt-6.1-sol','openai']]){
       const id='fast-'+role;
       const out=await run(id,invocation(id,{subagent_type:role}));
       assert.equal(out[0]?.isError,false,JSON.stringify(out));
       const seen=control.seen.filter(x=>x.key==='child_'+id);assert.ok(seen.length>0);
       if(model)assert.ok(seen.every(x=>x.model===model),`${role}: ${JSON.stringify(seen.map(x=>x.model))}`);
+      if(provider)assert.ok(seen.every(x=>x.provider===provider),`${role}: ${JSON.stringify(seen.map(x=>x.provider))}`);
       assert.ok(seen.every(x=>x.payload?.service_tier===tier),`${role}: ${JSON.stringify(seen.map(x=>x.payload))}`);
     }
-  }finally{fs.rmSync(sol61,{force:true});}
+  }finally{for(const file of temporary)fs.rmSync(file,{force:true});}
 });
 await check('worker has no turn limit',async()=>{
   const steps=Array.from({length:16},()=>[tool('read',{path:'safe.txt'})]);

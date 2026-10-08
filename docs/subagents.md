@@ -8,7 +8,7 @@ Pi dùng tool `Agent` của `@tintinweb/pi-subagents` 0.19.0. Parent Claude Opus
 | `worker` | Claude Opus 5.5/high | Triển khai phần việc đã chốt hoặc sửa lỗi (tái hiện, tìm nguyên nhân, sửa, kiểm hồi quy); sửa file và kiểm thử |
 | `reviewer` | Claude Fable 5.1/high | Review độc lập, chỉ đọc; bash để chạy `git diff`, test sẵn có và script thử trong `/tmp` |
 
-Claude dùng context của catalog; model GPT (Astra, Sol) của `openai` và `openai-codex` nâng lên 872K khi một vai dùng chúng. File role nằm trong `agents/` của Pi. Đổi model/thinking của role trong `/agents` → Agent types → chọn role → Model/Thinking ([models.md](models.md)); cài lại giữ giá trị đã đổi. `pi-doctor` in model/thinking đang có hiệu lực của từng role và kiểm trong catalog.
+Claude dùng context của catalog; model Codex (Astra, Sol) của `openai-codex` nâng lên 872K khi một vai dùng chúng; `openai/…` (Sign in with ChatGPT) dùng 272K của catalog Pi. File role nằm trong `agents/` của Pi. Đổi model/thinking của role trong `/agents` → Agent types → chọn role → Model/Thinking ([models.md](models.md)); cài lại giữ giá trị đã đổi. `pi-doctor` in model/thinking đang có hiệu lực của từng role và kiểm trong catalog.
 
 ## Giao việc
 
