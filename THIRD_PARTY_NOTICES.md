@@ -15,7 +15,7 @@
 | @gotgenes/pi-anthropic-auth | [gotgenes/pi-anthropic-auth](https://github.com/gotgenes/pi-anthropic-auth) | [MIT — Christopher D. Lasher](vendor/pi-anthropic-auth.LICENSE) |
 | @narumitw/pi-usage | [narumiruna/pi-extensions](https://github.com/narumiruna/pi-extensions) | [MIT — narumiruna](vendor/pi-usage.LICENSE) |
 
-Các tarball `vendor/*-pi102.tgz` giữ source npm và giấy phép gốc, chỉ bổ sung `1.0.2` vào peer metadata của pi-background-tasks. Phiên bản của từng thành phần: bảng trong [README](README.md#phiên-bản). URL/integrity upstream và SHA256 bản đóng gói được ghi trong `manifests/current/package.json`. Script `scripts/rebuild-vendor.py` kiểm nguồn và tái tạo các tarball trên môi trường phát triển có Python 3.12 trở lên và curl; máy cài Pi không cần Python.
+Các tarball `vendor/*-pi110.tgz` giữ source npm và giấy phép gốc, chỉ bổ sung `1.1.0` vào peer metadata của pi-background-tasks. Phiên bản của từng thành phần: bảng trong [README](README.md#phiên-bản). URL/integrity upstream và SHA256 bản đóng gói được ghi trong `manifests/current/package.json`. Script `scripts/rebuild-vendor.py` kiểm nguồn và tái tạo các tarball trên môi trường phát triển có Python 3.12 trở lên và curl; máy cài Pi không cần Python.
 
 Nguồn bổ sung: [pi-background-tasks](https://github.com/ismailsaleekh/pi-background-tasks). Giấy phép của các package nằm nguyên trong package npm hoặc tarball.
 

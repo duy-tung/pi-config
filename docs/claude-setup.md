@@ -26,7 +26,7 @@ pi-usage chưa hỗ trợ Anthropic nên pi-config có extension `claude-usage`:
 
 ## Native web search
 
-`web_search` (pi-web-access 0.35.0) định tuyến `["openai", "anthropic", "exa", "firecrawl"]` với `useCurrentModel: true`; mô tả tool ghi "OpenAI, Anthropic, Exa, Firecrawl":
+`web_search` (pi-web-access 0.37.0) định tuyến `["openai", "anthropic", "exa", "firecrawl"]` với `useCurrentModel: true`; mô tả tool ghi "OpenAI, Anthropic, Exa, Firecrawl":
 
 | Model hiện tại | Cách tìm |
 |---|---|

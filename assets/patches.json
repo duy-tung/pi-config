@@ -203,11 +203,11 @@
     {
       "package": "pi-advisor-flow",
       "versions": {
-        "current": "0.11.1"
+        "current": "0.12.0"
       },
       "file": "dist/index.js",
-      "originalSha256": "ffcb1b3e02a715012319e9cb3bfdf9ad1dc97b3b91fe476b9cbe0d66bbedcf42",
-      "patchedSha256": "1379437d2a066f975b594af281e680ed24f0f2c6eee29cf0a159f1ebdc23522f",
+      "originalSha256": "6238180d438cb07846a7531ae868a1355be191d152c808f7a09d5654d647cfde",
+      "patchedSha256": "ab6986e95b78850f8458da3b64ee62d81075c1b50177ecd1cc4b21b59ea6cfb9",
       "edits": [
         {
           "before": "    const budget = isSimpleMode() ? undefined : session.remainingCalls(getAdvisorMaxCallsPerSession());\n    if (budget !== undefined) {\n      guidelines.push(`Advisor calls remaining this session: ${budget}.\nReserve calls for material decisions, repeated failures, or final review.`);\n",
@@ -245,7 +245,7 @@
     {
       "package": "@pi-archimedes/image-paste",
       "versions": {
-        "current": "2.9.0"
+        "current": "2.9.3"
       },
       "file": "src/preview.ts",
       "originalSha256": "9a8e227847c3c215810c19ff7324a6889723fd1870653151aa9e3bf704234978",
@@ -261,11 +261,11 @@
     {
       "package": "pi-web-access",
       "versions": {
-        "current": "0.35.0"
+        "current": "0.37.0"
       },
       "file": "dist/index.js",
-      "originalSha256": "c20043738d2e0ff744b0417b32c1de4cdbea3c40ad417da3ca8729bcbae149e3",
-      "patchedSha256": "c32e3674072381c351425c1b5dfe0f38a266529e97e26317f4379ccd77cb09cb",
+      "originalSha256": "42e4354f6f3b5fa8db8228e96b81e7c314d974aafebdfde437eff8873502bb0e",
+      "patchedSha256": "378d867087c7235fc8a8e05dfbc5c43c3917d01c3167e52cb652a9dae7c3d9e9",
       "edits": [
         {
           "before": "var RESOLVED_SEARCH_PROVIDERS = [\"openai\", \"brave\", ",
@@ -303,11 +303,11 @@
     {
       "package": "@narumitw/pi-usage",
       "versions": {
-        "current": "0.61.2"
+        "current": "0.64.1"
       },
       "file": "dist/index.ts",
-      "originalSha256": "30d5faf0ecb1c80f1313ad99d4cf87dd7960d7f1ad35d35f85dc824fcfc8184b",
-      "patchedSha256": "77ec60bfbad5de4721f3959b88f99dc380348bb6f8d0ad72b6d6826519c65a00",
+      "originalSha256": "0f1f6e1fbd46564aad283e47f437e5aad9fd44b89726a77b482c1e3a4c8c4999",
+      "patchedSha256": "12f2bae3eb51a8e2a4eee97230a1f85151399cedb30d82b94cefd4593580b5c8",
       "edits": [
         {
           "before": "  const startStatusRefresh = (ctx, model, force) => {\n",
