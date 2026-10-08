@@ -9,7 +9,7 @@ import { pathToFileURL } from "node:url";
 import { anthropicSearchEvents, codexSearchEvents, sse } from "./search-fixtures.mjs";
 
 // web_search của pi-web-access (đã vá, có provider anthropic) trên runtime đã cài: Claude → Anthropic web_search
-// qua pi-anthropic-auth, Codex → hosted web_search, GLM → Exa rồi Firecrawl. fetch/DNS giả, không gọi mạng.
+// qua pi-anthropic-auth, GPT (openai qua Sign in with ChatGPT, openai-codex legacy) → hosted web_search, GLM → Exa rồi Firecrawl. fetch/DNS giả, không gọi mạng.
 const root = process.env.PI_CONFIG_TEST_ROOT;
 test("web_search dùng native search theo model hiện tại, GLM dùng Exa rồi Firecrawl", { skip: !root, timeout: 120000 }, async () => {
   const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pi-native-search-")));
@@ -30,6 +30,7 @@ test("web_search dùng native search theo model hiện tại, GLM dùng Exa rồ
   fs.writeFileSync(path.join(agentDir, "auth.json"), JSON.stringify({
     anthropic: { type: "oauth", access: "sk-ant-oat01-fixture", refresh: "fixture-refresh", expires },
     "openai-codex": { type: "oauth", access: jwt, refresh: "fixture-refresh", expires },
+    openai: { type: "oauth", access: "fixture-chatgpt-token", refresh: "fixture-refresh", expires, clientId: "fixture-client", scopes: ["openid", "chatgpt.tokens.use.direct"] },
     "opencode-go": { type: "api_key", key: "synthetic-wire-fixture" },
   }));
 
@@ -47,6 +48,7 @@ test("web_search dùng native search theo model hiện tại, GLM dùng Exa rồ
       return stream(sse(anthropicSearchEvents()));
     }
     if (url.href === "https://chatgpt.com/backend-api/codex/responses") return stream(sse(codexSearchEvents("gpt-6-astra")));
+    if (url.href === "https://api.openai.com/v1/responses") return stream(sse(codexSearchEvents("gpt-6.1-sol")));
     // Exa không có key: JSON-RPC tới endpoint MCP miễn phí của Exa.
     if (url.origin === "https://mcp.exa.ai" && url.pathname === "/mcp") {
       if (exaStatus !== 200) return new Response("fixture unavailable", { status: exaStatus });
@@ -115,6 +117,17 @@ test("web_search dùng native search theo model hiện tại, GLM dùng Exa rồ
     assert.deepEqual(requests.map((request) => request.url.origin + request.url.pathname), ["https://api.anthropic.com/v1/messages", "https://mcp.exa.ai/mcp"]);
     assert.match(text, /\*\*Provider:\*\* exa/u);
     anthropicStatus = 200;
+
+    // Sign in with ChatGPT: hosted web_search của Responses API trên api.openai.com, bằng token của /login openai.
+    text = await search("openai", "gpt-6.1-sol");
+    assert.deepEqual(requests.map((request) => request.url.href), ["https://api.openai.com/v1/responses"]);
+    const [chatgpt] = requests;
+    assert.equal(chatgpt.headers.get("authorization"), "Bearer fixture-chatgpt-token");
+    assert.equal(chatgpt.headers.get("chatgpt-account-id"), null);
+    assert.deepEqual([chatgpt.body.model, chatgpt.body.store, chatgpt.body.stream], ["gpt-6.1-sol", false, true]);
+    assert.deepEqual(chatgpt.body.tools, [{ type: "web_search" }]);
+    assert.match(text, /\*\*Provider:\*\* openai/u);
+    assert.match(text, /https:\/\/code\.example\/pi/u);
 
     text = await search("openai-codex", "gpt-6-astra");
     assert.equal(requests.length, 1, JSON.stringify(requests.map((request) => request.url.href)));

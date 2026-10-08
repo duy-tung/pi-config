@@ -2,7 +2,7 @@
 
 ## Đăng nhập và model
 
-Parent mặc định là **Claude Opus 5.5/high** (`anthropic/claude-opus-5-5`, context 1M của catalog). Chạy `pi`, dùng `/login` và chọn **Anthropic** để đăng nhập gói Claude Pro/Max (OAuth), hoặc cung cấp `ANTHROPIC_API_KEY`. Vòng `Ctrl+P` gồm Opus 5.5, GPT-6 Sol, GPT-6 Astra và GLM; worker/reviewer vẫn cần đăng nhập OpenAI Codex.
+Parent mặc định là **Claude Opus 5.5/high** (`anthropic/claude-opus-5-5`, context 1M của catalog). Chạy `pi`, dùng `/login` và chọn **Anthropic** để đăng nhập gói Claude Pro/Max (OAuth), hoặc cung cấp `ANTHROPIC_API_KEY`. Vòng `Ctrl+P` gồm model của các vai (Opus 5.5, Fable 5.1, Sonnet 5.5); muốn dùng GPT thì `/login` → **OpenAI** → **Sign in with ChatGPT** (xem [README](../README.md#đăng-nhập-dịch-vụ)).
 
 Tài liệu Claude Code ghi OAuth của gói Pro/Max dành cho Claude Code và ứng dụng native của Anthropic, và Anthropic có thể thực thi giới hạn này không báo trước. Nếu Claude không dùng được, chọn model khác bằng `/model`; role của Agent không phụ thuộc Claude. Bộ phân loại của auto mode chạy Claude Sonnet 5 qua cùng đăng nhập; khi Sonnet 5 lỗi, nó dùng model của phiên, nên sau khi đổi `/model` sang model Codex thì auto mode duyệt được tiếp.
 
@@ -30,7 +30,7 @@ pi-usage chưa hỗ trợ Anthropic nên pi-config có extension `claude-usage`:
 
 | Model hiện tại | Cách tìm |
 |---|---|
-| Codex/OpenAI trên endpoint chính thức (Astra, Sol) | `openai`: hosted `web_search` của Responses API, dùng chính model và auth Codex |
+| GPT trên endpoint chính thức (Astra, Sol): `openai` qua Sign in with ChatGPT, hoặc `openai-codex` | `openai`: hosted `web_search` của Responses API (`api.openai.com` hoặc endpoint Codex), dùng chính model và token đã đăng nhập |
 | Claude của provider `anthropic` trên `api.anthropic.com` | `anthropic`: server tool `web_search_20250305` của Anthropic, tối đa 5 lượt tìm mỗi lần gọi |
 | Model khác (GLM, gateway, Claude qua provider khác) | Exa (endpoint MCP miễn phí, không cần key; đặt `EXA_API_KEY` để dùng API có key), rồi Firecrawl |
 

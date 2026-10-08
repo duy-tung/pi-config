@@ -8,7 +8,7 @@ Pi dùng tool `Agent` của `@tintinweb/pi-subagents` 0.19.0. Parent Claude Opus
 | `worker` | Claude Opus 5.5/high | Triển khai phần việc đã chốt hoặc sửa lỗi (tái hiện, tìm nguyên nhân, sửa, kiểm hồi quy); sửa file và kiểm thử |
 | `reviewer` | Claude Fable 5.1/high | Review độc lập, chỉ đọc; bash để chạy `git diff`, test sẵn có và script thử trong `/tmp` |
 
-Claude dùng context của catalog; model Codex (Astra, Sol) nâng lên 872K khi một vai dùng chúng. File role nằm trong `agents/` của Pi. Đổi model/thinking của role trong `/agents` → Agent types → chọn role → Model/Thinking ([models.md](models.md)); cài lại giữ giá trị đã đổi. `pi-doctor` in model/thinking đang có hiệu lực của từng role và kiểm trong catalog.
+Claude dùng context của catalog; model GPT (Astra, Sol) của `openai` và `openai-codex` nâng lên 872K khi một vai dùng chúng. File role nằm trong `agents/` của Pi. Đổi model/thinking của role trong `/agents` → Agent types → chọn role → Model/Thinking ([models.md](models.md)); cài lại giữ giá trị đã đổi. `pi-doctor` in model/thinking đang có hiệu lực của từng role và kiểm trong catalog.
 
 ## Giao việc
 
@@ -35,7 +35,7 @@ Role không giới hạn số lượt (`max_turns: 0` trong file role, `defaultM
 
 `backgroundByDefault:true`: researcher và reviewer chạy nền, lời gọi `Agent` trả ID ngay, thông báo completion mở lượt mới cho parent kèm trích đoạn kết quả; `get_subagent_result` lấy toàn văn. Worker ghim `run_in_background: false` nên luôn chạy foreground và trả kết quả ngay trong tool call; parent không đổi được. Background tối đa 4 agent, foreground tối đa 2; vượt giới hạn thì xếp hàng. Nhiều lời gọi `Agent` foreground trong cùng một lượt chạy song song; các phiên Pi quản lý pool riêng.
 
-Codex fast mode (`service_tier: "priority"`) áp dụng cho request của model Codex (GPT-6.1 Sol, GPT-6 Astra, GPT-6 Sol) khi một vai dùng chúng. Bản vá pi-usage bọc `ModelRuntime` dùng chung của phiên chính, nên request không đi qua hook của phiên (advisor, agent con) cũng theo cài đặt fast và chọn hàng theo model của chính request. Worker và reviewer nạp `pi-usage` để chi phí của request fast được tính đúng; bản vá bỏ truy vấn quota và timer của pi-usage trong phiên không có UI.
+Codex fast mode (`service_tier: "priority"`) áp dụng cho request của model `openai-codex` (legacy: GPT-6.1 Sol, GPT-6 Astra, GPT-6 Sol) khi một vai dùng chúng; model `openai/…` qua Sign in with ChatGPT không có fast. Bản vá pi-usage bọc `ModelRuntime` dùng chung của phiên chính, nên request không đi qua hook của phiên (advisor, agent con) cũng theo cài đặt fast và chọn hàng theo model của chính request. Worker và reviewer nạp `pi-usage` để chi phí của request fast được tính đúng; bản vá bỏ truy vấn quota và timer của pi-usage trong phiên không có UI.
 
 Researcher nạp `pi-web-access`. Package này khai extension là thư mục `./dist`; bản vá pi-subagents cho entry thư mục khớp tên package, nếu không `extensions`/`ext:pi-web-access` của role không nạp được web tools.
 
