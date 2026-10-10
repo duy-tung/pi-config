@@ -26,11 +26,9 @@ test("/clear mở phiên mới, /rewind → Resume previous session quay lại p
   let runtime;
   try {
     const sdk = await import(pathToFileURL(path.join(modules, "@earendil-works", "pi-coding-agent", "dist", "index.js")).href);
-    // Phiên cũ đã có câu trả lời nên Pi đã ghi nó ra đĩa.
+    // Phiên cũ chỉ có prompt, chưa có câu trả lời: từ Pi 0.99 phiên được ghi ra đĩa ngay khi có prompt đầu tiên.
     const first = sdk.SessionManager.create(cwd, sessions);
-    const zero = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
     first.appendMessage({ role: "user", content: "fix the login bug", timestamp: Date.now() });
-    first.appendMessage({ role: "assistant", content: [{ type: "text", text: "Fixed." }], api: "anthropic-messages", provider: "fixture", model: "fixture", usage: zero, stopReason: "stop", timestamp: Date.now() });
     const firstFile = first.getSessionFile();
     assert.ok(fs.existsSync(firstFile));
     const modelRuntime = await sdk.ModelRuntime.create({ authPath: path.join(agentDir, "auth.json"), refreshOnCreate: false, allowModelNetwork: false });
