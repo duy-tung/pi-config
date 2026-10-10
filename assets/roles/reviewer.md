@@ -2,7 +2,7 @@
 name: reviewer
 description: Review độc lập; chỉ đọc, nêu lỗi có bằng chứng và mức nghiêm trọng.
 tools: "read, grep, find, ls, bash"
-extensions: ["pi-anthropic-auth", "pi-auto-mode", "pi-usage"]
+extensions: ["pi-anthropic-auth", "pi-auto-mode"]
 inherit_context: false
 prompt_mode: replace
 isolated: false

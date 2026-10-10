@@ -14,9 +14,9 @@ Opus 5.5 không tắt được thinking; `/thinking` (Alt+T) đổi effort `low`
 
 ## Quota trong footer và `/claude-usage`
 
-pi-usage chưa hỗ trợ Anthropic nên pi-config có extension `claude-usage`:
+pi-config có extension `claude-usage`:
 
-- Footer hiển thị phần trăm **còn lại** của phiên 5 giờ và của tuần, kèm đếm ngược tới reset, cùng kiểu với quota Codex, ví dụ `77% ↻ 2h10m 59% ↻ 4d3h`. `extra` nghĩa là request đang dùng extra usage; `limit` nghĩa là đã chạm giới hạn gói.
+- Footer hiển thị phần trăm **còn lại** của phiên 5 giờ và của tuần, kèm đếm ngược tới reset, ví dụ `77% ↻ 2h10m 59% ↻ 4d3h`. `extra` nghĩa là request đang dùng extra usage; `limit` nghĩa là đã chạm giới hạn gói.
 - Footer cập nhật từ header `anthropic-ratelimit-unified-*` của chính các phản hồi Claude qua OAuth, không tốn request. Footer ẩn khi chuyển sang model khác.
 - Ngoài ra extension tự đọc `GET https://api.anthropic.com/api/oauth/usage` (endpoint Claude Code dùng, chưa công bố) bằng token OAuth khi mở phiên hoặc chuyển sang Claude, nên footer có số liệu ngay, không chờ phản hồi Claude đầu tiên.
   - Sau đó đọc lại 15 phút một lần, nhưng chỉ khi header gần nhất đã cũ hơn 15 phút: lúc đang làm việc, header đủ dùng nên hầu như không có request thêm.

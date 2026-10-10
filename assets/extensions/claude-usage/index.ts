@@ -47,12 +47,12 @@ async function fetchUsage(token: string): Promise<unknown> {
 type Poll = { ctx: ExtensionContext; timer?: ReturnType<typeof setTimeout>; busy: boolean; backoff: number };
 
 /**
- * Quota Claude cho footer và /claude-usage. pi-usage chưa hỗ trợ Anthropic.
+ * Quota Claude cho footer và /claude-usage.
  * - Footer cập nhật từ header anthropic-ratelimit-unified-* của chính các phản hồi Claude.
  * - Phiên có UI đang dùng Claude (có đăng nhập OAuth) đọc /api/oauth/usage khi bắt đầu hoặc khi chuyển
  *   sang Claude, rồi 15 phút một lần nếu không có header mới hơn; bị 429 thì giãn dần tới 60 phút.
  *   Agent con và chế độ print không có footer nên không đọc.
- * Status key riêng "claude-usage" tránh tranh chấp với key "usage" do pi-usage xóa/ghi.
+ * Status key riêng "claude-usage" tránh tranh chấp với key "usage" của extension quota khác.
  */
 export default function claudeUsage(pi: ExtensionAPI) {
   let snapshot: QuotaSnapshot | undefined;

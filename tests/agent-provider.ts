@@ -1,10 +1,9 @@
 import * as ai from "@earendil-works/pi-ai";
 
 // Test transport only. No SDK HTTP provider or live credential is used.
-// openai-codex giữ api/baseUrl của Codex thật để extension nhận ra model Codex chính thức
-// (pi-usage thêm service_tier khi fast mode bật); request vẫn chỉ đi qua streamSimple giả.
+// openai-codex và openai giữ api/baseUrl thật (Codex, Responses API của Sign in with ChatGPT); request vẫn chỉ đi qua
+// streamSimple giả.
 const codex = { api: "openai-codex-responses", baseUrl: "https://chatgpt.com/backend-api" };
-// openai giữ api/baseUrl của Responses API chính thức như Sign in with ChatGPT: pi-usage không thêm Fast cho provider này.
 const chatgpt = { api: "openai-responses", baseUrl: "https://api.openai.com/v1" };
 export default function (pi) {
   for (const [provider,ids,wire] of [["config-test",["parent"]],["openai-codex",["gpt-6.1-sol","gpt-6-astra","gpt-6-sol"],codex],["openai",["gpt-6.1-sol"],chatgpt],["opencode-go",["glm-5.3-flash"]]]) pi.registerProvider(provider, {

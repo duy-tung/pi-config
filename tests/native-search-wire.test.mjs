@@ -20,7 +20,6 @@ test("web_search dùng native search theo model hiện tại, GLM dùng Exa rồ
   const web = JSON.parse(fs.readFileSync(path.join(installed, "web-search.json"), "utf8"));
   web.firecrawlApiKey = "fixture-firecrawl-key"; // Không chạy credential helper của máy.
   fs.writeFileSync(path.join(agentDir, "web-search.json"), JSON.stringify(web));
-  fs.copyFileSync(path.join(installed, "models.json"), path.join(agentDir, "models.json"));
   fs.writeFileSync(path.join(agentDir, "settings.json"), JSON.stringify({
     packages: ["@gotgenes/pi-anthropic-auth", "pi-web-access"].map((name) => path.join(modules, name)),
     skills: [], quietStartup: true, cacheWarming: "off", compaction: { enabled: false },

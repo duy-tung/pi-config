@@ -2,7 +2,7 @@
 name: worker
 description: Triển khai task đã được parent chốt hoặc sửa lỗi (tái hiện, tìm nguyên nhân, sửa, kiểm hồi quy); kiểm thử phần thay đổi.
 tools: "read, grep, find, ls, write, edit, bash"
-extensions: ["pi-anthropic-auth", "pi-auto-mode", "pi-usage"]
+extensions: ["pi-anthropic-auth", "pi-auto-mode"]
 inherit_context: false
 prompt_mode: replace
 isolated: false

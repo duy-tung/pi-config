@@ -21,9 +21,11 @@ test('reconciliation archives unreferenced owned resources and preserves user da
   const unused=owned(f,'assets/unused.json'),custom=owned(f,'agent/optional.json');
   const active=owned(f,'agent/settings.json',{theme:'rose-pine'});
   const auth=owned(f,'agent/auth.json');
+  // File cấu hình installer thôi sinh (vd models.json, pi-usage.json) và người dùng chưa sửa: cất vào backup.
+  const dropped=owned(f,'agent/pi-usage.json');
   writeJson(custom,{fixture:'user edit'});f.wanted.add(active);
   const result=reconcileResources(f);
-  assert.deepEqual(result.archived,[unused]);assert.deepEqual(result.preserved,[custom]);
+  assert.deepEqual(result.archived,[unused,dropped]);assert.deepEqual(result.preserved,[custom]);assert.ok(!fs.existsSync(dropped));
   assert.equal(readJson(custom).fixture,'user edit');assert.ok(fs.existsSync(auth)&&fs.existsSync(active));
   assert.equal(reconcileResources(f).archived.length,0);
 });

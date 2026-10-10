@@ -29,7 +29,7 @@ const fixture = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `pi-config
 const agentDir = path.join(fixture, "fixture agent");
 const cwd = path.join(fixture, "fixture workspace");
 for (const dir of [agentDir, cwd]) fs.mkdirSync(dir, { recursive: true });
-for (const name of ["settings.json", "keybindings.json", "models.json", "advisor.json", "subagents.json", "open-tui.json", "pi-usage.json"]) {
+for (const name of ["settings.json", "keybindings.json", "advisor.json", "subagents.json", "open-tui.json"]) {
   if (fs.existsSync(path.join(configuration.agentDir, name))) fs.copyFileSync(path.join(configuration.agentDir, name), path.join(agentDir, name));
 }
 // Kiểm cơ chế của bản cài với các vai đặt sang model của provider giả (GLM, GPT-6.1 Sol, GPT-6 Astra như khi người dùng
@@ -56,7 +56,7 @@ settings.autoMode = { ...settings.autoMode, model: "config-test/parent", stateDi
 Object.assign(settings, {
   defaultProvider: "config-test", defaultModel: "parent", defaultThinkingLevel: "off",
   // Model của phiên chính (đứng đầu danh sách) thay bằng model giả của parent.
-  // GPT-6.1 Sol để kiểm Codex fast, không phụ thuộc vào model mặc định của worker.
+  // GPT-6.1 Sol để kiểm vai đặt sang GPT, không phụ thuộc vào model mặc định của worker.
   enabledModels: ["config-test/parent", ...defaults.settings.enabledModels.slice(1), "openai-codex/gpt-6.1-sol"], modelThinkingLevels: defaults.settings.modelThinkingLevels,
   // Cổng permission của bản cài nạp sau provider giả.
   extensions: [fileURLToPath(new URL("./agent-provider.ts", import.meta.url)),
@@ -215,23 +215,22 @@ await check('researcher gets pi-web-access tools from its role and reads code wi
   for(const name of ['write','edit'])assert.ok(!reader[0].tools.includes(name),JSON.stringify(reader[0].tools));
   assert.ok(reader.at(-1).messages.some(m=>m.role==='toolResult'&&!m.isError&&JSON.stringify(m.content).includes('SAFE_CONTENT')),'researcher đọc được code');
 });
-await check('Codex fast mode reaches Sol, Astra and GPT-6.1 Sol role requests; openai (Sign in with ChatGPT) and other providers are untouched',async()=>{
+await check('a role set to GPT reaches its provider (openai via Sign in with ChatGPT, openai-codex legacy) without service_tier',async()=>{
   // Vai tạm dùng GPT-6.1 Sol (như khi người dùng đặt worker sang model này): pi-subagents đọc lại file role mỗi lần gọi.
-  // sol61 qua openai-codex (legacy, có Fast); chatgpt qua openai của Sign in with ChatGPT (pi-usage không có Fast).
   const temporary=[['sol61','openai-codex/gpt-6.1-sol'],['chatgpt','openai/gpt-6.1-sol']].map(([name,model])=>{
     const file=path.join(agentDir,'agents',`${name}.md`);
     fs.writeFileSync(file,fs.readFileSync(path.join(agentDir,'agents','worker.md'),'utf8').replace(/^name: .*$/mu,`name: ${name}`).replace(/^model: .*$/mu,`model: ${model}`));
     return file;
   });
   try{
-    for(const [role,tier,model,provider] of [['worker','priority'],['reviewer','priority'],['researcher',undefined],['sol61','priority','gpt-6.1-sol','openai-codex'],['chatgpt',undefined,'gpt-6.1-sol','openai']]){
-      const id='fast-'+role;
+    for(const [role,model,provider] of [['worker'],['reviewer'],['researcher'],['sol61','gpt-6.1-sol','openai-codex'],['chatgpt','gpt-6.1-sol','openai']]){
+      const id='gpt-'+role;
       const out=await run(id,invocation(id,{subagent_type:role}));
       assert.equal(out[0]?.isError,false,JSON.stringify(out));
       const seen=control.seen.filter(x=>x.key==='child_'+id);assert.ok(seen.length>0);
       if(model)assert.ok(seen.every(x=>x.model===model),`${role}: ${JSON.stringify(seen.map(x=>x.model))}`);
       if(provider)assert.ok(seen.every(x=>x.provider===provider),`${role}: ${JSON.stringify(seen.map(x=>x.provider))}`);
-      assert.ok(seen.every(x=>x.payload?.service_tier===tier),`${role}: ${JSON.stringify(seen.map(x=>x.payload))}`);
+      assert.ok(seen.every(x=>x.payload?.service_tier===undefined),`${role}: ${JSON.stringify(seen.map(x=>x.payload))}`);
     }
   }finally{for(const file of temporary)fs.rmSync(file,{force:true});}
 });
@@ -314,8 +313,8 @@ await check('advisor Astra/high is always on for the parent and a consultation k
   await turn('advisor-two',[final('DONE')]);
   const advice=control.seen.filter(x=>x.key==='advisor');
   assert.equal(advice.length,1);assert.equal(advice[0].model,modelId(defaults.advisor.advisor));assert.equal(advice[0].options.reasoning,defaults.advisor.advisorEffort);
-  // Advisor gọi thẳng ModelRuntime (không qua hook của phiên) vẫn theo Codex fast mode.
-  assert.equal(advice[0].payload?.service_tier,'priority',JSON.stringify(advice[0].payload));
+  // Không còn pi-usage: request của advisor không mang service_tier.
+  assert.equal(advice[0].payload?.service_tier,undefined,JSON.stringify(advice[0].payload));
   const [one,two]=['advisor-one','advisor-two'].map(key=>head(control.seen.find(x=>x.key===key)));
   assert.equal(one,two,'System prompt không được đổi sau mỗi lần hỏi advisor');
   assert.match(one,/after two consecutive materially equivalent failed attempts/);

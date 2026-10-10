@@ -299,37 +299,6 @@
           "count": 1
         }
       ]
-    },
-    {
-      "package": "@narumitw/pi-usage",
-      "versions": {
-        "current": "0.64.1"
-      },
-      "file": "dist/index.ts",
-      "originalSha256": "0f1f6e1fbd46564aad283e47f437e5aad9fd44b89726a77b482c1e3a4c8c4999",
-      "patchedSha256": "12f2bae3eb51a8e2a4eee97230a1f85151399cedb30d82b94cefd4593580b5c8",
-      "edits": [
-        {
-          "before": "  const startStatusRefresh = (ctx, model, force) => {\n",
-          "after": "  const startStatusRefresh = (ctx, model, force) => {\n    // Local integration: sessions without a UI (Agent children, print mode) render no statusline.\n    // Skip usage queries and refresh timers there; Codex fast-mode request rewriting still applies.\n    if (!ctx.hasUI) return;\n",
-          "count": 1
-        },
-        {
-          "before": "  \"gpt-6-sol\"\n]);",
-          "after": "  \"gpt-6-sol\",\n  // Local integration (pi-config): the Codex model catalog lists the Fast (priority) tier for GPT-6 Astra;\n  // GPT-6.1 Sol has a Fast tier too (listed as a -fast variant by the gateways in the Pi 0.99.1 catalog).\n  \"gpt-6-astra\",\n  \"gpt-6.1-sol\"\n]);",
-          "count": 1
-        },
-        {
-          "before": "var FAST_USAGE_WARNING = \"Fast is about 1.5\\xD7 faster and uses more of your plan allowance.\";",
-          "after": "var FAST_USAGE_WARNING = \"Fast is about 1.5\\xD7 faster (2\\xD7 on GPT-6 Astra) and uses more of your plan allowance.\";",
-          "count": 1
-        },
-        {
-          "before": "  pi.on(\"before_provider_request\", (event, ctx) => {\n",
-          "after": "  // Local integration (pi-config): requests that share this session's ModelRuntime but skip its\n  // before_provider_request hook (advisor calls, Agent children without\n  // pi-usage) follow the same Fast setting, decided by each request's own model. The UI session installs\n  // the wrapper once per runtime and keeps the setting reader current.\n  pi.on(\"session_start\", (_event, ctx) => {\n    const runtime = ctx.hasUI ? ctx.modelRegistry?.runtime : void 0;\n    if (!runtime || typeof runtime.streamSimple !== \"function\") return;\n    const key = Symbol.for(\"pi-config:codex-fast\");\n    runtime[key] = () => settingsRuntime.get().settings.codexFastMode;\n    if (runtime.streamSimple[key]) return;\n    const streamSimple = runtime.streamSimple;\n    const wrapped = function(model, context, streamOptions) {\n      const onPayload = async (payload, requestModel) => {\n        const previous = await streamOptions?.onPayload?.(payload, requestModel);\n        let enabled = false;\n        try {\n          enabled = runtime[key]?.() === true;\n        } catch {\n          // A settings problem must not fail the request; pi-usage reports it in the UI session.\n        }\n        const rewritten = rewriteCodexFastPayload(previous === void 0 ? payload : previous, requestModel ?? model, enabled);\n        return rewritten === void 0 ? previous : rewritten;\n      };\n      return streamSimple.call(this ?? runtime, model, context, { ...streamOptions, onPayload });\n    };\n    wrapped[key] = true;\n    runtime.streamSimple = wrapped;\n  });\n  pi.on(\"before_provider_request\", (event, ctx) => {\n",
-          "count": 1
-        }
-      ]
     }
   ]
 }
