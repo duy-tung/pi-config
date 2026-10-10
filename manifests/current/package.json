@@ -11,7 +11,6 @@
     "@gotgenes/pi-anthropic-auth": "3.4.2",
     "@juicesharp/rpiv-ask-user-question": "2.12.0",
     "@juicesharp/rpiv-todo": "2.12.0",
-    "@narumitw/pi-usage": "0.64.1",
     "@tintinweb/pi-subagents": "0.19.0",
     "pi-advisor-flow": "0.12.0",
     "pi-open-tui": "0.3.11",

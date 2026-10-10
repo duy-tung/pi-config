@@ -195,7 +195,7 @@ async function checkGroup(group, workspace, index, links) {
 }
 
 test("mỗi file .ts được vá dựng lại được bản gốc theo originalSha256", { skip: !root }, () => {
-  assert.equal(groups.flatMap((group) => group.specs).length, 5);
+  assert.equal(groups.flatMap((group) => group.specs).length, 4);
   for (const group of groups) for (const spec of group.specs) {
     const original = reconstructOriginal(fs.readFileSync(path.join(modules, group.package, spec.file), "utf8"), spec);
     assert.equal(sourceHash(original), spec.originalSha256);

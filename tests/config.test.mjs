@@ -55,9 +55,8 @@ for (const platform of ["darwin", "linux", "win32"]) {
       const manifest = JSON.parse(fs.readFileSync(path.join(repoDir, "manifests", "current", "package.json"), "utf8"));
       assert.equal(settings.lastChangelogVersion, manifest.dependencies["@earendil-works/pi-coding-agent"]);
       assert.ok(settings.packages.every((entry) => (typeof entry === "string" ? entry : entry.source).startsWith(p.join(options.root, "runtimes", profile.runtime, "node_modules"))));
-      const providers = json(p.join(profile.agentDir, "models.json")).providers;
-      assert.deepEqual(Object.keys(providers), ["openai-codex"], "Opus 5.5 và openai (Sign in with ChatGPT) dùng context của catalog");
-      assert.deepEqual(providers["openai-codex"].modelOverrides, { "gpt-6-sol": { contextWindow: 872000 }, "gpt-6.1-sol": { contextWindow: 872000 }, "gpt-6-astra": { contextWindow: 872000 } });
+      // Mọi model dùng context của catalog Pi; openai-codex (legacy) không còn override 872K.
+      assert.ok(!files.some((file) => file.path === p.join(profile.agentDir, "models.json")));
       assert.deepEqual(settings.enabledModels, ["anthropic/claude-opus-5-5", "anthropic/claude-fable-5-1", "anthropic/claude-sonnet-5-5"]);
       if (name === "main") {
       const roles = {
@@ -73,11 +72,10 @@ for (const platform of ["darwin", "linux", "win32"]) {
         assert.equal(field("inherit_context"), "false");
         assert.equal(field("isolated"), "false");
         assert.equal(field("max_turns"), "0", "Không giới hạn số lượt");
-        // Worker ghi file: chạy foreground. Worker và reviewer nạp pi-usage để request fast có chi phí đúng
-        // khi người dùng đổi vai đó sang model Codex.
+        // Worker ghi file: chạy foreground.
         const foreground = role === "worker";
         assert.equal(field("run_in_background"), foreground ? "false" : undefined, role);
-        assert.equal(JSON.parse(field("extensions")).includes("pi-usage"), role !== "researcher", role);
+        assert.equal(JSON.parse(field("extensions")).includes("pi-usage"), false, role);
         assert.equal(JSON.parse(field("extensions")).includes("pi-web-access"), role === "researcher", role);
       }
       const subagents = json(p.join(profile.agentDir, "subagents.json"));
@@ -96,7 +94,8 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.equal(profile.packages.includes("pi-advisor-flow"), name === "main");
       assert.equal(profile.packages.includes("pi-workspace-history"), false);
     }
-    assert.equal(json(p.join(options.agentDir, "pi-usage.json")).codexFastMode, true);
+    // pi-usage đã gỡ: không còn /fast và pi-usage.json.
+    assert.ok(!files.some((file) => file.path === p.join(options.agentDir, "pi-usage.json")));
   });
 
   test(`${platform}: không cài sẵn MCP, đường dẫn có khoảng trắng và credential được chặn`, () => {

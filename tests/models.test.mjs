@@ -8,7 +8,7 @@ import {buildConfiguration} from '../lib/config.mjs';
 import {modelDefaults} from './install-fixture.mjs';
 
 const root = process.env.PI_CONFIG_TEST_ROOT;
-test('Pi: Opus 5.5/high 1M mặc định, advisor Fable trong catalog, GPT qua Sign in with ChatGPT và Codex Sol/Astra 872K, payload khi được chọn', {skip: !root}, async () => {
+test('Pi: Opus 5.5/high 1M mặc định, advisor Fable trong catalog, GPT (openai và openai-codex) 272K của catalog, payload khi được chọn', {skip: !root}, async () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-models-'));
   const savedOffline = process.env.PI_OFFLINE;
   const savedFetch = globalThis.fetch;
@@ -28,8 +28,9 @@ test('Pi: Opus 5.5/high 1M mặc định, advisor Fable trong catalog, GPT qua S
       fs.mkdirSync(agentDir, {recursive: true});
       const get = (name) => JSON.parse(generated.find(x => x.path === path.join(agentDir, name)).content);
       const settings = get('settings.json');
+      // Installer không sinh models.json; runtime chạy với file không tồn tại như bản cài thật.
+      assert.ok(!generated.some(x => x.path === path.join(agentDir, 'models.json')));
       const modelsPath = path.join(agentDir, 'models.json');
-      fs.writeFileSync(modelsPath, JSON.stringify(get('models.json')));
       const authPath = path.join(agentDir, 'auth.json');
       const jwt = `fixture.${Buffer.from(JSON.stringify({'https://api.openai.com/auth': {chatgpt_account_id: 'fixture'}})).toString('base64url')}.fixture`;
       const expires = Date.now() + 3600000;
@@ -49,10 +50,10 @@ test('Pi: Opus 5.5/high 1M mặc định, advisor Fable trong catalog, GPT qua S
       assert.equal(model.maxTokens, 128000);
       assert.equal(model.api, 'anthropic-messages');
       assert.ok(getSupportedThinkingLevels(model).includes(settings.defaultThinkingLevel));
-      // GPT không là mặc định của vai nào. models.json nâng context của openai-codex (legacy) khi người dùng chọn;
-      // openai (Sign in with ChatGPT) giữ cửa sổ của catalog Pi.
+      // GPT không là mặc định của vai nào; khi người dùng chọn, openai (Sign in with ChatGPT) và openai-codex (legacy)
+      // đều dùng cửa sổ của catalog Pi.
       for (const id of ['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-astra']) {
-        assert.equal(runtime.getModel('openai-codex', id).contextWindow, 872000, `openai-codex/${id}`);
+        assert.equal(runtime.getModel('openai-codex', id).contextWindow, 272000, `openai-codex/${id}`);
         assert.equal(runtime.getModel('openai', id).contextWindow, 272000, `openai/${id}`);
       }
       for (const [ref, level] of Object.entries(settings.modelThinkingLevels)) {

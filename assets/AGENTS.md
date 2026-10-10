@@ -9,7 +9,7 @@ Không thay model hay mở rộng quyền để vượt blocker. Không đọc h
 Researcher và reviewer chạy nền theo mặc định (tối đa 4); chia việc đọc lớn cho vài researcher song song; worker chạy foreground (tối đa 2). Agent không giới hạn số lượt: theo dõi kết quả và dùng steer_subagent khi agent lạc hướng. Chỉ chạy song song các phần độc lập; không giao hai worker ghi cùng file hoặc cùng thay đổi. Trước khi giao lại, kiểm agent đang chạy và dùng steer_subagent/get_subagent_result theo ID; không gửi lại cùng công việc. Parent đọc bằng chứng và kiểm thử trước khi nghiệm thu.
 Dùng todo cho tiến độ trong session.
 Advisor: khi ask_advisor không có trong danh sách tool hoặc đã hết lượt, ghi rõ trong báo cáo và làm tiếp; subagent không có ask_advisor, báo parent. Lời khuyên là ý kiến, advisor không viết code, bạn tự áp dụng và kiểm chứng. Không tự đổi cấu hình advisor.
-Không tự bật extra usage hay provider trả phí; không đổi /fast hay ngân sách.
+Không tự bật extra usage hay provider trả phí; không đổi ngân sách.
 Nếu worker cần quyền, người dùng duyệt trong UI parent. Không diễn giải thiếu quyền là đã hoàn thành.
 
 ## Web: native search và Firecrawl

@@ -37,7 +37,7 @@ Cài lại gộp ba chiều các file đó:
 - Vai bạn chưa đổi nhận mặc định mới.
 - Nếu bạn đã đổi một vai mà bản mới cũng đổi mặc định của vai đó, installer giữ giá trị của bạn và báo xung đột kèm mặc định mới.
 
-Mặc định chỉ cần đăng nhập Claude, kể cả model phân loại của auto mode (Sonnet 5.5). Reviewer và advisor dùng Fable 5.1, khác model với worker và phiên chính. Muốn một vai dùng GPT thì `/login` → **OpenAI** → **Sign in with ChatGPT** và chọn model `openai/…` (vd `openai/gpt-6.1-sol`); GLM thì đăng nhập OpenCode Go; rồi đổi vai như trên. Vai đã đặt sang `openai-codex/…` (legacy) vẫn chạy và giữ nguyên khi cài lại.
+Mặc định chỉ cần đăng nhập Claude, kể cả model phân loại của auto mode (Sonnet 5.5). Reviewer và advisor dùng Fable 5.1, khác model với worker và phiên chính. Muốn một vai dùng GPT thì `/login` → **OpenAI** → **Sign in with ChatGPT** và chọn model `openai/…` (vd `openai/gpt-6.1-sol`); GLM thì đăng nhập OpenCode Go; rồi đổi vai như trên. Vai đã đặt sang `openai-codex/…` (legacy) vẫn chạy và giữ nguyên khi cài lại, với context của catalog Pi và không có Codex fast mode.
 
 Advisor mặc định khác `main`, vì hỏi chính mình không thêm góc nhìn. Tuy vậy, chặn advisor trùng model (`advisorDisableSameModel`) vẫn được tắt trong `advisor.json`, vì fallback `advisorFallbackModel` (Opus 5.5, dùng khi request tới advisor lỗi) trùng model của phiên chính. Ảnh trong hội thoại được gửi kèm cho advisor khi model advisor nhận ảnh.
 
