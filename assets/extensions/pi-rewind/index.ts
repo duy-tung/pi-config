@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -23,8 +23,9 @@ import { BlobStore, Capturer, type FileVersion } from "./lib/store.ts";
  * pi-rewind: checkpoint theo prompt và /rewind (Esc Esc) như Claude Code.
  * - Trước khi agent xử lý mỗi prompt: ghi phiên bản của mọi file đã theo dõi.
  * - edit/write: lưu nội dung trước lần sửa đầu tiên trong lượt.
- * - bash/Agent (trong git worktree): so git status trước/sau để biết file bị đổi.
- * - Khôi phục code chỉ đụng tới file agent đã theo dõi; hội thoại dùng navigateTree.
+ * - bash/Agent và lệnh `!` của người dùng (trong git worktree): so git status trước/sau để biết file bị đổi.
+ * - Khôi phục code chỉ đụng tới file đã theo dõi; hội thoại dùng navigateTree.
+ * - /tree và /fork của Pi cũng hỏi khôi phục code về cùng điểm (chọn trước, ghi sau khi điều hướng xong).
  * - Nhật ký phục hồi quanh mỗi lần khôi phục; Pi thoát giữa chừng thì /rewind cho hoàn tất hoặc hoàn tác.
  * - Kế hoạch lúc ghi phải khớp màn hình xác nhận; khóa kho giữa các process Pi khi ghi code hoặc dọn kho.
  * - Menu còn có Redo (hoàn tác lần rewind gần nhất) và "Resume previous session" sau /clear hoặc /new.
@@ -59,6 +60,16 @@ export default function piRewind(pi: ExtensionAPI) {
   let previousSession: string | undefined;
   const windows = new Map<string, WatchWindow>();
   const bashTracked = new Map<string, boolean>();
+  /** Số lần điều hướng hội thoại do pi-rewind đang chạy (hook /tree bỏ qua chúng). */
+  let ownNavigation = 0;
+  /** Khôi phục code đã chọn ở session_before_tree, ghi khi /tree điều hướng xong. */
+  let treeRestore: CodeRestore | undefined;
+  /** Lệnh `!` của người dùng chờ so git status; đóng ở lần tương tác kế tiếp (prompt, /rewind, /tree, /fork). */
+  let userBash: WatchWindow[] = [];
+  /** Checkpoint của prompt mở lượt đang chạy (lượt do thông báo/extension mở thì không có). */
+  let runCheckpointId: string | undefined;
+  /** pi-rewind đang dừng lượt để khôi phục: không báo "lượt bị dừng". */
+  let settling = 0;
 
   const append = (data: RewindEntry) => {
     pi.appendEntry(ENTRY_TYPE, data);
@@ -88,6 +99,19 @@ export default function piRewind(pi: ExtensionAPI) {
     append(data);
   }
 
+  /** So git status của các lệnh `!` đã chạy và ghi file chúng đổi vào lượt hiện tại. */
+  async function flushUserBash(): Promise<void> {
+    const opened = userBash;
+    userBash = [];
+    for (const window of opened) {
+      try {
+        for (const change of await watcher.end(window)) touch(change.file, "user_bash", () => change.before);
+      } catch {
+        /* lệnh đã chạy xong */
+      }
+    }
+  }
+
   const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
   /** Báo người dùng một lần mỗi prompt khi kho rewind không ghi được. */
@@ -115,7 +139,119 @@ export default function piRewind(pi: ExtensionAPI) {
     reason: `Rewind could not save a restore point before this change (${reason}), so the change was blocked to keep the files restorable. Do not change the files another way (bash, scripts or other tools); tell the user. They can free disk space or fix write access to the rewind storage, or turn rewind off (rewind.enabled: false in settings.json).`,
   });
 
-  pi.on("session_start", (event, ctx) => {
+  // ---------------------------------------------------------------- khôi phục code cùng /tree và /fork của Pi
+
+  /** Code đã chọn khôi phục khi điều hướng hội thoại ngoài /rewind; kế hoạch là bản đã cho người dùng xem. */
+  interface CodeRestore {
+    checkpointId: string;
+    plan: PlanItem[];
+    fromLeafId: string | null;
+    mode: RestoreMode;
+  }
+
+  const RESTORE_BOTH = "Restore code and conversation";
+  const CONVERSATION_ONLY = "Restore conversation only";
+  const RESTORE_CODE = "Restore code";
+  const KEEP_CODE = "Keep the current code";
+  const NEVER_MIND = "Never mind";
+  /** Kế hoạch khôi phục code chuyển từ phiên cũ sang phiên /fork (extension được nạp lại cho phiên mới); mỗi phiên một file. */
+  const forkHandoffFile = (sessionFile: string) =>
+    path.join(config.storageDir, `fork-handoff-${createHash("sha256").update(sessionFile).digest("hex").slice(0, 16)}.json`);
+  const FORK_HANDOFF_MAX_AGE = 5 * 60 * 1000;
+
+  /**
+   * Checkpoint ứng với trạng thái code tại một entry. Prompt của người dùng: bản trước prompt đó (Pi đưa leaf về trước
+   * prompt, hoặc đứng tại prompt chưa có trả lời). Entry khác trên nhánh hiện tại: bản trước prompt kế tiếp, nếu prompt
+   * đó có checkpoint. Không biết chắc code ở điểm đó thì không có checkpoint: entry ở nhánh khác hoặc thuộc lượt cuối,
+   * custom message (lượt do thông báo/extension mở không có checkpoint), prompt kế tiếp không có checkpoint.
+   */
+  function checkpointAt(ctx: ExtensionContext, entryId: string): Checkpoint | undefined {
+    const entry = ctx.sessionManager.getEntry(entryId) as SessionEntryLike | undefined;
+    if (!entry || entry.type === "custom_message") return undefined;
+    if (entry.type === "message" && entry.message?.role === "user") return history.byUserEntry.get(entryId);
+    const branch = ctx.sessionManager.getBranch() as SessionEntryLike[];
+    const index = branch.findIndex((item) => item.id === entryId);
+    if (index < 0) return undefined;
+    for (const item of branch.slice(index + 1)) {
+      if (item.type === "custom_message") return undefined;
+      if (item.type === "message" && item.message?.role === "user") return history.byUserEntry.get(item.id);
+    }
+    return undefined;
+  }
+
+  /** Hỏi có khôi phục code về checkpoint không; code đã khớp (không có file nào để ghi) thì không hỏi. */
+  async function askCodeRestore(ctx: ExtensionContext, checkpoint: Checkpoint, question: string, options: string[]) {
+    const plan = planRestore(history.targetsFor(checkpoint), capturer);
+    const stats = planStats(plan, store);
+    if (!stats.filesChanged.length) return undefined;
+    const answer = await ctx.ui.select(
+      `${question}\nThe code will be restored +${stats.insertions} -${stats.deletions} in ${describeFiles(stats.filesChanged)}.`, options,
+    );
+    return { answer, plan };
+  }
+
+  /** Ghi kế hoạch đã xem (lập lại phải khớp), ghi lại như một lần rewind để Redo đưa về. Trả về số file đã đổi. */
+  async function applyCodeRestore(ctx: ExtensionContext, restore: CodeRestore): Promise<string[]> {
+    return locked(async () => {
+      const plan = planRestore(new Map(restore.plan.map((item) => [item.file, item.target])), capturer);
+      assertSamePlan(restore.plan, plan);
+      return journaled(ctx, plan, restore.checkpointId, async () => {
+        const previous = await applyPlan(ctx, plan);
+        // Với /fork, checkpointId có thể không có trong lịch sử của phiên mới (entry sau điểm fork không được chép);
+        // Redo chỉ dùng previous và fromLeafId nên vẫn chạy.
+        append({ v: 1, kind: "rewind", id: randomUUID(), at: Date.now(), checkpointId: restore.checkpointId, mode: restore.mode, fromLeafId: restore.fromLeafId, previous });
+        return Object.keys(previous);
+      });
+    });
+  }
+
+  async function finishCodeRestore(ctx: ExtensionContext, restore: CodeRestore, where?: string): Promise<void> {
+    try {
+      const files = await applyCodeRestore(ctx, restore);
+      ctx.ui.notify(files.length ? `Restored the code in ${describeFiles(files)}${where ? ` ${where}` : ""}. /rewind → Redo puts it back.` : "The code already matched (nothing was restored).", "info");
+    } catch (error) {
+      // /tree đã đổi hội thoại: ghi lại để Redo đưa hội thoại về, dù code chưa được khôi phục.
+      if (restore.mode === "both") {
+        append({ v: 1, kind: "rewind", id: randomUUID(), at: Date.now(), checkpointId: restore.checkpointId, mode: "conversation", fromLeafId: restore.fromLeafId, previous: {} });
+      }
+      ctx.ui.notify(`Rewind: ${errorText(error)}${restore.mode === "both" ? "\n/rewind → Redo goes back to the conversation from before /tree." : ""}`, "error");
+    }
+  }
+
+  /** Phiên mới của /fork: ghi kế hoạch mà phiên cũ đã cho người dùng chọn. */
+  async function consumeForkHandoff(ctx: ExtensionContext, previousSessionFile: string | undefined): Promise<void> {
+    if (!previousSessionFile) return;
+    let handoff: { from?: unknown; at?: unknown; checkpointId?: unknown; plan?: unknown } | undefined;
+    try {
+      handoff = JSON.parse(fs.readFileSync(forkHandoffFile(previousSessionFile), "utf8"));
+    } catch {
+      return;
+    }
+    dropForkHandoff(previousSessionFile);
+    if (!handoff || handoff.from !== previousSessionFile || typeof handoff.at !== "number" || Date.now() - handoff.at > FORK_HANDOFF_MAX_AGE) return;
+    if (typeof handoff.checkpointId !== "string" || !Array.isArray(handoff.plan)) return;
+    await finishCodeRestore(ctx, { checkpointId: handoff.checkpointId, plan: handoff.plan as PlanItem[], fromLeafId: null, mode: "code" }, "for the forked session");
+  }
+
+  function dropForkHandoff(sessionFile: string): void {
+    try {
+      fs.unlinkSync(forkHandoffFile(sessionFile));
+    } catch {
+      /* không có */
+    }
+  }
+
+  function writeForkHandoff(data: { from: string; at: number; checkpointId: string; plan: PlanItem[] }): void {
+    fs.mkdirSync(config.storageDir, { recursive: true, mode: 0o700 });
+    const file = forkHandoffFile(data.from);
+    const temp = `${file}.${process.pid}.tmp`;
+    fs.writeFileSync(temp, JSON.stringify(data), { mode: 0o600 });
+    fs.renameSync(temp, file);
+  }
+
+  pi.on("session_start", async (event, ctx) => {
+    treeRestore = undefined;
+    userBash = [];
     history = History.fromEntries(ctx.sessionManager.getEntries() as SessionEntryLike[]);
     current = history.checkpoints.at(-1);
     pending = undefined;
@@ -130,6 +266,7 @@ export default function piRewind(pi: ExtensionAPI) {
       const files = interrupted.flatMap((journal) => Object.keys(journal.files));
       ctx.ui.notify(`Rewind: Pi exited while restoring the code in ${describeFiles(files)}. Open /rewind to finish or undo that restore.`, "warning");
     }
+    if (event.reason === "fork") await consumeForkHandoff(ctx, event.previousSessionFile);
   });
 
   pi.on("session_shutdown", () => {
@@ -152,20 +289,24 @@ export default function piRewind(pi: ExtensionAPI) {
 
     pi.on("agent_start", () => {
       awaitingPrompt = true;
+      runCheckpointId = undefined;
     });
 
     // User message chưa được ghi vào phiên ở message_end; chỉ chụp trạng thái ở đây,
     // entry checkpoint được ghi khi user message đã có id (message_start của assistant).
-    pi.on("message_end", (event, ctx) => {
+    pi.on("message_end", async (event, ctx) => {
       if (!awaitingPrompt || event.message.role !== "user") return;
       awaitingPrompt = false;
       storageWarned = false;
+      // Lệnh `!` chạy trước prompt này thuộc lượt trước.
+      await flushUserBash();
       const draft: Draft = {
         id: randomUUID(), at: Date.now(),
         timestamp: typeof event.message.timestamp === "number" ? event.message.timestamp : undefined,
         source: lastInputSource,
       };
       lastInputSource = undefined;
+      runCheckpointId = draft.id;
       snapshot(draft, ctx);
     });
 
@@ -201,6 +342,7 @@ export default function piRewind(pi: ExtensionAPI) {
       }
     });
 
+    // Tool bị dừng giữa chừng (Esc) vẫn có tool_result: file nó đã đổi được ghi lại.
     pi.on("tool_result", async (event) => {
       const window = windows.get(event.toolCallId);
       if (!window) return;
@@ -215,6 +357,74 @@ export default function piRewind(pi: ExtensionAPI) {
     // Tool bị cổng permission chặn không có tool_result: bỏ cửa sổ theo dõi (lệnh không chạy).
     pi.on("tool_execution_end", (event) => {
       windows.delete(event.toolCallId);
+    });
+
+    pi.on("agent_settled", (event, ctx) => {
+      if (!event.aborted || settling > 0 || !current || current.id !== runCheckpointId || !ctx.hasUI) return;
+      const changed = history.turnChanges(current, (file) => capturer.capture(file)).map((change) => change.file);
+      if (changed.length) {
+        ctx.ui.notify(`Rewind: the interrupted turn changed ${describeFiles(changed)}. Esc Esc (or /rewind) restores the code from before that prompt.`, "info");
+      }
+    });
+
+    // Lệnh `!`/`!!` của người dùng: chụp git status trước lệnh; so lại ở lần tương tác kế tiếp (flushUserBash).
+    // Pi vẫn tự chạy lệnh (shell, prefix, extension khác bắt user_bash). Thay đổi được ghi vào lượt gần nhất.
+    pi.on("user_bash", async (event) => {
+      if (!current) return undefined;
+      try {
+        const window = await watcher.begin(event.cwd);
+        bashTracked.set(event.cwd, !!window);
+        if (window) userBash.push(window);
+      } catch {
+        /* không chặn lệnh vì lỗi theo dõi */
+      }
+      return undefined;
+    });
+
+    // /tree của Pi: hỏi có khôi phục code về cùng điểm không, ghi sau khi điều hướng xong.
+    pi.on("session_before_tree", async (event, ctx) => {
+      treeRestore = undefined;
+      if (ownNavigation > 0 || !ctx.hasUI) return undefined;
+      try {
+        await flushUserBash();
+        const checkpoint = checkpointAt(ctx, event.preparation.targetId);
+        if (!checkpoint) return undefined;
+        const offer = await askCodeRestore(ctx, checkpoint, "Rewind: also restore the code to this point?", [RESTORE_BOTH, CONVERSATION_ONLY, NEVER_MIND]);
+        if (!offer || offer.answer === CONVERSATION_ONLY) return undefined;
+        if (offer.answer !== RESTORE_BOTH) return { cancel: true };
+        treeRestore = { checkpointId: checkpoint.id, plan: offer.plan, fromLeafId: event.preparation.oldLeafId, mode: "both" };
+      } catch (error) {
+        ctx.ui.notify(`Rewind: ${errorText(error)}`, "error");
+      }
+      return undefined;
+    });
+
+    pi.on("session_tree", async (event, ctx) => {
+      const restore = treeRestore;
+      treeRestore = undefined;
+      if (!restore || ownNavigation > 0 || event.oldLeafId !== restore.fromLeafId) return;
+      await finishCodeRestore(ctx, restore);
+    });
+
+    // /fork của Pi: hỏi ở phiên cũ, ghi code trong phiên mới (session_start, reason "fork").
+    pi.on("session_before_fork", async (event, ctx) => {
+      const from = ctx.sessionManager.getSessionFile();
+      if (!from) return undefined;
+      // Kế hoạch của lần fork trước bị hủy (extension khác chặn) không được dùng cho lần này.
+      dropForkHandoff(from);
+      if (!ctx.hasUI) return undefined;
+      try {
+        await flushUserBash();
+        const checkpoint = checkpointAt(ctx, event.entryId);
+        if (!checkpoint) return undefined;
+        const offer = await askCodeRestore(ctx, checkpoint, "Rewind: also restore the code to this point for the forked session?", [RESTORE_CODE, KEEP_CODE, NEVER_MIND]);
+        if (!offer || offer.answer === KEEP_CODE) return undefined;
+        if (offer.answer !== RESTORE_CODE) return { cancel: true };
+        writeForkHandoff({ from, at: Date.now(), checkpointId: checkpoint.id, plan: offer.plan });
+      } catch (error) {
+        ctx.ui.notify(`Rewind: ${errorText(error)}`, "error");
+      }
+      return undefined;
     });
   }
 
@@ -357,12 +567,12 @@ export default function piRewind(pi: ExtensionAPI) {
 
   // ---------------------------------------------------------------- hành động
 
-  async function restoreCode(ctx: ExtensionCommandContext, targets: Map<string, FileVersion>): Promise<Record<string, FileVersion>> {
+  async function restoreCode(ctx: ExtensionContext, targets: Map<string, FileVersion>): Promise<Record<string, FileVersion>> {
     return applyPlan(ctx, planRestore(targets, capturer));
   }
 
   /** Ghi kế hoạch. Trả về bản trước khi khôi phục của các file đã đổi (kể cả ghi dở) để Redo đưa về. */
-  async function applyPlan(ctx: ExtensionCommandContext, plan: PlanItem[]): Promise<Record<string, FileVersion>> {
+  async function applyPlan(ctx: ExtensionContext, plan: PlanItem[]): Promise<Record<string, FileVersion>> {
     if (!plan.length) return {};
     const result = await applyRestore(plan, store, capturer, { queue: withFileMutationQueue });
     const message = describeRestore(result);
@@ -382,7 +592,7 @@ export default function piRewind(pi: ExtensionAPI) {
   ): Promise<void> {
     const leafBefore = ctx.sessionManager.getLeafId();
     try {
-      const result = await ctx.navigateTree(entryId, { summarize: false });
+      const result = await navigateTree(ctx, entryId, { summarize: false });
       if (result.cancelled) throw new Error(`${failure}\nNavigation was cancelled.`);
     } catch (error) {
       if (ctx.sessionManager.getLeafId() === leafBefore) await restoreCode(ctx, new Map(Object.entries(previous)));
@@ -413,8 +623,13 @@ export default function piRewind(pi: ExtensionAPI) {
 
   async function settle(ctx: ExtensionCommandContext): Promise<void> {
     if (ctx.isIdle()) return;
-    ctx.abort();
-    await ctx.waitForIdle();
+    settling++;
+    try {
+      ctx.abort();
+      await ctx.waitForIdle();
+    } finally {
+      settling--;
+    }
   }
 
   /** shown: kế hoạch đã hiện ở màn hình xác nhận; code chỉ được ghi khi kế hoạch lập lại khớp với nó. */
@@ -462,7 +677,7 @@ export default function piRewind(pi: ExtensionAPI) {
         record("conversation", checkpoint?.id ?? "", {});
         return;
       case "summarize": {
-        const result = await ctx.navigateTree(choice.entryId, { summarize: true, customInstructions: choice.instructions });
+        const result = await navigateTree(ctx, choice.entryId, { summarize: true, customInstructions: choice.instructions });
         if (result.cancelled) throw new Error("Failed to summarize:\nSummarization was cancelled.");
         return;
       }
@@ -472,8 +687,18 @@ export default function piRewind(pi: ExtensionAPI) {
     }
   }
 
+  /** Điều hướng do chính pi-rewind gây ra: hook /tree của nó bỏ qua (không hỏi lại, không khôi phục code lần nữa). */
+  async function navigateTree(ctx: ExtensionCommandContext, entryId: string, options: Parameters<ExtensionCommandContext["navigateTree"]>[1]) {
+    ownNavigation++;
+    try {
+      return await ctx.navigateTree(entryId, options);
+    } finally {
+      ownNavigation--;
+    }
+  }
+
   async function navigate(ctx: ExtensionCommandContext, entryId: string): Promise<void> {
-    const result = await ctx.navigateTree(entryId, { summarize: false });
+    const result = await navigateTree(ctx, entryId, { summarize: false });
     if (result.cancelled) throw new Error("Failed to restore the conversation:\nNavigation was cancelled.");
   }
 
@@ -508,7 +733,7 @@ export default function piRewind(pi: ExtensionAPI) {
     const compactionId = manager.appendCompaction(text, entryId, tokensBefore, { source: ENTRY_TYPE, readFiles: [], modifiedFiles: [] }, true, usage);
     // Điều hướng tới entry compaction để Pi dựng lại context model và vẽ lại transcript.
     if (leaf) manager.branch(leaf);
-    const result = await ctx.navigateTree(compactionId, { summarize: false });
+    const result = await navigateTree(ctx, compactionId, { summarize: false });
     if (result.cancelled) throw new Error("Failed to summarize:\nNavigation was cancelled.");
   }
 
@@ -751,6 +976,7 @@ export default function piRewind(pi: ExtensionAPI) {
       ctx.ui.notify("/rewind cần giao diện tương tác.", "error");
       return;
     }
+    await flushUserBash();
     const rows = buildRows(ctx);
     const menu = buildMenu(ctx);
     const canSummarize = !!ctx.model;

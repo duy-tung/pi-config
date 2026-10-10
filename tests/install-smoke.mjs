@@ -57,7 +57,7 @@ const typecheck=path.join(temporary,'typecheck');
 fs.cpSync(path.join(repo,'manifests','typecheck'),typecheck,{recursive:true});
 await run(process.execPath,[npmCli(),'ci','--ignore-scripts','--no-audit','--no-fund'],{cwd:typecheck,timeout:npmTimeout()});
 const tsc=path.join(typecheck,'node_modules','typescript','bin','tsc');
-await run(process.execPath,['--test',...['extensions-typecheck','models','glm-wire','native-search-wire','claude-effort-wire','rewind-session','subagent-markdown','patched-typecheck','model-roles','agent-models'].map(name=>path.join(repo,`tests/${name}.test.mjs`))],{env:{...process.env,PI_CONFIG_TEST_ROOT:root,PI_CONFIG_TSC:tsc}});
+await run(process.execPath,['--test',...['extensions-typecheck','models','glm-wire','native-search-wire','claude-effort-wire','rewind-session','rewind-hooks','subagent-markdown','patched-typecheck','model-roles','agent-models'].map(name=>path.join(repo,`tests/${name}.test.mjs`))],{env:{...process.env,PI_CONFIG_TEST_ROOT:root,PI_CONFIG_TSC:tsc}});
 await run(process.execPath,[path.join(repo,'tests/config-integration.mjs'),root]);
 await run(process.execPath,[path.join(repo,'tests/agent-integration.mjs'),root]);
 // Cài lại gộp ba chiều file JSON cấu hình: base là mặc định lần cài trước, lưu riêng trong <root>/state/defaults.
