@@ -10,7 +10,7 @@ Giao tiếp và tài liệu vận hành bằng tiếng Việt. Repo mô tả b�
 - Repo không chứa credential, token, dữ liệu phiên, log riêng hoặc đường dẫn máy nguồn. Auth và tùy chỉnh người dùng phải được bảo toàn khi cài lại.
 - Installer phải idempotent, kiểm quyền sở hữu file bằng manifest/checksum và báo rõ file đã được người dùng sửa. Chỉ lưu trữ tài nguyên thuộc installer, chưa sửa và không còn được tham chiếu.
 - Dùng root, agent-dir và bin-dir tạm để kiểm thử; không chạy installer đè lên Pi đang dùng trên máy phát triển.
-- Kiểm thử bằng fixture, chặn mạng model và không dùng credential thật. Chạy check, unit và smoke phù hợp; xác nhận CI trên ba hệ điều hành trước khi phát hành.
+- Kiểm thử bằng fixture, chặn mạng model và không dùng credential thật. Chạy check, unit và smoke phù hợp; xác nhận CI trên Ubuntu và macOS trước khi phát hành (Windows không chạy trong CI).
 - Tài liệu trình bày hành vi, cấu hình, cách vận hành và giới hạn hiện tại. Giữ nội dung ngắn, thống nhất với manifest và source.
 
 ## Xong khi

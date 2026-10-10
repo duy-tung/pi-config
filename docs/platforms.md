@@ -8,7 +8,7 @@ Installer cài vào thư mục của người dùng, không yêu cầu `sudo` ho
 | Linux | x64, ARM64 | `bash`, `curl`, `tar`, `sha256sum`; distro dùng glibc tương thích với Node 24 |
 | Windows 10/11 | x64, ARM64 | PowerShell 5.1 trở lên; bootstrap tự cài Git for Windows portable nếu chưa có Git Bash |
 
-Alpine/musl, Windows 32-bit và các CPU khác chưa hỗ trợ. Có binary ARM64 không đồng nghĩa đã kiểm thử đầy đủ trên ARM64 Linux/Windows: ma trận CI dùng runner do GitHub cấp, xem kiến trúc và kết quả thực ở mỗi run.
+Alpine/musl, Windows 32-bit và các CPU khác chưa hỗ trợ. Có binary ARM64 không đồng nghĩa đã kiểm thử đầy đủ trên ARM64 Linux/Windows: ma trận CI dùng runner do GitHub cấp, xem kiến trúc và kết quả thực ở mỗi run. Windows không có trong ma trận CI.
 
 ## Cài một lệnh
 
@@ -41,7 +41,7 @@ Git portable Windows được ghim **2.55.0.5**, tải từ bản phát hành ch
 
 ## Phạm vi kiểm chứng
 
-Workflow `.github/workflows/test.yml` chạy trên Ubuntu, Windows và macOS: kiểm tra repo, unit tests, cài package thật, kiểm runtime bằng provider giả và chạy bootstrap với đường dẫn có khoảng trắng. Bootstrap trong CI tải Node riêng trên cả ba hệ điều hành và tải Git portable trên Windows để không bỏ sót nhánh máy mới chưa có toolchain. Windows còn chạy lại script dạng chuỗi UTF-8 sau khi bỏ BOM qua `ScriptBlock::Create`, đúng cách dùng one-liner; các đường dẫn thử được truyền dưới dạng mảng để giữ nguyên khoảng trắng. Không dùng API key hoặc gọi model trả phí. Chỉ xem nền tảng đã nghiệm thu khi job tương ứng của commit cài đặt thành công; cấu hình workflow riêng chưa chứng minh tương thích.
+Workflow `.github/workflows/test.yml` chạy trên Ubuntu và macOS: kiểm tra repo, unit tests, cài package thật, kiểm runtime bằng provider giả và chạy bootstrap với đường dẫn có khoảng trắng. Bootstrap trong CI tải Node riêng để không bỏ sót nhánh máy mới chưa có toolchain. Windows không còn chạy trong CI: bộ cài PowerShell (`install.ps1`, `lib/add-path.ps1`), Git portable và các nhánh code riêng cho Windows không được kiểm tự động. Không dùng API key hoặc gọi model trả phí. Chỉ xem nền tảng đã nghiệm thu khi job tương ứng của commit cài đặt thành công; cấu hình workflow riêng chưa chứng minh tương thích.
 
 Bootstrap kiểm hash Node/Git đã ghim; archive của chính repo dùng HTTPS và commit/ref lựa chọn, không có chữ ký phát hành riêng. Với cài đặt cần kiểm soát chặt, tải script về, kiểm source và ghim commit trước khi chạy.
 
