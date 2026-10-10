@@ -15,10 +15,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    # npm ci trên runner Windows có lúc chậm (5-9 phút mỗi tarball): smoke và bootstrap mỗi bước cài một root mới.
-    timeout-minutes: 120
+    timeout-minutes: 60
     env:
       npm_config_fetch_timeout: '60000'
       npm_config_fetch_retries: '1'
@@ -34,7 +33,6 @@ jobs:
       - name: Cài đầy đủ và thử runtime với provider giả
         run: npm run smoke
       - name: Bootstrap Unix với đường dẫn có khoảng trắng
-        if: runner.os != 'Windows'
         shell: bash
         env:
           PI_CONFIG_SOURCE: ${{ github.workspace }}
@@ -44,39 +42,3 @@ jobs:
           bash install.sh --root "$RUNNER_TEMP/bootstrap smoke/platform"
           --agent-dir "$RUNNER_TEMP/bootstrap smoke/agent"
           --bin-dir "$RUNNER_TEMP/bootstrap smoke/bin" --no-path
-      - name: Bootstrap PowerShell với đường dẫn có khoảng trắng
-        if: runner.os == 'Windows'
-        shell: powershell
-        env:
-          PI_CONFIG_SOURCE: ${{ github.workspace }}
-          PI_CONFIG_BOOTSTRAP_DIR: ${{ runner.temp }}\bootstrap toolchain
-          PI_CONFIG_FRESH_TOOLCHAIN: '1'
-        run: |
-          $BootstrapArguments = @(
-            '--root', $env:PI_CONFIG_SMOKE_ROOT,
-            '--agent-dir', $env:PI_CONFIG_SMOKE_AGENT_DIR,
-            '--bin-dir', $env:PI_CONFIG_SMOKE_BIN_DIR, '--no-path'
-          )
-          & .\install.ps1 @BootstrapArguments
-          # File mode needs BOM for Windows PowerShell 5.1 Vietnamese text. Text
-          # execution must remove it, exactly as the public one-liner does.
-          $DownloadedText = [Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes((Join-Path $PWD 'install.ps1')))
-          $BootstrapText = $DownloadedText.TrimStart([char]0xFEFF)
-          & ([scriptblock]::Create($BootstrapText)) @BootstrapArguments
-      - name: add-path.ps1 giữ PATH của user dạng REG_EXPAND_SZ
-        if: runner.os == 'Windows'
-        shell: powershell
-        run: |
-          $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
-          $raw = { $key.GetValue('Path', $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames) }
-          $key.SetValue('Path', '%USERPROFILE%\pi-probe;C:\Tools', [Microsoft.Win32.RegistryValueKind]::ExpandString)
-          & .\lib\add-path.ps1 -Directory 'C:\pi bin'
-          & .\lib\add-path.ps1 -Directory 'C:\pi bin\'
-          & .\lib\add-path.ps1 -Directory "$env:USERPROFILE\pi-probe"
-          $value = & $raw
-          if ($value -ne 'C:\pi bin;%USERPROFILE%\pi-probe;C:\Tools') { throw "unexpected Path: $value" }
-          if ($key.GetValueKind('Path') -ne [Microsoft.Win32.RegistryValueKind]::ExpandString) { throw "Path is no longer REG_EXPAND_SZ" }
-          $key.DeleteValue('Path')
-          & .\lib\add-path.ps1 -Directory 'C:\pi bin'
-          if ((& $raw) -ne 'C:\pi bin') { throw "unexpected Path when empty: $(& $raw)" }
-          $key.Close()

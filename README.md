@@ -166,6 +166,6 @@ npm test
 npm run smoke
 ```
 
-CI chạy trên Ubuntu, Windows và macOS: kiểm repo, cấu hình, request payload, cài sạch, các lệnh slash và Agent trong cùng phiên bằng provider giả, cài lại gộp mặc định mới mà vẫn giữ tùy chỉnh, và bootstrap với đường dẫn có khoảng trắng. Bản vá file `.ts` không được thêm lỗi kiểu: smoke biên dịch source đã vá và bản gốc (dựng lại bằng cách đảo bản vá, kiểm `originalSha256`) bằng TypeScript ghim riêng (`manifests/typecheck`, chỉ cài khi kiểm thử, không nằm trong runtime) trên type của Pi đã cài. Test không dùng credential thật hoặc gọi model trả phí. Đây là kiểm chứng runtime và bộ cài; chất lượng model và quyền truy cập tài khoản được đánh giá riêng.
+CI chạy trên Ubuntu và macOS (Windows không còn trong CI, xem [docs/platforms.md](docs/platforms.md)): kiểm repo, cấu hình, request payload, cài sạch, các lệnh slash và Agent trong cùng phiên bằng provider giả, cài lại gộp mặc định mới mà vẫn giữ tùy chỉnh, và bootstrap với đường dẫn có khoảng trắng. Bản vá file `.ts` không được thêm lỗi kiểu: smoke biên dịch source đã vá và bản gốc (dựng lại bằng cách đảo bản vá, kiểm `originalSha256`) bằng TypeScript ghim riêng (`manifests/typecheck`, chỉ cài khi kiểm thử, không nằm trong runtime) trên type của Pi đã cài. Test không dùng credential thật hoặc gọi model trả phí. Đây là kiểm chứng runtime và bộ cài; chất lượng model và quyền truy cập tài khoản được đánh giá riêng.
 
 Nguồn và giấy phép: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Mã riêng của dự án dùng [MIT](LICENSE).
