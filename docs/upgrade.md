@@ -28,6 +28,8 @@ cp "$tmp/manifests/current/package-lock.json" manifests/current/
 
 Đọc diff của lockfile: chỉ các package định nâng và dependency của chúng được đổi.
 
+`overrides` trong manifest ép dependency gián tiếp lên bản đã vá khi package cha còn ghim bản có lỗ hổng: runtime ghim `undici` 8.12.3 (pi-coding-agent 1.4.0 ghim 8.10.2, pi-web-access 0.46.0 cần `^8.11.2`) và `zod` 4.6.7; Firecrawl ghim `axios` 1.20.0. Zod 3 của Firecrawl (firecrawl-js chỉ nhận `^3`) chưa có bản vá nên để nguyên. Sau khi nâng, chạy `npm audit --package-lock-only --prefix manifests/current` (và `manifests/firecrawl`); upstream đã kéo một dependency lên tới hoặc quá bản ghim thì bỏ override đó.
+
 ## 4. Bản vá
 
 ```sh
