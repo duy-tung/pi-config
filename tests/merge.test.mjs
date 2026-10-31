@@ -31,6 +31,17 @@ test('khóa mặc định mới bỏ thì bị xoá, trừ khi người dùng đ
   assert.deepEqual(Object.keys(result.value), ['tuned', 'nested', 'added']);
 });
 
+test('cài lại sau khi bỏ Jev: autoMode.jev mặc định cũ bị xoá, giá trị người dùng tự đặt được giữ kèm báo xung đột', () => {
+  const base = {autoMode: {model: 'anthropic/claude-sonnet-5-5', stage2Reasoning: 'low', jev: {model: 'jev-1.13.0'}, stateDir: '/s'}};
+  const next = {autoMode: {model: 'anthropic/claude-sonnet-5-5', stage2Reasoning: 'low', stateDir: '/s'}};
+  const untouched = merge(base, next, structuredClone(base));
+  assert.deepEqual(untouched.value, next);
+  assert.deepEqual(untouched.changes, [{type: 'delete', path: ['autoMode', 'jev']}]);
+  const off = merge(base, next, {autoMode: {...base.autoMode, jev: false}});
+  assert.equal(off.value.autoMode.jev, false);
+  assert.deepEqual(off.conflicts, [{path: ['autoMode', 'jev'], current: false, next: undefined}]);
+});
+
 test('mảng thường là một giá trị; mảng tập hợp chỉ áp dụng cho settings.json', () => {
   const base = {searchRouting: {providers: ['openai', 'exa']}, deny: ['a'], permissions: {deny: ['a']}};
   const next = {searchRouting: {providers: ['openai', 'anthropic', 'exa']}, deny: ['a', 'b'], permissions: {deny: ['a', 'b']}};

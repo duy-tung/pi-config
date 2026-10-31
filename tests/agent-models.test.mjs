@@ -130,13 +130,15 @@ test('/agents và /permissions trong phiên Pi thật: Model/Thinking của agen
       assert.deepEqual(missing, []);
     };
     const settingsMode = fs.statSync(settingsPath).mode & 0o777;
+    const stateDir = readJson(settingsPath).autoMode.stateDir;
+    assert.ok(stateDir);
     await permissions(/^Classifier: anthropic\/claude-sonnet-5-5 · low…$/u, /^Change classifier model…$/u, /^anthropic\/claude-opus-5-5$/u, /^high$/u);
     assert.match(titles.at(-3), /^Mode: auto\nClassifier \(auto mode\): anthropic\/claude-sonnet-5-5 · low · timeout 60s\n/u);
     assert.ok(menus.at(-2).includes('anthropic/claude-sonnet-5-5 (current)') && menus.at(-2).every(option => option.startsWith('anthropic/')), menus.at(-2).join(' | '));
     assert.ok(menus.at(-1).includes('low (current)'));
     assert.match(last().message, /^Classifier: anthropic\/claude-opus-5-5 · high \(saved to .*settings\.json\)$/u);
     assert.deepEqual([readJson(settingsPath).autoMode.model, readJson(settingsPath).autoMode.stage2Reasoning], ['anthropic/claude-opus-5-5', 'high']);
-    assert.equal(readJson(settingsPath).autoMode.jev.model, 'jev-1.13.0', 'phần còn lại của autoMode giữ nguyên');
+    assert.equal(readJson(settingsPath).autoMode.stateDir, stateDir, 'phần còn lại của autoMode giữ nguyên');
     if (process.platform !== 'win32') assert.equal(fs.statSync(settingsPath).mode & 0o777, settingsMode);
     await permissions();
     assert.equal(titles.at(-1), 'Permissions · ⏵⏵ auto mode on');

@@ -45,8 +45,7 @@ const credentialFile = path.join(agentDir, 'auth.json');
 const settings = readJson(path.join(agentDir, "settings.json"));
 // Cổng permission của bản cài: thêm deny cho auth của fixture, bộ phân loại dùng model giả.
 settings.permissions.deny.push(`Path(${credentialFile.replaceAll("\\", "/")})`);
-// Jev cần key và mạng thật: tắt ở đây (không dùng key của máy); agent-integration kiểm Jev bằng fixture.
-settings.autoMode = { ...settings.autoMode, model: "config-test/worker", stateDir: path.join(fixture, "auto-mode"), jev: false };
+settings.autoMode = { ...settings.autoMode, model: "config-test/worker", stateDir: path.join(fixture, "auto-mode") };
 Object.assign(settings, {
   defaultProvider: "config-test", defaultModel: "parent", defaultThinkingLevel: "off",
   enabledModels: ["config-test/parent", "config-test/worker"],

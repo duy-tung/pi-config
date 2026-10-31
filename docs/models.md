@@ -79,5 +79,5 @@ Installer gộp file `agents/*.md` theo từng khóa của frontmatter. Phần p
 ## Giới hạn
 
 - Role của project (`.pi/agents/*.md`) và `.pi/settings.json` của project không theo mặc định của installer. `/agents` đổi model của chính file mà pi-subagents đang nạp, kể cả file của project.
-- Model phân loại của auto mode (`autoMode.model`, đổi trong `/permissions`), model Jev của bước 1 (`autoMode.jev.model`) và model tìm kiếm của pi-web-access không phải vai.
+- Model phân loại của auto mode (`autoMode.model`, đổi trong `/permissions`) và model tìm kiếm của pi-web-access không phải vai.
 - `pi-test` kiểm cơ chế của bản cài với các model mặc định, vì provider giả chỉ có các model này. Model bạn chọn được `pi-doctor` kiểm trong catalog.

@@ -122,7 +122,8 @@ test('model phân loại đổi trong /permissions: cài lại giữ giá trị 
   const same = plan();
   assert.deepEqual(same.conflicts, []);
   const kept = JSON.parse(same.content ?? fs.readFileSync(settingsFile, 'utf8')).autoMode;
-  assert.deepEqual([kept.model, kept.stage2Reasoning, kept.jev], ['openai-codex/gpt-6-astra', 'medium', {model: 'jev-1.13.0'}]);
+  assert.deepEqual([kept.model, kept.stage2Reasoning], ['openai-codex/gpt-6-astra', 'medium']);
+  assert.equal(kept.jev, undefined, 'installer không còn ghi autoMode.jev');
   // Mặc định mới của installer đổi model phân loại: giữ của người dùng, báo xung đột kèm mặc định mới.
   const moved = plan(value => ({...value, autoMode: {...value.autoMode, model: 'anthropic/claude-opus-5-5'}}));
   assert.equal(JSON.parse(moved.content ?? fs.readFileSync(settingsFile, 'utf8')).autoMode.model, 'openai-codex/gpt-6-astra');

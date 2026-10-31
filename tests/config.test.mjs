@@ -114,8 +114,8 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.ok(!deny.some((rule) => rule.startsWith("Bash(rm ")));
       assert.equal(settings.permissions.defaultMode, "auto");
       assert.equal(settings.autoMode.model, "anthropic/claude-sonnet-5-5");
-      // Giai đoạn 1 là Jev khi có key, model ghim phiên bản (ngưỡng trong code, chỉnh theo phiên bản).
-      assert.deepEqual(settings.autoMode.jev, { model: "jev-1.13.0" });
+      // Bộ phân loại LLM cho cả hai giai đoạn; không còn Jev.
+      assert.equal(settings.autoMode.jev, undefined);
       assert.ok(settings.extensions.filter((entry) => !entry.startsWith("-")).at(-1).endsWith("pi-auto-mode"), "pi-auto-mode phải nạp sau cùng");
       assert.ok(!settings.packages.some((entry) => String(entry?.source ?? entry).includes("pi-permission-system")));
       assert.ok(!files.some((file) => file.path.includes("pi-permission-system")));
@@ -251,7 +251,7 @@ test("model mặc định đi tới mọi file gốc (settings, file role, advis
   assert.deepEqual([settings.defaultProvider, settings.defaultModel, settings.defaultThinkingLevel], ["anthropic", "claude-opus-5-5", "high"]);
   assert.deepEqual(settings.enabledModels, ["anthropic/claude-opus-5-5", "anthropic/claude-fable-5-1", "anthropic/claude-sonnet-5-5"]);
   assert.deepEqual(CLASSIFIER, { model: "anthropic/claude-sonnet-5-5", stage2Reasoning: "low" });
-  assert.deepEqual([settings.autoMode.model, settings.autoMode.stage2Reasoning, settings.autoMode.jev.model], ["anthropic/claude-sonnet-5-5", "low", "jev-1.13.0"]);
+  assert.deepEqual([settings.autoMode.model, settings.autoMode.stage2Reasoning, settings.autoMode.jev], ["anthropic/claude-sonnet-5-5", "low", undefined]);
   const frontmatter = (role) => read(`agents/${role}.md`).split("\n---\n")[0];
   assert.match(frontmatter("worker"), /^model: anthropic\/claude-opus-5-5\nthinking: high$/mu);
   assert.match(frontmatter("reviewer"), /^model: anthropic\/claude-fable-5-1\nthinking: high$/mu);

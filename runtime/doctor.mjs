@@ -29,8 +29,6 @@ for(const patch of read(path.join(root,'patches/manifest.json'))){
   const hash=sha256(fs.readFileSync(file,'utf8').replaceAll('\r\n','\n'));
   if(hash!==patch.patchedSha256)errors.push(`Bản vá đã đổi: ${patch.package}/${patch.file}`);
 }
-// Key Jev cho auto mode: TYPESAFE_API_KEY như pi-auto-mode; chỉ báo có hay không, không in key.
-const jevKey=process.env.TYPESAFE_API_KEY?.trim()?'key từ TYPESAFE_API_KEY':'chưa có key: đặt TYPESAFE_API_KEY';
 const s=read(path.join(state.agentDir,'settings.json'));
 // Model/thinking đang có hiệu lực của mọi vai theo file gốc, chỗ đổi, và kiểm catalog của Pi.
 const models=await modelRolesReport({agentDir:state.agentDir,modules:path.join(root,'runtimes','current','node_modules')});
@@ -62,10 +60,10 @@ if(fs.existsSync(advisorFile)){
   const gates=[['advisorPlanGate','trước plan'],['advisorFailureGate','lỗi lặp'],['advisorCompletionGate','trước khi xong']].filter(([key])=>advisor[key]!==false).map(([,text])=>text);
   console.log(`  advisor ${advisor.alwaysOn===true?`luôn bật, gate: ${gates.join(', ')||'không (chỉ khi được gọi)'}; tối đa ${advisor.advisorMaxCallsPerSession??'∞'} lần/phiên`:'tắt'}`);
 }
-const auto=s.autoMode??{},jev=auto.jev===false||auto.jev?.enabled===false?undefined:auto.jev??{};
+const auto=s.autoMode??{};
 // Model phân loại đặt trong /permissions → Classifier (autoMode.model của settings.json), không phải một vai.
 const classifier=`${typeof auto.model==='string'&&auto.model.trim()?auto.model.trim():'model của phiên'} (${auto.stage2Reasoning??'low'})`;
-console.log(`  auto mode: bước 1 ${jev?`Jev${jev.model?` ${jev.model}`:''} (${jevKey})`:`LLM ${classifier} (Jev tắt)`}; bước 2 LLM ${classifier}; đổi trong /permissions → Classifier`);
+console.log(`  auto mode: bộ phân loại LLM ${classifier} cho cả hai bước; đổi trong /permissions → Classifier`);
 for(const source of Object.keys(state.sources))if(!fs.existsSync(path.join(root,'sources',source)))errors.push(`Thiếu skills source: ${source}`);
 console.log('Đăng nhập bằng /login trong pi. Không kiểm tra token bằng mạng.');
 if(process.platform==='win32' && state.shellPath&&!fs.existsSync(state.shellPath))errors.push('Không tìm thấy Git Bash đã cấu hình');

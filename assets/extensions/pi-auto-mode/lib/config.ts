@@ -26,16 +26,6 @@ export function nextMode(mode: PermissionMode, bypassAvailable = false): Permiss
   return modes[(modes.indexOf(mode) + 1) % modes.length];
 }
 
-/**
- * Giai đoạn 1 và probe prompt injection bằng Jev (System One của TypeSafe); chỉ chạy khi có API key.
- * Ngưỡng là hằng số trong code (JEV_TUNING của lib/jev.ts).
- */
-export interface JevConfig {
-  enabled: boolean;
-  /** Model ghim phiên bản (ngưỡng được chỉnh theo phiên bản). */
-  model: string;
-}
-
 export interface AutoModeConfig {
   enabled: boolean;
   defaultMode: PermissionMode;
@@ -60,22 +50,12 @@ export interface AutoModeConfig {
   log: boolean;
   /** File settings.json đã đọc (hiện ở /permissions → Rules). */
   source: string;
-  jev: JevConfig;
 }
 
 const DEFAULTS = {
   timeoutMs: 60_000,
   stage2Reasoning: "low",
 };
-
-export const JEV_MODEL = "jev-1.13.0";
-
-/** `autoMode.jev`: false hoặc {enabled: false} tắt hẳn (cả giai đoạn 1 lẫn probe); `model` sai thì dùng mặc định. */
-export function parseJev(value: unknown): JevConfig {
-  const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
-  const model = typeof raw.model === "string" && raw.model.trim() && raw.model.length <= 128 ? raw.model.trim() : JEV_MODEL;
-  return { enabled: value !== false && raw.enabled !== false, model };
-}
 
 function strings(value: unknown): string[] | undefined {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim() !== "") : undefined;
@@ -135,7 +115,6 @@ export function loadConfig(agentDir: string, env: NodeJS.ProcessEnv = process.en
     stateDir: text(auto.stateDir) ?? path.join(agentDir, "pi-auto-mode"),
     log: auto.log === true || env.PI_AUTO_MODE_LOG === "1",
     source: path.join(agentDir, "settings.json"),
-    jev: parseJev(auto.jev),
   };
 }
 
@@ -149,7 +128,6 @@ export function spliceDefaults(items: string[], defaults: string[]): string[] {
 export interface PersistedState {
   bypassAccepted?: boolean;
   autoNoticeShown?: boolean;
-  jevNoticeShown?: boolean;
   /** "Yes, and keep allowing any reads outside the working directories" ở lần đọc đầu của auto mode. */
   outsideReadsAccepted?: boolean;
 }

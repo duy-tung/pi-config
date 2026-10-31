@@ -308,8 +308,8 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
   const home = pc.home ?? os.homedir();
   const notes: string[] = [];
   /**
-   * Hành động có bằng chứng rủi ro từ lớp chính sách thì bỏ qua sàng lọc nhanh (Jev) và đi thẳng LLM giai đoạn 2:
-   * rm vào đường dẫn quan trọng, lệnh có rủi ro nhận ra được, edit/write vào đường dẫn được bảo vệ (`guarded`).
+   * Hành động có bằng chứng rủi ro từ lớp chính sách (`escalate`): rm vào đường dẫn quan trọng, lệnh có rủi ro nhận ra
+   * được, edit/write vào đường dẫn được bảo vệ (`guarded`). Khi hỏi người dùng thì không có lựa chọn "don't ask again".
    */
   const classify = (guarded = false): Decision =>
     (facts.critical || facts.risks?.length || guarded ? { kind: "classify", notes, escalate: true } : { kind: "classify", notes });
@@ -327,7 +327,7 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
     notes.push(`this command ${facts.critical}`);
   }
 
-  // Riêng pi-config: cơ chế tự chạy, tắt kiểm TLS, ghi đường dẫn hệ thống: ghi chú cho bộ phân loại (bỏ qua Jev, xem
+  // Riêng pi-config: cơ chế tự chạy, tắt kiểm TLS, ghi đường dẫn hệ thống: ghi chú cho bộ phân loại (escalate, xem
   // classify ở trên); manual/acceptEdits hỏi kèm ghi chú. Bypass cho chạy như Claude Code.
   if (facts.risks?.length) notes.push(...facts.risks.map((risk) => `this command ${risk}`));
 
