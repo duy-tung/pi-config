@@ -21,7 +21,7 @@ for(const runtimeName of ['current'])test(`GLM native ${runtimeName}: max reache
   };
   const answer=await runtime.completeSimple(model,{messages:[{role:'user',content:'Synthetic wire test',timestamp:0}]},{reasoning:'max',maxTokens:64,sessionId:'wire-fixture',fetch:fetchImpl});
   assert.equal(calls,1);assert.equal(answer.stopReason,'stop',answer.errorMessage);assert.equal(answer.content.find(x=>x.type==='text').text,'OK');
-  assert.equal(captured.url,'https://opencode.ai/zen/go/v1/chat/completions');
+  assert.equal(captured.url,'https://opencode.ai/inference/go/v1/chat/completions');
   assert.equal(captured.headers.get('x-opencode-session'),'wire-fixture');
   assert.equal(captured.body.model,'glm-5.3-flash');assert.equal(captured.body.reasoning_effort,'max');assert.equal(captured.body.max_tokens,64);
 });

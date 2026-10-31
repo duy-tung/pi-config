@@ -161,10 +161,13 @@ for(const [role,model,thinking] of [['worker','claude-opus-5-5','high'],['resear
 }
 assert.match(frontmatter('worker'),/^tools: "read, grep, find, ls, bash"$/mu);
 const advisorPath=path.join(agentDir,'advisor.json'),advisorNow=readJson(advisorPath);
-assert.deepEqual([advisorNow.executor,advisorNow.advisor,advisorNow.executorEffort],['anthropic/claude-opus-5-5','anthropic/claude-fable-5-1',undefined]);
+assert.deepEqual([advisorNow.executor,advisorNow.advisor,advisorNow.executorEffort],[undefined,'anthropic/claude-fable-5-1',undefined]);
 const doctorModels=spawnSync(process.execPath,[path.join(root,'bin/launch.mjs'),'doctor'],{encoding:'utf8'});
 assert.equal(doctorModels.status,0,doctorModels.stdout+doctorModels.stderr);
 assert.match(doctorModels.stdout,/^model của các vai \(main đổi bằng \/model, researcher\/worker\/reviewer trong \/agents, advisor bằng \/advisor-models\)$/mu);
+// Không ghim executor: model của phiên chính theo settings.json.
+const mainNow=readJson(path.join(agentDir,'settings.json'));
+assert.ok(doctorModels.stdout.includes(`\n  main: ${mainNow.defaultProvider}/${mainNow.defaultModel} (high) theo settings.json\n`),doctorModels.stdout);
 assert.match(doctorModels.stdout,/^ {2}reviewer: anthropic\/claude-fable-5-1 \(high\) theo agents\/reviewer\.md$/mu);
 assert.match(doctorModels.stdout,/^ {2}advisor: anthropic\/claude-fable-5-1 \(high\) theo advisor\.json$/mu);
 assert.ok(!fs.existsSync(path.join(agentDir,'agents','debugger.md')));
@@ -175,7 +178,7 @@ const wrong=spawnSync(process.execPath,[path.join(root,'bin/launch.mjs'),'doctor
 fs.writeFileSync(workerPath,workerText);
 assert.equal(wrong.status,1,wrong.stdout+wrong.stderr);
 assert.match(wrong.stderr,/^worker: không có model anthropic\/claude-opus-5-6 trong catalog của Pi \(theo agents\/worker\.md; đổi bằng \/agents\)/mu);
-// /model lưu Sonnet vào executor của advisor, /advisor-settings đổi số lượt: pi-doctor in model đang chạy của phiên chính.
+// /advisor-models ghim Sonnet làm executor, /advisor-settings đổi số lượt: pi-doctor in model đang chạy của phiên chính.
 writeJson(advisorPath,{...readJson(advisorPath),executor:'anthropic/claude-sonnet-5-5',advisorMaxCallsPerSession:9});
 const switched=spawnSync(process.execPath,[path.join(root,'bin/launch.mjs'),'doctor'],{encoding:'utf8'});
 assert.equal(switched.status,0,switched.stdout+switched.stderr);
@@ -199,7 +202,7 @@ fs.writeFileSync(path.join(retiredSource,'skills','engineering','tdd','SKILL.md'
 writeJson(installState,{...readJson(installState),sources:{...readJson(installState).sources,'mattpocock-skills':'0'.repeat(64)}});
 const retiring=install();
 assert.match(retiring,/Nguồn mattpocock-skills không còn dùng: đã chuyển vào /u);
-// Cài lại giữ giá trị đổi qua /model và /advisor-settings (gộp ba chiều).
+// Cài lại giữ giá trị đổi qua /advisor-models và /advisor-settings (gộp ba chiều).
 assert.deepEqual([readJson(advisorPath).executor,readJson(advisorPath).advisorMaxCallsPerSession],['anthropic/claude-sonnet-5-5',9]);
 assert.equal(fs.existsSync(retiredSource),false);
 assert.ok(!Object.hasOwn(readJson(installState).sources,'mattpocock-skills'));

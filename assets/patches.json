@@ -4,11 +4,11 @@
     {
       "package": "pi-open-tui",
       "versions": {
-        "current": "0.3.11"
+        "current": "0.3.14"
       },
       "file": "extensions/open-tui/footer.ts",
-      "originalSha256": "8b4e89150ae3b95988efa0b99bea9aa17745522ee90dff718dfee769387d1472",
-      "patchedSha256": "387484ff7a86a81690619a0880da61e2324c02d86113fe42a7669f66d5d746c2",
+      "originalSha256": "4ee20d588db8d6d00bdc03fbcef5f071d53053861773998c1388b48469d2e07a",
+      "patchedSha256": "2e0bb2200eef19336b9964d50e768d6294fd9023757e214452ed91a68e245acc",
       "edits": [
         {
           "before": "stats.push(theme.fg(\"warning\", `${glyphs.cost} $${totals.cost.toFixed(3)}`));",
@@ -75,11 +75,11 @@
     {
       "package": "@tintinweb/pi-subagents",
       "versions": {
-        "current": "0.19.0"
+        "current": "0.22.1"
       },
       "file": "src/agent-runner.ts",
-      "originalSha256": "88e61481fd627254ff3ac0a27e1991136c41e103fac847dd06444c8ac3d3eab1",
-      "patchedSha256": "6ea21c32819519829191c69e1715e393bffc881784c6747dcc24f0a022924fd5",
+      "originalSha256": "707d55762cd66f72a5b2b8afdcf77ed1390a9eb1c0dd4f4ad106e388a67648da",
+      "patchedSha256": "e7809d3e9acdc30fb4d4ad5dea4f2846df8ec52b749615c0229995ffb443b2ee",
       "edits": [
         {
           "before": "  const { session } = await runInChildSessionContext(() => createAgentSession(sessionOpts));",
@@ -97,11 +97,6 @@
           "count": 1
         },
         {
-          "before": "  } finally {\n    unsubTurns();",
-          "after": "  } catch (error) {\n    session.dispose();\n    throw error;\n  } finally {\n    unsubTurns();",
-          "count": 1
-        },
-        {
           "before": "      entries.some((e) => typeof e === \"string\" && resolve(dir, e) === entry)",
           "after": "      // Local integration: a directory entry (\"./dist\") loads that directory's index file.\n      entries.some((e) => typeof e === \"string\" && (resolve(dir, e) === entry\n        || (resolve(dir, e) === dirname(entry) && /^index\\.(?:ts|js)$/.test(basename(entry)))))",
           "count": 1
@@ -111,11 +106,11 @@
     {
       "package": "@tintinweb/pi-subagents",
       "versions": {
-        "current": "0.19.0"
+        "current": "0.22.1"
       },
       "file": "src/index.ts",
-      "originalSha256": "622d44b11e615ec0509f13e858dcad4a40789e4613c03583930327f15d9ec6a9",
-      "patchedSha256": "b7e419fd53c656857cf5f154cbf6725a6f340fff2add7e3614bb2701ea0f5317",
+      "originalSha256": "cca232d52ae90f7005f9c1309239ec6eaa235b24969809935ec96f0ee2467a44",
+      "patchedSha256": "df331bd603caf0e6d0e05613e903df53aca093cb087adaea1a2835c47ffd5b97",
       "edits": [
         {
           "before": "import { defineTool, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext, getAgentDir, getSettingsListTheme } from \"@earendil-works/pi-coding-agent\";",
@@ -123,8 +118,8 @@
           "count": 1
         },
         {
-          "before": "import { Container, Key, matchesKey, type SettingItem, SettingsList, Spacer, Text } from \"@earendil-works/pi-tui\";",
-          "after": "import { Container, type Focusable, fuzzyFilter, getKeybindings, Input, Key, Markdown, matchesKey, type SelectItem, SelectList, type SettingItem, SettingsList, Spacer, stripTerminalSequences, Text } from \"@earendil-works/pi-tui\";",
+          "before": "import { Container, isKeyRelease, Key, matchesKey, type ScrollViewScrollbar, type SettingItem, SettingsList, Spacer, Text } from \"@earendil-works/pi-tui\";",
+          "after": "import { Container, type Focusable, fuzzyFilter, getKeybindings, Input, isKeyRelease, Key, Markdown, matchesKey, type ScrollViewScrollbar, type SelectItem, SelectList, type SettingItem, SettingsList, Spacer, stripTerminalSequences, Text } from \"@earendil-works/pi-tui\";",
           "count": 1
         },
         {
@@ -173,8 +168,8 @@
           "count": 1
         },
         {
-          "before": "    const choice = await ctx.ui.select(name, menuOptions);\n    if (!choice || choice === \"Back\") return;\n\n    if (choice === \"Edit\" && file) {\n",
-          "after": "    // Local integration: an agent with a file also offers Model and Thinking pickers (see changeAgentModel).\n    const pins = file ? [`Model: ${cfg.model ?? \"inherit\"}`, `Thinking: ${cfg.thinking ?? \"inherit\"}`] : [];\n    const choice = await ctx.ui.select(name, [...pins, ...menuOptions]);\n    if (!choice || choice === \"Back\") return;\n\n    if (file && pins.includes(choice)) {\n      await changeAgentModel(ctx, name, file.path, cfg, choice === pins[0] ? \"model\" : \"thinking\");\n      await showAgentDetail(ctx, name);\n    } else if (choice === \"Edit\" && file) {\n",
+          "before": "    const choice = await ctx.ui.select(pkgName ? `${name} — ${pkgName}` : name, menuOptions);\n    if (!choice || choice === \"Back\") return;\n\n    if (choice === \"Edit\" && file) {\n",
+          "after": "    // Local integration: an agent with its own file also offers Model and Thinking pickers (see changeAgentModel);\n    // package agents stay read-only.\n    const pins = file && !isPackage ? [`Model: ${cfg.model ?? \"inherit\"}`, `Thinking: ${cfg.thinking ?? \"inherit\"}`] : [];\n    const choice = await ctx.ui.select(pkgName ? `${name} — ${pkgName}` : name, [...pins, ...menuOptions]);\n    if (!choice || choice === \"Back\") return;\n\n    if (file && pins.includes(choice)) {\n      await changeAgentModel(ctx, name, file.path, cfg, choice === pins[0] ? \"model\" : \"thinking\");\n      await showAgentDetail(ctx, name);\n    } else if (choice === \"Edit\" && file) {\n",
           "count": 1
         },
         {
@@ -185,50 +180,13 @@
       ]
     },
     {
-      "package": "@tintinweb/pi-subagents",
-      "versions": {
-        "current": "0.19.0"
-      },
-      "file": "package.json",
-      "originalSha256": "200babd811ba6b8d1d46e36fa599869fff0a62ba584469cabdc5b9d8bbb98071",
-      "edits": [
-        {
-          "before": "    \"@earendil-works/pi-tui\": \">=0.84.0\"\n  },\n  \"dependencies\": {\n    \"@sinclair/typebox\": \"^0.34.49\",\n    \"croner\": \"^10.0.1\",\n    \"nanoid\": \"^5.1.16\",\n    \"typebox\": \"^1.3.7\"\n  },",
-          "after": "    \"@earendil-works/pi-tui\": \">=0.84.0\",\n    \"@sinclair/typebox\": \"*\",\n    \"typebox\": \"*\"\n  },\n  \"dependencies\": {\n    \"croner\": \"^10.0.1\",\n    \"nanoid\": \"^5.1.16\"\n  },",
-          "count": 1
-        }
-      ],
-      "patchedSha256": "15ff519b25202f3bcb6dfdded6155def1c5634e41796d1a810dee06f873e37c9"
-    },
-    {
-      "package": "pi-advisor-flow",
-      "versions": {
-        "current": "0.12.0"
-      },
-      "file": "dist/index.js",
-      "originalSha256": "6238180d438cb07846a7531ae868a1355be191d152c808f7a09d5654d647cfde",
-      "patchedSha256": "ab6986e95b78850f8458da3b64ee62d81075c1b50177ecd1cc4b21b59ea6cfb9",
-      "edits": [
-        {
-          "before": "    const budget = isSimpleMode() ? undefined : session.remainingCalls(getAdvisorMaxCallsPerSession());\n    if (budget !== undefined) {\n      guidelines.push(`Advisor calls remaining this session: ${budget}.\nReserve calls for material decisions, repeated failures, or final review.`);\n",
-          "after": "    // Local integration: a fixed budget line keeps the system prompt, and so the executor's prompt cache,\n    // unchanged after each consultation; ask_advisor itself reports when the budget is exhausted.\n    const budget = isSimpleMode() ? undefined : getAdvisorMaxCallsPerSession();\n    if (budget !== undefined) {\n      guidelines.push(`Advisor calls are limited to ${budget} per session; ask_advisor reports when none remain.\nReserve calls for material decisions, repeated failures, or final review.`);\n",
-          "count": 1
-        },
-        {
-          "before": "      loadConfig(ctx);\n      if (alwaysOnRef) {\n        await activateAdvisor(\"\", ctx, false);\n      } else {\n        runtime.updateSameModelNotice(ctx);\n      }\n",
-          "after": "      loadConfig(ctx);\n      // Local integration: Pi activates every extension tool when a session starts. Start with the flow off so\n      // it is on only after a successful alwaysOn activation (or /advisor), as documented upstream; /advisor-off\n      // then lasts across sessions.\n      if (runtime.flowEnabled()) {\n        runtime.pi.setActiveTools(runtime.pi.getActiveTools().filter((name) => name !== \"ask_advisor\" && name !== \"record_advisor_outcome\"));\n      }\n      if (alwaysOnRef) {\n        await activateAdvisor(\"\", ctx, false);\n      } else {\n        runtime.updateSameModelNotice(ctx);\n      }\n",
-          "count": 1
-        }
-      ]
-    },
-    {
       "package": "pi-background-tasks",
       "versions": {
-        "current": "2.6.9"
+        "current": "2.6.10"
       },
       "file": "dist/src/extension.js",
-      "originalSha256": "255f3684c00a7f9d36df2741a279ca9840ed138cb1581e32dfa64885d7b211e9",
-      "patchedSha256": "2122c5dbe6bd50c540e085401d81688cd4b3ae33041700db68277d2411d9a858",
+      "originalSha256": "9a34e427832d60ae47e4af5f4de09672cf7c16c077725358bb3c257df1a7e838",
+      "patchedSha256": "a3baa1ba603e34dce00b669b330507305dbec2d28ea6a41b8f7631c9fd26e6ed",
       "edits": [
         {
           "before": "    const config = parseBackgroundTasksConfig();\n",
@@ -245,7 +203,7 @@
     {
       "package": "@pi-archimedes/image-paste",
       "versions": {
-        "current": "2.9.3"
+        "current": "2.12.0"
       },
       "file": "src/preview.ts",
       "originalSha256": "9a8e227847c3c215810c19ff7324a6889723fd1870653151aa9e3bf704234978",
@@ -261,11 +219,11 @@
     {
       "package": "pi-web-access",
       "versions": {
-        "current": "0.37.0"
+        "current": "0.46.0"
       },
       "file": "dist/index.js",
-      "originalSha256": "42e4354f6f3b5fa8db8228e96b81e7c314d974aafebdfde437eff8873502bb0e",
-      "patchedSha256": "378d867087c7235fc8a8e05dfbc5c43c3917d01c3167e52cb652a9dae7c3d9e9",
+      "originalSha256": "5c29722416ef5dd2a6e075899f8bdeb8ef285ee32258ac5e9c61ac5f6bee31e6",
+      "patchedSha256": "c5c70568db9e48d47b27f904020eee830c58b0ec948891ea05b454e20e0c81e0",
       "edits": [
         {
           "before": "var RESOLVED_SEARCH_PROVIDERS = [\"openai\", \"brave\", ",

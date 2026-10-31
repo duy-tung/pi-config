@@ -84,7 +84,7 @@ test("web_search dùng native search theo model hiện tại, GLM dùng Exa rồ
     } });
     const tool = session.extensionRunner.getToolDefinition("web_search");
     assert.ok(tool, "pi-web-access phải đăng ký web_search");
-    assert.match(tool.description, /^Search the web with OpenAI, Anthropic, Exa, Firecrawl\./u);
+    assert.match(tool.description, /^Search the web for sources or answers\./u);
     const search = async (provider, id) => {
       requests.length = 0;
       await session.setModel(runtime.getModel(provider, id));

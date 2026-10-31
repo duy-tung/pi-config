@@ -4,7 +4,8 @@ import {pathToFileURL} from 'node:url';
 
 /**
  * Model và mức thinking của các vai nằm thẳng trong file gốc mà Pi và các package đọc, không có lớp cấu hình riêng:
- * - main: settings.json, đổi bằng /model của Pi (advisor luôn bật lưu model đó vào executor của advisor.json);
+ * - main: settings.json, đổi bằng /model của Pi (Ctrl+S lưu làm mặc định); executor của advisor theo model của phiên,
+ *   chỉ ghim khi advisor.json có executor (/advisor-models);
  * - researcher, worker, reviewer: frontmatter của agents/<vai>.md, đổi trong /agents → Agent types → vai → Model/Thinking;
  * - advisor: advisor.json, đổi bằng /advisor-models.
  * assets/configs/model-defaults.json là mặc định installer ghi vào các file đó; cài lại gộp ba chiều nên giá trị đã đổi
@@ -34,8 +35,8 @@ export const loadModelDefaults = root =>
   JSON.parse(fs.readFileSync(path.join(root, 'assets', 'configs', 'model-defaults.json'), 'utf8')).roles;
 
 /**
- * Giá trị mặc định cho từng file gốc. Thinking của phiên chính chỉ ghi vào settings.json: advisor không có
- * executorEffort nên không đặt lại thinking mà /model hay /thinking của Pi đã chọn.
+ * Giá trị mặc định cho từng file gốc. Model và thinking của phiên chính chỉ ghi vào settings.json: advisor không có
+ * executor hay executorEffort nên theo model và thinking mà /model, /thinking của Pi đã chọn.
  */
 export function nativeValues(roles) {
   const main = parseModelRef(roles.main.model);
@@ -47,8 +48,7 @@ export function nativeValues(roles) {
       modelThinkingLevels: levels, enabledModels: [...new Set(MODEL_ORDER.map(name => roles[name].model))],
     },
     subagents: Object.fromEntries(SUBAGENT_ROLES.map(name => [name, {model: roles[name].model, thinking: roles[name].thinking}])),
-    // alwaysOn của advisor cần executor đã lưu để bật lúc mở phiên; /model của Pi cập nhật giá trị này.
-    advisor: {executor: roles.main.model, advisor: roles.advisor.model, advisorEffort: roles.advisor.thinking},
+    advisor: {advisor: roles.advisor.model, advisorEffort: roles.advisor.thinking},
   };
 }
 
@@ -107,7 +107,8 @@ const read = file => {
 
 /**
  * Model/thinking đang có hiệu lực theo các file gốc của agent dir, kèm file quyết định giá trị đó.
- * Phiên chính: advisor alwaysOn đặt executor (và executorEffort khi có) mỗi lần mở phiên, nên executor thắng settings.json.
+ * Phiên chính: executor ghim trong advisor.json (và executorEffort khi có) được advisor alwaysOn đặt mỗi lần mở phiên, nên
+ * thắng settings.json; không ghim thì là settings.json.
  */
 export function effectiveModelRoles(agentDir) {
   const settings = read(path.join(agentDir, 'settings.json')) ?? {};

@@ -8,7 +8,7 @@ import {buildConfiguration} from '../lib/config.mjs';
 import {modelDefaults} from './install-fixture.mjs';
 
 const root = process.env.PI_CONFIG_TEST_ROOT;
-test('Pi: Opus 5.5/high 1M mặc định, advisor Fable trong catalog, GPT (openai và openai-codex) 272K của catalog, payload khi được chọn', {skip: !root}, async () => {
+test('Pi: Opus 5.5/high 1M mặc định, advisor Fable trong catalog, GPT (openai và openai-codex) theo context của catalog, payload khi được chọn', {skip: !root}, async () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-models-'));
   const savedOffline = process.env.PI_OFFLINE;
   const savedFetch = globalThis.fetch;
@@ -51,9 +51,9 @@ test('Pi: Opus 5.5/high 1M mặc định, advisor Fable trong catalog, GPT (open
       assert.equal(model.api, 'anthropic-messages');
       assert.ok(getSupportedThinkingLevels(model).includes(settings.defaultThinkingLevel));
       // GPT không là mặc định của vai nào; khi người dùng chọn, openai (Sign in with ChatGPT) và openai-codex (legacy)
-      // đều dùng cửa sổ của catalog Pi.
+      // đều dùng cửa sổ của catalog Pi (từ Pi 1.4.0 chỉ openai-codex/gpt-6.1-sol có 500K).
       for (const id of ['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-astra']) {
-        assert.equal(runtime.getModel('openai-codex', id).contextWindow, 272000, `openai-codex/${id}`);
+        assert.equal(runtime.getModel('openai-codex', id).contextWindow, id === 'gpt-6.1-sol' ? 500000 : 272000, `openai-codex/${id}`);
         assert.equal(runtime.getModel('openai', id).contextWindow, 272000, `openai/${id}`);
       }
       for (const [ref, level] of Object.entries(settings.modelThinkingLevels)) {

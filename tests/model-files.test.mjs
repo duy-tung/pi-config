@@ -29,8 +29,8 @@ const frontmatter = (f, role) => fs.readFileSync(f.file(`agents/${role}.md`), 'u
 
 test('model đổi trong file gốc (/agents, /model, /advisor-models) được giữ khi cài lại; vai chưa đổi nhận mặc định mới', t => {
   const f = install(t);
-  // /agents đổi model và thinking của worker; người dùng sửa tools của reviewer; /model lưu Sonnet vào executor của
-  // advisor và settings.json; /advisor-models đổi model của advisor.
+  // /agents đổi model và thinking của worker; người dùng sửa tools của reviewer; /model + Ctrl+S lưu Sonnet vào
+  // settings.json; /advisor-models ghim executor và đổi model của advisor.
   const worker = f.file('agents/worker.md'), reviewer = f.file('agents/reviewer.md');
   fs.writeFileSync(worker, fs.readFileSync(worker, 'utf8').replace(/^model: .*\nthinking: .*$/mu, 'model: openai-codex/gpt-6.1-sol\nthinking: max'));
   fs.writeFileSync(reviewer, fs.readFileSync(reviewer, 'utf8').replace(/^tools: .*$/mu, 'tools: "read, bash"'));
@@ -72,8 +72,8 @@ test('chuyển đổi model-roles.json: ghi đè đang nằm trong file gốc đ
   for (const [kind, name] of kinds) {
     const file = f.file(name), baseFile = defaultsFile(f.root, file);
     let text = rebaseModels(kind, fs.readFileSync(baseFile, 'utf8'), old);
-    // advisor.json của bản trước có executorEffort (thinking của phiên chính).
-    if (kind === 'advisor') text = `${JSON.stringify({...JSON.parse(text), executorEffort: 'xhigh'}, null, 2)}\n`;
+    // advisor.json của bản trước có executor (model mặc định của phiên chính) và executorEffort (thinking của phiên chính).
+    if (kind === 'advisor') text = `${JSON.stringify({...JSON.parse(text), executor: 'anthropic/claude-opus-5-5', executorEffort: 'xhigh'}, null, 2)}\n`;
     for (const target of [file, baseFile]) writeAtomic(target, Buffer.from(text), 0o600);
     state.files[file] = sha256(text);
   }
@@ -98,7 +98,7 @@ test('chuyển đổi model-roles.json: ghi đè đang nằm trong file gốc đ
   assert.match(frontmatter(f, 'reviewer'), /^model: openai-codex\/gpt-6-astra\nthinking: high$/mu);
   assert.match(frontmatter(f, 'worker'), /^model: anthropic\/claude-opus-5-5\nthinking: high$/mu);
   const advisor = readJson(f.file('advisor.json'));
-  assert.deepEqual([advisor.executor, advisor.advisor, advisor.executorEffort], ['anthropic/claude-opus-5-5', 'openai-codex/gpt-6-astra', undefined]);
+  assert.deepEqual([advisor.executor, advisor.advisor, advisor.executorEffort], [undefined, 'openai-codex/gpt-6-astra', undefined]);
   const settings = readJson(f.file('settings.json'));
   assert.deepEqual([settings.defaultModel, settings.defaultThinkingLevel], ['claude-opus-5-5', 'xhigh']);
   assert.ok(settings.enabledModels.includes('openai-codex/gpt-6-astra'), 'model người dùng đã chọn vẫn trong Ctrl+P');

@@ -1,6 +1,6 @@
 # Agent theo công việc
 
-Pi dùng tool `Agent` của `@tintinweb/pi-subagents` 0.19.0. Parent Claude Opus 5.5/high phân tích yêu cầu, chốt thiết kế, chia việc và nghiệm thu.
+Pi dùng tool `Agent` của `@tintinweb/pi-subagents` 0.22.1. Parent Claude Opus 5.5/high phân tích yêu cầu, chốt thiết kế, chia việc và nghiệm thu.
 
 | Role | Model/effort (mặc định) | Quyền và trách nhiệm |
 |---|---|---|
@@ -23,7 +23,7 @@ Parent có thể gọi `Agent` với `subagent_type` tương ứng. Mỗi prompt
 
 Model/thinking ghim trong file role được ưu tiên hơn tham số tool. Model trong file role không dùng được thì pi-subagents lặng lẽ chạy role đó bằng model của parent; `pi-doctor` kiểm model trong catalog của Pi để bắt lỗi này, và danh sách Agent types của `/agents` đánh dấu `(unavailable, fallback: inherit)`. Chọn role theo công việc và kiểm model thực trong kết quả khi tùy chỉnh cấu hình.
 
-`/agents` quản lý agent, kể cả đổi model/thinking của từng agent (bản vá: Model chọn trong catalog có ô tìm, Thinking chỉ các mức model hỗ trợ; chỉ ghi hai dòng đó của file); `get_subagent_result` lấy kết quả; `steer_subagent` gửi bổ sung theo ID. Khi mở rộng (`Ctrl+O`), kết quả của `Agent`, thông báo completion và `get_subagent_result` hiện dạng Markdown (tiêu đề, danh sách, code, bảng); dạng thu gọn, lỗi và agent đang chạy giữ văn bản thô như trước. Đây là bản vá `src/index.ts` của pi-subagents, chỉ đổi phần hiển thị, không đổi nội dung trả cho model.
+`/agents` quản lý agent, kể cả đổi model/thinking của từng agent (bản vá: Model chọn trong catalog có ô tìm, Thinking chỉ các mức model hỗ trợ; chỉ ghi hai dòng đó của file); `get_subagent_result` lấy kết quả; `steer_subagent` gửi bổ sung theo ID. Khi mở rộng (`Ctrl+O`), kết quả của `Agent`, thông báo completion và `get_subagent_result` hiện dạng Markdown (tiêu đề, danh sách, code, bảng); dạng thu gọn, lỗi và agent đang chạy giữ văn bản thô như trước. Đây là bản vá `src/index.ts` của pi-subagents, chỉ đổi phần hiển thị, không đổi nội dung trả cho model. Package Pi có thể kèm agent riêng (`packageAgents`, bật sẵn); agent của package chỉ đọc trong `/agents` nên không có mục Model/Thinking.
 
 Gõ `@role nội dung` ở prompt để giao việc thẳng cho role; agent đang chạy thì nhận tin nhắn đó. Agent khởi động ngay, task là đúng nội dung bạn gõ, không gọi model parent (`agentMentions: "direct"`). Agent không thấy hội thoại, nên nội dung cần tự đủ ý. Agent khởi động từ mention luôn chạy nền, kể cả worker, và kết quả về parent qua thông báo completion. Lời gọi `Agent` của mention không qua bộ phân loại vì chính người dùng đã gõ `@role`; agent con vẫn có cổng permission của role.
 
@@ -33,7 +33,7 @@ Role dùng `inherit_context:false`, `prompt_mode:replace`, `isolated:false` và 
 
 Role không giới hạn số lượt (`max_turns: 0` trong file role, `defaultMaxTurns: 0`); giá trị trong role thắng tham số `max_turns` của tool. Agent chạy tới khi xong; dừng bằng `/agents` → chọn agent → `x` hai lần (Esc dừng lời gọi foreground đang chờ). Parent theo dõi và dùng `steer_subagent` khi agent lạc hướng.
 
-`backgroundByDefault:true`: researcher và reviewer chạy nền, lời gọi `Agent` trả ID ngay, thông báo completion mở lượt mới cho parent kèm trích đoạn kết quả; `get_subagent_result` lấy toàn văn. Worker ghim `run_in_background: false` nên luôn chạy foreground và trả kết quả ngay trong tool call; parent không đổi được. Background tối đa 4 agent, foreground tối đa 2; vượt giới hạn thì xếp hàng. Nhiều lời gọi `Agent` foreground trong cùng một lượt chạy song song; các phiên Pi quản lý pool riêng.
+`backgroundByDefault:true`: researcher và reviewer chạy nền, lời gọi `Agent` trả ID ngay, thông báo completion mở lượt mới cho parent kèm trích đoạn kết quả; `get_subagent_result` lấy toàn văn. Agent xong được báo ở ranh giới kế tiếp của parent, không chờ các agent khác; các agent xong trong lúc parent đang chạy tool tới cùng một tin trước lần gọi model kế tiếp. Worker ghim `run_in_background: false` nên luôn chạy foreground và trả kết quả ngay trong tool call; parent không đổi được. Background tối đa 4 agent, foreground tối đa 2; vượt giới hạn thì xếp hàng. Nhiều lời gọi `Agent` foreground trong cùng một lượt chạy song song; các phiên Pi quản lý pool riêng.
 
 Researcher nạp `pi-web-access`. Package này khai extension là thư mục `./dist`; bản vá pi-subagents cho entry thư mục khớp tên package, nếu không `extensions`/`ext:pi-web-access` của role không nạp được web tools.
 

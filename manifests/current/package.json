@@ -4,30 +4,30 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@earendil-works/pi-agent-core": "1.1.0",
-    "@earendil-works/pi-ai": "1.1.0",
-    "@earendil-works/pi-coding-agent": "1.1.0",
-    "@earendil-works/pi-tui": "1.1.0",
-    "@gotgenes/pi-anthropic-auth": "3.4.2",
-    "@juicesharp/rpiv-ask-user-question": "2.12.0",
-    "@juicesharp/rpiv-todo": "2.12.0",
-    "@tintinweb/pi-subagents": "0.19.0",
-    "pi-advisor-flow": "0.12.0",
-    "pi-open-tui": "0.3.11",
-    "pi-web-access": "0.37.0",
-    "pi-background-tasks": "file:../../vendor/pi-background-tasks-2.6.9-pi110.tgz",
-    "@pi-archimedes/image-paste": "2.9.3"
+    "@earendil-works/pi-agent-core": "1.4.0",
+    "@earendil-works/pi-ai": "1.4.0",
+    "@earendil-works/pi-coding-agent": "1.4.0",
+    "@earendil-works/pi-tui": "1.4.0",
+    "@gotgenes/pi-anthropic-auth": "3.4.3",
+    "@juicesharp/rpiv-ask-user-question": "2.15.0",
+    "@juicesharp/rpiv-todo": "2.15.0",
+    "@tintinweb/pi-subagents": "0.22.1",
+    "pi-advisor-flow": "0.14.3",
+    "pi-open-tui": "0.3.14",
+    "pi-web-access": "0.46.0",
+    "pi-background-tasks": "file:../../vendor/pi-background-tasks-2.6.10-pi140.tgz",
+    "@pi-archimedes/image-paste": "2.12.0"
   },
   "overrides": {},
   "piPlatform": {
     "localPackages": {
       "pi-background-tasks": {
-        "version": "2.6.9",
-        "source": "../../vendor/pi-background-tasks-2.6.9-pi110.tgz",
-        "sha256": "184b19ae725aba9069178e06eca949316e54b19651230d485ef44475a13c38c0",
-        "upstreamIntegrity": "sha512-5dma6xvO7jeAimRaCNCzfe5y+b4bVBYPxnJ/0RnGS+mj6B6SzgA4FcORKuAtZaoGvC29dlyof3NtX7/QD4Ywew==",
-        "upstreamTarball": "https://registry.npmjs.org/pi-background-tasks/-/pi-background-tasks-2.6.9.tgz",
-        "reason": "Peer metadata adds exactly Pi 1.1.0; runtime changes are tracked separately in assets/patches.json."
+        "version": "2.6.10",
+        "source": "../../vendor/pi-background-tasks-2.6.10-pi140.tgz",
+        "sha256": "f1384b8acd3ced615687352a3c5e00e93f9e1211d475a258224c90a9e19c0872",
+        "upstreamIntegrity": "sha512-ank/oCRst44FVCr4zwDvedzAxpf+Ttmm4XwB9SfKFJtvFWWX9T2YC+g2pWCdQnbGy/4X+BgoSr6YFCW+fWuhSw==",
+        "upstreamTarball": "https://registry.npmjs.org/pi-background-tasks/-/pi-background-tasks-2.6.10.tgz",
+        "reason": "Peer metadata adds exactly Pi 1.4.0; runtime changes are tracked separately in assets/patches.json."
       }
     }
   }

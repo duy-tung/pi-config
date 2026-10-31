@@ -6,5 +6,8 @@
   },
   "thinkingPeek": {
     "lines": 0
+  },
+  "footerSegments": {
+    "liveTps": false
   }
 }
