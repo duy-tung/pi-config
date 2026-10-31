@@ -6,7 +6,7 @@ Parent mặc định là **Claude Opus 5.5/high** (`anthropic/claude-opus-5-5`, 
 
 Tài liệu Claude Code ghi OAuth của gói Pro/Max dành cho Claude Code và ứng dụng native của Anthropic, và Anthropic có thể thực thi giới hạn này không báo trước. Nếu Claude không dùng được, chọn model khác bằng `/model`; role của Agent mặc định cũng là Claude, đổi trong `/agents`. Bộ phân loại của auto mode chạy Claude Sonnet 5.5 qua cùng đăng nhập; khi Sonnet 5.5 lỗi, nó dùng model của phiên, nên sau khi đổi `/model` sang model GPT (vd `openai/gpt-6.1-sol` qua Sign in with ChatGPT) thì auto mode duyệt được tiếp.
 
-`@gotgenes/pi-anthropic-auth` 3.4.2 shape request OAuth (billing header, system prompt) cho mọi request đi qua provider `anthropic`, và tự thử lại khi Anthropic yêu cầu phiên bản Claude Code mới hơn. pi-config tắt cảnh báo extra usage lúc khởi động của Pi (`warnings.anthropicExtraUsage: false`), vì phiên chính, compaction và extension gọi qua `ctx.modelRegistry.streamSimple()` đều đi qua shaping; extension gọi thẳng `compat.streamSimple` của pi-ai thì không, và request đó có thể bị tính vào extra usage. Bật lại trong `/settings` → Warnings.
+`@gotgenes/pi-anthropic-auth` 3.4.3 shape request OAuth (billing header, system prompt) cho mọi request đi qua provider `anthropic`, và tự thử lại khi Anthropic yêu cầu phiên bản Claude Code mới hơn. pi-config tắt cảnh báo extra usage lúc khởi động của Pi (`warnings.anthropicExtraUsage: false`), vì phiên chính, compaction và extension gọi qua `ctx.modelRegistry.streamSimple()` đều đi qua shaping; extension gọi thẳng `compat.streamSimple` của pi-ai thì không, và request đó có thể bị tính vào extra usage. Bật lại trong `/settings` → Warnings.
 
 ## Mức thinking (effort)
 
@@ -26,7 +26,7 @@ pi-config có extension `claude-usage`:
 
 ## Native web search
 
-`web_search` (pi-web-access 0.37.0) định tuyến `["openai", "anthropic", "exa", "firecrawl"]` với `useCurrentModel: true`; mô tả tool ghi "OpenAI, Anthropic, Exa, Firecrawl":
+`web_search` (pi-web-access 0.46.0) định tuyến `["openai", "anthropic", "exa", "firecrawl"]` với `useCurrentModel: true`:
 
 | Model hiện tại | Cách tìm |
 |---|---|

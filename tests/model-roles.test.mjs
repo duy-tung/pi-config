@@ -39,8 +39,8 @@ test('giá trị cho từng file gốc: phiên chính, advisor không đặt thi
     modelThinkingLevels: {'anthropic/claude-opus-5-5': 'high', 'anthropic/claude-fable-5-1': 'high', 'anthropic/claude-sonnet-5-5': 'high'},
     enabledModels: ['anthropic/claude-opus-5-5', 'anthropic/claude-fable-5-1', 'anthropic/claude-sonnet-5-5'],
   });
-  // Không có executorEffort: advisor alwaysOn không đặt lại thinking mà /model hay /thinking của Pi đã chọn.
-  assert.deepEqual(values.advisor, {executor: 'anthropic/claude-opus-5-5', advisor: 'anthropic/claude-fable-5-1', advisorEffort: 'high'});
+  // Không có executor hay executorEffort: advisor alwaysOn theo model và thinking mà /model, /thinking của Pi đã chọn.
+  assert.deepEqual(values.advisor, {advisor: 'anthropic/claude-fable-5-1', advisorEffort: 'high'});
   assert.deepEqual(values.subagents.worker, {model: 'anthropic/claude-opus-5-5', thinking: 'high'});
   const custom = nativeValues(withRoles({main: {thinking: 'xhigh'}, reviewer: {model: 'anthropic/claude-opus-5-5'}}));
   // Model dùng chung chỉ xuất hiện một lần, phiên chính đứng đầu và giữ thinking của phiên chính.
@@ -67,7 +67,7 @@ test('frontmatter của file role: đặt model/thinking, giữ phần còn lạ
   }
 });
 
-test('giá trị đang có hiệu lực theo file gốc: executor của advisor thắng settings.json khi luôn bật', t => {
+test('giá trị đang có hiệu lực theo file gốc: phiên chính theo settings.json, executor ghim trong advisor thắng khi luôn bật', t => {
   const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-model-roles-'));
   t.after(() => fs.rmSync(agentDir, {recursive: true, force: true}));
   const values = nativeValues(defaults);
@@ -77,15 +77,19 @@ test('giá trị đang có hiệu lực theo file gốc: executor của advisor 
   write('advisor.json', {...values.advisor, alwaysOn: true});
   for (const [name, value] of Object.entries(values.subagents)) write(`agents/${name}.md`, role(value.model, value.thinking));
   const effective = effectiveModelRoles(agentDir);
-  // advisor alwaysOn: executor thắng settings.json (Sonnet trong settings không phải model thật của phiên); thinking
-  // theo settings.json khi advisor không có executorEffort.
-  assert.deepEqual(effective.main, {model: 'anthropic/claude-opus-5-5', thinking: 'high', file: 'advisor.json'});
+  // Không ghim executor: advisor theo model của phiên, nên phiên chính là settings.json.
+  assert.deepEqual(effective.main, {model: 'anthropic/claude-sonnet-5-5', thinking: 'high', file: 'settings.json'});
   assert.deepEqual(Object.keys(effective), ROLES);
   assert.deepEqual(effective.worker, {model: 'anthropic/claude-opus-5-5', thinking: 'high', file: 'agents/worker.md'});
   assert.deepEqual(effective.advisor, {model: 'anthropic/claude-fable-5-1', thinking: 'high', file: 'advisor.json'});
-  write('advisor.json', {...values.advisor, executorEffort: 'low', alwaysOn: true});
+  // executor ghim (/advisor-models): advisor alwaysOn đặt nó mỗi lần mở phiên, nên thắng settings.json; thinking theo
+  // settings.json khi advisor không có executorEffort.
+  const pinned = {...values.advisor, executor: 'anthropic/claude-opus-5-5'};
+  write('advisor.json', {...pinned, alwaysOn: true});
+  assert.deepEqual(effectiveModelRoles(agentDir).main, {model: 'anthropic/claude-opus-5-5', thinking: 'high', file: 'advisor.json'});
+  write('advisor.json', {...pinned, executorEffort: 'low', alwaysOn: true});
   assert.equal(effectiveModelRoles(agentDir).main.thinking, 'low');
-  write('advisor.json', {...values.advisor, alwaysOn: false});
+  write('advisor.json', {...pinned, alwaysOn: false});
   assert.deepEqual(effectiveModelRoles(agentDir).main, {model: 'anthropic/claude-sonnet-5-5', thinking: 'high', file: 'settings.json'});
 });
 

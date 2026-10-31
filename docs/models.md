@@ -4,17 +4,17 @@ Model và mức thinking của mỗi vai nằm thẳng trong file cấu hình m�
 
 | Vai | Dùng ở | Đổi bằng | File |
 |---|---|---|---|
-| `main` | Phiên chính (parent) | `/model` của Pi | `settings.json` và `executor` trong `advisor.json` |
+| `main` | Phiên chính (parent) | `/model` của Pi | `settings.json` (hoặc `executor` trong `advisor.json` khi ghim) |
 | `researcher`, `worker`, `reviewer` | Agent của pi-subagents | `/agents` → Agent types → chọn vai → **Model** / **Thinking** | dòng `model:`/`thinking:` trong `agents/<vai>.md` |
 | `advisor` | pi-advisor-flow | `/advisor-models` | `advisor`, `advisorEffort` trong `advisor.json` |
 
-- **Phiên chính.** `/model` của Pi chỉ đổi cho phiên hiện tại (Ctrl+S mới lưu mặc định), nhưng advisor luôn bật lưu model đó vào `executor` và đặt lại ở mỗi lần mở phiên. Vì vậy phiên sau cũng dùng model này. Thinking của phiên chính theo `settings.json`: installer không ghi `executorEffort`, nên advisor không đặt lại thinking. Chọn mức trong `/advisor-models` thì advisor lưu mức đó vào `executorEffort` và đặt lại thinking ở mỗi lần mở phiên.
+- **Phiên chính.** `/model` của Pi đổi model cho phiên hiện tại; Ctrl+S trong `/model` (hoặc `/thinking`) lưu làm mặc định của phiên mới vào `settings.json`. Advisor luôn bật theo model và thinking của phiên, vì installer không ghi `executor` hay `executorEffort`. Khi `advisor.json` có `executor` (chọn trong `/advisor-models`, hoặc còn từ bản cài trước), advisor đặt model đó ở mỗi lần mở phiên và `/model` tự ghi model mới vào `executor`; lúc đó `settings.json` không quyết định model chính, và `pi-doctor` báo main theo `advisor.json`. Mức thinking chọn trong `/advisor-models` lưu vào `executorEffort` và cũng được đặt lại mỗi lần mở phiên. Quay về theo phiên: `/advisor-models` → Executor → Current session model. Bản cài trước có `executor` bằng mặc định cũ (Opus 5.5): cài lại xoá nó; `executor` khác mặc định được giữ kèm báo xung đột.
 - **Subagent.** Bản vá của pi-subagents thêm hai mục vào menu của mỗi agent có file:
   - **Model:** ô tìm trên cả catalog; model đang dùng đứng đầu, rồi đến model của provider đã đăng nhập. Chọn xong thì chọn tiếp thinking trong các mức model đó hỗ trợ.
   - **Thinking:** chỉ đổi mức thinking.
 
   Mỗi lần chọn chỉ ghi lại hai dòng `model:`/`thinking:` của file, phần còn lại giữ nguyên, và có hiệu lực từ lần gọi `Agent` kế tiếp. Mục **Edit** vẫn mở cả file để sửa tay.
-- **Advisor.** `/advisor-models` của pi-advisor-flow chọn model advisor, model executor và fallback; có hiệu lực từ lần hỏi advisor kế tiếp.
+- **Advisor.** `/advisor-models` của pi-advisor-flow chọn model advisor, fallback và (nếu muốn ghim) executor; có hiệu lực từ lần hỏi advisor kế tiếp.
 
 Model của bộ phân loại auto mode không phải một vai: đổi trong `/permissions` → Classifier → Change classifier model…, lưu vào `autoMode.model` và `autoMode.stage2Reasoning` của `settings.json` và áp ngay cho phiên. Mặc định là Claude Sonnet 5.5 / low. Xem [docs/auto-mode.md](auto-mode.md#cấu-hình).
 

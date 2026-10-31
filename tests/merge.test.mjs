@@ -42,6 +42,17 @@ test('cài lại sau khi bỏ Jev: autoMode.jev mặc định cũ bị xoá, gi�
   assert.deepEqual(off.conflicts, [{path: ['autoMode', 'jev'], current: false, next: undefined}]);
 });
 
+test('cài lại khi advisor thôi ghim executor: executor mặc định cũ bị xoá, executor người dùng ghim được giữ kèm báo xung đột', () => {
+  const base = {alwaysOn: true, executor: 'anthropic/claude-opus-5-5', advisor: 'anthropic/claude-fable-5-1', advisorEffort: 'high'};
+  const next = {alwaysOn: true, advisor: 'anthropic/claude-fable-5-1', advisorEffort: 'high'};
+  const untouched = merge(base, next, structuredClone(base));
+  assert.deepEqual(untouched.value, next);
+  assert.deepEqual(untouched.changes, [{type: 'delete', path: ['executor']}]);
+  const pinned = merge(base, next, {...base, executor: 'anthropic/claude-sonnet-5-5'});
+  assert.equal(pinned.value.executor, 'anthropic/claude-sonnet-5-5');
+  assert.deepEqual(pinned.conflicts, [{path: ['executor'], current: 'anthropic/claude-sonnet-5-5', next: undefined}]);
+});
+
 test('mảng thường là một giá trị; mảng tập hợp chỉ áp dụng cho settings.json', () => {
   const base = {searchRouting: {providers: ['openai', 'exa']}, deny: ['a'], permissions: {deny: ['a']}};
   const next = {searchRouting: {providers: ['openai', 'anthropic', 'exa']}, deny: ['a', 'b'], permissions: {deny: ['a', 'b']}};

@@ -62,10 +62,11 @@ Object.assign(settings, {
 });
 if (settings.rewind) settings.rewind.storageDir = path.join(fixture, "rewind");
 writeJson(path.join(agentDir, "settings.json"), settings);
-// Advisor luôn bật của bản cài, executor là model giả của parent thay cho Opus (fixture không có auth Claude).
+// Advisor luôn bật của bản cài, không ghim executor: executor là model của phiên (parent giả thay cho Opus, fixture
+// không có auth Claude).
 const advisorFile = path.join(agentDir, "advisor.json");
-// Đặt giới hạn số lượt (mặc định không giới hạn) để kiểm bản vá giữ dòng giới hạn cố định trong system prompt.
-writeJson(advisorFile, { ...readJson(advisorFile), executor: "config-test/parent", advisor: defaults.advisor.advisor, advisorEffort: defaults.advisor.advisorEffort, advisorMaxCallsPerSession: 5 });
+// Đặt giới hạn số lượt (mặc định không giới hạn) để kiểm system prompt giữ nguyên khi số lượt còn lại đổi.
+writeJson(advisorFile, { ...readJson(advisorFile), advisor: defaults.advisor.advisor, advisorEffort: defaults.advisor.advisorEffort, advisorMaxCallsPerSession: 5 });
 writeJson(path.join(agentDir, "auth.json"), {});
 // Explicitly replace web config rather than copying a live credential command.
 writeJson(path.join(agentDir, "web-search.json"), {
@@ -304,6 +305,8 @@ const turn=(key,steps)=>turnIn(session,key,steps);
 const head=entry=>{const first=entry.messages.findIndex(m=>m.role==='user');return JSON.stringify([entry.systemPrompt??null,entry.messages.slice(0,first<0?0:first)]);};
 await check('advisor Astra/high is always on for the parent and a consultation keeps the system prompt',async()=>{
   assert.ok(session.getActiveToolNames().includes('ask_advisor'),'alwaysOn phải bật advisor khi mở phiên');
+  // Không ghim executor: đổi model của phiên (setModel như /model) không ghi gì vào advisor.json.
+  assert.equal(readJson(advisorFile).executor,undefined);
   control.plans.advisor=[final('Verdict: sound\n\nADVISOR_FIXTURE_OK')];
   const out=await turn('advisor-one',[[tool('ask_advisor',{})],final('DONE')]);
   assert.equal(out[0]?.isError,false,JSON.stringify(out));assert.match(JSON.stringify(out),/ADVISOR_FIXTURE_OK/);
@@ -316,14 +319,17 @@ await check('advisor Astra/high is always on for the parent and a consultation k
   assert.equal(one,two,'System prompt không được đổi sau mỗi lần hỏi advisor');
   assert.match(one,/after two consecutive materially equivalent failed attempts/);
   assert.match(one,/Before declaring success, use ask_advisor/);
-  assert.match(one,/Advisor calls are limited to 5 per session/);
+  assert.match(one,/Use the latest advisor-budget message for the current call allowance/);
+  // Số lượt còn lại tới model trong tin nhắn ẩn advisor-budget: 5 lượt, đã dùng 1.
+  const budget=control.seen.find(x=>x.key==='advisor-two').messages.filter(m=>JSON.stringify(m.content).includes('Advisor calls remaining this session:'));
+  assert.match(JSON.stringify(budget.at(-1)?.content),/Advisor calls remaining this session: 4\./,JSON.stringify(budget));
   assert.doesNotMatch(one,/Before committing to a materially consequential plan/);
 });
 await check('/advisor-off lasts into the next session; alwaysOn brings the advisor back',async()=>{
   await session.prompt('/advisor-off');
   assert.ok(!session.getActiveToolNames().includes('ask_advisor'));
-  assert.equal(readJson(advisorFile).alwaysOn,false);
-  // Pi bật mọi tool của extension khi mở phiên; bản vá đưa advisor về trạng thái tắt trừ khi alwaysOn.
+  assert.deepEqual([readJson(advisorFile).alwaysOn,readJson(advisorFile).advisorToolsEnabled],[false,false]);
+  // Pi bật mọi tool của extension khi mở phiên; pi-advisor-flow tắt lại advisor theo advisorToolsEnabled.
   const toolsOfNewSession=async()=>{
     const freshLoader=new sdk.DefaultResourceLoader({cwd,agentDir});await freshLoader.reload();
     const {session:fresh}=await sdk.createAgentSession({cwd,agentDir,resourceLoader:freshLoader,modelRuntime:runtime,sessionManager:sdk.SessionManager.inMemory(cwd)});
@@ -331,7 +337,8 @@ await check('/advisor-off lasts into the next session; alwaysOn brings the advis
     finally{await fresh.extensionRunner.emit({type:'session_shutdown',reason:'quit'});fresh.dispose();}
   };
   assert.ok(!(await toolsOfNewSession()).includes('ask_advisor'),'Phiên mới sau /advisor-off không được bật advisor');
-  writeJson(advisorFile,{...readJson(advisorFile),alwaysOn:true});
+  // /advisor-settings → Always on ghi cả hai khóa.
+  writeJson(advisorFile,{...readJson(advisorFile),alwaysOn:true,advisorToolsEnabled:true});
   assert.ok((await toolsOfNewSession()).includes('ask_advisor'));
 });
 

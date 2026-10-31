@@ -66,8 +66,8 @@ writeJson(credentialFile, {"fixture-secret": {type: "api_key", key: "synthetic-p
   anthropic: {type: "oauth", access: "sk-ant-oat01-synthetic-fixture", refresh: "synthetic-refresh", expires: Date.now() + 3600000}});
 const advisorFile = path.join(agentDir, "advisor.json");
 const advisor = readJson(advisorFile);
-// Giữ alwaysOn và gate của bản cài; chỉ thay model bằng model giả.
-Object.assign(advisor, { executor: "config-test/parent", advisor: "config-test/worker" });
+// Giữ alwaysOn và gate của bản cài (executor theo model của phiên); chỉ thay model advisor bằng model giả.
+Object.assign(advisor, { advisor: "config-test/worker" });
 writeJson(advisorFile, advisor);
 // Dùng routing web của bản cài nhưng thay credential command bằng giá trị giả; bật thêm tuỳ chọn tìm bằng
 // Claude cho model khác Claude để kiểm cả hai nhánh của provider anthropic.
@@ -241,7 +241,7 @@ await check("single session exposes slash commands and only one model delegation
 await check("Claude: web_search provider anthropic, quota footer from headers and /claude-usage", async () => {
   const claude = runtime.getModel("anthropic", "claude-sonnet-5-5");
   const webSearch = session.extensionRunner.getToolDefinition("web_search");
-  assert.match(webSearch?.description ?? "", /^Search the web with OpenAI, Anthropic, Exa, Firecrawl\./u);
+  assert.match(webSearch?.description ?? "", /^Search the web for sources or answers\./u);
   const search = async () => {
     searchRequests.length = 0;
     const result = await webSearch.execute("profile-search", { query: "pi coding agent", numResults: 2 }, new AbortController().signal, undefined, session.extensionRunner.createContext());
@@ -386,9 +386,12 @@ await check("background shell job wakes the main session when it ends; triggerOn
   assert.equal(result[0].details.task.triggerOnCompletion, true, "bg_run wakes the model by default");
   assert.match(JSON.stringify(result[0].content), /Automatic follow-up turn: enabled/u);
   // The terminal notification starts a model turn by itself: nobody sends a message.
-  const wake = await waitFor(() => control.seen.slice(seen).find((request) => notifies(request.messages.at(-1), taskId)),
+  // Input of the turn a request starts: everything after the last assistant message. pi-advisor-flow appends its
+  // hidden advisor-budget message at run start, so the notification is not necessarily the last one.
+  const turnInput = (request) => request.messages.slice(request.messages.findLastIndex((message) => message.role === "assistant") + 1);
+  const wake = await waitFor(() => control.seen.slice(seen).map(turnInput).map((input) => input.find((message) => notifies(message, taskId))).find(Boolean),
     "Completion notification starts a turn");
-  assert.match(JSON.stringify(wake.messages.at(-1)), /<status>completed<\/status>/u);
+  assert.match(JSON.stringify(wake), /<status>completed<\/status>/u);
   await waitFor(settled, "Woken turn finishes");
   result = await run("bg-output", [[tool("bg_logs", { taskId })]]);
   assert.ok(!result[0]?.isError, JSON.stringify(result));
@@ -540,19 +543,19 @@ await check("clipboard image shortcut, attachment, deleted marker and size guard
   process.env.DISPLAY = ":fixture";
   syncBuiltinESMExports();
   try {
-    imageDraft=""; await shortcut.handler();
+    imageDraft=""; await shortcut.handler(session.extensionRunner.createContext());
     assert.match(imageDraft,/\[Image #1\]/);
     await run("clipboard-image", [], imageDraft);
     const request=control.seen.findLast(entry=>entry.key==="clipboard-image");
     const attached=request.messages.flatMap(message=>Array.isArray(message.content)?message.content.filter(item=>item.type==="image"):[]);
     assert.equal(attached.length,1,"An image must reach the model exactly once; previews must stay UI-only");
     assert.equal(attached[0].data,png.toString("base64"));
-    imageDraft=""; await shortcut.handler();
+    imageDraft=""; await shortcut.handler(session.extensionRunner.createContext());
     await run("clipboard-deleted", [], "Marker removed before submit");
     const next=control.seen.findLast(entry=>entry.key==="clipboard-deleted");
     const user=next.messages.findLast(message=>message.role==="user");
     assert.ok(!Array.isArray(user.content)||!user.content.some(item=>item.type==="image"));
-    bytes=Buffer.alloc(20*1024*1024+1);imageDraft="";await shortcut.handler();
+    bytes=Buffer.alloc(20*1024*1024+1);imageDraft="";await shortcut.handler(session.extensionRunner.createContext());
     assert.equal(imageDraft,"");assert.ok(notices.some(item=>item.message.includes("Image too large")));
   } finally {
     Module._load=originalLoad;childProcess.spawnSync=originalSpawn;syncBuiltinESMExports();

@@ -164,10 +164,10 @@ for (const platform of ["darwin", "linux", "win32"]) {
       if (profile.packages.includes("pi-advisor-flow")) {
       const advisor = json(p.join(profile.agentDir, "advisor.json"));
       const settings = json(p.join(profile.agentDir, "settings.json"));
-      // Luôn bật với executor là chính model mặc định (Opus/high), nên mở phiên không đổi model.
+      // Luôn bật, không ghim executor: model và thinking của phiên chính theo settings.json (/model, /thinking của Pi).
       assert.equal(advisor.alwaysOn, true);
-      assert.equal(advisor.executor, `${settings.defaultProvider}/${settings.defaultModel}`);
-      // Không có executorEffort: thinking của phiên chính theo settings.json (/model, /thinking của Pi).
+      assert.equal(settings.defaultModel, "claude-opus-5-5");
+      assert.equal(advisor.executor, undefined);
       assert.equal(advisor.executorEffort, undefined);
       assert.equal(advisor.advisor, "anthropic/claude-fable-5-1");
       assert.equal(advisor.advisorEffort, "high");
@@ -260,7 +260,6 @@ test("model mặc định đi tới mọi file gốc (settings, file role, advis
   assert.ok(!files.some((entry) => /model-roles/u.test(entry.path)));
   assert.ok(!settings.extensions.some((entry) => entry.endsWith("model-roles")));
   const advisor = JSON.parse(read("advisor.json"));
-  assert.deepEqual([advisor.executor, advisor.advisor, advisor.advisorEffort, advisor.alwaysOn],
-    ["anthropic/claude-opus-5-5", "anthropic/claude-fable-5-1", "high", true]);
-  assert.ok(!Object.hasOwn(advisor, "executorEffort"), "advisor không đặt lại thinking của phiên chính");
+  assert.deepEqual([advisor.advisor, advisor.advisorEffort, advisor.alwaysOn], ["anthropic/claude-fable-5-1", "high", true]);
+  assert.ok(!Object.hasOwn(advisor, "executor") && !Object.hasOwn(advisor, "executorEffort"), "advisor theo model và thinking của phiên chính");
 });
