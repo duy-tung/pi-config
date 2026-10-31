@@ -18,7 +18,10 @@
     "pi-background-tasks": "file:../../vendor/pi-background-tasks-2.6.10-pi140.tgz",
     "@pi-archimedes/image-paste": "2.12.0"
   },
-  "overrides": {},
+  "overrides": {
+    "undici": "8.12.3",
+    "zod": "4.6.7"
+  },
   "piPlatform": {
     "localPackages": {
       "pi-background-tasks": {
