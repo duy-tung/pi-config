@@ -2,8 +2,7 @@ import { parseVerdict, STAGE1_SUFFIX, STAGE2_SUFFIX } from "./prompt.ts";
 
 /**
  * Bộ phân loại hai giai đoạn (theo Claude Code auto mode):
- * - Giai đoạn 1: sàng lọc nhanh, nghiêng về gắn cờ. Mặc định là Jev (System One: xác suất cho từng loại rủi ro,
- *   code so ngưỡng); không có Jev thì là LLM với cùng prompt, không suy luận, vài token.
+ * - Giai đoạn 1: sàng lọc nhanh, nghiêng về gắn cờ; LLM với cùng prompt, không suy luận, vài token.
  * - Giai đoạn 2: chỉ khi giai đoạn 1 gắn cờ; LLM có suy luận, xét ngoại lệ và ủy quyền của người dùng.
  * Mọi lỗi đều chặn (fail closed); lỗi không phải phán quyết nên không tính vào giới hạn.
  */
@@ -24,14 +23,8 @@ export interface CompletionOptions {
 
 export type Complete = (request: CompletionRequest, options: CompletionOptions) => Promise<string>;
 
-/** Kết quả giai đoạn 1 bằng Jev. unavailable → giai đoạn 1 chạy bằng LLM như khi không có Jev. */
-export type ScreenOutcome =
-  | { kind: "clear" }
-  | { kind: "flag" }
-  | { kind: "unavailable"; reason: string; aborted?: boolean };
-
 export type ClassifierResult =
-  | { kind: "allow"; stage: 1 | 2; screen?: "jev" }
+  | { kind: "allow"; stage: 1 | 2 }
   /** fallback: chặn vì giai đoạn 2 không hoàn tất (không phải phán quyết đầy đủ, không tính giới hạn). */
   | { kind: "block"; stage: 1 | 2; rule?: string; reason: string; fallback?: boolean }
   | { kind: "unavailable"; reason: string; aborted?: boolean };
@@ -40,12 +33,10 @@ export interface ClassifyOptions {
   systemPrompt: string;
   blocks: string[];
   complete: Complete;
-  /** Hạn chung của cả lần kiểm: hai giai đoạn, thử lại và model dự phòng (Jev có hạn riêng, JEV_TUNING.timeoutMs). */
+  /** Hạn chung của cả lần kiểm: hai giai đoạn, thử lại và model dự phòng. */
   timeoutMs: number;
   stage2Reasoning?: string;
   signal?: AbortSignal;
-  /** Giai đoạn 1 bằng Jev. Được gọi lại khi đổi sang model dự phòng, nên bên gọi tự nhớ kết quả. */
-  screen?: () => Promise<ScreenOutcome>;
 }
 
 const TRANSIENT = /\b(?:429|5\d\d|timeout|timed out|ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|socket hang up|network|overloaded|rate limit|temporarily unavailable|fetch failed)\b/iu;
@@ -56,7 +47,7 @@ function message(error: unknown): string {
 
 /**
  * Một request tới model, thử lại một lần khi lỗi tạm thời. deadline là hạn chung của cả lần kiểm: mọi request
- * (hai giai đoạn, thử lại, model dự phòng) dùng chung nó, nên một lời gọi tool chờ tối đa timeoutMs sau Jev.
+ * (hai giai đoạn, thử lại, model dự phòng) dùng chung nó, nên một lời gọi tool chờ tối đa timeoutMs.
  */
 async function attempt(
   options: ClassifyOptions, deadline: AbortSignal, stage: 1 | 2, suffix: string, maxTokens: number, reasoning: string | undefined,
@@ -132,19 +123,13 @@ async function review(
   return { kind: "block", stage: 1, rule: flagged.rule, fallback: true, reason: flagged.reason };
 }
 
-/** Hạn của các request LLM, bắt đầu sau Jev; model dự phòng dùng lại cùng hạn. */
+/** Hạn của các request LLM; model dự phòng dùng lại cùng hạn. */
 interface Budget {
   deadline?: AbortSignal;
 }
 
 export async function classify(options: ClassifyOptions, budget: Budget = {}): Promise<ClassifierResult> {
-  const screened = options.screen ? await options.screen() : undefined;
-  if (screened?.kind === "clear") return { kind: "allow", stage: 1, screen: "jev" };
-  if (screened?.kind === "unavailable" && screened.aborted) return { kind: "unavailable", reason: screened.reason, aborted: true };
   const deadline = (budget.deadline ??= AbortSignal.timeout(options.timeoutMs));
-  if (screened?.kind === "flag") {
-    return review(options, deadline, { reason: "The System One screen flagged this action and the careful review could not complete" });
-  }
   const first = await attempt(options, deadline, 1, STAGE1_SUFFIX, 48, "off");
   if (first.aborted) return { kind: "unavailable", reason: first.error ?? "interrupted", aborted: true };
   const stage1 = first.text !== undefined ? parseVerdict(first.text) : undefined;

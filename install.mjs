@@ -205,8 +205,7 @@ try{
   const pruned=pruneBackups(root);
   if(pruned.length)console.log(`Đã xoá ${pruned.length} bản backup cũ (runtime, nguồn, tài nguyên, file cấu hình) trong ${path.join(root,'backups')}.`);
   console.log(`\nĐã cài Pi vào ${root}. Mở terminal mới rồi chạy pi.`);
-  const jevKey=process.platform==='win32'?'setx TYPESAFE_API_KEY "<key>"':'export TYPESAFE_API_KEY="<key>" trong ~/.zshrc hoặc ~/.bashrc';
-  console.log(`Đăng nhập: pi → /login. Firecrawl: firecrawl login --browser. Jev cho auto mode: ${jevKey}.`);
+  console.log('Đăng nhập: pi → /login. Firecrawl: firecrawl login --browser.');
   if(preserved.length)console.log('Giữ nguyên các file đã được bạn tùy chỉnh:\n'+preserved.join('\n'));
   for(const entry of merged)console.log(describeMerge(entry).join('\n'));
   if(catalog.notes.length)console.log(`Mức thinking model không hỗ trợ (Pi dùng mức gần nhất):\n  - ${catalog.notes.join('\n  - ')}`);

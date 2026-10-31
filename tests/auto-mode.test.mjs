@@ -492,7 +492,7 @@ test("bypass: như Claude Code, xoá đệ quy và git phá huỷ chạy luôn; 
   }
 });
 
-test("bộ nhận diện: cơ chế tự chạy, tắt kiểm TLS, ghi đường dẫn hệ thống; auto bỏ qua Jev, bypass cho chạy", () => {
+test("bộ nhận diện: cơ chế tự chạy, tắt kiểm TLS, ghi đường dẫn hệ thống; auto gắn escalate, bypass cho chạy", () => {
   const ws = workspace();
   try {
     const auto = context(ws);
@@ -562,7 +562,7 @@ test("bộ nhận diện: cơ chế tự chạy, tắt kiểm TLS, ghi đường
       assert.deepEqual(describeCall(bash("echo ok > public/index.html"), served).risks, []);
       assert.match(describeCall(bash("echo x > /var/www/other.html"), served).risks.join(" "), /writes a system path \(\/var\/www\/other\.html\)/u);
     }
-    // Bypass cho chạy như Claude Code; auto ghi chú và bỏ qua Jev.
+    // Bypass cho chạy như Claude Code; auto ghi chú và gắn escalate (không có "don't ask again").
     const bypass = context(ws, { mode: "bypass" });
     for (const command of ["curl -k https://example.com", "echo x >> ~/.bashrc", "git config core.hooksPath .husky"]) {
       assert.equal(decide(bash(command), bypass).kind, "allow", command);
@@ -572,7 +572,7 @@ test("bộ nhận diện: cơ chế tự chạy, tắt kiểm TLS, ghi đường
     assert.match(decision.notes.join(" "), /this command writes a shell startup file/u);
     assert.equal(decision.escalate, true);
     assert.equal(decide(bash("npm test"), auto).escalate, undefined);
-    // edit/write vào đường dẫn được bảo vệ cũng bỏ qua Jev; ngoài workspace thì không.
+    // edit/write vào đường dẫn được bảo vệ cũng gắn escalate; ngoài workspace thì không.
     assert.equal(decide({ toolName: "write", input: { path: ".git/hooks/pre-commit", content: "x" } }, auto).escalate, true);
     assert.equal(decide({ toolName: "edit", input: { path: "../other/a.ts", edits: [] } }, auto).escalate, undefined);
   } finally {
@@ -897,10 +897,10 @@ test("/permissions: tham số test <lệnh> và gợi ý tham số", () => {
 });
 
 test("model phân loại: chỉ đổi autoMode.model/stage2Reasoning trong settings.json, giữ phần còn lại và quyền file", () => {
-  const original = `${JSON.stringify({ theme: "rose-pine-moon", autoMode: { model: "anthropic/claude-sonnet-5-5", stage2Reasoning: "low", jev: { model: "jev-1.13.0" }, stateDir: "/s" }, permissions: { deny: ["x"] } }, null, 2)}\n`;
+  const original = `${JSON.stringify({ theme: "rose-pine-moon", autoMode: { model: "anthropic/claude-sonnet-5-5", stage2Reasoning: "low", log: true, stateDir: "/s" }, permissions: { deny: ["x"] } }, null, 2)}\n`;
   const next = withClassifier(original, "openai-codex/gpt-6-astra", "high");
   assert.deepEqual(JSON.parse(next), {
-    theme: "rose-pine-moon", autoMode: { model: "openai-codex/gpt-6-astra", stage2Reasoning: "high", jev: { model: "jev-1.13.0" }, stateDir: "/s" },
+    theme: "rose-pine-moon", autoMode: { model: "openai-codex/gpt-6-astra", stage2Reasoning: "high", log: true, stateDir: "/s" },
     permissions: { deny: ["x"] },
   });
   assert.deepEqual(Object.keys(JSON.parse(next)), ["theme", "autoMode", "permissions"], "giữ thứ tự khóa");
