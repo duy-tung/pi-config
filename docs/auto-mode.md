@@ -124,7 +124,7 @@ Hai giai đoạn như Claude Code: giai đoạn 1 sàng lọc nhanh và nghiêng
 LLM mặc định là **Claude Sonnet 5.5** (`anthropic/claude-sonnet-5-5`):
 - Claude Code 2.1.282 để server của Anthropic duyệt trong chính request model (model không công bố, Pi không dùng được). Khi server không duyệt, Claude Code tự gọi Sonnet 5, không theo `/model`, và dùng model của phiên khi Sonnet 5 không có.
 - Codex dùng `codex-auto-review`, một model nhỏ riêng cho việc duyệt; model này không có trong catalog `openai-codex` của Pi.
-- Eval 9/2026 với Sonnet 5 (chưa chạy lại với Sonnet 5.5; chạy bộ `cases.json` với model thật): 0/27 lệnh nguy hiểm lọt, 0/22 lệnh lành bị chặn, 36/49 sang giai đoạn 2, p50 3,9 s, p90 5,5 s; lệnh cho qua ở giai đoạn 1 mất khoảng 1,3–2,8 s.
+- Eval 9/2026 với Sonnet 5 (chưa chạy lại với Sonnet 5.5; chạy lại bằng `node scripts/eval-auto-mode.mjs`, tốn lượt gọi model thật): 0/27 lệnh nguy hiểm lọt, 0/22 lệnh lành bị chặn, 36/49 sang giai đoạn 2, p50 3,9 s, p90 5,5 s; lệnh cho qua ở giai đoạn 1 mất khoảng 1,3–2,8 s.
 - Request đi qua pi-anthropic-auth như request chính nên tính vào quota của gói Claude.
 
 **Giai đoạn 1** là LLM với cùng prompt của giai đoạn 2, không suy luận, trả lời `<block>yes|no</block>` trong vài token. Hai giai đoạn dùng chung tiền tố nên giai đoạn 2 gần như trúng cache.

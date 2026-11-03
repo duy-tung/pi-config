@@ -4,7 +4,7 @@ Mọi thứ cài vào runtime đều ghim: phiên bản trong `manifests/current
 
 ## 1. Manifest
 
-Sửa phiên bản trong `manifests/current/package.json` (`dependencies` và, với package vendor, `piPlatform.localPackages.<tên>`: `version`, `source`, `upstreamTarball`, `upstreamIntegrity` lấy từ `npm view <tên>@<phiên bản> dist.integrity`). Tên tarball vendor mang phiên bản Pi mà nó mở peer range, vd `pi-background-tasks-2.6.10-pi140.tgz`; đổi Pi thì đổi hậu tố và đường dẫn `file:` trong `dependencies`.
+Sửa phiên bản trong `manifests/current/package.json` (`dependencies` và, với package vendor, `piPlatform.localPackages.<tên>`: `version`, `source`, `upstreamTarball`, `upstreamIntegrity` lấy từ `npm view <tên>@<phiên bản> dist.integrity`). Tên tarball vendor mang phiên bản Pi mà nó mở peer range, vd `pi-background-tasks-2.6.10-pi150.tgz`; đổi Pi thì đổi hậu tố và đường dẫn `file:` trong `dependencies`.
 
 ## 2. Tarball vendor
 
@@ -28,7 +28,7 @@ cp "$tmp/manifests/current/package-lock.json" manifests/current/
 
 Đọc diff của lockfile: chỉ các package định nâng và dependency của chúng được đổi.
 
-`overrides` trong manifest ép dependency gián tiếp lên bản đã vá khi package cha còn ghim bản có lỗ hổng: runtime ghim `undici` 8.12.3 (pi-coding-agent 1.4.0 ghim 8.10.2, pi-web-access 0.46.0 cần `^8.11.2`) và `zod` 4.6.7; Firecrawl ghim `axios` 1.20.0. Zod 3 của Firecrawl (firecrawl-js chỉ nhận `^3`) chưa có bản vá nên để nguyên. Sau khi nâng, chạy `npm audit --package-lock-only --prefix manifests/current` (và `manifests/firecrawl`); upstream đã kéo một dependency lên tới hoặc quá bản ghim thì bỏ override đó.
+`overrides` trong manifest ép dependency gián tiếp lên bản đã vá khi package cha còn ghim bản có lỗ hổng. Runtime hiện không cần override: Pi 1.5.0 tự ghim `undici` 8.12.3 và `minimatch` 11.0.3, và lockfile giữ `zod` 4.6.7. Firecrawl ghim `axios` 1.20.0. Zod 3 của Firecrawl (firecrawl-js chỉ nhận `^3`) chưa có bản vá nên để nguyên. Sau khi nâng, chạy `npm audit --package-lock-only --prefix manifests/current` (và `manifests/firecrawl`); upstream đã kéo một dependency lên tới hoặc quá bản ghim thì bỏ override đó.
 
 ## 4. Bản vá
 

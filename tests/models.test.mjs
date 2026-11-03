@@ -51,9 +51,9 @@ test('Pi: Opus 5.5/high 1M mặc định, advisor Fable trong catalog, GPT (open
       assert.equal(model.api, 'anthropic-messages');
       assert.ok(getSupportedThinkingLevels(model).includes(settings.defaultThinkingLevel));
       // GPT không là mặc định của vai nào; khi người dùng chọn, openai (Sign in with ChatGPT) và openai-codex (legacy)
-      // đều dùng cửa sổ của catalog Pi (từ Pi 1.4.0 chỉ openai-codex/gpt-6.1-sol có 500K).
-      for (const id of ['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-astra']) {
-        assert.equal(runtime.getModel('openai-codex', id).contextWindow, id === 'gpt-6.1-sol' ? 500000 : 272000, `openai-codex/${id}`);
+      // đều dùng cửa sổ của catalog Pi (openai-codex/gpt-6.1-sol từ Pi 1.4.0 và gpt-6.1-terra từ 1.5.0 có 500K).
+      for (const id of ['gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-sol', 'gpt-6-astra']) {
+        assert.equal(runtime.getModel('openai-codex', id).contextWindow, id.startsWith('gpt-6.1-') ? 500000 : 272000, `openai-codex/${id}`);
         assert.equal(runtime.getModel('openai', id).contextWindow, 272000, `openai/${id}`);
       }
       for (const [ref, level] of Object.entries(settings.modelThinkingLevels)) {

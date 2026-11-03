@@ -4,11 +4,11 @@
     {
       "package": "pi-open-tui",
       "versions": {
-        "current": "0.3.14"
+        "current": "0.4.1"
       },
       "file": "extensions/open-tui/footer.ts",
-      "originalSha256": "4ee20d588db8d6d00bdc03fbcef5f071d53053861773998c1388b48469d2e07a",
-      "patchedSha256": "2e0bb2200eef19336b9964d50e768d6294fd9023757e214452ed91a68e245acc",
+      "originalSha256": "e4c12197fb8be28be3063d5526d0f45cdb1030e4844f77b9d7fcc059e89e151a",
+      "patchedSha256": "ebc24c987b9e9e8e58e0853482c0bcf48a3e8f274692d611c0d7baa288e4e217",
       "edits": [
         {
           "before": "stats.push(theme.fg(\"warning\", `${glyphs.cost} $${totals.cost.toFixed(3)}`));",
@@ -223,7 +223,7 @@
       },
       "file": "dist/index.js",
       "originalSha256": "5c29722416ef5dd2a6e075899f8bdeb8ef285ee32258ac5e9c61ac5f6bee31e6",
-      "patchedSha256": "c5c70568db9e48d47b27f904020eee830c58b0ec948891ea05b454e20e0c81e0",
+      "patchedSha256": "c1af4ed0f5e3a1a94c34c07bc10679feebe1d04a7befb84febcbdfe412b1dd1c",
       "edits": [
         {
           "before": "var RESOLVED_SEARCH_PROVIDERS = [\"openai\", \"brave\", ",
