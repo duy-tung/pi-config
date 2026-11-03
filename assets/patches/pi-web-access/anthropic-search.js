@@ -114,7 +114,7 @@ var piConfigAnthropicSearch = (() => {
   /**
    * Thêm server tool vào payload Pi đã dựng; system, betas, thinking giữ nguyên.
    * Model có effort ở cấp request (Opus 5.x, Fable) tìm kiếm với effort thấp: pi-anthropic-auth bỏ
-   * system message chỉ chứa effort, nên đặt trực tiếp output_config.effort thay cho Pi mặc định "high".
+   * system message chỉ chứa effort, nên đặt trực tiếp output_config.effort (Pi 1.5.0 cũng ghim "low" ở cấp request; bản cũ ghim "high").
    */
   function shapeSearchPayload(payload, tool) {
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
