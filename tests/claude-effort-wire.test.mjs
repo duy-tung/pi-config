@@ -4,11 +4,15 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
+import { buildConfiguration } from "../lib/config.mjs";
+import { modelDefaults } from "./install-fixture.mjs";
 import { anthropicSearchEvents, sse } from "./search-fixtures.mjs";
 
 // Opus 5.5 qua gói Pro/Max: Pi ghim output_config.effort ở "low" (Pi 1.5.0; trước đó "high") và gửi effort theo lượt bằng system message
 // rỗng mang output_config; pi-anthropic-auth >= 3.3.2 giữ message đó khi shape OAuth (upstream PR #79), nên
 // message cuối cùng phải mang đúng mức /thinking của phiên. fetch giả, không gọi mạng.
+// Pi 1.5.1 bật message threads cho api.anthropic.com: từ lượt thứ hai request bỏ `system` (billing header) và `tools`.
+// models.json của installer tắt threads, nên mọi lượt phải là request đầy đủ đã qua shaping OAuth.
 const root = process.env.PI_CONFIG_TEST_ROOT;
 test("Opus 5.5 qua OAuth gửi đúng mức thinking của phiên", { skip: !root, timeout: 120000 }, async () => {
   const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pi-claude-effort-")));
@@ -19,14 +23,19 @@ test("Opus 5.5 qua OAuth gửi đúng mức thinking của phiên", { skip: !roo
     packages: [path.join(modules, "@gotgenes", "pi-anthropic-auth")], extensions: [], skills: [],
     quietStartup: true, cacheWarming: "off", compaction: { enabled: false }, retry: { enabled: false },
   }));
+  const models = buildConfiguration({ root: temp, agentDir, nodePath: process.execPath, home: temp, modelDefaults })
+    .find((file) => file.path === path.join(agentDir, "models.json"));
+  fs.writeFileSync(models.path, models.content);
   fs.writeFileSync(path.join(agentDir, "auth.json"), JSON.stringify({
     anthropic: { type: "oauth", access: "sk-ant-oat01-fixture", refresh: "fixture-refresh", expires: Date.now() + 3600000 },
   }));
   const saved = { fetch: globalThis.fetch, agentDir: process.env.PI_CODING_AGENT_DIR };
   const bodies = [];
+  const betas = [];
   globalThis.fetch = async (input, init = {}) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     if (url.hostname !== "api.anthropic.com" || url.pathname !== "/v1/messages") return new Response("unexpected fixture request", { status: 599 });
+    betas.push(new Headers(input instanceof Request ? input.headers : init.headers).get("anthropic-beta") ?? "");
     bodies.push(JSON.parse(typeof init.body === "string" ? init.body : await input.text()));
     return new Response(sse(anthropicSearchEvents({ model: "claude-opus-5-5" })), { headers: { "content-type": "text/event-stream" } });
   };
@@ -44,10 +53,14 @@ test("Opus 5.5 qua OAuth gửi đúng mức thinking của phiên", { skip: !roo
     for (const level of ["medium", "max", "high"]) {
       session.setThinkingLevel(level);
       bodies.length = 0;
+      betas.length = 0;
       await session.prompt(`Effort fixture ${level}`);
       assert.equal(bodies.length, 1);
       const [body] = bodies;
-      assert.match(body.system[0].text, /^x-anthropic-billing-header:/u, "Request phải qua shaping OAuth");
+      assert.equal(body.thread, undefined, "Message threads phải tắt: request nào cũng gửi đủ system và tools");
+      assert.doesNotMatch(betas[0], /message-threads/u);
+      assert.match(body.system?.[0]?.text ?? "", /^x-anthropic-billing-header:/u, "Request phải qua shaping OAuth");
+      assert.ok(body.tools?.length > 0, "Lượt nào cũng gửi đủ tools");
       assert.equal(body.thinking.type, "adaptive");
       assert.equal(body.output_config.effort, "low", "Pi ghim effort cấp request");
       const last = body.messages.at(-1);

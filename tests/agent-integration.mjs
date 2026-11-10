@@ -65,8 +65,10 @@ writeJson(path.join(agentDir, "settings.json"), settings);
 // Advisor luôn bật của bản cài, không ghim executor: executor là model của phiên (parent giả thay cho Opus, fixture
 // không có auth Claude).
 const advisorFile = path.join(agentDir, "advisor.json");
-// Đặt giới hạn số lượt (mặc định không giới hạn) để kiểm system prompt giữ nguyên khi số lượt còn lại đổi.
-writeJson(advisorFile, { ...readJson(advisorFile), advisor: defaults.advisor.advisor, advisorEffort: defaults.advisor.advisorEffort, advisorMaxCallsPerSession: 5 });
+// Đặt giới hạn số lượt (mặc định không giới hạn) và bật Advisor log feedback (pi-advisor-flow 0.14.4 mặc định tắt: không
+// gửi tin nhắn advisor-budget) để kiểm system prompt giữ nguyên khi số lượt còn lại đổi.
+assert.equal(readJson(advisorFile).advisorLogFeedback, undefined, "Bản cài theo mặc định của pi-advisor-flow: không gửi advisor-budget");
+writeJson(advisorFile, { ...readJson(advisorFile), advisor: defaults.advisor.advisor, advisorEffort: defaults.advisor.advisorEffort, advisorMaxCallsPerSession: 5, advisorLogFeedback: true });
 writeJson(path.join(agentDir, "auth.json"), {});
 // Explicitly replace web config rather than copying a live credential command.
 writeJson(path.join(agentDir, "web-search.json"), {
@@ -85,7 +87,7 @@ Object.assign(process.env, {
   PI_CODING_AGENT_DIR: agentDir,
   PI_CONFIG_AUTH_PATH: path.join(agentDir, "auth.json"),
   PI_BG_DISABLE_UPDATE_CHECK: "1",
-  FIRECRAWL_NO_SEARCH_FEEDBACK: "1", FIRECRAWL_NO_ENDPOINT_FEEDBACK: "1",
+  FIRECRAWL_NO_SEARCH_FEEDBACK: "1", FIRECRAWL_NO_ENDPOINT_FEEDBACK: "1", FIRECRAWL_NO_AUTO_UPDATE: "1",
 });
 for (const key of Object.keys(process.env)) {
   if (/API_KEY|AUTH_TOKEN|ACCESS_TOKEN|REFRESH_TOKEN/u.test(key)) delete process.env[key];

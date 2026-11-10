@@ -20,6 +20,9 @@ if(action==='doctor'){
     PI_CODING_AGENT_DIR:state.agentDir,
     PI_BG_DISABLE_UPDATE_CHECK:'1',
     FIRECRAWL_NO_SEARCH_FEEDBACK:'1', FIRECRAWL_NO_ENDPOINT_FEEDBACK:'1',
+    // Firecrawl CLI từ 1.29.0 tự cài bản mới vào ~/.firecrawl cho bản cài global. Bản cài này hiện không thuộc diện đó;
+    // tắt hẳn để việc ghim phiên bản theo lockfile không phụ thuộc cách CLI nhận diện kiểu cài.
+    FIRECRAWL_NO_AUTO_UPDATE:'1',
   };
   const parts=[path.dirname(state.nodePath),path.join(modules,'.bin')];
   if(state.shellPath){parts.push(path.dirname(state.shellPath),path.resolve(path.dirname(state.shellPath),'../cmd'));}

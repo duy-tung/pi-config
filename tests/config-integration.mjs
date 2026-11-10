@@ -87,7 +87,7 @@ Object.assign(process.env, {
   PI_CODING_AGENT_DIR: agentDir,
   PI_CONFIG_AUTH_PATH: path.join(agentDir, "auth.json"),
   PI_BG_DISABLE_UPDATE_CHECK: "1",
-  FIRECRAWL_NO_SEARCH_FEEDBACK: "1", FIRECRAWL_NO_ENDPOINT_FEEDBACK: "1",
+  FIRECRAWL_NO_SEARCH_FEEDBACK: "1", FIRECRAWL_NO_ENDPOINT_FEEDBACK: "1", FIRECRAWL_NO_AUTO_UPDATE: "1",
 });
 for (const key of Object.keys(process.env)) {
   if (/API_KEY|AUTH_TOKEN|ACCESS_TOKEN|REFRESH_TOKEN/u.test(key)) delete process.env[key];
@@ -386,8 +386,8 @@ await check("background shell job wakes the main session when it ends; triggerOn
   assert.equal(result[0].details.task.triggerOnCompletion, true, "bg_run wakes the model by default");
   assert.match(JSON.stringify(result[0].content), /Automatic follow-up turn: enabled/u);
   // The terminal notification starts a model turn by itself: nobody sends a message.
-  // Input of the turn a request starts: everything after the last assistant message. pi-advisor-flow appends its
-  // hidden advisor-budget message at run start, so the notification is not necessarily the last one.
+  // Input of the turn a request starts: everything after the last assistant message. With Advisor log feedback on,
+  // pi-advisor-flow appends its hidden advisor-budget message at run start, so the notification is not necessarily the last one.
   const turnInput = (request) => request.messages.slice(request.messages.findLastIndex((message) => message.role === "assistant") + 1);
   const wake = await waitFor(() => control.seen.slice(seen).map(turnInput).map((input) => input.find((message) => notifies(message, taskId))).find(Boolean),
     "Completion notification starts a turn");

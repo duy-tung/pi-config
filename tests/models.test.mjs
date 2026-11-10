@@ -28,9 +28,10 @@ test('Pi: Opus 5.5/high 1M mặc định, advisor Fable trong catalog, GPT (open
       fs.mkdirSync(agentDir, {recursive: true});
       const get = (name) => JSON.parse(generated.find(x => x.path === path.join(agentDir, name)).content);
       const settings = get('settings.json');
-      // Installer không sinh models.json; runtime chạy với file không tồn tại như bản cài thật.
-      assert.ok(!generated.some(x => x.path === path.join(agentDir, 'models.json')));
+      // models.json của installer chỉ tắt message threads; runtime chạy với đúng file đó như bản cài thật.
+      assert.deepEqual(get('models.json'), {providers: {anthropic: {compat: {supportsMessageThreads: false}}}});
       const modelsPath = path.join(agentDir, 'models.json');
+      fs.writeFileSync(modelsPath, generated.find(x => x.path === modelsPath).content);
       const authPath = path.join(agentDir, 'auth.json');
       const jwt = `fixture.${Buffer.from(JSON.stringify({'https://api.openai.com/auth': {chatgpt_account_id: 'fixture'}})).toString('base64url')}.fixture`;
       const expires = Date.now() + 3600000;

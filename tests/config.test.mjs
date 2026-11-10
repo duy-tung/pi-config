@@ -55,8 +55,9 @@ for (const platform of ["darwin", "linux", "win32"]) {
       const manifest = JSON.parse(fs.readFileSync(path.join(repoDir, "manifests", "current", "package.json"), "utf8"));
       assert.equal(settings.lastChangelogVersion, manifest.dependencies["@earendil-works/pi-coding-agent"]);
       assert.ok(settings.packages.every((entry) => (typeof entry === "string" ? entry : entry.source).startsWith(p.join(options.root, "runtimes", profile.runtime, "node_modules"))));
-      // Mọi model dùng context của catalog Pi; openai-codex (legacy) không còn override 872K.
-      assert.ok(!files.some((file) => file.path === p.join(profile.agentDir, "models.json")));
+      // models.json chỉ tắt message threads của provider anthropic (request OAuth giữ billing header ở mọi lượt);
+      // mọi model vẫn dùng context của catalog Pi, openai-codex (legacy) không còn override 872K.
+      assert.deepEqual(json(p.join(profile.agentDir, "models.json")), { providers: { anthropic: { compat: { supportsMessageThreads: false } } } });
       assert.deepEqual(settings.enabledModels, ["anthropic/claude-opus-5-5", "anthropic/claude-fable-5-1", "anthropic/claude-sonnet-5-5"]);
       if (name === "main") {
       const roles = {

@@ -8,6 +8,20 @@ Tài liệu Claude Code ghi OAuth của gói Pro/Max dành cho Claude Code và �
 
 `@gotgenes/pi-anthropic-auth` 3.4.4 shape request OAuth (billing header, system prompt) cho mọi request đi qua provider `anthropic`, và tự thử lại khi Anthropic yêu cầu phiên bản Claude Code mới hơn. pi-config tắt cảnh báo extra usage lúc khởi động của Pi (`warnings.anthropicExtraUsage: false`), vì phiên chính, compaction và extension gọi qua `ctx.modelRegistry.streamSimple()` đều đi qua shaping; extension gọi thẳng `compat.streamSimple` của pi-ai thì không, và request đó có thể bị tính vào extra usage. Bật lại trong `/settings` → Warnings.
 
+## Message threads tắt
+
+Pi 1.5.1 bật message threads cho provider `anthropic` trên `api.anthropic.com`: request đầu của phiên gửi `thread: {type: "create"}`, các lượt sau chỉ gửi tin nhắn mới kèm `thread: {type: "continue"}` và bỏ `system`, `tools` (server giữ bản của lượt đầu). pi-anthropic-auth shape request trước bước đó, nên các lượt sau không còn billing header trong body. Chưa có nguồn xác nhận Claude OAuth vẫn tính các request như vậy vào gói Pro/Max, nên pi-config tắt tính năng này trong `~/.pi/agent/models.json`:
+
+```json
+{ "providers": { "anthropic": { "compat": { "supportsMessageThreads": false } } } }
+```
+
+Với cờ này, request qua OAuth của Pi 1.5.1 giống hệt Pi 1.5.0 (đã so body và header của ba lượt liên tiếp, chỉ khác đường dẫn cài đặt trong system prompt). Muốn thử threads: đổi cờ thành `true` (installer giữ giá trị bạn sửa), chạy vài lượt và xem footer quota có báo `extra` không; server từ chối trường `thread` thì Pi tự gửi lại request đầy đủ và tắt threads cho phiên đó.
+
+Installer giữ nguyên `models.json` bạn tự viết, nên file đó phải tự mang cờ trên; `pi-doctor` cảnh báo khi thiếu.
+
+Pi 1.5.1 cũng đổi mặc định `cacheWarming` sang `"idle"` (làm mới cache tới 30 phút sau khi agent dừng). pi-config vẫn đặt `"cacheWarming": "off"` nên không bị ảnh hưởng.
+
 ## Mức thinking (effort)
 
 Opus 5.5 không tắt được thinking; `/thinking` (Alt+T) đổi effort `low`…`max`. Pi ghim `output_config.effort` của request ở `low` (từ Pi 1.5.0; theo chú thích trong pi-ai, mức này thuộc prompt được cache nên cố định, và để thấp vì tổ chức có thể đặt trần effort) và gửi effort theo lượt bằng một system message rỗng chỉ có `output_config`; từ 3.3.2, pi-anthropic-auth giữ message đó khi shape request OAuth, nên mức `/thinking` của phiên có hiệu lực mà không cần bản vá (`tests/claude-effort-wire.test.mjs` kiểm điều này). Đổi mức thinking giữa phiên làm mất prompt cache một lần. Với API key, request không qua shaping và giữ cơ chế gốc của Pi.
@@ -26,7 +40,7 @@ pi-config có extension `claude-usage`:
 
 ## Native web search
 
-`web_search` (pi-web-access 0.46.0) định tuyến `["openai", "anthropic", "exa", "firecrawl"]` với `useCurrentModel: true`:
+`web_search` (pi-web-access 0.47.0) định tuyến `["openai", "anthropic", "exa", "firecrawl"]` với `useCurrentModel: true`:
 
 | Model hiện tại | Cách tìm |
 |---|---|
