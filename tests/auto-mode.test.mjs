@@ -16,7 +16,7 @@ import {
   addProjectDirectory, addProjectRules, commandPrefix, describeRules, fetchRules, projectDirectories, projectRoot, projectRules, removeProjectDirectory,
   removeProjectRule, shellRules,
 } from "../assets/extensions/pi-auto-mode/lib/project-rules.ts";
-import { criticalPathReason, protectedReason, resolveShellPath } from "../assets/extensions/pi-auto-mode/lib/paths.ts";
+import { criticalPathReason, piConfigPaths, protectedReason, resolveShellPath } from "../assets/extensions/pi-auto-mode/lib/paths.ts";
 import { decide, describeCall, filterDeniedGrep } from "../assets/extensions/pi-auto-mode/lib/policy.ts";
 import { buildSystemPrompt, DEFAULT_SOFT_DENY, parseVerdict, resolveSlots, userInstructions } from "../assets/extensions/pi-auto-mode/lib/prompt.ts";
 import { cacheBeforeSuffix, completionRequest, lowestReasoning } from "../assets/extensions/pi-auto-mode/lib/completion.ts";
@@ -46,6 +46,49 @@ function context(ws, overrides = {}) {
 }
 
 const bash = (command) => ({ toolName: "bash", input: { command } });
+
+test("cấu hình của Pi: settings, phím tắt, extension, mcp.json và models.json; ghi vào đó không đi lối nhanh và không có \"don't ask again\"", () => {
+  const ws = workspace();
+  try {
+    // Agent dir đặt tên thường (PI_CODING_AGENT_DIR, pi-agent): không nhờ được luật thư mục `.pi/` được bảo vệ.
+    const agentDir = path.join(ws.home, "agent-dir");
+    const paths = piConfigPaths(agentDir);
+    assert.deepEqual(paths.map((file) => path.relative(agentDir, file)).sort(), ["extensions", "keybindings.json", "mcp.json", "models.json", "settings.json"]);
+    // models.json đổi được baseUrl và header của provider: phiên sau gửi token và hội thoại sang máy khác.
+    const models = path.join(agentDir, "models.json");
+    fs.mkdirSync(agentDir, { recursive: true });
+    // Phiên mở ở HOME: agent dir nằm trong thư mục làm việc, nên không có luật này thì đây là sửa file thường.
+    const base = { cwd: ws.home, roots: [ws.home], selfPaths: paths };
+    const shell = models.replaceAll("\\", "/");
+    const calls = [
+      { toolName: "write", input: { path: models, content: "{}" } },
+      { toolName: "edit", input: { path: models, edits: [{ oldText: "a", newText: "b" }] } },
+      bash(`echo '{}' > '${shell}'`),
+      bash(`cp staged.json '${shell}'`),
+      bash(`mv '${shell}' old.json`),
+    ];
+    for (const call of calls) {
+      const label = JSON.stringify(call.input).slice(0, 80);
+      const auto = decide(call, context(ws, base));
+      assert.deepEqual([auto.kind, auto.escalate], ["classify", true], label);
+      assert.match(auto.notes.join(" "), /permission configuration/u, label);
+      // manual và accept edits: lớp chính sách trả cùng quyết định (extension hỏi người dùng, escalate bỏ "don't ask again");
+      // accept edits không được cho ghi thẳng như file thường của workspace.
+      for (const mode of ["manual", "acceptEdits"]) {
+        const asked = decide(call, context(ws, { ...base, mode }));
+        assert.deepEqual([asked.kind, asked.escalate], ["classify", true], `${mode}: ${label}`);
+      }
+    }
+    // Đọc models.json và sửa file khác trong HOME vẫn như thường.
+    assert.equal(decide({ toolName: "read", input: { path: models } }, context(ws, base)).kind, "allow");
+    assert.equal(decide({ toolName: "write", input: { path: path.join(ws.home, "notes.txt"), content: "x" } }, context(ws, { ...base, mode: "acceptEdits" })).kind, "allow");
+    // Không có trong danh sách (danh sách trước đây): accept edits cho ghi thẳng.
+    const before = paths.filter((file) => file !== models);
+    assert.equal(decide(calls[0], context(ws, { ...base, selfPaths: before, mode: "acceptEdits" })).kind, "allow");
+  } finally {
+    ws.cleanup();
+  }
+});
 
 test("shell: chỉ lệnh chữ thuần, chỉ đọc mới là read-only", () => {
   const readOnly = (command) => isReadOnlyShell(analyzeShell(command));
