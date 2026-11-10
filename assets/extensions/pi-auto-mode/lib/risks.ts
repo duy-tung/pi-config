@@ -10,8 +10,8 @@ import { commandName, removeArgs, type ShellAnalysis, type SimpleCommand } from 
  *   GIT_SSL_NO_VERIFY, http.sslVerify=false, strict-ssl=false, pip --trusted-host (trừ localhost);
  * - ghi vào đường dẫn hệ thống hoặc thiết bị đĩa: /etc, /usr, /opt, /var, /Library, C:\Windows…,
  *   /dev/sdX, mkfs, chmod/chown -R trên thư mục hệ thống.
- * Kết quả là câu mô tả ("writes a shell startup file (~/.bashrc)"). Policy dùng nó để hỏi người dùng ở
- * bypass và gửi thẳng LLM giai đoạn 2 kèm ghi chú ở auto. Không có kết quả không có nghĩa là an toàn.
+ * Kết quả là câu mô tả ("writes a shell startup file (~/.bashrc)"). Policy dùng nó để hỏi người dùng ở manual và
+ * accept edits, và gửi bộ phân loại kèm ghi chú ở auto. Không có kết quả không có nghĩa là an toàn.
  */
 
 export interface RiskContext {
@@ -56,11 +56,11 @@ const posix = (file: string) => file.replaceAll("\\", "/");
 const isOption = (word: string) => word.length > 1 && word.startsWith("-");
 
 /** $HOME/…, ${HOME}/… và ~/… được mở rộng; từ không-chữ-thuần khác thì không biết đích thật. */
-function expand(word: string, literal: boolean, ctx: RiskContext, cwd: string): string | undefined {
+function expand(word: string, literal: boolean, ctx: RiskContext, cwd: string, logical = false): string | undefined {
   const home = /^(?:\$HOME|\$\{HOME\})(?=\/|$)/u;
   if (home.test(word)) return path.join(ctx.home, word.replace(home, ""));
   if (!literal || !word) return undefined;
-  return resolveShellPath(word, cwd, ctx.home);
+  return resolveShellPath(word, cwd, ctx.home, logical);
 }
 
 /** Chỉ số các đối số vị trí (không phải tùy chọn), bỏ giá trị của tùy chọn nhận giá trị. */
@@ -165,6 +165,8 @@ const STARTUP_FILES = [
   "Documents/PowerShell/Microsoft.PowerShell_profile.ps1", "Documents/PowerShell/profile.ps1",
   "Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1", "Documents/WindowsPowerShell/profile.ps1",
 ];
+// Cho đăng nhập từ xa hoặc chạy lệnh mỗi lần ssh (ProxyCommand, rc).
+const SSH_FILES = [".ssh/authorized_keys", ".ssh/authorized_keys2", ".ssh/rc", ".ssh/config"];
 const AUTOSTART_DIRS = [
   ".config/fish/conf.d", ".config/autostart", ".config/systemd/user", "Library/LaunchAgents",
   "AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup",
@@ -186,22 +188,25 @@ const under = (file: string, dir: string) => file === dir || file.startsWith(`${
 
 /** Mô tả rủi ro của một file bị ghi hoặc xoá, nếu có. */
 function targetRisk(target: Target, ctx: RiskContext): string | undefined {
-  const file = posix(target.file);
-  const home = posix(ctx.home).replace(/\/+$/u, "");
+  // So không phân biệt hoa thường: trên macOS và Windows `~/library/launchagents` là `~/Library/LaunchAgents`.
+  const file = posix(target.file).toLowerCase();
+  const home = posix(ctx.home).replace(/\/+$/u, "").toLowerCase();
   const shown = display(target.file, ctx);
   const verb = target.removes ? "deletes" : "writes";
+  const lower = (items: string[]) => items.map((item) => item.toLowerCase());
   if (!target.removes) {
-    if (STARTUP_FILES.some((item) => file === `${home}/${item}`)) return `writes a shell startup file (${shown})`;
-    if (AUTOSTART_DIRS.some((item) => under(file, `${home}/${item}`))) return `writes an autostart location (${shown})`;
+    if (lower(STARTUP_FILES).some((item) => file === `${home}/${item}`)) return `writes a shell startup file (${shown})`;
+    if (lower(AUTOSTART_DIRS).some((item) => under(file, `${home}/${item}`))) return `writes an autostart location (${shown})`;
+    if (lower(SSH_FILES).some((item) => file === `${home}/${item}`)) return `writes an SSH login or configuration file (${shown})`;
     if (/(?:^|\/)\.git\/hooks(?:\/|$)/u.test(file) || /(?:^|\/)\.husky\/(?!_\/)[^/]+$/u.test(file)) return `writes a git hook (${shown})`;
     if (/(?:^|\/)\.git\/config$/u.test(file)) return `writes a git config file (${shown}), which can set hooks or commands git runs`;
-    if (SYSTEM_STARTUP.some((item) => under(file, item))) return `writes a system startup or scheduler file (${shown})`;
-    if (DISK_DEVICE.test(file)) return `writes a disk device (${shown})`;
+    if (lower(SYSTEM_STARTUP).some((item) => under(file, item))) return `writes a system startup or scheduler file (${shown})`;
+    if (DISK_DEVICE.test(posix(target.file))) return `writes a disk device (${shown})`;
   }
   // HOME có thể nằm dưới /var (Fedora Silverblue: /var/home); dự án có thể ở /var/www, /opt/app, /srv.
   if (under(file, home) || insideAny(ctx.roots, target.file) || insideTemporary(target.file, ctx.tempRoots)) return undefined;
   const system = WINDOWS_SYSTEM.test(file) ||
-    (SYSTEM_DIRS.some((item) => under(file, item)) && !NOT_SYSTEM.some((item) => under(file, item)));
+    (lower(SYSTEM_DIRS).some((item) => under(file, item)) && !lower(NOT_SYSTEM).some((item) => under(file, item)));
   return system ? `${verb} a system path (${shown})` : undefined;
 }
 
@@ -359,31 +364,85 @@ export function writeRisk(file: string, ctx: RiskContext): string | undefined {
 const ABSOLUTE = /^(?:[\/\\]|~(?:[\/\\]|$)|\$HOME(?:\/|$)|\$\{HOME\}(?:\/|$)|[A-Za-z]:[\/\\])/u;
 
 /**
- * Thư mục sau cd/pushd/popd (bỏ cờ -L/-P/-e/-@ và --). undefined khi không biết: `cd -`, popd, pushd không đối số, đích
- * không phải chữ thuần (trừ $HOME) hoặc đích tương đối với thư mục chưa biết.
+ * Các thư mục có thể tới sau cd/pushd (bỏ cờ -L/-P/-e/-@ và --): `..` sau một symlink tính cả theo chữ (cd mặc định) lẫn
+ * theo đích của symlink (cd -P). undefined khi không biết: `cd -`, popd, pushd không đối số, đích không phải chữ thuần
+ * (trừ $HOME) hoặc đích tương đối với thư mục chưa biết.
  */
-export function changeDirectory(command: SimpleCommand, dir: string | undefined, home: string): string | undefined {
+export function changeDirectory(command: SimpleCommand, dir: string | undefined, home: string): string[] | undefined {
   const name = commandName(command);
   if (name !== "cd" && name !== "pushd") return undefined;
   let index = 1;
   while (/^-[LPe@]+$/u.test(command.words[index] ?? "")) index++;
   if (command.words[index] === "--") index++;
   const word = command.words[index];
-  if (word === undefined) return name === "cd" ? home : undefined;
+  if (word === undefined) return name === "cd" ? [home] : undefined;
   // `cd -` và `pushd +N`/`-N` (xoay ngăn xếp thư mục) không biết đích.
   if (/^(?:-|[+-]\d+)$/u.test(word) || (dir === undefined && !ABSOLUTE.test(word))) return undefined;
-  return expand(word, command.literal[index], { cwd: dir ?? home, home, roots: [], tempRoots: [] }, dir ?? home);
+  const ctx = { cwd: dir ?? home, home, roots: [], tempRoots: [] };
+  const targets = [false, true].map((logical) => expand(word, command.literal[index], ctx, dir ?? home, logical));
+  return targets.every((target): target is string => target !== undefined) ? [...new Set(targets)] : undefined;
 }
 
 const DIRECTORY_CHANGERS = new Set(["cd", "pushd", "popd"]);
+/** Wrapper chạy lệnh ngay trong shell hiện tại: `builtin cd X`, `command cd X`, `time cd X` vẫn đổi thư mục. */
+const SHELL_LEVEL = new Set(["builtin", "command", "time"]);
+/** Quá số thư mục này thì coi là không biết (chuỗi cd tương đối dài nhân đôi tập thư mục ở mỗi bước). */
+const MAX_DIRS = 32;
+
+/** Lệnh sau khi bỏ `builtin`/`command`/`time` (và cờ của chúng) ở đầu. */
+function shellLevel(command: SimpleCommand): SimpleCommand {
+  let start = 0;
+  while (SHELL_LEVEL.has(command.words[start] ?? "")) {
+    start++;
+    while ((command.words[start] ?? "").startsWith("-")) start++;
+  }
+  return start ? { ...command, words: command.words.slice(start), literal: command.literal.slice(start), glob: command.glob.slice(start) } : command;
+}
 
 /**
- * Các thư mục có thể là thư mục làm việc khi từng lệnh chạy, theo cd/pushd/popd đứng trước. cd chỉ thu hẹp cho lệnh nối
- * ngay sau bằng `&&` (chỉ chạy khi cd thành công). Sau `;`, `||`, `|`, `&` lệnh kế có thể chạy ở mọi thư mục đã gặp: cd
- * có thể lỗi, pipeline và job nền chạy trong subshell. Lệnh bóc từ wrapper hay script lồng (không theo thứ tự của chuỗi)
- * cũng xét mọi thư mục đã gặp. undefined: không biết (sau `cd -`, popd, đích không phải chữ thuần).
+ * Các thư mục có thể là thư mục làm việc khi từng lệnh chạy, theo cd/pushd/popd đứng trước (kể cả `builtin cd`,
+ * `command cd`, `time cd`). cd chỉ thu hẹp cho lệnh nối ngay sau bằng `&&` (chỉ chạy khi cd thành công), và chỉ khi
+ * chính cd đó chắc chắn đã chạy trong shell này: cd đứng sau `||` có thể bị bỏ qua, cd trong pipeline chạy trong subshell,
+ * `! cd X && B` chạy B khi cd lỗi; khi đó lệnh kế xét cả thư mục trước cd. Sau `;`, `||`, `|`, `&` lệnh kế có thể chạy
+ * ở mọi thư mục đã gặp. Lệnh bóc từ wrapper khác (sudo, env, xargs…) xét mọi thư mục đã gặp.
+ *
+ * Có cd trong script lồng (`bash -c`, `( … )`, `$()`, eval) thì không rõ nó chạy trước hay sau lệnh nào, và eval đổi cả
+ * thư mục của shell ngoài: mọi lệnh xét mọi thư mục tới được bằng cách áp các cd theo thứ tự bất kỳ.
+ *
+ * undefined: không biết (sau `cd -`, popd, đích không phải chữ thuần, hoặc quá MAX_DIRS thư mục).
  */
 export function commandDirs(commands: SimpleCommand[], cwd: string, home: string): (string[] | undefined)[] {
+  const targetsFrom = (command: SimpleCommand, from: string[] | undefined) => {
+    const next = (from ?? [undefined]).map((dir) => changeDirectory(command, dir, home));
+    return next.every((dir): dir is string[] => dir !== undefined) ? [...new Set(next.flat())] : undefined;
+  };
+  const changer = (command: SimpleCommand) => {
+    const inner = command.wrapped && command.wrapped !== "nested" ? command : shellLevel(command);
+    return DIRECTORY_CHANGERS.has(commandName(inner)) ? inner : undefined;
+  };
+  // cd bị định nghĩa lại hoặc tắt (`cd() { :; }`, `enable -n cd`): không còn biết lệnh cd làm gì.
+  const shadowed = commands.some((command) => (command.defines !== undefined && DIRECTORY_CHANGERS.has(command.defines)) ||
+    (["enable", "alias"].includes(commandName(command)) && command.words.slice(1).some((word) => /^(?:cd|pushd|popd)(?:=|$)/u.test(word))));
+  if (shadowed) return commands.map(() => undefined);
+  const nestedChangers = commands.filter((command) => command.wrapped === "nested" && changer(command));
+  if (nestedChangers.length) {
+    const changers = commands.flatMap((command) => (command.wrapped && command.wrapped !== "nested" ? [] : changer(command) ?? []));
+    const all = new Set([cwd]);
+    let lost = false;
+    for (let round = 0; round < changers.length && !lost; round++) {
+      const before = all.size;
+      for (const command of changers) {
+        const targets = targetsFrom(command, [...all]);
+        if (!targets) lost = true;
+        else for (const dir of targets) all.add(dir);
+        if (lost || all.size > MAX_DIRS) break;
+      }
+      lost ||= all.size > MAX_DIRS;
+      if (all.size === before) break;
+    }
+    return commands.map(() => (lost ? undefined : [...all]));
+  }
+
   const top = commands.filter((command) => !command.wrapped);
   const seen = new Set([cwd]);
   let unknown = false;
@@ -391,16 +450,17 @@ export function commandDirs(commands: SimpleCommand[], cwd: string, home: string
   const dirs = new Map<SimpleCommand, string[] | undefined>();
   top.forEach((command, index) => {
     dirs.set(command, possible);
-    const changes = DIRECTORY_CHANGERS.has(commandName(command));
+    const change = changer(command);
     let targets: string[] | undefined;
-    if (changes) {
-      const next = (possible ?? [undefined]).map((dir) => changeDirectory(command, dir, home));
-      targets = next.every((dir): dir is string => dir !== undefined) ? [...new Set(next)] : undefined;
+    if (change) {
+      targets = targetsFrom(change, possible);
       if (targets) for (const dir of targets) seen.add(dir);
-      else unknown = true;
+      if (!targets || seen.size > MAX_DIRS) unknown = true;
     }
-    if (top[index + 1]?.after === "&&") possible = changes ? targets : possible;
-    else possible = unknown ? undefined : [...seen];
+    const certain = !command.keyword && !["||", "|", "|&"].includes(command.after ?? "");
+    if (top[index + 1]?.after !== "&&") possible = unknown ? undefined : [...seen];
+    else if (change) possible = certain ? targets : targets && possible ? [...new Set([...possible, ...targets])] : undefined;
+    if (possible && possible.length > MAX_DIRS) possible = undefined;
   });
   const anywhere = unknown ? undefined : [...seen];
   return commands.map((command) => (command.wrapped ? anywhere : dirs.get(command)));

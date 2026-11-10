@@ -2,13 +2,13 @@ import os from "node:os";
 import path from "node:path";
 import { type PermissionMode, prompts } from "./config.ts";
 import {
-  criticalPathReason, insideAny, isSelfProtected, protectedReason, resolveShellPath, resolveToolPath, temporaryRoots, URL_LIKE,
+  bareRepositoryAbove, containsSelfProtected, criticalPathReason, insideAny, insideTemporary, isSelfProtected, protectedReason, resolveShellPath, resolveToolPath, temporaryRoots, URL_LIKE,
 } from "./paths.ts";
 import { commandDirs, detectPowerShellRisks, detectRisks, writeRisk } from "./risks.ts";
 import { type DeniedPath, denies, searchReadPaths } from "./read-scope.ts";
 import { allowCoversShell, firstMatch, type RuleMatchTarget, type RuleSet } from "./rules.ts";
 import {
-  analyzeShell, commandName, commandText, findRemoval, isReadOnlyCommand, isReadOnlyShell, optionOutputs, removeArgs, ruleUnits,
+  analyzeShell, commandName, commandText, findRemoval, isReadOnlyCommand, isReadOnlyShell, optionOutputs, redirectIsSafe, removeArgs, ruleUnits,
   safeAssignments, type ShellAnalysis, type SimpleCommand,
 } from "./shell.ts";
 import { READ_TOOLS, SHELL_TOOLS, WRITE_TOOLS } from "./tools.ts";
@@ -90,12 +90,11 @@ const looksLikePath = (word: string) =>
   word !== "" && !/[\r\n]/u.test(word) && (!/\s/u.test(word) || /[\/\\]/u.test(word)) && !word.startsWith("-") && !URL_LIKE.test(word);
 
 /**
- * Thư mục để tính đường dẫn tương đối của từng lệnh: mọi thư mục mà lệnh có thể chạy trong đó theo cd/pushd đứng trước
- * (lib/risks.ts commandDirs). Có subshell hay nhóm lệnh thì phạm vi của cd không chắc, nên xét thêm thư mục của phiên.
- * undefined: sau cd không biết đích.
+ * Thư mục để tính đường dẫn tương đối của từng lệnh: mọi thư mục mà lệnh có thể chạy trong đó theo cd/pushd đứng trước,
+ * kể cả cd trong subshell, nhóm lệnh và script lồng (lib/risks.ts commandDirs). undefined: sau cd không biết đích.
  */
 function commandBases(analysis: ShellAnalysis, cwd: string, home: string): (string[] | undefined)[] {
-  return commandDirs(analysis.commands, cwd, home).map((dirs) => (dirs === undefined ? undefined : [...new Set([...dirs, ...(analysis.plain ? [] : [cwd])])]));
+  return commandDirs(analysis.commands, cwd, home);
 }
 
 /** Đối số có thể là đường dẫn: mọi từ chữ thuần (trừ tên lệnh và tùy chọn) + đích chuyển hướng, tính theo cd đứng trước. */
@@ -110,7 +109,17 @@ function shellPaths(analysis: ShellAnalysis, cwd: string, home: string): string[
     command.words.forEach((word, index) => {
       if (index === 0 || !command.literal[index]) return;
       let value = word;
-      // curl -d @file, --data-binary=@file, --file=path
+      // curl -d @file, -d@file, --data-binary=@file, -F name=@file, -F 'name=<file', --file=path
+      const attached = /^-[A-Za-z]+@(.+)$/u.exec(value);
+      // -F 'name=@"file";type=text/plain' hoặc name=@a,b: tên file tới dấu `;`/`,`, có thể trong nháy kép.
+      const form = /^[^=\/\s]+=[@<]"?([^";,]+)/u.exec(value);
+      if (attached) value = attached[1];
+      else if (form) value = form[1];
+      // curl: file viết liền với cờ ngắn (-Tfile tải lên, -Kfile, -Efile) và --data-urlencode name@file.
+      if (commandName(command) === "curl") {
+        const joined = /^-[A-Za-z]*[TKE](.+)$/u.exec(word)?.[1] ?? (word.startsWith("-") ? undefined : /^[^=@\s\/]*@(.+)$/u.exec(word)?.[1]);
+        if (joined && looksLikePath(joined)) add(joined);
+      }
       if (value.startsWith("@")) value = value.slice(1);
       const eq = value.startsWith("-") ? value.indexOf("=") : -1;
       if (eq > 0) value = value.slice(eq + 1).replace(/^@/u, "");
@@ -130,6 +139,9 @@ function shellPaths(analysis: ShellAnalysis, cwd: string, home: string): string[
 const targetAt = (command: SimpleCommand, index: number) =>
   ({ word: command.words[index], literal: command.literal[index], glob: command.glob[index] });
 
+const HOME_VARIABLE = /^(?:\$HOME|\$\{HOME(?::\?[^}]*)?\})(?=\/|$)/u;
+const PWD_VARIABLE = /^(?:\$PWD|\$\{PWD(?::\?[^}]*)?\})(?=\/|$)/u;
+
 /** rm/rmdir/unlink hoặc find -delete nhắm vào đường dẫn quan trọng, tính theo cd đứng trước. */
 function criticalRemoval(analysis: ShellAnalysis, cwd: string, home: string): string | undefined {
   const bases = commandBases(analysis, cwd, home);
@@ -138,7 +150,12 @@ function criticalRemoval(analysis: ShellAnalysis, cwd: string, home: string): st
     const find = findRemoval(command.words);
     const indices = removeArgs(command.words)?.targets ?? (find?.deletes ? find.targets : undefined);
     if (!indices) continue;
-    for (const target of indices.map((i) => targetAt(command, i))) {
+    for (const raw of indices.map((i) => targetAt(command, i))) {
+      // $HOME, ${HOME} là thư mục home như ~; $PWD là thư mục hiện tại như ~+ (phần còn lại của từ phải là chữ).
+      const expanded = raw.literal ? undefined
+        : HOME_VARIABLE.test(raw.word) ? raw.word.replace(HOME_VARIABLE, "~")
+        : PWD_VARIABLE.test(raw.word) ? raw.word.replace(PWD_VARIABLE, "~+") : undefined;
+      const target = expanded !== undefined && !/[$`]/u.test(expanded) ? { ...raw, word: expanded, literal: true } : raw;
       if (!target.literal) {
         // rm -rf "$DIR"/* hoặc "$DIR"/: không kiểm được đích thật.
         if (/\/\*?$/u.test(target.word) || target.word.endsWith("*")) return `${name} target cannot be verified (${target.word})`;
@@ -176,7 +193,12 @@ export function describeCall(call: ToolCall, pc: PolicyContext): CallFacts {
       ? { commands: [], plain: false, problems: ["powershell"], nested: [] }
       : analyzeShell(command);
     // Sau cd không biết đích (`cd -`, popd, `cd "$X"`), đường dẫn tương đối không kiểm được: không phải chỉ đọc.
-    const readOnly = isReadOnlyShell(analysis) && commandDirs(analysis.commands, pc.cwd, home).every((dir) => dir !== undefined);
+    // git chạy lệnh trong config của repo nó tìm thấy (fsmonitor, pager…), và agent dựng được một repo bare bằng các file
+    // thường (config, HEAD, objects/, refs/): git chạy ở thư mục mà nó sẽ gặp repo như vậy trước một `.git` thì không
+    // phải chỉ đọc (Claude Code hỏi mọi chuỗi lệnh có cd kèm git vì lý do này).
+    const dirs = commandDirs(analysis.commands, pc.cwd, home);
+    const readOnly = isReadOnlyShell(analysis) && dirs.every((dir) => dir !== undefined) &&
+      !analysis.commands.some((item, at) => commandName(item) === "git" && (dirs[at] ?? []).some((dir) => bareRepositoryAbove(dir)));
     const paths = shellPaths(analysis, pc.cwd, home);
     const tempRoots = pc.tempRoots ?? temporaryRoots();
     return {
@@ -278,11 +300,30 @@ function workspaceFileOps(commands: SimpleCommand[], pc: PolicyContext, home: st
     if (!args.length) return false;
     for (const word of args) {
       const file = resolveShellPath(word, pc.cwd, home);
-      if (!insideAny(pc.roots, file) || protectedReason(file, pc.roots)) return false;
+      // Thư mục chứa cấu hình của cổng permission (phiên mở ở HOME): đổi tên hay xoá nó là đổi cả cấu hình.
+      if (!insideAny(pc.roots, file) || protectedReason(file, pc.roots) || containsSelfProtected(file, pc.selfPaths)) return false;
     }
     sawWrite = true;
   }
   return sawWrite;
+}
+
+/**
+ * Luật allow phủ lệnh, không phủ file mà chuyển hướng ghi (Claude Code xét đích chuyển hướng riêng): mọi đích ghi phải
+ * nằm trong workspace hoặc thư mục tạm, không phải đường dẫn được bảo vệ và không có rủi ro của bước 4.
+ */
+function redirectsStayInside(analysis: ShellAnalysis, pc: PolicyContext, home: string): boolean {
+  const bases = commandBases(analysis, pc.cwd, home);
+  const ctx = { cwd: pc.cwd, home, roots: pc.roots, tempRoots: pc.tempRoots ?? temporaryRoots() };
+  return analysis.commands.every((command, at) => command.redirects.every((redirect) => {
+    if (redirectIsSafe(redirect)) return true;
+    const dirs = bases[at];
+    if (!dirs || !redirect.literal || redirect.glob) return false;
+    return dirs.every((dir) => {
+      const file = resolveShellPath(redirect.target, dir, home);
+      return (insideAny(pc.roots, file) || insideTemporary(file, ctx.tempRoots)) && !protectedReason(file, pc.roots) && !writeRisk(file, ctx);
+    });
+  }));
 }
 
 /** Luật deny đường dẫn chặn đọc một file (có tính ngoại lệ !Path). */
@@ -361,7 +402,7 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
 
   if (pc.mode === "bypass") return { kind: "allow", via: "bypass" };
 
-  // Cấu hình của chính Pi và cổng permission (như .claude/ của Claude Code): auto gửi bộ phân loại (giai đoạn 2),
+  // Cấu hình của chính Pi và cổng permission (như .claude/ của Claude Code): auto gửi bộ phân loại kèm ghi chú,
   // manual/acceptEdits hỏi; không có lựa chọn "don't ask again".
   if (facts.writesSelf) {
     notes.push("changes Pi's permission configuration (settings, extensions, permission state)");
@@ -405,11 +446,12 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
         }
         if (analysis.plain) {
           const commands = ruleUnits(analysis).filter((command) => !isReadOnlyCommand(command));
-          if (allowCoversShell(pc.rules.allow, commands.map(commandText))) return { kind: "allow", via: "allow rule" };
+          if (allowCoversShell(pc.rules.allow, commands.map(commandText)) && redirectsStayInside(analysis, pc, home)) return { kind: "allow", via: "allow rule" };
         }
         // Biến môi trường an toàn (LANG=C) đứng trước lệnh file không làm mất lối đi nhanh của acceptEdits/auto.
         const plainExceptEnv = analysis.plain || analysis.problems.every((problem) => problem === "environment assignment");
-        if (pc.mode !== "manual" && plainExceptEnv && workspaceFileOps(ruleUnits(analysis), pc, home)) {
+        // Như edit/write: đích có rủi ro của bước 4 (autostart, file khởi động… khi phiên mở ở HOME) không đi lối này.
+        if (pc.mode !== "manual" && plainExceptEnv && !facts.risks?.length && workspaceFileOps(ruleUnits(analysis), pc, home)) {
           return { kind: "allow", via: "workspace file operation" };
         }
       }

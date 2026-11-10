@@ -64,8 +64,11 @@ export function textOf(content: unknown, image = ""): string {
 
 export const str = (value: unknown) => (typeof value === "string" ? value : value === undefined ? "" : JSON.stringify(value) ?? "");
 
-/** Danh sách sửa của tool edit. */
-export const editList = (input: Record<string, unknown>): unknown[] => (Array.isArray(input.edits) ? input.edits : []);
+/** Danh sách sửa của tool edit; dạng tham số cũ (oldText/newText ở cấp ngoài) được Pi nối vào cuối danh sách. */
+export const editList = (input: Record<string, unknown>): unknown[] => [
+  ...(Array.isArray(input.edits) ? input.edits : []),
+  ...(typeof input.oldText === "string" || typeof input.newText === "string" ? [{ oldText: input.oldText, newText: input.newText }] : []),
+];
 
 /** Từng sửa của tool edit: phần bị thay cắt ở share/3 ký tự, phần thêm ở share ký tự. */
 export function editChanges(edits: unknown[], share: number): { removes: string; adds: string }[] {

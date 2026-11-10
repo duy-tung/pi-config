@@ -30,6 +30,10 @@ export interface SimpleCommand {
   wrapped?: string;
   /** Toán tử đứng ngay trước lệnh cấp cao nhất (`&&`, `||`, `;`, `|`, `&`…); lệnh đầu tiên không có. */
   after?: string;
+  /** Từ khoá shell đứng đầu lệnh đã được bỏ khỏi words (`!`, `{`, `then`, `do`…). */
+  keyword?: string;
+  /** Lệnh này là tên của một định nghĩa hàm (`f() { … }`, `function f { … }`). Lệnh trong thân hàm có wrapped "nested". */
+  defines?: string;
 }
 
 export interface ShellAnalysis {
@@ -46,6 +50,11 @@ const KEYWORDS = new Set([
   "if", "then", "else", "elif", "fi", "for", "while", "until", "do", "done", "case", "esac",
   "function", "select", "[[", "]]", "{", "}", "!", "coproc",
 ]);
+/**
+ * Từ khoá đứng trước một lệnh (`! cmd`, `{ cmd; }`, `then cmd`, `do cmd`) hoặc đóng khối: bỏ khỏi words để luật deny/ask
+ * và kiểm rm thấy tên lệnh thật. Chuỗi lệnh vẫn không plain ("shell control flow").
+ */
+const DROPPED_KEYWORDS = new Set(["!", "{", "}", "if", "then", "else", "elif", "fi", "do", "done", "while", "until", "esac", "coproc"]);
 const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh", "fish"]);
 const MAX_DEPTH = 6;
 
@@ -55,6 +64,8 @@ interface Token {
   literal: boolean;
   glob: boolean;
   fd?: number;
+  /** Dấu tách sinh ra từ `()` rỗng của định nghĩa hàm. */
+  fn?: boolean;
 }
 
 /** Tách chuỗi lệnh thành token, ghi lại vấn đề khi gặp cấu trúc không-plain. */
@@ -147,6 +158,13 @@ function lex(source: string, problems: Set<string>, nested: string[]): Token[] {
       started = true;
       word += source.slice(index + 2, end < 0 ? source.length : end);
       index = end < 0 ? source.length : end + 1;
+      return;
+    }
+    if (next === '"' && !inDouble) {
+      // $"…" (bash dịch chuỗi theo locale): nội dung vẫn là chữ để luật đường dẫn và kiểm rm thấy, nhưng không plain.
+      problems.add("locale-translated string");
+      started = true;
+      index++;
       return;
     }
     const name = /^[A-Za-z_][A-Za-z0-9_]*|^[0-9?$!#@*-]/u.exec(source.slice(index + 1));
@@ -302,15 +320,26 @@ function lex(source: string, problems: Set<string>, nested: string[]): Token[] {
       if (ch === "(") {
         const end = matchParen(index + 1);
         if (end >= 0) {
-          nested.push(source.slice(index + 1, end));
+          const inner = source.slice(index + 1, end);
+          // Lệnh đứng sau nhóm là lệnh riêng: thân hàm `f() { … }` (để `{` đứng đầu lệnh và bị bỏ như từ khoá), lệnh
+          // sau mẫu của case viết `(a) cmd`.
+          if (inner.trim() !== "") nested.push(inner);
+          tokens.push({ kind: "op", value: ";", literal: true, glob: false, fn: inner.trim() === "" });
           index = end + 1;
           continue;
         }
       }
+      // `)` lẻ đóng mẫu của case (`a) cmd;;`): lệnh đứng sau là lệnh riêng.
+      if (ch === ")") tokens.push({ kind: "op", value: ";", literal: true, glob: false });
       index++;
       continue;
     }
     if (ch === "*" || ch === "?" || ch === "[") glob = true;
+    // ~- (thư mục trước đó) và ~N, ~+N, ~-N (ngăn xếp thư mục): không biết đích. ~+ là thư mục hiện tại (lib/paths.ts).
+    if (ch === "~" && !started && /^~(?:-\d*|\+?\d+)(?=$|[\/\s;|&<>()])/u.test(source.slice(index, index + 16))) {
+      problems.add("directory stack expansion");
+      literal = false;
+    }
     if ((ch === "{" || ch === "}") && started) problems.add("brace expansion");
     word += ch;
     started = true;
@@ -455,13 +484,22 @@ function build(tokens: Token[], problems: Set<string>): SimpleCommand[] {
   const commands: SimpleCommand[] = [];
   let current: SimpleCommand = { words: [], literal: [], glob: [], assignments: [], redirects: [] };
   let op: string | undefined;
+  // Thân hàm chạy khi hàm được gọi, không theo thứ tự trong chuỗi: lệnh trong đó được đánh dấu như lệnh lồng.
+  let fnPending = false;
+  let fnDepth = 0;
   const finish = () => {
     if (current.words.length || current.assignments.length || current.redirects.length) commands.push(op === undefined ? current : { ...current, after: op });
+    // Khối chỉ còn từ khoá (`fi`, `done`, `}`) không thành lệnh.
     current = { words: [], literal: [], glob: [], assignments: [], redirects: [] };
   };
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
     if (token.kind === "op") {
+      if (token.fn) {
+        const name = current.words[0] === "function" && current.words.length === 2 ? current.words[1] : current.words.length === 1 ? current.words[0] : undefined;
+        if (name !== undefined) current.defines = name;
+        fnPending = true;
+      }
       finish();
       op = token.value;
       continue;
@@ -481,7 +519,34 @@ function build(tokens: Token[], problems: Set<string>): SimpleCommand[] {
       problems.add("environment assignment");
       continue;
     }
-    if (!current.words.length && KEYWORDS.has(token.value)) problems.add("shell control flow");
+    // `function f BODY`: tên hàm là lệnh riêng, thân hàm bắt đầu ở từ này.
+    if (current.words[0] === "function" && current.words.length === 2) {
+      current.defines = current.words[1];
+      finish();
+      op = ";";
+      fnPending = true;
+    }
+    if (!current.words.length && KEYWORDS.has(token.value)) {
+      problems.add("shell control flow");
+      if (DROPPED_KEYWORDS.has(token.value)) {
+        if (token.value === "{") fnDepth = fnPending || fnDepth > 0 ? fnDepth + 1 : 0;
+        else if (token.value === "}" && fnDepth > 0) fnDepth--;
+        fnPending &&= token.value !== "{";
+        current.keyword ??= token.value;
+        if (fnDepth > 0 || fnPending) current.wrapped = "nested";
+        continue;
+      }
+    }
+    // `coproc NAME { … }`: NAME không phải lệnh.
+    if (current.keyword === "coproc" && current.words.length === 1 && token.value === "{") {
+      current.words = [];
+      current.literal = [];
+      current.glob = [];
+      continue;
+    }
+    // Thân hàm không có ngoặc nhọn (`function f while …`): lệnh đầu tiên của nó.
+    if (fnDepth > 0 || (fnPending && !current.words.length)) current.wrapped = "nested";
+    fnPending = false;
     current.words.push(token.value);
     current.literal.push(token.literal);
     current.glob.push(token.glob);
@@ -500,7 +565,9 @@ export function analyzeShell(source: string, depth = 0): ShellAnalysis {
   const queue: SimpleCommand[] = [...top];
   const visit = (command: SimpleCommand) => {
     commands.push(command);
-    const start = innerStart(command.words);
+    let start = innerStart(command.words);
+    // `time { cmd; }`, `time ! cmd`: từ khoá đứng sau wrapper cũng không phải tên lệnh.
+    while (start !== undefined && DROPPED_KEYWORDS.has(command.words[start] ?? "")) start = start + 1 < command.words.length ? start + 1 : undefined;
     if (start !== undefined) {
       queue.push({
         words: command.words.slice(start), literal: command.literal.slice(start), glob: command.glob.slice(start),
@@ -538,6 +605,23 @@ type Validator = (args: string[]) => boolean;
 
 const always: Validator = () => true;
 const positionals = (args: string[]) => args.filter((arg) => !arg.startsWith("-"));
+/** Đối số là file, kể cả `-` (stdin/stdout) và mọi từ sau `--`: `uniq - OUT`, `uniq -- IN -OUT` ghi file thứ hai. */
+const operands = (args: string[]) => {
+  const end = args.indexOf("--");
+  const isOperand = (arg: string) => arg === "-" || !arg.startsWith("-");
+  return end < 0 ? args.filter(isOperand) : [...args.slice(0, end).filter(isOperand), ...args.slice(end + 1)];
+};
+/** Bỏ tùy chọn viết rời giá trị (`--sort KEY`, `-f FILE`) và dạng `--tên=giá trị` của chúng. */
+const withoutValues = (args: string[], options: string[]) => {
+  const result: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    if (options.includes(args[i]) && i + 1 < args.length) i++;
+    else if (!options.some((option) => option.startsWith("--") && args[i].startsWith(`${option}=`))) result.push(args[i]);
+  }
+  return result;
+};
+/** Mọi tùy chọn đều thuộc danh sách cho phép (đối số không phải tùy chọn thì bỏ qua). */
+const flagsWithin = (args: string[], allowed: RegExp) => args.every((arg) => arg === "-" || !arg.startsWith("-") || allowed.test(arg));
 
 /** Cú pháp tùy chọn của một lệnh, theo cách getopt_long đọc. */
 interface OptionSyntax {
@@ -620,6 +704,14 @@ const shortFlag = (args: string[], flag: string) => {
   return (end < 0 ? args : args.slice(0, end)).some((arg) => /^-[^-]/u.test(arg) && arg.slice(1).includes(flag));
 };
 
+const LISTING = /^(?:-[a-z]*l[a-z0-9]*|--list|--(?:contains|no-contains|merged|no-merged|points-at)(?:=.*)?)$/u;
+const BRANCH_FLAGS = /^(?:-[alrvi]+|--(?:list|all|remotes|verbose|show-current|ignore-case|omit-empty|color|no-color|column|no-column|no-abbrev|contains|no-contains|merged|no-merged|points-at)|--(?:color|column|abbrev|sort|format|contains|no-contains|merged|no-merged|points-at)=.*)$/u;
+const TAG_FLAGS = /^(?:-[li]+(?:n\d*)?|-n\d*|--(?:list|ignore-case|omit-empty|color|no-color|column|no-column|contains|no-contains|merged|no-merged|points-at)|--(?:color|column|sort|format|contains|no-contains|merged|no-merged|points-at)=.*)$/u;
+const LS_REMOTE_FLAGS = /^(?:-[htbq]+|--(?:heads|branches|tags|refs|quiet|exit-code|get-url|symref)|--sort=.*)$/u;
+/** Tùy chọn của git config không ghi gì: phạm vi, kiểu, định dạng và hành động đọc. --file/--blob đọc file khác thì không tính. */
+const CONFIG_FLAGS = /^(?:-[lz]+|--(?:global|system|local|worktree|show-origin|show-scope|name-only|null|includes|no-includes|bool|int|bool-or-int|path|expiry-date|no-type|fixed-value|all|regexp|show-names|get|get-all|get-regexp|get-urlmatch|list)|--(?:type|default|value|url)=.*)$/u;
+const CONFIG_ACTION = /^(?:-l|-lz|-zl|--(?:get|get-all|get-regexp|get-urlmatch|list))$/u;
+
 const GIT_READ: Record<string, Validator> = {
   status: always,
   log: always,
@@ -632,8 +724,9 @@ const GIT_READ: Record<string, Validator> = {
   grep: (args) => !shortFlag(args, "O") && !longOption(args, "--open-files-in-pager", 4),
   "ls-files": always,
   "ls-tree": always,
-  // --upload-pack/--exec chạy chương trình (với remote cục bộ là chạy ngay trên máy).
-  "ls-remote": (args) => !longOption(args, "--upload-pack", 4) && !longOption(args, "--exec", 4),
+  // Chỉ cờ lọc kết quả: --upload-pack/--exec (git nhận cả `--u`) chạy chương trình, -o gửi tùy chọn cho server. Remote
+  // phải là tên đã cấu hình (hoặc thư mục cùng cấp), không phải URL hay host:path do agent chọn.
+  "ls-remote": (args) => flagsWithin(args, LS_REMOTE_FLAGS) && /^[\w.-]*$/u.test(positionals(args)[0] ?? ""),
   "rev-parse": always,
   "rev-list": always,
   describe: always,
@@ -649,16 +742,28 @@ const GIT_READ: Record<string, Validator> = {
   version: always,
   help: always,
   reflog: (args) => positionals(args).length === 0 || args[0] === "show",
-  branch: (args) =>
-    positionals(args).length === 0 ||
-    args.some((arg) => arg === "--list" || arg === "-l" || arg === "--contains" || arg === "--merged" || arg === "--no-merged"),
-  tag: (args) => positionals(args).length === 0 || args.some((arg) => arg === "-l" || arg === "--list" || arg === "--contains"),
+  // Chỉ cờ liệt kê. Có tên nhánh/tag mà không ở chế độ liệt kê là tạo mới; -u/--set-upstream-to, --edit-description,
+  // -d/-m/-c/-f ghi vào repo.
+  branch: (all) => {
+    const args = withoutValues(all, ["--sort", "--format"]);
+    return flagsWithin(args, BRANCH_FLAGS) && (positionals(args).length === 0 || args.some((arg) => LISTING.test(arg)));
+  },
+  tag: (all) => {
+    const args = withoutValues(all, ["--sort", "--format"]);
+    return flagsWithin(args, TAG_FLAGS) && (positionals(args).length === 0 || args.some((arg) => LISTING.test(arg)));
+  },
   remote: (args) => args.length === 0 || args.every((arg) => arg === "-v" || arg === "--verbose") ||
     ((args[0] === "show" || args[0] === "get-url") && !args.includes("--push")),
-  config: (args) => {
-    if (args.some((arg) => /^--(?:unset|add|replace-all|rename-section|remove-section|edit)$|^-e$/u.test(arg))) return false;
-    if (args.some((arg) => /^--(?:get|get-all|get-regexp|list|show-origin|show-scope)$|^-l$/u.test(arg))) return true;
-    return positionals(args).length === 1;
+  // git dừng đọc tùy chọn ở đối số đầu tiên: `config KEY VALUE --get` và `config KEY --default=V` ghi KEY. Chỉ đọc
+  // khi hành động đọc đứng trước mọi đối số (--get…, --list, lệnh con get/list), hoặc tên khóa (section.key) là từ cuối.
+  // -f/--file chọn file config để đọc (đường dẫn vẫn qua luật deny).
+  config: (all) => {
+    const args = withoutValues(all, ["-f", "--file"]);
+    if (!flagsWithin(args, CONFIG_FLAGS)) return false;
+    const first = args.findIndex((arg) => !CONFIG_FLAGS.test(arg) || CONFIG_ACTION.test(arg));
+    if (first < 0) return false;
+    if (CONFIG_ACTION.test(args[first]) || args[first] === "get" || args[first] === "list") return true;
+    return first === args.length - 1 && args[first].includes(".");
   },
   stash: (args) => args[0] === "list" || args[0] === "show",
   worktree: (args) => args[0] === "list",
@@ -740,17 +845,22 @@ const READ_ONLY: Record<string, Validator> = {
   grep: always, egrep: always, fgrep: always, head: always, tail: always, id: always, ls: always, nl: always,
   paste: always, pwd: always, rev: always, seq: always, stat: always, tr: always, uname: always, wc: always,
   which: always, whereis: always, whoami: always, tac: always, numfmt: always, basename: always, dirname: always,
-  realpath: always, readlink: always, file: always, du: always, df: always, cmp: always, comm: always, diff: always,
+  realpath: always, readlink: always, du: always, df: always, cmp: always, comm: always, diff: always,
   column: always, fold: always, fmt: always, od: always, hexdump: always, strings: always, md5: always,
   md5sum: always, shasum: always, sha1sum: always, sha256sum: always, sha512sum: always, cksum: always,
   test: always, "[": always, type: always, ps: always, pgrep: always, uptime: always, sw_vers: always,
-  arch: always, nproc: always, getconf: always, locale: always, jq: always, pushd: always, popd: always, dirs: always,
+  nproc: always, getconf: always, locale: always, jq: always, pushd: always, popd: always, dirs: always,
   sort: (args) => !findOptions(args, SORT_OPTIONS, { short: "o", long: ["--output", "--compress-program"] }).length,
-  uniq: (args) => positionals(args).length <= 1,
+  // macOS: `arch -arm64 PROG` chạy PROG.
+  arch: (args) => args.length === 0,
+  // file -C biên dịch file magic ra .mgc.
+  file: (args) => !args.some((arg) => /^-[^-]*C/u.test(arg) || (arg.length > 3 && "--compile".startsWith(arg))),
+  // Đối số thứ hai của uniq và xxd là file output; `-` là stdin nên vẫn tính là một đối số.
+  uniq: (args) => operands(args).length <= 1,
   // tree tự đọc cờ: cờ nhận giá trị lấy từ kế tiếp, nên chữ o/R ở bất kỳ đâu trong cụm là -o/-R.
   tree: (args) => !args.some((arg) => /^-[^-]*[oR]/u.test(arg)),
   base64: (args) => !findOptions(args, BASE64_OPTIONS, BASE64_OUTPUT).length,
-  xxd: (args) => !args.includes("-r") && !args.includes("-revert") && positionals(args).length <= 1,
+  xxd: (args) => !args.some((arg) => /^-r/u.test(arg)) && operands(args).length <= 1,
   yq: (args) => !findOptions(args, YQ_OPTIONS, { short: "is", long: ["--inplace", "--split-exp"] }).length,
   hostname: (args) => args.length === 0,
   date: (args) => !args.some((arg) => arg === "-s" || arg.startsWith("--set")),
@@ -764,8 +874,8 @@ const READ_ONLY: Record<string, Validator> = {
   git: gitReadOnly,
   gh: (args) => {
     const allowed = GH_READ[args[0] ?? ""];
-    if (args[0] === "auth" && (args.includes("--show-token") || shortFlag(args, "t"))) return false;
-    return !!allowed && allowed.has(args[1] ?? "") && !args.some((arg) => arg === "--web" || arg === "-w");
+    if (args[0] === "auth" && (args.some((arg) => /^--show-token(?:=|$)/u.test(arg)) || shortFlag(args, "t"))) return false;
+    return !!allowed && allowed.has(args[1] ?? "") && !args.some((arg) => /^--web(?:=|$)|^-[^-]*w/u.test(arg));
   },
   command: (args) => args[0] === "-v" || args[0] === "-V",
 };

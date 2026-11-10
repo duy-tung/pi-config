@@ -28,13 +28,41 @@ function currentUser(): string | undefined {
 }
 
 /**
- * Đối số của lệnh shell thành đường dẫn tuyệt đối (~, ~user và đường dẫn tương đối; shell không hiểu @).
- * ~user của chính người dùng là home; user khác đoán theo thư mục cha của home (root: /root, macOS /var/root),
- * đủ để coi là ngoài workspace.
+ * Như path.resolve, nhưng `..` đứng sau một symlink đi lên từ đích của symlink: kernel làm vậy khi một lệnh mở file
+ * (`cat link/../x` đọc file cạnh đích của link, không phải ./x). Thành phần chưa tồn tại thì đi lên theo chữ.
  */
-export function resolveShellPath(word: string, cwd: string, home = os.homedir()): string {
+function physical(base: string, value: string): string {
+  const separators = process.platform === "win32" ? /[\\/]+/u : /\/+/u;
+  if (!value.split(separators).includes("..")) return path.resolve(base, value);
+  const root = path.isAbsolute(value) ? path.parse(value).root : "";
+  let current = root ? path.resolve(root) : path.resolve(base);
+  for (const part of value.slice(root.length).split(separators)) {
+    if (part === "" || part === ".") continue;
+    if (part !== "..") {
+      current = path.join(current, part);
+      continue;
+    }
+    let real = current;
+    try { real = fs.realpathSync.native(current); } catch { /* chưa tồn tại */ }
+    current = path.dirname(real);
+  }
+  return current;
+}
+
+/**
+ * Đối số của lệnh shell thành đường dẫn tuyệt đối (~, ~+, ~user và đường dẫn tương đối; shell không hiểu @).
+ * ~user của chính người dùng là home; user khác đoán theo thư mục cha của home (root: /root, macOS /var/root),
+ * đủ để coi là ngoài workspace. `logical`: tính `..` theo chữ như `cd` của shell (mặc định theo symlink như khi mở file).
+ */
+export function resolveShellPath(word: string, cwd: string, home = os.homedir(), logical = false): string {
+  const join = logical ? path.resolve : physical;
+  // `~//x` là $HOME//x: phần sau dấu ngã luôn tương đối với home.
+  const below = (prefix: number) => word.slice(prefix).replace(/^\/+/u, "");
   if (word === "~") return home;
-  if (word.startsWith("~/")) return path.join(home, word.slice(2));
+  if (word.startsWith("~/")) return join(home, below(2));
+  // ~+ là thư mục hiện tại ($PWD).
+  if (word === "~+") return path.resolve(cwd);
+  if (word.startsWith("~+/")) return join(cwd, below(3));
   const tilde = /^~([A-Za-z0-9._][A-Za-z0-9._-]*)(?:\/(.*))?$/u.exec(word);
   if (tilde) {
     const name = tilde[1];
@@ -43,7 +71,7 @@ export function resolveShellPath(word: string, cwd: string, home = os.homedir())
       : path.join(path.dirname(home), name);
     return tilde[2] ? path.join(base, tilde[2]) : base;
   }
-  return path.resolve(cwd, word);
+  return join(cwd, word);
 }
 
 /**
@@ -118,12 +146,14 @@ const PROTECTED_FILES = new Set([
 export function protectedReason(file: string, roots: string[]): string | undefined {
   const candidates = [path.resolve(file), realPath(file)];
   for (const candidate of candidates) {
-    const base = path.basename(candidate);
+    // Không phân biệt hoa thường như Claude Code: trên macOS và Windows `.GIT/config` là `.git/config`.
+    const base = path.basename(candidate).toLowerCase();
     if (PROTECTED_FILES.has(base)) return `${base} is a protected file`;
     // Chỉ xét các thành phần nằm trong workspace, để workspace nằm dưới ~/.config... vẫn dùng được.
     const root = roots.find((item) => isInside(item, candidate) || isInside(realPath(item), candidate));
     const relative = root ? path.relative(isInside(root, candidate) ? root : realPath(root), candidate) : candidate;
-    const segments = relative.split(path.sep).slice(0, -1);
+    // Cả thành phần cuối: `mv staging .git` hay file tên `.git` (gitfile) đặt nguyên một thư mục được bảo vệ.
+    const segments = relative.split(path.sep).map((segment) => segment.toLowerCase());
     for (const [index, segment] of segments.entries()) {
       if (PROTECTED_DIRS.has(segment)) return `${segment}/ is a protected directory`;
       const nested = PROTECTED_NESTED.find(([first, second]) => segment === first && segments[index + 1] === second);
@@ -131,6 +161,31 @@ export function protectedReason(file: string, roots: string[]): string | undefin
     }
   }
   return undefined;
+}
+
+/**
+ * git tìm repo từ dir đi lên: thư mục có HEAD, objects/ và refs/ là một repo bare, và git chạy lệnh trong config của nó
+ * (core.fsmonitor, pager…). Trả thư mục đó nếu git gặp nó trước một `.git`: agent dựng được bằng các file thường.
+ */
+export function bareRepositoryAbove(dir: string): string | undefined {
+  let current = path.resolve(dir);
+  for (;;) {
+    if (fs.existsSync(path.join(current, ".git"))) return undefined;
+    if (["HEAD", "objects", "refs"].every((name) => fs.existsSync(path.join(current, name)))) return current;
+    const parent = path.dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
+}
+
+/** Đường dẫn chứa một file cấu hình của cổng permission (thư mục cha của nó): đổi tên hay xoá là đổi cả cấu hình. */
+export function containsSelfProtected(file: string, selfPaths: string[]): boolean {
+  const resolved = path.resolve(file);
+  const real = realPath(resolved);
+  return selfPaths.some((item) => {
+    const target = path.resolve(item);
+    return isInside(resolved, target) || isInside(real, realPath(target));
+  });
 }
 
 /** File cấu hình của chính cổng permission: chỉ người dùng được sửa khi ở auto mode. */
