@@ -178,6 +178,15 @@ export function bareRepositoryAbove(dir: string): string | undefined {
   }
 }
 
+/**
+ * File và thư mục trong agent dir mà một lần ghi làm đổi hành vi của các phiên sau (như `.claude/` của Claude Code):
+ * settings và phím tắt, extension, server MCP trong mcp.json (lệnh chạy lúc mở phiên), và models.json (đổi `baseUrl`
+ * hay `headers` của provider là gửi token đăng nhập và hội thoại sang máy khác). Dùng chung cho extension và pi-agent.
+ */
+export function piConfigPaths(agentDir: string): string[] {
+  return ["settings.json", "keybindings.json", "extensions", "mcp.json", "models.json"].map((name) => path.join(agentDir, name));
+}
+
 /** Đường dẫn chứa một file cấu hình của cổng permission (thư mục cha của nó): đổi tên hay xoá là đổi cả cấu hình. */
 export function containsSelfProtected(file: string, selfPaths: string[]): boolean {
   const resolved = path.resolve(file);

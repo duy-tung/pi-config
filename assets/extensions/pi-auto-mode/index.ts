@@ -19,7 +19,7 @@ import {
 } from "./lib/project-rules.ts";
 import * as text from "./lib/messages.ts";
 import { type CallFacts, decide, describeCall, filterDeniedGrep, type PolicyContext, SAFE_TOOLS, type ToolCall } from "./lib/policy.ts";
-import { resolveToolPath, temporaryRoots } from "./lib/paths.ts";
+import { piConfigPaths, resolveToolPath, temporaryRoots } from "./lib/paths.ts";
 import { buildSystemPrompt, DEFAULT_ALLOW, DEFAULT_ENVIRONMENT, DEFAULT_HARD_DENY, DEFAULT_SOFT_DENY, resolveSlots, userInstructions } from "./lib/prompt.ts";
 import { buildRuleSet, isPathRule } from "./lib/rules.ts";
 import type { ShellAnalysis } from "./lib/shell.ts";
@@ -197,12 +197,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
   }
 
   function selfPaths(): string[] {
-    return [
-      path.join(agentDir, "settings.json"), path.join(agentDir, "keybindings.json"), path.join(agentDir, "extensions"),
-      // Server MCP stdio trong mcp.json là lệnh chạy ở lần mở phiên sau.
-      path.join(agentDir, "mcp.json"),
-      config.stateDir, ...(selfDir ? [selfDir] : []),
-    ];
+    return [...piConfigPaths(agentDir), config.stateDir, ...(selfDir ? [selfDir] : [])];
   }
 
   /** Thư mục thêm bằng /add-dir hoặc --add-dir tới hết phiên: child dùng chung tập của phiên gốc. */
