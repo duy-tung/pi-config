@@ -42,11 +42,6 @@ for(const pkg of s.packages){
   if(!remotePackage(source)&&!fs.existsSync(path.resolve(state.agentDir,source)))errors.push(`Thiếu package: ${source}`);
 }
 for(const entry of s.extensions??[])if(typeof entry==='string'&&!entry.startsWith('-')&&path.isAbsolute(entry)&&!fs.existsSync(entry))errors.push(`Thiếu extension: ${entry}`);
-// Pi 1.5.1 bật message threads cho provider anthropic: từ lượt thứ hai request bỏ system (billing header của
-// pi-anthropic-auth). Installer tắt bằng models.json, nhưng giữ nguyên models.json người dùng tự viết.
-const modelsFile=path.join(state.agentDir,'models.json');
-if(typeof (fs.existsSync(modelsFile)?read(modelsFile):{}).providers?.anthropic?.compat?.supportsMessageThreads!=='boolean')
-  warnings.push('models.json chưa đặt providers.anthropic.compat.supportsMessageThreads; Pi bật message threads và request Claude OAuth từ lượt thứ hai không còn billing header. Thêm {"providers":{"anthropic":{"compat":{"supportsMessageThreads":false}}}} (docs/claude-setup.md)');
 const webSearch=path.join(state.agentDir,'web-search.json');
 if(fs.existsSync(webSearch)){
   const config=read(webSearch),providers=config.searchRouting?.providers,allowed=config.webSearch?.allowedProviders;
