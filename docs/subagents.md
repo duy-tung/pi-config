@@ -1,6 +1,6 @@
 # Agent theo công việc
 
-Pi dùng tool `Agent` của `@tintinweb/pi-subagents` 0.23.1. Parent Claude Opus 5.5/high phân tích yêu cầu, chốt thiết kế, chia việc và nghiệm thu.
+Pi dùng tool `Agent` của `@tintinweb/pi-subagents` 0.23.2. Parent Claude Opus 5.5/high phân tích yêu cầu, chốt thiết kế, chia việc và nghiệm thu.
 
 | Role | Model/effort (mặc định) | Quyền và trách nhiệm |
 |---|---|---|
