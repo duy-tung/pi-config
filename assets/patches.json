@@ -75,7 +75,7 @@
     {
       "package": "@tintinweb/pi-subagents",
       "versions": {
-        "current": "0.23.1"
+        "current": "0.23.2"
       },
       "file": "src/agent-runner.ts",
       "originalSha256": "ab78003a7734ca430eaefc32a5fa1c83ecb87aea909588aa918a1aa0ddd4f2f5",
@@ -101,7 +101,7 @@
     {
       "package": "@tintinweb/pi-subagents",
       "versions": {
-        "current": "0.23.1"
+        "current": "0.23.2"
       },
       "file": "src/index.ts",
       "originalSha256": "85118e4adab9476e138bf610bec6fda2ccbbfa9897984c8e4eb2146809c8df7c",
