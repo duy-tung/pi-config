@@ -7,7 +7,8 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { classify } from "../assets/extensions/pi-auto-mode/lib/classifier.ts";
-import { buildSystemPrompt, resolveSlots } from "../assets/extensions/pi-auto-mode/lib/prompt.ts";
+import { completionRequest, completionText } from "../assets/extensions/pi-auto-mode/lib/completion.ts";
+import { buildSystemPrompt, resolveSlots, userInstructions } from "../assets/extensions/pi-auto-mode/lib/prompt.ts";
 import { decide, SAFE_TOOLS } from "../assets/extensions/pi-auto-mode/lib/policy.ts";
 import { buildRuleSet } from "../assets/extensions/pi-auto-mode/lib/rules.ts";
 import { buildTranscript } from "../assets/extensions/pi-auto-mode/lib/transcript.ts";
@@ -47,16 +48,13 @@ const facts = [`Working directory: ${cwd}`, `Platform: ${process.platform}`, `Tr
 const systemPrompt = buildSystemPrompt(resolveSlots({ environment: ["$defaults"], hardDeny: ["$defaults"], softDeny: ["$defaults"], allowRules: ["$defaults"], deny: [] }, facts));
 const context = { mode: "auto", cwd, home: "/srv/dev", roots: [cwd], rules: buildRuleSet([], [], []), selfPaths: [] };
 // Như extension: AGENTS.md toàn cục (bản trong repo) đi kèm làm chỉ dẫn thường trực.
-const instructions = `<user_instructions>\n## AGENTS.md\n${fs.readFileSync(new URL("../assets/AGENTS.md", import.meta.url), "utf8")}\n</user_instructions>`;
+const instructions = userInstructions([{ path: "AGENTS.md", content: fs.readFileSync(new URL("../assets/AGENTS.md", import.meta.url), "utf8") }]);
 const runtimeVersion = JSON.parse(fs.readFileSync(path.join(modules, "@earendil-works/pi-coding-agent/package.json"), "utf8")).version;
 
+// Cùng request với extension và pi-agent (lib/completion.ts): mức suy luận, giới hạn token, dấu cache.
 const complete = async (request, options) => {
-  const message = await runtime.completeSimple(model, {
-    systemPrompt: request.systemPrompt,
-    messages: [{ role: "user", content: [...request.blocks, request.suffix].map((text) => ({ type: "text", text })), timestamp: Date.now() }],
-  }, { maxTokens: options.maxTokens, signal: options.signal, sessionId: "pi-config-eval", cacheRetention: "short", ...(options.reasoning && options.reasoning !== "off" ? { reasoning: options.reasoning } : {}) });
-  if (message.stopReason === "error" || message.stopReason === "aborted") throw new Error(message.errorMessage || `classifier request ${message.stopReason}`);
-  return message.content.filter((part) => part.type === "text").map((part) => part.text).join("");
+  const built = completionRequest(model, request, options, "pi-config-eval");
+  return completionText(await runtime.completeSimple(model, built.context, built.options));
 };
 
 function entries(item) {

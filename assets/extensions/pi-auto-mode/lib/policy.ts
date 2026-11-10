@@ -4,7 +4,7 @@ import { type PermissionMode, prompts } from "./config.ts";
 import {
   criticalPathReason, insideAny, isSelfProtected, protectedReason, resolveShellPath, resolveToolPath, temporaryRoots, URL_LIKE,
 } from "./paths.ts";
-import { detectPowerShellRisks, detectRisks } from "./risks.ts";
+import { commandDirs, detectPowerShellRisks, detectRisks, writeRisk } from "./risks.ts";
 import { type DeniedPath, denies, searchReadPaths } from "./read-scope.ts";
 import { allowCoversShell, firstMatch, type RuleMatchTarget, type RuleSet } from "./rules.ts";
 import {
@@ -89,10 +89,24 @@ const EXPLICIT_PATH = /^(?:\/|~[\/\\]|~$|\.\.?[\/\\]|[A-Za-z]:[\/\\]|\\\\)/u;
 const looksLikePath = (word: string) =>
   word !== "" && !/[\r\n]/u.test(word) && (!/\s/u.test(word) || /[\/\\]/u.test(word)) && !word.startsWith("-") && !URL_LIKE.test(word);
 
-/** Đối số có thể là đường dẫn: mọi từ chữ thuần (trừ tên lệnh và tùy chọn) + đích chuyển hướng. */
+/**
+ * Thư mục để tính đường dẫn tương đối của từng lệnh: mọi thư mục mà lệnh có thể chạy trong đó theo cd/pushd đứng trước
+ * (lib/risks.ts commandDirs). Có subshell hay nhóm lệnh thì phạm vi của cd không chắc, nên xét thêm thư mục của phiên.
+ * undefined: sau cd không biết đích.
+ */
+function commandBases(analysis: ShellAnalysis, cwd: string, home: string): (string[] | undefined)[] {
+  return commandDirs(analysis.commands, cwd, home).map((dirs) => (dirs === undefined ? undefined : [...new Set([...dirs, ...(analysis.plain ? [] : [cwd])])]));
+}
+
+/** Đối số có thể là đường dẫn: mọi từ chữ thuần (trừ tên lệnh và tùy chọn) + đích chuyển hướng, tính theo cd đứng trước. */
 function shellPaths(analysis: ShellAnalysis, cwd: string, home: string): string[] {
   const result = new Set<string>();
-  for (const command of analysis.commands) {
+  const bases = commandBases(analysis, cwd, home);
+  analysis.commands.forEach((command, at) => {
+    // Sau cd không biết đích: đường dẫn tương đối tính theo thư mục của phiên (lệnh không còn là chỉ đọc, xem describeCall).
+    const add = (value: string) => {
+      for (const base of bases[at] ?? [cwd]) result.add(resolveShellPath(value, base, home));
+    };
     command.words.forEach((word, index) => {
       if (index === 0 || !command.literal[index]) return;
       let value = word;
@@ -101,26 +115,25 @@ function shellPaths(analysis: ShellAnalysis, cwd: string, home: string): string[
       const eq = value.startsWith("-") ? value.indexOf("=") : -1;
       if (eq > 0) value = value.slice(eq + 1).replace(/^@/u, "");
       if (!looksLikePath(value)) return;
-      result.add(resolveShellPath(value, cwd, home));
+      add(value);
     });
-    for (const output of optionOutputs(command)) if (looksLikePath(output)) result.add(resolveShellPath(output, cwd, home));
+    for (const output of optionOutputs(command)) if (looksLikePath(output)) add(output);
     // grep/rg có thể đọc file tham số viết liền với cờ, vd -f.env hoặc --file=.env.
-    for (const file of searchReadPaths(command)?.paths ?? []) result.add(resolveShellPath(file, cwd, home));
+    for (const file of searchReadPaths(command)?.paths ?? []) add(file);
     for (const redirect of command.redirects) {
-      if (redirect.literal && looksLikePath(redirect.target) && !/^\d+$|^-$/u.test(redirect.target)) {
-        result.add(resolveShellPath(redirect.target, cwd, home));
-      }
+      if (redirect.literal && looksLikePath(redirect.target) && !/^\d+$|^-$/u.test(redirect.target)) add(redirect.target);
     }
-  }
+  });
   return [...result];
 }
 
 const targetAt = (command: SimpleCommand, index: number) =>
   ({ word: command.words[index], literal: command.literal[index], glob: command.glob[index] });
 
-/** rm/rmdir/unlink hoặc find -delete nhắm vào đường dẫn quan trọng. */
+/** rm/rmdir/unlink hoặc find -delete nhắm vào đường dẫn quan trọng, tính theo cd đứng trước. */
 function criticalRemoval(analysis: ShellAnalysis, cwd: string, home: string): string | undefined {
-  for (const command of analysis.commands) {
+  const bases = commandBases(analysis, cwd, home);
+  for (const [at, command] of analysis.commands.entries()) {
     const name = commandName(command);
     const find = findRemoval(command.words);
     const indices = removeArgs(command.words)?.targets ?? (find?.deletes ? find.targets : undefined);
@@ -131,14 +144,14 @@ function criticalRemoval(analysis: ShellAnalysis, cwd: string, home: string): st
         if (/\/\*?$/u.test(target.word) || target.word.endsWith("*")) return `${name} target cannot be verified (${target.word})`;
         continue;
       }
-      let file = resolveShellPath(target.word, cwd, home);
-      if (target.glob) {
-        // Glob xóa nội dung thư mục chứa nó: rm -rf * ≈ xóa thư mục làm việc.
-        const first = target.word.search(/[*?[]/u);
-        file = resolveShellPath(path.dirname(`${target.word.slice(0, first)}x`), cwd, home);
+      // Glob xóa nội dung thư mục chứa nó: rm -rf * ≈ xóa thư mục làm việc.
+      const word = target.glob ? path.dirname(`${target.word.slice(0, target.word.search(/[*?[]/u))}x`) : target.word;
+      const dirs = bases[at] ?? (EXPLICIT_PATH.test(word) && !/^\.\.?(?:[\/\\]|$)/u.test(word) ? [cwd] : undefined);
+      if (!dirs) return `${name} target cannot be verified (${target.word} after a directory change Pi cannot follow)`;
+      for (const dir of dirs) {
+        const reason = criticalPathReason(resolveShellPath(word, dir, home), cwd, home);
+        if (reason) return `${name} targets ${reason}`;
       }
-      const reason = criticalPathReason(file, cwd, home);
-      if (reason) return `${name} targets ${reason}`;
     }
   }
   return undefined;
@@ -162,7 +175,8 @@ export function describeCall(call: ToolCall, pc: PolicyContext): CallFacts {
     const analysis = toolName === "powershell"
       ? { commands: [], plain: false, problems: ["powershell"], nested: [] }
       : analyzeShell(command);
-    const readOnly = isReadOnlyShell(analysis);
+    // Sau cd không biết đích (`cd -`, popd, `cd "$X"`), đường dẫn tương đối không kiểm được: không phải chỉ đọc.
+    const readOnly = isReadOnlyShell(analysis) && commandDirs(analysis.commands, pc.cwd, home).every((dir) => dir !== undefined);
     const paths = shellPaths(analysis, pc.cwd, home);
     const tempRoots = pc.tempRoots ?? temporaryRoots();
     return {
@@ -180,8 +194,10 @@ export function describeCall(call: ToolCall, pc: PolicyContext): CallFacts {
   if (WRITE_TOOLS.has(toolName)) {
     const file = resolveToolPath(input.path, pc.cwd, home);
     const paths = file ? [file] : [];
+    // Như đích ghi của lệnh shell: file khởi động, autostart, git hook, đường dẫn hệ thống (phiên mở ở HOME vẫn bị xét).
+    const risk = file ? writeRisk(file, { cwd: pc.cwd, home, roots: pc.roots, tempRoots: pc.tempRoots ?? temporaryRoots() }) : undefined;
     return {
-      kind: "write", paths, summary, writesSelf: paths.some((item) => isSelfProtected(item, pc.selfPaths)),
+      kind: "write", paths, summary, writesSelf: paths.some((item) => isSelfProtected(item, pc.selfPaths)), risks: risk ? [risk] : [],
       target: { toolName, paths },
     };
   }
@@ -329,7 +345,7 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
 
   // Riêng pi-config: cơ chế tự chạy, tắt kiểm TLS, ghi đường dẫn hệ thống: ghi chú cho bộ phân loại (escalate, xem
   // classify ở trên); manual/acceptEdits hỏi kèm ghi chú. Bypass cho chạy như Claude Code.
-  if (facts.risks?.length) notes.push(...facts.risks.map((risk) => `this command ${risk}`));
+  if (facts.risks?.length) notes.push(...facts.risks.map((risk) => `${facts.kind === "write" ? "this edit" : "this command"} ${risk}`));
 
   // Như Claude Code: blockReadsOutsideWorkingDirectories chặn tool đọc file ngoài workspace ở mọi mode, kể cả bypass;
   // lệnh shell chỉ đọc vào đó thì hỏi.
@@ -375,8 +391,9 @@ export function decide(call: ToolCall, pc: PolicyContext, facts = describeCall(c
       const guarded = protectedReason(file, pc.roots);
       if (guarded) notes.push(`writes ${guarded}`);
       else if (!insideAny(pc.roots, file)) notes.push("writes outside the working directory");
-      // Manual (mode default của Claude Code) hỏi cả khi sửa file trong workspace; acceptEdits và auto cho chạy ngay.
-      else if (pc.mode !== "manual") return { kind: "allow", via: "workspace edit" };
+      // Manual (mode default của Claude Code) hỏi cả khi sửa file trong workspace; acceptEdits và auto cho chạy ngay, trừ
+      // đích có rủi ro (bước 4).
+      else if (pc.mode !== "manual" && !facts.risks?.length) return { kind: "allow", via: "workspace edit" };
       return classify(!!guarded);
     }
     case "shell": {

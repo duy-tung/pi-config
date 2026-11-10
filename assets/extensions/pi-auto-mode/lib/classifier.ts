@@ -2,7 +2,7 @@ import { parseVerdict, STAGE1_SUFFIX, STAGE2_SUFFIX } from "./prompt.ts";
 
 /**
  * Bộ phân loại hai giai đoạn (theo Claude Code auto mode):
- * - Giai đoạn 1: sàng lọc nhanh, nghiêng về gắn cờ; LLM với cùng prompt, không suy luận, vài token.
+ * - Giai đoạn 1: sàng lọc nhanh, nghiêng về gắn cờ; LLM với cùng prompt, suy luận thấp nhất model cho phép, vài token.
  * - Giai đoạn 2: chỉ khi giai đoạn 1 gắn cờ; LLM có suy luận, xét ngoại lệ và ủy quyền của người dùng.
  * Mọi lỗi đều chặn (fail closed); lỗi không phải phán quyết nên không tính vào giới hạn.
  */
@@ -130,7 +130,9 @@ interface Budget {
 
 export async function classify(options: ClassifyOptions, budget: Budget = {}): Promise<ClassifierResult> {
   const deadline = (budget.deadline ??= AbortSignal.timeout(options.timeoutMs));
-  const first = await attempt(options, deadline, 1, STAGE1_SUFFIX, 48, "off");
+  // "off": mức thấp nhất model nhận (lib/completion.ts). Model luôn suy luận có thể nghĩ vài trăm token trước khi
+  // trả lời, nên giới hạn đủ cho phần đó; phần trả lời vẫn chỉ vài token.
+  const first = await attempt(options, deadline, 1, STAGE1_SUFFIX, 1024, "off");
   if (first.aborted) return { kind: "unavailable", reason: first.error ?? "interrupted", aborted: true };
   const stage1 = first.text !== undefined ? parseVerdict(first.text) : undefined;
   if (stage1 && !stage1.block) return { kind: "allow", stage: 1 };

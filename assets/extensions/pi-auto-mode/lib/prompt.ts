@@ -1,4 +1,5 @@
 import { spliceDefaults } from "./config.ts";
+import { neutralize } from "./transcript.ts";
 
 /**
  * Prompt của bộ phân loại. Cấu trúc theo mô tả công khai của Claude Code auto mode
@@ -185,4 +186,21 @@ export function parseVerdict(text: string): Verdict | undefined {
   const rule = /<rule>\s*([^<]{1,80}?)\s*<\/rule>/iu.exec(cleaned)?.[1];
   const reason = /<reason>\s*([^<]{1,400}?)\s*<\/reason>/iu.exec(cleaned)?.[1];
   return { block: true, rule, reason };
+}
+
+/**
+ * Khối <user_instructions> từ AGENTS.md/CLAUDE.md (toàn cục và của repo), tối đa `budget` ký tự. Thẻ của prompt trong
+ * nội dung bị vô hiệu như trong transcript, để file của repo không đóng khối này và giả dòng transcript.
+ */
+export function userInstructions(files: { path?: string; content: string }[], budget = 8_000): string | undefined {
+  if (!files.length) return undefined;
+  const parts: string[] = [];
+  let left = budget;
+  for (const file of files) {
+    if (left <= 0) break;
+    const content = file.content.length > left ? `${file.content.slice(0, left)}\n…[truncated]` : file.content;
+    left -= content.length;
+    parts.push(`${file.path ? `## ${file.path}\n` : ""}${neutralize(content)}`);
+  }
+  return `<user_instructions>\n${parts.join("\n\n")}\n</user_instructions>`;
 }

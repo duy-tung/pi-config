@@ -40,7 +40,8 @@ export interface TranscriptOptions {
 }
 
 const TAG = /<\/?(?:transcript|root_user_messages|user_instructions)\b[^>]*>/giu;
-const neutralize = (text: string) => text.replace(TAG, (match) => match.replace("<", "[").replace(">", "]"));
+/** Thẻ của prompt trong văn bản (transcript, AGENTS.md) thành [thẻ], để văn bản không đóng hay mở khối của prompt. */
+export const neutralize = (text: string) => text.replace(TAG, (match) => match.replace("<", "[").replace(">", "]"));
 
 export function clip(text: string, limit: number): string {
   if (text.length <= limit) return text;
@@ -103,6 +104,12 @@ export function serializeInput(toolName: string, input: Record<string, unknown>,
 function line(value: Record<string, unknown>): string {
   return neutralize(JSON.stringify(value));
 }
+
+/** Khóa dòng của Pi và người dùng; tool trùng tên (MCP, extension hay tên agent tự đặt) có tiền tố `tool:`. */
+const ENTRY_KEYS = new Set([
+  "user", "user_answer", "user_shell", "extension_message", "delegated_task", "parent_message", "compaction_summary", "branch_summary", "meta",
+]);
+const toolKey = (name: string) => (ENTRY_KEYS.has(name.toLowerCase()) ? `tool:${name}` : name);
 
 /** Câu trả lời của ask_user_question (rpiv): lấy từ details có cấu trúc, không từ văn bản. */
 function answerText(details: unknown): string | undefined {
@@ -188,7 +195,7 @@ export function buildTranscript(entries: SessionEntryLike[], options: Transcript
         // Hành động đang xét và các lời gọi sau nó trong cùng tin nhắn không thuộc lịch sử.
         if (options.action.toolCallId && call.id === options.action.toolCallId) break;
         if (skip.has(call.name)) continue;
-        items.push({ kind: "tool", text: line({ [call.name]: serializeInput(call.name, call.arguments ?? {}, 1_500) }) });
+        items.push({ kind: "tool", text: line({ [toolKey(call.name)]: serializeInput(call.name, call.arguments ?? {}, 1_500) }) });
       }
     }
   }
@@ -218,6 +225,6 @@ export function buildTranscript(entries: SessionEntryLike[], options: Transcript
     if (kept[index]) lines.push(item.text);
   });
   if (options.meta && Object.keys(options.meta).length) lines.push(line({ meta: options.meta }));
-  lines.push(line({ [options.action.toolName]: serializeInput(options.action.toolName, options.action.input, 20_000) }));
+  lines.push(line({ [toolKey(options.action.toolName)]: serializeInput(options.action.toolName, options.action.input, 20_000) }));
   return `<transcript>\n${lines.join("\n")}\n</transcript>`;
 }
