@@ -4,29 +4,29 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@earendil-works/pi-agent-core": "1.5.0",
-    "@earendil-works/pi-ai": "1.5.0",
-    "@earendil-works/pi-coding-agent": "1.5.0",
-    "@earendil-works/pi-tui": "1.5.0",
+    "@earendil-works/pi-agent-core": "1.5.1",
+    "@earendil-works/pi-ai": "1.5.1",
+    "@earendil-works/pi-coding-agent": "1.5.1",
+    "@earendil-works/pi-tui": "1.5.1",
     "@gotgenes/pi-anthropic-auth": "3.4.4",
     "@juicesharp/rpiv-ask-user-question": "2.15.0",
     "@juicesharp/rpiv-todo": "2.15.0",
-    "@tintinweb/pi-subagents": "0.22.1",
-    "pi-advisor-flow": "0.14.3",
-    "pi-open-tui": "0.4.1",
-    "pi-web-access": "0.46.0",
-    "pi-background-tasks": "file:../../vendor/pi-background-tasks-2.6.10-pi150.tgz",
-    "@pi-archimedes/image-paste": "2.12.0"
+    "@tintinweb/pi-subagents": "0.23.1",
+    "pi-advisor-flow": "0.14.4",
+    "pi-open-tui": "0.4.4",
+    "pi-web-access": "0.47.0",
+    "pi-background-tasks": "file:../../vendor/pi-background-tasks-2.6.10-pi151.tgz",
+    "@pi-archimedes/image-paste": "2.13.0"
   },
   "piPlatform": {
     "localPackages": {
       "pi-background-tasks": {
         "version": "2.6.10",
-        "source": "../../vendor/pi-background-tasks-2.6.10-pi150.tgz",
-        "sha256": "63060e0b1341dbc32fd43b26b99fc3de63d5b33f98ffc12ff67006193e92248e",
+        "source": "../../vendor/pi-background-tasks-2.6.10-pi151.tgz",
+        "sha256": "dbba9ca1b5560069297977a4176418fde35ded25ca88eee39fa3d8c057ba0528",
         "upstreamIntegrity": "sha512-ank/oCRst44FVCr4zwDvedzAxpf+Ttmm4XwB9SfKFJtvFWWX9T2YC+g2pWCdQnbGy/4X+BgoSr6YFCW+fWuhSw==",
         "upstreamTarball": "https://registry.npmjs.org/pi-background-tasks/-/pi-background-tasks-2.6.10.tgz",
-        "reason": "Peer metadata adds exactly Pi 1.5.0; runtime changes are tracked separately in assets/patches.json."
+        "reason": "Peer metadata adds exactly Pi 1.5.1; runtime changes are tracked separately in assets/patches.json."
       }
     }
   }

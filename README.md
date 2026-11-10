@@ -2,7 +2,7 @@
 
 [![Kiểm thử cài đặt](https://github.com/duy-tung/pi-config/actions/workflows/test.yml/badge.svg)](https://github.com/duy-tung/pi-config/actions/workflows/test.yml)
 
-Bộ cài **Pi 1.5.0** cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, native web search theo model (GPT, Claude) với Exa và Firecrawl dự phòng, quota Claude trong footer, permission kiểu Claude Code (manual, accept edits, auto mode và bypass) và giao diện Rosé Pine. Chỉ cài skill của công cụ (Firecrawl); không kèm bộ skill quy trình. Dependency, nguồn skills và bản vá được ghim để tái lập cấu hình.
+Bộ cài **Pi 1.5.1** cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, native web search theo model (GPT, Claude) với Exa và Firecrawl dự phòng, quota Claude trong footer, permission kiểu Claude Code (manual, accept edits, auto mode và bypass) và giao diện Rosé Pine. Chỉ cài skill của công cụ (Firecrawl); không kèm bộ skill quy trình. Dependency, nguồn skills và bản vá được ghim để tái lập cấu hình.
 
 ## Cài đặt
 
@@ -49,7 +49,7 @@ Advisor (pi-advisor-flow) luôn bật khi mở phiên: executor là model của 
 - System prompt dặn Opus gọi `ask_advisor` sau hai lần thử tương đương cùng thất bại và trước khi báo xong việc không nhỏ. Không giới hạn số lần mỗi phiên; không có gate cứng chặn phiên. Đổi gate và số lượt bằng `/advisor-settings`; cài lại giữ giá trị đã đổi.
 - Advisor không có tool. Nó thấy tối đa 60.000 ký tự gồm hội thoại gần nhất và diff chưa commit (diff tối đa 20.000 ký tự, đã che secret); không gửi kèm `AGENTS.md` (`advisorAgentsMdContext: false`). Thay đổi lớn vẫn nên giao reviewer.
 - Request tới advisor lỗi thì thử lại một lần với Opus 5.5 (`advisorFallbackModel`, cùng mức thinking của advisor), tính là một lượt. Fallback trùng model của phiên chính nên `advisorDisableSameModel` tắt: nếu đổi phiên chính sang chính model advisor, advisor vẫn được gọi thay vì bỏ qua.
-- System prompt giữ nguyên sau mỗi lần hỏi (số lượt còn lại đi trong tin nhắn ẩn `advisor-budget`), để Opus không mất prompt cache.
+- System prompt giữ nguyên sau mỗi lần hỏi, để Opus không mất prompt cache. Từ pi-advisor-flow 0.14.4, tin nhắn ẩn `advisor-budget` báo số lượt còn lại chỉ gửi khi bật **Advisor log feedback** trong `/advisor-settings` (mặc định tắt); pi-config không giới hạn số lượt nên giữ mặc định. Đặt giới hạn mà muốn model biết số lượt còn lại thì bật mục đó.
 - `/advisor-off` tắt hẳn, kể cả các phiên sau; bật lại ở `/advisor-settings` → Always on hoặc bằng `/advisor`. Executor theo model của phiên: `/model` đổi model chính, Ctrl+S lưu làm mặc định. Khi `advisor.json` có `executor` (chọn executor trong `/advisor-models`), mỗi phiên mở bằng model đó và `/model` tự ghi model mới vào đó.
 - Mở phiên khi chưa đăng nhập Claude thì Pi báo `Advisor models are not configured or available` và phiên chạy không có advisor; đăng nhập rồi chạy `/advisor`.
 
@@ -113,19 +113,19 @@ Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều
 
 | Thành phần | Phiên bản |
 |---|---|
-| Pi (`@earendil-works/pi-coding-agent`, `pi-ai`, `pi-agent-core`, `pi-tui`) | 1.5.0 |
-| `@tintinweb/pi-subagents` | 0.22.1 |
+| Pi (`@earendil-works/pi-coding-agent`, `pi-ai`, `pi-agent-core`, `pi-tui`) | 1.5.1 |
+| `@tintinweb/pi-subagents` | 0.23.1 |
 | `@gotgenes/pi-anthropic-auth` | 3.4.4 |
-| `pi-web-access` | 0.46.0 |
+| `pi-web-access` | 0.47.0 |
 | `@juicesharp/rpiv-ask-user-question`, `rpiv-todo` | 2.15.0 |
 | `pi-background-tasks` | 2.6.10 |
-| `pi-advisor-flow` | 0.14.3 |
-| `pi-open-tui` | 0.4.1 |
-| `@pi-archimedes/image-paste` | 2.12.0 |
-| Firecrawl CLI | 1.26.24 |
+| `pi-advisor-flow` | 0.14.4 |
+| `pi-open-tui` | 0.4.4 |
+| `@pi-archimedes/image-paste` | 2.13.0 |
+| Firecrawl CLI | 1.29.0 |
 | Firecrawl skills | Commit trong [sources.lock.json](sources.lock.json) |
 
-Các manifest và lockfile nằm trong [manifests](manifests). pi-background-tasks có peer range chưa gồm Pi 1.5.0 nên được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json). Quy trình nâng phiên bản (vendor, lockfile, tính lại checksum bản vá): [docs/upgrade.md](docs/upgrade.md).
+Các manifest và lockfile nằm trong [manifests](manifests). pi-background-tasks có peer range chưa gồm Pi 1.5.1 nên được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json). Quy trình nâng phiên bản (vendor, lockfile, tính lại checksum bản vá): [docs/upgrade.md](docs/upgrade.md).
 
 ## Quản lý cấu hình
 

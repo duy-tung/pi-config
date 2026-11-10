@@ -4,15 +4,15 @@
     {
       "package": "pi-open-tui",
       "versions": {
-        "current": "0.4.1"
+        "current": "0.4.4"
       },
       "file": "extensions/open-tui/footer.ts",
-      "originalSha256": "e4c12197fb8be28be3063d5526d0f45cdb1030e4844f77b9d7fcc059e89e151a",
-      "patchedSha256": "ebc24c987b9e9e8e58e0853482c0bcf48a3e8f274692d611c0d7baa288e4e217",
+      "originalSha256": "8e455eae50b6ebabd881b3a8df9d0f6c696945cc693f7733cc342947b01b8a31",
+      "patchedSha256": "d31793dc2409210ff3b73cc429af35bde322df50cc9edfa1c24edf47c72cc6d7",
       "edits": [
         {
-          "before": "stats.push(theme.fg(\"warning\", `${glyphs.cost} $${totals.cost.toFixed(3)}`));",
-          "after": "stats.push(theme.fg(\"warning\", `$${totals.cost.toFixed(3)}`));",
+          "before": "cost: segments.cost ? theme.fg(\"warning\", `${glyphs.cost} $${totals.cost.toFixed(3)}`) : \"\",",
+          "after": "cost: segments.cost ? theme.fg(\"warning\", `$${totals.cost.toFixed(3)}`) : \"\",",
           "count": 1
         },
         {
@@ -21,8 +21,8 @@
           "count": 1
         },
         {
-          "before": "return `${theme.fg(stressColor(contextPct), glyphs.context)} ${theme.fg(stressColor(contextPct), `${contextPct.toFixed(1)}%`)}`;",
-          "after": "return theme.fg(stressColor(contextPct), `${contextPct.toFixed(1)}%`);",
+          "before": "return showBar ? `${theme.fg(stressColor(contextPct), glyphs.context)} ${pctText}` : pctText;",
+          "after": "return pctText;",
           "count": 1
         },
         {
@@ -75,11 +75,11 @@
     {
       "package": "@tintinweb/pi-subagents",
       "versions": {
-        "current": "0.22.1"
+        "current": "0.23.1"
       },
       "file": "src/agent-runner.ts",
-      "originalSha256": "707d55762cd66f72a5b2b8afdcf77ed1390a9eb1c0dd4f4ad106e388a67648da",
-      "patchedSha256": "e7809d3e9acdc30fb4d4ad5dea4f2846df8ec52b749615c0229995ffb443b2ee",
+      "originalSha256": "ab78003a7734ca430eaefc32a5fa1c83ecb87aea909588aa918a1aa0ddd4f2f5",
+      "patchedSha256": "fa87c1a39049c74e4fe54b8abba54b5e317d7ef46e0e30f42b8665825b56067a",
       "edits": [
         {
           "before": "  const { session } = await runInChildSessionContext(() => createAgentSession(sessionOpts));",
@@ -95,26 +95,21 @@
           "before": "  // With `allowedToolNames` unset,",
           "after": "  } catch (error) {\n    session.dispose();\n    throw error;\n  }\n\n  // With `allowedToolNames` unset,",
           "count": 1
-        },
-        {
-          "before": "      entries.some((e) => typeof e === \"string\" && resolve(dir, e) === entry)",
-          "after": "      // Local integration: a directory entry (\"./dist\") loads that directory's index file.\n      entries.some((e) => typeof e === \"string\" && (resolve(dir, e) === entry\n        || (resolve(dir, e) === dirname(entry) && /^index\\.(?:ts|js)$/.test(basename(entry)))))",
-          "count": 1
         }
       ]
     },
     {
       "package": "@tintinweb/pi-subagents",
       "versions": {
-        "current": "0.22.1"
+        "current": "0.23.1"
       },
       "file": "src/index.ts",
-      "originalSha256": "cca232d52ae90f7005f9c1309239ec6eaa235b24969809935ec96f0ee2467a44",
-      "patchedSha256": "df331bd603caf0e6d0e05613e903df53aca093cb087adaea1a2835c47ffd5b97",
+      "originalSha256": "85118e4adab9476e138bf610bec6fda2ccbbfa9897984c8e4eb2146809c8df7c",
+      "patchedSha256": "948d067160293ac67f0ec77d0aa807e52c5bd32b88469b8587509af1c97ed64d",
       "edits": [
         {
-          "before": "import { defineTool, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext, getAgentDir, getSettingsListTheme } from \"@earendil-works/pi-coding-agent\";",
-          "after": "import { type Api, getSupportedThinkingLevels, type Model } from \"@earendil-works/pi-ai\";\nimport { defineTool, DynamicBorder, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext, getAgentDir, getMarkdownTheme, getSelectListTheme, getSettingsListTheme, keyHint } from \"@earendil-works/pi-coding-agent\";",
+          "before": "import { type AgentSession, defineTool, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext, getAgentDir, getSettingsListTheme } from \"@earendil-works/pi-coding-agent\";",
+          "after": "import { type Api, getSupportedThinkingLevels, type Model } from \"@earendil-works/pi-ai\";\nimport { type AgentSession, defineTool, DynamicBorder, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext, getAgentDir, getMarkdownTheme, getSelectListTheme, getSettingsListTheme, keyHint } from \"@earendil-works/pi-coding-agent\";",
           "count": 1
         },
         {
@@ -158,8 +153,8 @@
           "count": 1
         },
         {
-          "before": "    execute: async (_toolCallId, params, signal, _onUpdate, _ctx) => {\n",
-          "after": "    // Local integration: expanded, a finished agent's output renders as Markdown; every other view keeps Pi's plain 10-line fallback.\n    renderResult(result, { expanded }, theme, renderContext) {\n      const text = stripTerminalSequences(result.content[0]?.type === \"text\" ? result.content[0].text : \"\").replace(/[\\u0000-\\u0008\\u000b-\\u001f\\ufff9-\\ufffb]/g, \"\");\n      const plain = (s: string) => new Text(s.split(\"\\n\").map((l) => theme.fg(\"toolOutput\", l)).join(\"\\n\"), 0, 0);\n      const bodyAt = text.indexOf(\"\\n\\n\") + 2;\n      if (expanded && !renderContext.isError && bodyAt > 1 && !/^Type: .*\\| Status: (?:running|error)\\b/m.test(text.slice(0, bodyAt))) {\n        const convAt = text.indexOf(\"\\n\\n--- Agent Conversation ---\\n\", bodyAt);\n        const box = new Container();\n        box.addChild(plain(text.slice(0, bodyAt - 1)));\n        box.addChild(new Markdown(text.slice(bodyAt, convAt < 0 ? undefined : convAt), 0, 0, getMarkdownTheme(), { color: (t: string) => theme.fg(\"toolOutput\", t) }));\n        if (convAt >= 0) box.addChild(plain(text.slice(convAt + 1)));\n        return box;\n      }\n      const lines = text.split(\"\\n\");\n      const more = expanded ? 0 : Math.max(0, lines.length - 10);\n      const hint = more ? `${theme.fg(\"muted\", `\\n... (${more} more lines,`)} ${keyHint(\"app.tools.expand\", \"to expand\")}${theme.fg(\"muted\", \")\")}` : \"\";\n      return new Text(lines.slice(0, lines.length - more).map((l) => theme.fg(\"toolOutput\", l)).join(\"\\n\") + hint, 0, 0);\n    },\n    execute: async (_toolCallId, params, signal, _onUpdate, _ctx) => {\n",
+          "before": "    execute: async (_toolCallId, params, signal, _onUpdate, ctx) => {\n",
+          "after": "    // Local integration: expanded, a finished agent's output renders as Markdown; every other view keeps Pi's plain 10-line fallback.\n    renderResult(result, { expanded }, theme, renderContext) {\n      const text = stripTerminalSequences(result.content[0]?.type === \"text\" ? result.content[0].text : \"\").replace(/[\\u0000-\\u0008\\u000b-\\u001f\\ufff9-\\ufffb]/g, \"\");\n      const plain = (s: string) => new Text(s.split(\"\\n\").map((l) => theme.fg(\"toolOutput\", l)).join(\"\\n\"), 0, 0);\n      const bodyAt = text.indexOf(\"\\n\\n\") + 2;\n      if (expanded && !renderContext.isError && bodyAt > 1 && !/^Type: .*\\| Status: (?:running|error)\\b/m.test(text.slice(0, bodyAt))) {\n        const convAt = text.indexOf(\"\\n\\n--- Agent Conversation ---\\n\", bodyAt);\n        const box = new Container();\n        box.addChild(plain(text.slice(0, bodyAt - 1)));\n        box.addChild(new Markdown(text.slice(bodyAt, convAt < 0 ? undefined : convAt), 0, 0, getMarkdownTheme(), { color: (t: string) => theme.fg(\"toolOutput\", t) }));\n        if (convAt >= 0) box.addChild(plain(text.slice(convAt + 1)));\n        return box;\n      }\n      const lines = text.split(\"\\n\");\n      const more = expanded ? 0 : Math.max(0, lines.length - 10);\n      const hint = more ? `${theme.fg(\"muted\", `\\n... (${more} more lines,`)} ${keyHint(\"app.tools.expand\", \"to expand\")}${theme.fg(\"muted\", \")\")}` : \"\";\n      return new Text(lines.slice(0, lines.length - more).map((l) => theme.fg(\"toolOutput\", l)).join(\"\\n\") + hint, 0, 0);\n    },\n    execute: async (_toolCallId, params, signal, _onUpdate, ctx) => {\n",
           "count": 1
         },
         {
@@ -203,7 +198,7 @@
     {
       "package": "@pi-archimedes/image-paste",
       "versions": {
-        "current": "2.12.0"
+        "current": "2.13.0"
       },
       "file": "src/preview.ts",
       "originalSha256": "9a8e227847c3c215810c19ff7324a6889723fd1870653151aa9e3bf704234978",
@@ -219,11 +214,11 @@
     {
       "package": "pi-web-access",
       "versions": {
-        "current": "0.46.0"
+        "current": "0.47.0"
       },
       "file": "dist/index.js",
-      "originalSha256": "5c29722416ef5dd2a6e075899f8bdeb8ef285ee32258ac5e9c61ac5f6bee31e6",
-      "patchedSha256": "c1af4ed0f5e3a1a94c34c07bc10679feebe1d04a7befb84febcbdfe412b1dd1c",
+      "originalSha256": "4efbd85de02258433ba83bb6d7417f57ea198e3873dfc45b77273a023705730b",
+      "patchedSha256": "c88356e3052f32f053e4f01efc224b3fbbd6d4f55a59154f8db9da8a7142932a",
       "edits": [
         {
           "before": "var RESOLVED_SEARCH_PROVIDERS = [\"openai\", \"brave\", ",

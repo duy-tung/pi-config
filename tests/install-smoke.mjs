@@ -35,6 +35,17 @@ const doctor=spawnSync(process.execPath,[path.join(root,'bin/launch.mjs'),'docto
 fs.writeFileSync(webSearchPath,webSearchBytes);
 assert.equal(doctor.status,1,doctor.stdout+doctor.stderr);
 assert.match(doctor.stderr,/parallel-mcp có trong searchRouting\.providers nhưng không có trong webSearch\.allowedProviders/u);
+// models.json người dùng tự viết thì installer giữ nguyên; thiếu cờ tắt message threads thì pi-doctor cảnh báo, đặt rõ true/false thì không.
+const modelsPath=path.join(agentDir,'models.json'),modelsBytes=fs.readFileSync(modelsPath);
+assert.deepEqual(readJson(modelsPath),{providers:{anthropic:{compat:{supportsMessageThreads:false}}}});
+const threadsWarning=/models\.json chưa đặt providers\.anthropic\.compat\.supportsMessageThreads/u;
+const doctorWith=(value)=>{writeJson(modelsPath,value);const run=spawnSync(process.execPath,[path.join(root,'bin/launch.mjs'),'doctor'],{encoding:'utf8'});fs.writeFileSync(modelsPath,modelsBytes);return run;};
+const noFlag=doctorWith({providers:{local:{baseUrl:'http://127.0.0.1:1/v1',api:'openai-completions',apiKey:'fixture',models:[{id:'fixture'}]}}});
+assert.equal(noFlag.status,0,noFlag.stdout+noFlag.stderr);assert.match(noFlag.stderr,threadsWarning);
+const chosen=doctorWith({providers:{anthropic:{compat:{supportsMessageThreads:true}}}});
+assert.equal(chosen.status,0,chosen.stdout+chosen.stderr);assert.doesNotMatch(chosen.stderr,threadsWarning);
+const pinned=spawnSync(process.execPath,[path.join(root,'bin/launch.mjs'),'doctor'],{encoding:'utf8'});
+assert.equal(pinned.status,0,pinned.stdout+pinned.stderr);assert.doesNotMatch(pinned.stderr,threadsWarning);
 // Thiếu package trong runtime: doctor báo từng package bằng một dòng, không ném ENOENT.
 const advisorDir=path.join(root,'runtimes','current','node_modules','pi-advisor-flow'),advisorAside=`${advisorDir}.aside`;
 fs.renameSync(advisorDir,advisorAside);
