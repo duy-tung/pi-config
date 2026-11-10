@@ -351,20 +351,75 @@ function recursiveOwnership(name: string, command: SimpleCommand, ctx: RiskConte
   return undefined;
 }
 
+/** Rủi ro của file mà tool edit/write ghi: cùng danh sách với đích ghi của lệnh shell. */
+export function writeRisk(file: string, ctx: RiskContext): string | undefined {
+  return targetRisk({ file }, ctx);
+}
+
+const ABSOLUTE = /^(?:[\/\\]|~(?:[\/\\]|$)|\$HOME(?:\/|$)|\$\{HOME\}(?:\/|$)|[A-Za-z]:[\/\\])/u;
+
+/**
+ * Thư mục sau cd/pushd/popd (bỏ cờ -L/-P/-e/-@ và --). undefined khi không biết: `cd -`, popd, pushd không đối số, đích
+ * không phải chữ thuần (trừ $HOME) hoặc đích tương đối với thư mục chưa biết.
+ */
+export function changeDirectory(command: SimpleCommand, dir: string | undefined, home: string): string | undefined {
+  const name = commandName(command);
+  if (name !== "cd" && name !== "pushd") return undefined;
+  let index = 1;
+  while (/^-[LPe@]+$/u.test(command.words[index] ?? "")) index++;
+  if (command.words[index] === "--") index++;
+  const word = command.words[index];
+  if (word === undefined) return name === "cd" ? home : undefined;
+  // `cd -` và `pushd +N`/`-N` (xoay ngăn xếp thư mục) không biết đích.
+  if (/^(?:-|[+-]\d+)$/u.test(word) || (dir === undefined && !ABSOLUTE.test(word))) return undefined;
+  return expand(word, command.literal[index], { cwd: dir ?? home, home, roots: [], tempRoots: [] }, dir ?? home);
+}
+
+const DIRECTORY_CHANGERS = new Set(["cd", "pushd", "popd"]);
+
+/**
+ * Các thư mục có thể là thư mục làm việc khi từng lệnh chạy, theo cd/pushd/popd đứng trước. cd chỉ thu hẹp cho lệnh nối
+ * ngay sau bằng `&&` (chỉ chạy khi cd thành công). Sau `;`, `||`, `|`, `&` lệnh kế có thể chạy ở mọi thư mục đã gặp: cd
+ * có thể lỗi, pipeline và job nền chạy trong subshell. Lệnh bóc từ wrapper hay script lồng (không theo thứ tự của chuỗi)
+ * cũng xét mọi thư mục đã gặp. undefined: không biết (sau `cd -`, popd, đích không phải chữ thuần).
+ */
+export function commandDirs(commands: SimpleCommand[], cwd: string, home: string): (string[] | undefined)[] {
+  const top = commands.filter((command) => !command.wrapped);
+  const seen = new Set([cwd]);
+  let unknown = false;
+  let possible: string[] | undefined = [cwd];
+  const dirs = new Map<SimpleCommand, string[] | undefined>();
+  top.forEach((command, index) => {
+    dirs.set(command, possible);
+    const changes = DIRECTORY_CHANGERS.has(commandName(command));
+    let targets: string[] | undefined;
+    if (changes) {
+      const next = (possible ?? [undefined]).map((dir) => changeDirectory(command, dir, home));
+      targets = next.every((dir): dir is string => dir !== undefined) ? [...new Set(next)] : undefined;
+      if (targets) for (const dir of targets) seen.add(dir);
+      else unknown = true;
+    }
+    if (top[index + 1]?.after === "&&") possible = changes ? targets : possible;
+    else possible = unknown ? undefined : [...seen];
+  });
+  const anywhere = unknown ? undefined : [...seen];
+  return commands.map((command) => (command.wrapped ? anywhere : dirs.get(command)));
+}
+
 /** Rủi ro của lệnh bash (đã phân tích). Theo dõi `cd` theo thứ tự để đích tương đối tính đúng thư mục. */
 export function detectRisks(analysis: ShellAnalysis, ctx: RiskContext): string[] {
   const risks = new Set<string>();
-  let cwd = ctx.cwd;
-  for (const command of analysis.commands) {
+  const bases = commandDirs(analysis.commands, ctx.cwd, ctx.home);
+  for (const [at, command] of analysis.commands.entries()) {
     const name = commandName(command);
-    if (name === "cd" || name === "pushd") {
-      const word = command.words[1];
-      const next = word === undefined ? ctx.home : word === "-" ? undefined : expand(word, command.literal[1], ctx, cwd);
-      if (next) cwd = next;
-    }
-    for (const target of writeTargets(command, ctx, cwd)) {
-      const risk = targetRisk(target, ctx);
-      if (risk) risks.add(risk);
+    const dirs = bases[at] ?? [ctx.cwd];
+    for (const cwd of dirs) {
+      for (const target of writeTargets(command, ctx, cwd)) {
+        const risk = targetRisk(target, ctx);
+        if (risk) risks.add(risk);
+      }
+      const ownership = recursiveOwnership(name, command, ctx, cwd);
+      if (ownership) risks.add(ownership);
     }
     const assignments = [
       ...command.assignments,
@@ -384,8 +439,6 @@ export function detectRisks(analysis: ShellAnalysis, ctx: RiskContext): string[]
     if (scheduler) risks.add(scheduler);
     const disk = diskRisk(name, command);
     if (disk) risks.add(disk);
-    const ownership = recursiveOwnership(name, command, ctx, cwd);
-    if (ownership) risks.add(ownership);
   }
   return [...risks];
 }

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { type ExtensionAPI, type ExtensionContext, getAgentDir, getPackageDir, parseFrontmatter, type ToolResultEventResult } from "@earendil-works/pi-coding-agent";
 import { classifyWithFallback, type ClassifierResult, type Complete } from "./lib/classifier.ts";
+import { completionRequest, completionText } from "./lib/completion.ts";
 import {
   availableModes, loadConfig, nextMode, parseMode, type PermissionMode, prompts, readState, saveClassifier, saveSettings, withBlockedOutsideReads,
   writeState,
@@ -19,7 +20,7 @@ import {
 import * as text from "./lib/messages.ts";
 import { type CallFacts, decide, describeCall, filterDeniedGrep, type PolicyContext, SAFE_TOOLS, type ToolCall } from "./lib/policy.ts";
 import { resolveToolPath, temporaryRoots } from "./lib/paths.ts";
-import { buildSystemPrompt, DEFAULT_ALLOW, DEFAULT_ENVIRONMENT, DEFAULT_HARD_DENY, DEFAULT_SOFT_DENY, resolveSlots } from "./lib/prompt.ts";
+import { buildSystemPrompt, DEFAULT_ALLOW, DEFAULT_ENVIRONMENT, DEFAULT_HARD_DENY, DEFAULT_SOFT_DENY, resolveSlots, userInstructions } from "./lib/prompt.ts";
 import { buildRuleSet, isPathRule } from "./lib/rules.ts";
 import type { ShellAnalysis } from "./lib/shell.ts";
 import { callKey, LIMITS, PermissionState } from "./lib/state.ts";
@@ -436,35 +437,11 @@ export default function piAutoMode(pi: ExtensionAPI) {
     return systemPrompt.text;
   }
 
-  function instructionsBlock(): string | undefined {
-    if (!contextFiles.length) return undefined;
-    let budget = 8_000;
-    const parts: string[] = [];
-    for (const file of contextFiles) {
-      if (budget <= 0) break;
-      const content = file.content.length > budget ? `${file.content.slice(0, budget)}\n…[truncated]` : file.content;
-      budget -= content.length;
-      parts.push(`## ${file.path}\n${content}`);
-    }
-    return `<user_instructions>\n${parts.join("\n\n")}\n</user_instructions>`;
-  }
-
-  /** Hai giai đoạn dùng cùng model để giai đoạn 2 dùng lại cache của giai đoạn 1. */
+  /** Hai giai đoạn dùng cùng model để giai đoạn 2 dùng lại cache của giai đoạn 1 (lib/completion.ts). */
   function makeComplete(ctx: ExtensionContext, model: NonNullable<ExtensionContext["model"]>, cacheKey: string): Complete {
     return async (request, options) => {
-      const content = [...request.blocks, request.suffix].map((value) => ({ type: "text" as const, text: value }));
-      const stream = ctx.modelRegistry.streamSimple(model, {
-        systemPrompt: request.systemPrompt,
-        messages: [{ role: "user", content, timestamp: Date.now() }],
-      }, {
-        maxTokens: options.maxTokens, signal: options.signal, sessionId: cacheKey, cacheRetention: "short",
-        ...(options.reasoning && options.reasoning !== "off" ? { reasoning: options.reasoning as never } : {}),
-      });
-      const message = await stream.result();
-      if (message.stopReason === "error" || message.stopReason === "aborted") {
-        throw new Error(message.errorMessage || `classifier request ${message.stopReason}`);
-      }
-      return message.content.filter((part) => part.type === "text").map((part) => (part as { text: string }).text).join("");
+      const built = completionRequest(model, request, options, cacheKey);
+      return completionText(await ctx.modelRegistry.streamSimple(model, built.context, built.options as never).result());
     };
   }
 
@@ -488,7 +465,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
       action: { toolName: call.toolName, input: call.input, toolCallId }, meta, skipTools: SAFE_TOOLS, child,
     });
     const blocks: string[] = [];
-    const instructions = instructionsBlock();
+    const instructions = userInstructions(contextFiles);
     if (instructions) blocks.push(instructions);
     if (child) {
       const anchor = rootFor(sessionId)?.humanMessages() ?? [];

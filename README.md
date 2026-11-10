@@ -58,7 +58,7 @@ Background cung cấp shell jobs. Khi job kết thúc (xong, lỗi hoặc bị d
 Rewind (`pi-rewind`, extension của repo) theo giao diện `/rewind` của Claude Code: mỗi prompt có checkpoint; `Esc Esc` hoặc `/rewind` mở danh sách prompt kèm số dòng đã đổi, rồi chọn khôi phục code, hội thoại, cả hai, hoặc tóm tắt từ/đến prompt đó. File do `edit`/`write` sửa luôn được theo dõi; file do `bash`/`Agent` và lệnh `!` của bạn sửa được theo dõi trong git worktree. `/tree` và `/fork` của Pi cũng hỏi có khôi phục code về cùng điểm không. Mục Redo trong menu (hoặc `/redo`) hoàn tác lần rewind gần nhất, và ngay sau Redo có mục Undo redo để lấy lại việc đã làm sau lần rewind. `/clear` mở phiên mới như `/new`, và menu của phiên mới có mục quay lại phiên cũ. Nếu Pi thoát giữa lúc khôi phục code, menu cho hoàn tất hoặc hoàn tác lần khôi phục đó. Chi tiết và giới hạn: [docs/rewind.md](docs/rewind.md).
 
 Permission (`pi-auto-mode`, extension của repo) có bốn mode như Claude Code. **Auto** là mặc định: thao tác đọc, lệnh chỉ đọc và sửa file trong project chạy ngay; đọc file ngoài project chỉ hỏi một lần đầu; lệnh khác qua bộ phân loại hai giai đoạn.
-- Giai đoạn 1 là Claude Sonnet 5.5 không suy luận, trả lời trong vài token; lệnh nó cho qua chạy luôn.
+- Giai đoạn 1 là Claude Sonnet 5.5 với mức suy luận thấp nhất (`low`, vì Sonnet 5.5 không tắt được suy luận), trả lời trong vài token; lệnh nó cho qua chạy luôn.
 - Giai đoạn 2 cũng là Sonnet 5.5, có suy luận, chỉ xét lệnh bị gắn cờ. Cả hai chỉ thấy tin nhắn của người dùng cùng lệnh của agent, không thấy lời agent hay kết quả tool.
 - Lệnh bị chặn trả lý do cho agent để đi đường an toàn hơn; 3 lần chặn liên tiếp hoặc 20 lần trong phiên thì hỏi người dùng.
 

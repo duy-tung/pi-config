@@ -28,6 +28,8 @@ export interface SimpleCommand {
   redirects: Redirect[];
   /** Lệnh được bóc ra từ wrapper (sudo, env, xargs, bash -c...), không phải lệnh cấp cao nhất. */
   wrapped?: string;
+  /** Toán tử đứng ngay trước lệnh cấp cao nhất (`&&`, `||`, `;`, `|`, `&`…); lệnh đầu tiên không có. */
+  after?: string;
 }
 
 export interface ShellAnalysis {
@@ -452,14 +454,16 @@ function inlineScript(words: string[]): string | undefined {
 function build(tokens: Token[], problems: Set<string>): SimpleCommand[] {
   const commands: SimpleCommand[] = [];
   let current: SimpleCommand = { words: [], literal: [], glob: [], assignments: [], redirects: [] };
+  let op: string | undefined;
   const finish = () => {
-    if (current.words.length || current.assignments.length || current.redirects.length) commands.push(current);
+    if (current.words.length || current.assignments.length || current.redirects.length) commands.push(op === undefined ? current : { ...current, after: op });
     current = { words: [], literal: [], glob: [], assignments: [], redirects: [] };
   };
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
     if (token.kind === "op") {
       finish();
+      op = token.value;
       continue;
     }
     if (token.kind === "redir") {
@@ -533,8 +537,6 @@ export function analyzeShell(source: string, depth = 0): ShellAnalysis {
 type Validator = (args: string[]) => boolean;
 
 const always: Validator = () => true;
-const noneOf = (...flags: string[]): Validator => (args) =>
-  !args.some((arg) => flags.some((flag) => arg === flag || (flag.startsWith("--") && arg.startsWith(`${flag}=`))));
 const positionals = (args: string[]) => args.filter((arg) => !arg.startsWith("-"));
 
 /** Cú pháp tùy chọn của một lệnh, theo cách getopt_long đọc. */
@@ -604,18 +606,34 @@ const YQ_OPTIONS: OptionSyntax = { shortValues: "fIops", longValues: ["--front-m
 const SORT_OUTPUT = { short: "o", long: ["--output"] };
 const BASE64_OUTPUT = { short: "o", long: ["--output"] };
 
+/** Tùy chọn dài, kể cả dạng viết tắt mà parse-options của git nhận (`--op` là `--open-files-in-pager`), đứng trước "--". */
+const longOption = (args: string[], option: string, shortest: number) => {
+  const end = args.indexOf("--");
+  return (end < 0 ? args : args.slice(0, end)).some((arg) => {
+    const name = arg.split("=")[0];
+    return name.length >= shortest && option.startsWith(name);
+  });
+};
+/** Cụm cờ ngắn chứa chữ `flag` (-O, -iOvi, -O'cmd'), đứng trước "--". */
+const shortFlag = (args: string[], flag: string) => {
+  const end = args.indexOf("--");
+  return (end < 0 ? args : args.slice(0, end)).some((arg) => /^-[^-]/u.test(arg) && arg.slice(1).includes(flag));
+};
+
 const GIT_READ: Record<string, Validator> = {
   status: always,
-  log: noneOf("--output", "--ext-diff"),
-  diff: noneOf("--output", "--ext-diff"),
-  show: noneOf("--output", "--ext-diff"),
+  log: always,
+  diff: always,
+  show: always,
   shortlog: always,
   blame: always,
   annotate: always,
-  grep: noneOf("-O", "--open-files-in-pager"),
+  // -O/--open-files-in-pager chạy chương trình mở file kết quả.
+  grep: (args) => !shortFlag(args, "O") && !longOption(args, "--open-files-in-pager", 4),
   "ls-files": always,
   "ls-tree": always,
-  "ls-remote": always,
+  // --upload-pack/--exec chạy chương trình (với remote cục bộ là chạy ngay trên máy).
+  "ls-remote": (args) => !longOption(args, "--upload-pack", 4) && !longOption(args, "--exec", 4),
   "rev-parse": always,
   "rev-list": always,
   describe: always,
@@ -657,7 +675,10 @@ function gitReadOnly(args: string[]): boolean {
   }
   if (i >= args.length) return true;
   const validator = GIT_READ[args[i]];
-  return validator ? validator(args.slice(i + 1)) : false;
+  const rest = args.slice(i + 1);
+  // Lệnh duyệt revision (log, show, diff, shortlog, whatchanged, rev-list, blame, reflog, stash show…) nhận --output
+  // (ghi file) và --ext-diff (chạy chương trình diff ngoài).
+  return !!validator && validator(rest) && !longOption(rest, "--output", 5) && !longOption(rest, "--ext-diff", 5);
 }
 
 const GH_READ: Record<string, Set<string>> = {
@@ -685,6 +706,32 @@ const PACKAGE_READ: Record<string, Set<string>> = {
 
 // bun pm: chỉ lệnh con in thông tin (cache không kèm rm). pack chạy lifecycle script của package; trust, migrate, version, pkg ghi file.
 const BUN_PM_READ = new Set(["ls", "bin", "cache", "untrusted", "default-trusted"]);
+
+/** Cờ kiểu Go (-flag, --flag, -flag=giá trị); cờ trong `values` không viết "=" thì lấy từ kế tiếp làm giá trị. */
+function goFlagsWithin(args: string[], allowed: Set<string>, values = new Set<string>()): boolean {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--") return true;
+    if (!arg.startsWith("-") || arg === "-") continue;
+    const [name, value] = arg.replace(/^--?/u, "").split(/=(.*)/su);
+    if (!allowed.has(name)) return false;
+    if (value === undefined && values.has(name)) i++;
+  }
+  return true;
+}
+
+/**
+ * Lệnh con của package manager có cờ chạy chương trình hoặc ghi cấu hình: go list -toolexec/-exec, go env -w/-u,
+ * cargo --config (vd build.rustc-wrapper) và -Z. go list chỉ nhận cờ đọc thông tin, không cờ build.
+ */
+const PACKAGE_ARGS: Record<string, Validator> = {
+  go: (args) => args[0] === "env" ? goFlagsWithin(args.slice(1), new Set(["json", "changed"]))
+    : args[0] === "version" ? goFlagsWithin(args.slice(1), new Set(["m", "v", "json"]))
+    : goFlagsWithin(args.slice(1), new Set(["m", "json", "f", "e", "u", "versions", "retracted", "deps", "find", "test", "tags", "mod"]), new Set(["f", "tags", "mod"])) &&
+      // -mod=mod được sửa go.mod/go.sum; readonly và vendor chỉ đọc.
+      !args.some((arg, i) => /^--?mod(?:=mod)?$/u.test(arg) && (arg.endsWith("=mod") || args[i + 1] === "mod")),
+  cargo: (args) => !args.some((arg) => /^--config(?:=|$)|^-Z/u.test(arg)),
+};
 
 const VERSION_ONLY = new Set(["node", "python", "python3", "ruby", "perl", "java", "rustc", "deno", "tsc", "php", "lua", "uv", "docker", "kubectl", "terraform"]);
 
@@ -717,6 +764,7 @@ const READ_ONLY: Record<string, Validator> = {
   git: gitReadOnly,
   gh: (args) => {
     const allowed = GH_READ[args[0] ?? ""];
+    if (args[0] === "auth" && (args.includes("--show-token") || shortFlag(args, "t"))) return false;
     return !!allowed && allowed.has(args[1] ?? "") && !args.some((arg) => arg === "--web" || arg === "-w");
   },
   command: (args) => args[0] === "-v" || args[0] === "-V",
@@ -745,7 +793,9 @@ export function isReadOnlyCommand(command: SimpleCommand): boolean {
   if (VERSION_ONLY.has(name)) return args.length === 1 && ["--version", "-v", "-V", "version"].includes(args[0]);
   const table = PACKAGE_READ[name];
   if (name === "bun" && args[0] === "pm" && (!BUN_PM_READ.has(args[1] ?? "") || (args[1] === "cache" && args.length > 2))) return false;
-  if (table) return args.length > 0 && table.has(args[0]) && !args.includes("-g") && !args.includes("--global");
+  if (table) {
+    return args.length > 0 && table.has(args[0]) && !args.includes("-g") && !args.includes("--global") && (PACKAGE_ARGS[name]?.(args) ?? true);
+  }
   const validator = READ_ONLY[name];
   return validator ? validator(args) : false;
 }
