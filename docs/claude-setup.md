@@ -8,17 +8,16 @@ Tài liệu Claude Code ghi OAuth của gói Pro/Max dành cho Claude Code và �
 
 `@gotgenes/pi-anthropic-auth` 3.4.4 shape request OAuth (billing header, system prompt) cho mọi request đi qua provider `anthropic`, và tự thử lại khi Anthropic yêu cầu phiên bản Claude Code mới hơn. pi-config tắt cảnh báo extra usage lúc khởi động của Pi (`warnings.anthropicExtraUsage: false`), vì phiên chính, compaction và extension gọi qua `ctx.modelRegistry.streamSimple()` đều đi qua shaping; extension gọi thẳng `compat.streamSimple` của pi-ai thì không, và request đó có thể bị tính vào extra usage. Bật lại trong `/settings` → Warnings.
 
-## Message threads tắt
+## Message threads
 
-Pi 1.5.1 bật message threads cho provider `anthropic` trên `api.anthropic.com`: request đầu của phiên gửi `thread: {type: "create"}`, các lượt sau chỉ gửi tin nhắn mới kèm `thread: {type: "continue"}` và bỏ `system`, `tools` (server giữ bản của lượt đầu). pi-anthropic-auth shape request trước bước đó, nên các lượt sau không còn billing header trong body. Chưa có nguồn xác nhận Claude OAuth vẫn tính các request như vậy vào gói Pro/Max, nên pi-config tắt tính năng này trong `~/.pi/agent/models.json`:
+Pi 1.5.1 bật message threads cho provider `anthropic` trên `api.anthropic.com`, và pi-config giữ mặc định đó. Request đầu của phiên là request đầy đủ đã qua shaping OAuth, kèm `thread: {type: "create"}`. Các lượt sau chỉ gửi tin nhắn mới kèm `thread: {type: "continue"}` và bỏ `system`, `tools`: server giữ bản của lượt đầu, nên billing header không nằm trong body của các lượt đó.
 
-```json
-{ "providers": { "anthropic": { "compat": { "supportsMessageThreads": false } } } }
-```
+Kiểm ngày 10/11/2026 bằng một phiên thật hai lượt (Opus 5.5, pi-anthropic-auth 3.4.4): lượt `continue` trả 200 ngay lần đầu, model nhớ nội dung lượt trước, và header `anthropic-ratelimit-unified-*` giống hệt lượt đầy đủ (cùng `representative-claim`, extra usage đang bị từ chối ở cấp tổ chức mà request vẫn qua). Tức là lượt `continue` được chấp nhận và tính vào gói; phép thử không cho biết quota được tính nặng hay nhẹ hơn.
 
-Với cờ này, request qua OAuth của Pi 1.5.1 giống hệt Pi 1.5.0 (đã so body và header của ba lượt liên tiếp, chỉ khác đường dẫn cài đặt trong system prompt). Muốn thử threads: đổi cờ thành `true` (installer giữ giá trị bạn sửa), chạy vài lượt và xem footer quota có báo `extra` không; server từ chối trường `thread` thì Pi tự gửi lại request đầy đủ và tắt threads cho phiên đó.
-
-Installer giữ nguyên `models.json` bạn tự viết, nên file đó phải tự mang cờ trên; `pi-doctor` cảnh báo khi thiếu.
+- Khi `system` hay `tools` đổi (đổi model, compaction, pi-anthropic-auth đổi phiên bản trong billing header), Pi tự mở thread mới bằng một request đầy đủ.
+- Server từ chối trường `thread` thì Pi gửi lại request đầy đủ và tắt threads cho phiên đó.
+- Bộ phân loại của auto mode là request một lượt nên không tạo thread (`disableContinuation` trong `lib/completion.ts`); body của nó giống hệt trước, chỉ header `anthropic-beta` có thêm beta của threads.
+- Tắt hẳn: tạo `~/.pi/agent/models.json` với `{ "providers": { "anthropic": { "compat": { "supportsMessageThreads": false } } } }`; khi đó request giống hệt Pi 1.5.0. Installer không sinh file này và giữ nguyên file bạn tự viết.
 
 Pi 1.5.1 cũng đổi mặc định `cacheWarming` sang `"idle"` (làm mới cache tới 30 phút sau khi agent dừng). pi-config vẫn đặt `"cacheWarming": "off"` nên không bị ảnh hưởng.
 

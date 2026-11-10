@@ -10,7 +10,9 @@ import { sse } from "./search-fixtures.mjs";
 
 // Bộ phân loại với Sonnet 5.5 qua Claude OAuth (pi-ai và pi-anthropic-auth của bản cài, fetch giả, không gọi mạng):
 // - Sonnet 5.5 không tắt được suy luận; giai đoạn 1 gửi mức thấp nhất (low), không để pi-ai mặc định effort "high";
-// - dấu cache nằm ở khối transcript, câu dặn của giai đoạn đứng sau dấu, nên giai đoạn 2 đọc lại cache giai đoạn 1 vừa ghi.
+// - dấu cache nằm ở khối transcript, câu dặn của giai đoạn đứng sau dấu, nên giai đoạn 2 đọc lại cache giai đoạn 1 vừa ghi;
+// - mỗi giai đoạn là một request độc lập: không gửi `thread` (message threads của Pi 1.5.1), nên server không giữ
+//   thread nào cho các lần phân loại.
 const root = process.env.PI_CONFIG_TEST_ROOT;
 const reply = (text) => [
   { type: "message_start", message: { id: "msg_fixture", type: "message", role: "assistant", model: "claude-sonnet-5-5", content: [], stop_reason: null, usage: { input_tokens: 12, output_tokens: 1 } } },
@@ -58,6 +60,7 @@ test("bộ phân loại qua Claude OAuth: effort thấp nhất ở giai đoạn 
     const userOf = (body) => body.messages.findLast((message) => message.role === "user");
     for (const [index, body] of bodies.entries()) {
       const stage = `giai đoạn ${index + 1}`;
+      assert.equal(body.thread, undefined, `${stage}: bộ phân loại không tạo thread`);
       assert.match(body.system[0].text, /^x-anthropic-billing-header:/u, "Request phải qua shaping OAuth");
       assert.equal(body.thinking.type, "adaptive", stage);
       assert.deepEqual(body.messages.at(-1).output_config, { effort: "low" }, stage);

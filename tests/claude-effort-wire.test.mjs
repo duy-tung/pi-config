@@ -4,15 +4,14 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
-import { buildConfiguration } from "../lib/config.mjs";
-import { modelDefaults } from "./install-fixture.mjs";
 import { anthropicSearchEvents, sse } from "./search-fixtures.mjs";
 
 // Opus 5.5 qua gói Pro/Max: Pi ghim output_config.effort ở "low" (Pi 1.5.0; trước đó "high") và gửi effort theo lượt bằng system message
 // rỗng mang output_config; pi-anthropic-auth >= 3.3.2 giữ message đó khi shape OAuth (upstream PR #79), nên
 // message cuối cùng phải mang đúng mức /thinking của phiên. fetch giả, không gọi mạng.
-// Pi 1.5.1 bật message threads cho api.anthropic.com: từ lượt thứ hai request bỏ `system` (billing header) và `tools`.
-// models.json của installer tắt threads, nên mọi lượt phải là request đầy đủ đã qua shaping OAuth.
+// Pi 1.5.1 bật message threads cho api.anthropic.com: lượt đầu là request đầy đủ đã qua shaping OAuth kèm
+// `thread: create`; các lượt sau chỉ gửi tin nhắn mới với `thread: continue`, bỏ `system` và `tools` (server giữ bản
+// của lượt đầu) nhưng vẫn mang effort theo lượt. Phiên thật 10/11/2026: lượt continue trả 200 và tính vào gói.
 const root = process.env.PI_CONFIG_TEST_ROOT;
 test("Opus 5.5 qua OAuth gửi đúng mức thinking của phiên", { skip: !root, timeout: 120000 }, async () => {
   const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pi-claude-effort-")));
@@ -23,9 +22,6 @@ test("Opus 5.5 qua OAuth gửi đúng mức thinking của phiên", { skip: !roo
     packages: [path.join(modules, "@gotgenes", "pi-anthropic-auth")], extensions: [], skills: [],
     quietStartup: true, cacheWarming: "off", compaction: { enabled: false }, retry: { enabled: false },
   }));
-  const models = buildConfiguration({ root: temp, agentDir, nodePath: process.execPath, home: temp, modelDefaults })
-    .find((file) => file.path === path.join(agentDir, "models.json"));
-  fs.writeFileSync(models.path, models.content);
   fs.writeFileSync(path.join(agentDir, "auth.json"), JSON.stringify({
     anthropic: { type: "oauth", access: "sk-ant-oat01-fixture", refresh: "fixture-refresh", expires: Date.now() + 3600000 },
   }));
@@ -50,17 +46,23 @@ test("Opus 5.5 qua OAuth gửi đúng mức thinking của phiên", { skip: !roo
     const errors = [];
     await session.bindExtensions({ mode: "rpc", onError: (error) => errors.push(error) });
     await session.setModel(runtime.getModel("anthropic", "claude-opus-5-5"));
-    for (const level of ["medium", "max", "high"]) {
+    for (const [turn, level] of ["medium", "max", "high"].entries()) {
       session.setThinkingLevel(level);
       bodies.length = 0;
       betas.length = 0;
       await session.prompt(`Effort fixture ${level}`);
       assert.equal(bodies.length, 1);
       const [body] = bodies;
-      assert.equal(body.thread, undefined, "Message threads phải tắt: request nào cũng gửi đủ system và tools");
-      assert.doesNotMatch(betas[0], /message-threads/u);
-      assert.match(body.system?.[0]?.text ?? "", /^x-anthropic-billing-header:/u, "Request phải qua shaping OAuth");
-      assert.ok(body.tools?.length > 0, "Lượt nào cũng gửi đủ tools");
+      assert.match(betas[0], /message-threads/u);
+      if (turn === 0) {
+        assert.deepEqual(body.thread, { type: "create" });
+        assert.match(body.system?.[0]?.text ?? "", /^x-anthropic-billing-header:/u, "Request đầy đủ phải qua shaping OAuth");
+        assert.ok(body.tools?.length > 0, "Lượt đầu gửi đủ tools");
+      } else {
+        assert.deepEqual(body.thread, { type: "continue", previous_message_id: "msg_fixture" });
+        assert.deepEqual([body.system, body.tools], [undefined, undefined], "Lượt continue không gửi lại system và tools");
+        assert.deepEqual(body.messages.map((message) => message.role), ["user", "system"], "Lượt continue chỉ gửi tin nhắn mới");
+      }
       assert.equal(body.thinking.type, "adaptive");
       assert.equal(body.output_config.effort, "low", "Pi ghim effort cấp request");
       const last = body.messages.at(-1);

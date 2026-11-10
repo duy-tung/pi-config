@@ -47,7 +47,11 @@ export function cacheBeforeSuffix(payload: unknown, suffix: string): unknown {
   return undefined;
 }
 
-/** Context và options cho một request: một tin nhắn user gồm các khối (chỉ dẫn, transcript) rồi câu dặn của giai đoạn. */
+/**
+ * Context và options cho một request: một tin nhắn user gồm các khối (chỉ dẫn, transcript) rồi câu dặn của giai đoạn.
+ * Mỗi lần phân loại là một request độc lập, nên tắt message threads của pi-ai (từ 1.5.1 request có sessionId sẽ tạo
+ * một thread trên server mà không lượt nào nối tiếp); sessionId vẫn cần cho prompt cache.
+ */
 export function completionRequest(model: ClassifierModel, request: CompletionRequest, options: CompletionOptions, cacheKey: string) {
   const reasoning = !options.reasoning || options.reasoning === "off" ? lowestReasoning(model) : options.reasoning;
   return {
@@ -61,6 +65,7 @@ export function completionRequest(model: ClassifierModel, request: CompletionReq
     },
     options: {
       maxTokens: options.maxTokens, signal: options.signal, sessionId: cacheKey, cacheRetention: "short" as const,
+      disableContinuation: true,
       ...(reasoning !== "off" ? { reasoning } : {}),
       onPayload: (payload: unknown) => cacheBeforeSuffix(payload, request.suffix),
     },

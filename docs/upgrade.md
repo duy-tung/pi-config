@@ -43,7 +43,7 @@ node scripts/rehash-patches.mjs --write  # ghi phiên bản và checksum mới v
 
 - `npm run check`, `npm test` (gồm `patched-typecheck`: bản vá không thêm lỗi kiểu), `npm run smoke` (cài thật với provider giả).
 - Rà breaking change trong CHANGELOG của Pi và từng package: API extension, tên tool, sự kiện, cấu hình mặc định.
-- Rà thay đổi dạng request tới Anthropic (`pi-ai/dist/api/anthropic-messages.js`): pi-anthropic-auth shape request qua `onPayload`, nên phần Pi sửa sau bước đó (vd message threads bỏ `system` ở lượt sau) không còn shaping. `tests/claude-effort-wire.test.mjs` kiểm ba lượt liên tiếp.
+- Rà thay đổi dạng request tới Anthropic (`pi-ai/dist/api/anthropic-messages.js`): pi-anthropic-auth shape request qua `onPayload`, nên phần Pi sửa sau bước đó (vd message threads bỏ `system` ở lượt sau) không còn shaping. `tests/claude-effort-wire.test.mjs` kiểm ba lượt liên tiếp; thay đổi như vậy cần một phiên thật vài lượt (xem header `anthropic-ratelimit-unified-*`) trước khi để mặc định.
 - Rà cơ chế tự cập nhật của công cụ đi kèm (Firecrawl CLI): runtime ghim phiên bản, nên tắt bằng biến môi trường trong `runtime/launch.mjs`.
 - Cập nhật bảng phiên bản và đoạn về vendor trong README; `THIRD_PARTY_NOTICES.md` khi thêm/bỏ package hoặc vendor; `AGENTS.md` của repo và `docs/` khi hành vi đổi.
 - Đẩy nhánh và chờ CI xanh trên Ubuntu và macOS.
