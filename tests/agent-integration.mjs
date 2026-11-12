@@ -70,10 +70,10 @@ const advisorFile = path.join(agentDir, "advisor.json");
 assert.equal(readJson(advisorFile).advisorLogFeedback, undefined, "Bản cài theo mặc định của pi-advisor-flow: không gửi advisor-budget");
 writeJson(advisorFile, { ...readJson(advisorFile), advisor: defaults.advisor.advisor, advisorEffort: defaults.advisor.advisorEffort, advisorMaxCallsPerSession: 5, advisorLogFeedback: true });
 writeJson(path.join(agentDir, "auth.json"), {});
-// Explicitly replace web config rather than copying a live credential command.
+// Cấu hình web tối thiểu, một provider cố định: kịch bản này chỉ cần web tools có mặt, không tìm kiếm thật.
 writeJson(path.join(agentDir, "web-search.json"), {
-  provider: "firecrawl", workflow: "none", firecrawlApiKey: "fixture-never-used",
-  allowBrowserCookies: false, searchRouting: { providers: ["firecrawl"], useCurrentModel: false },
+  provider: "exa", workflow: "none",
+  allowBrowserCookies: false, searchRouting: { providers: ["exa"], useCurrentModel: false },
   githubClone: { enabled: false },
 });
 writeJson(path.join(cwd, "package.json"), { name: "pi-config-integration-fixture", private: true, type: "module" });
@@ -87,7 +87,6 @@ Object.assign(process.env, {
   PI_CODING_AGENT_DIR: agentDir,
   PI_CONFIG_AUTH_PATH: path.join(agentDir, "auth.json"),
   PI_BG_DISABLE_UPDATE_CHECK: "1",
-  FIRECRAWL_NO_SEARCH_FEEDBACK: "1", FIRECRAWL_NO_ENDPOINT_FEEDBACK: "1", FIRECRAWL_NO_AUTO_UPDATE: "1",
 });
 for (const key of Object.keys(process.env)) {
   if (/API_KEY|AUTH_TOKEN|ACCESS_TOKEN|REFRESH_TOKEN/u.test(key)) delete process.env[key];

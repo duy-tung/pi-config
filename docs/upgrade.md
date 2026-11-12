@@ -28,7 +28,7 @@ cp "$tmp/manifests/current/package-lock.json" manifests/current/
 
 Đọc diff của lockfile: chỉ các package định nâng và dependency của chúng được đổi.
 
-`overrides` trong manifest ép dependency gián tiếp lên bản đã vá khi package cha còn ghim bản có lỗ hổng. Runtime hiện không cần override: Pi 1.5.2 tự ghim `undici` 8.12.3 và `minimatch` 11.0.3, và lockfile giữ `zod` 4.6.7. Firecrawl ghim `axios` 1.20.0. Zod 3 của Firecrawl (firecrawl-js chỉ nhận `^3`) chưa có bản vá nên để nguyên. Sau khi nâng, chạy `npm audit --package-lock-only --prefix manifests/current` (và `manifests/firecrawl`); upstream đã kéo một dependency lên tới hoặc quá bản ghim thì bỏ override đó.
+`overrides` trong manifest ép dependency gián tiếp lên bản đã vá khi package cha còn ghim bản có lỗ hổng. Runtime hiện không cần override: Pi 1.5.2 tự ghim `undici` 8.12.3 và `minimatch` 11.0.3, và lockfile giữ `zod` 4.6.7. Sau khi nâng, chạy `npm audit --package-lock-only --prefix manifests/current`; upstream đã kéo một dependency lên tới hoặc quá bản ghim thì bỏ override đó.
 
 ## 4. Bản vá
 
@@ -45,6 +45,5 @@ node scripts/rehash-patches.mjs --write  # ghi phiên bản và checksum mới v
 - Rà breaking change trong CHANGELOG của Pi và từng package: API extension, tên tool, sự kiện, cấu hình mặc định.
 - Rà thay đổi dạng request tới Anthropic (`pi-ai/dist/api/anthropic-messages.js`): pi-anthropic-auth shape request qua `onPayload`, nên phần Pi sửa sau bước đó (vd message threads bỏ `system` ở lượt sau) không còn shaping. `tests/claude-effort-wire.test.mjs` kiểm ba lượt liên tiếp; thay đổi như vậy cần một phiên thật vài lượt (xem header `anthropic-ratelimit-unified-*`) trước khi để mặc định.
 - Changelog của package: Pi hiện mọi mục có số lớn hơn phiên bản đã xem rồi ghi lại phiên bản đang cài, nên một mục đánh số cao hơn phiên bản đang cài sẽ hiện ở mọi phiên mới. `tests/extension-changelog.test.mjs` (chạy trong smoke) bắt trường hợp này; sửa bằng một bản vá bỏ mục đó, như với pi-advisor-flow.
-- Rà cơ chế tự cập nhật của công cụ đi kèm (Firecrawl CLI): runtime ghim phiên bản, nên tắt bằng biến môi trường trong `runtime/launch.mjs`.
 - Cập nhật bảng phiên bản và đoạn về vendor trong README; `THIRD_PARTY_NOTICES.md` khi thêm/bỏ package hoặc vendor; `AGENTS.md` của repo và `docs/` khi hành vi đổi.
 - Đẩy nhánh và chờ CI xanh trên Ubuntu và macOS.

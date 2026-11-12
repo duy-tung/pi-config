@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {COMMAND_TIMEOUT_MS, npmTimeout, run} from '../lib/system.mjs';
+import {execFileSync} from 'node:child_process';
+import {COMMAND_TIMEOUT_MS, npmTimeout, run, shellQuote} from '../lib/system.mjs';
 
 test('npm ci: giới hạn 30 phút, đổi bằng PI_CONFIG_NPM_TIMEOUT_MINUTES; giá trị sai thì dùng mặc định', () => {
   assert.equal(npmTimeout({}), 30 * 60000);
@@ -19,4 +20,13 @@ test('lệnh quá giờ báo rõ là quá giờ kèm gợi ý; lệnh lỗi báo
   await assert.rejects(run(process.execPath, trapping, {stdio: 'ignore', timeout: 1000}), /^Error: Lệnh chạy quá 1 giây nên bị dừng: node(?:\.exe)?$/u);
   await assert.rejects(run(process.execPath, ['-e', 'process.exit(3)'], {stdio: 'ignore'}), /^Error: Lệnh thất bại \(3\): node(?:\.exe)?$/u);
   await run(process.execPath, ['-e', ''], {stdio: 'ignore'});
+});
+
+// Launcher và dòng PATH trong file rc ghép đường dẫn vào lệnh /bin/sh: đường dẫn phải tới nơi nguyên vẹn và không
+// phần nào của nó được chạy như lệnh.
+test('shellQuote: /bin/sh nhận lại đúng chuỗi có nháy đơn, $(), backtick, khoảng trắng', {skip: process.platform === 'win32'}, () => {
+  for (const value of ["/opt/it's here/$(touch pwned)/`id`/a b", "'", "a'\\''b", '$HOME "x" \\ ;&|<>*?~', '-n']) {
+    assert.equal(execFileSync('/bin/sh', ['-c', `printf '%s' ${shellQuote(value)}`], {encoding: 'utf8'}), value);
+  }
+  for (const bad of ['a\nb', 'a\rb', 'a\0b']) assert.throws(() => shellQuote(bad), /NUL hoặc xuống dòng/u);
 });

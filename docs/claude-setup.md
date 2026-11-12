@@ -39,13 +39,13 @@ pi-config có extension `claude-usage`:
 
 ## Native web search
 
-`web_search` (pi-web-access 0.47.0) định tuyến `["openai", "anthropic", "exa", "firecrawl"]` với `useCurrentModel: true`:
+`web_search` (pi-web-access 0.47.0) định tuyến `["openai", "anthropic", "exa"]` với `useCurrentModel: true`:
 
 | Model hiện tại | Cách tìm |
 |---|---|
 | GPT trên endpoint chính thức (Astra, Sol): `openai` qua Sign in with ChatGPT, hoặc `openai-codex` | `openai`: hosted `web_search` của Responses API (`api.openai.com` hoặc endpoint Codex), dùng chính model và token đã đăng nhập |
 | Claude của provider `anthropic` trên `api.anthropic.com` | `anthropic`: server tool `web_search_20250305` của Anthropic, tối đa 5 lượt tìm mỗi lần gọi |
-| Model khác (GLM, gateway, Claude qua provider khác) | Exa (endpoint MCP miễn phí, không cần key; đặt `EXA_API_KEY` để dùng API có key), rồi Firecrawl |
+| Model khác (GLM, gateway, Claude qua provider khác) | Exa (endpoint MCP miễn phí, không cần key; đặt `EXA_API_KEY` để dùng API có key) |
 
 `anthropic` là provider do bản vá pi-web-access thêm vào. Mã nằm ở [assets/patches/pi-web-access/anthropic-search.js](../assets/patches/pi-web-access/anthropic-search.js); installer chèn nguyên file vào `dist/index.js` và kiểm SHA256 kết quả ([assets/patches.json](../assets/patches.json)). Tìm kiếm Claude là một request phụ theo cách WebSearch của Claude Code (prompt viết riêng), đi qua transport Anthropic của Pi nên dùng cùng auth và shaping OAuth. Model không tắt được thinking (Opus 5.x, Fable) tìm với effort `low`; model khác tắt thinking. Nguồn và trích dẫn được đọc từ luồng SSE rồi trả về như kết quả pi-web-access (`**Provider:** anthropic`).
 
@@ -57,7 +57,7 @@ Muốn phiên chạy model khác (ví dụ researcher GLM) cũng tìm bằng Cla
 
 Model phải là Claude chính thức và đã đăng nhập Anthropic; phiên đang dùng Claude vẫn tìm bằng chính model đó.
 
-Lỗi mạng, lỗi tạm thời, quota, phản hồi không hợp lệ hoặc tài khoản không hỗ trợ web search chuyển sang provider kế tiếp (Exa, rồi Firecrawl). Lỗi xác thực và request sai được báo lại. `webSearch.allowedProviders` chỉ cho phép `openai`, `anthropic`, `exa` và `firecrawl`; `fetch_content` luôn dùng Firecrawl. Phiên mới chỉ hiện `web_enable`; model gọi tool này để bật các web tool.
+Lỗi mạng, lỗi tạm thời, quota, phản hồi không hợp lệ hoặc tài khoản không hỗ trợ web search chuyển sang Exa; Exa lỗi thì lỗi được báo lại, không còn provider nào sau nó. Lỗi xác thực và request sai được báo lại. `webSearch.allowedProviders` chỉ cho phép `openai`, `anthropic` và `exa`. `fetch_content` theo thứ tự mặc định của pi-web-access (không khai báo `fetchRouting`): tải thẳng trang đích và trích nội dung tại chỗ. pi-config không cấu hình dịch vụ trích xuất nào, nên không trang nào được gửi qua bên thứ ba và trang dựng bằng JavaScript có thể trả về ít nội dung; bước dự phòng Firecrawl hoặc crawl4ai của thứ tự đó chỉ chạy khi bạn tự đặt base URL của chúng (`firecrawlBaseUrl`/`FIRECRAWL_BASE_URL`, `crawl4aiBaseUrl`/`CRAWL4AI_BASE_URL`), dịch vụ hosted như Jina chỉ khi bạn bật `fetchRouting.allowRemoteHostedProviders`. Phiên mới chỉ hiện `web_enable`; model gọi tool này để bật các web tool.
 
 ## Chi phí và giới hạn
 

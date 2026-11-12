@@ -28,9 +28,8 @@ Bảy bản vá runtime: footer tối giản, quota Claude cạnh model, context
 
 ## Dependency được tải khi cài đặt
 
-Các manifest `manifests/current`, `manifests/firecrawl` liệt kê phiên bản chính xác; `package-lock.json` ghi integrity và giấy phép dependency khi npm cung cấp metadata. Installer tải package trực tiếp từ registry npm, không tái cấp phép package của bên thứ ba. Override Axios 1.20.0 chỉ thuộc runtime Firecrawl CLI.
+Manifest `manifests/current` liệt kê phiên bản chính xác; `package-lock.json` ghi integrity và giấy phép dependency khi npm cung cấp metadata. Installer tải package trực tiếp từ registry npm, không tái cấp phép package của bên thứ ba.
 
-Các skill của [firecrawl/cli](https://github.com/firecrawl/cli) (ISC theo package manifest) được tải từ commit ghim cùng repository và thông tin giấy phép gốc.
 
 ## Màu giao diện
 

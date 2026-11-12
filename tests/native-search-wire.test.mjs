@@ -9,16 +9,15 @@ import { pathToFileURL } from "node:url";
 import { anthropicSearchEvents, codexSearchEvents, sse } from "./search-fixtures.mjs";
 
 // web_search của pi-web-access (đã vá, có provider anthropic) trên runtime đã cài: Claude → Anthropic web_search
-// qua pi-anthropic-auth, GPT (openai qua Sign in with ChatGPT, openai-codex legacy) → hosted web_search, GLM → Exa rồi Firecrawl. fetch/DNS giả, không gọi mạng.
+// qua pi-anthropic-auth, GPT (openai qua Sign in with ChatGPT, openai-codex legacy) → hosted web_search, GLM → Exa (không còn provider nào sau Exa). fetch_content tải thẳng trang đích. fetch/DNS giả, không gọi mạng.
 const root = process.env.PI_CONFIG_TEST_ROOT;
-test("web_search dùng native search theo model hiện tại, GLM dùng Exa rồi Firecrawl", { skip: !root, timeout: 120000 }, async () => {
+test("web_search dùng native search theo model hiện tại, GLM dùng Exa; fetch_content tải thẳng trang đích", { skip: !root, timeout: 120000 }, async () => {
   const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pi-native-search-")));
   const agentDir = path.join(temp, "agent");
   fs.mkdirSync(agentDir);
   const modules = path.join(root, "runtimes", "current", "node_modules");
   const installed = JSON.parse(fs.readFileSync(path.join(root, "install-state.json"), "utf8")).agentDir;
   const web = JSON.parse(fs.readFileSync(path.join(installed, "web-search.json"), "utf8"));
-  web.firecrawlApiKey = "fixture-firecrawl-key"; // Không chạy credential helper của máy.
   fs.writeFileSync(path.join(agentDir, "web-search.json"), JSON.stringify(web));
   fs.writeFileSync(path.join(agentDir, "settings.json"), JSON.stringify({
     packages: ["@gotgenes/pi-anthropic-auth", "pi-web-access"].map((name) => path.join(modules, name)),
@@ -54,14 +53,16 @@ test("web_search dùng native search theo model hiện tại, GLM dùng Exa rồ
       return Response.json({ jsonrpc: "2.0", id: 1, result: { content: [{ type: "text",
         text: "Title: Exa result\nURL: https://exa.example/pi\nText: From Exa\n" }] } });
     }
-    if (url.href === "https://api.firecrawl.dev/v2/search") {
-      return Response.json({ success: true, data: { web: [{ url: "https://firecrawl.example/pi", title: "Firecrawl result", description: "From Firecrawl" }] } });
+    // Trang đích của fetch_content: HTML thường.
+    if (url.origin === "https://docs.example") {
+      const body = `<!doctype html><html><head><title>Pi guide</title></head><body><main><article><h1>Pi guide</h1>${"<p>Pi reads files, runs commands and edits code in your project.</p>".repeat(12)}</article></main></body></html>`;
+      return new Response(body, { headers: { "content-type": "text/html; charset=utf-8" } });
     }
     return new Response("unexpected fixture request", { status: 599 });
   };
-  // SSRF guard của pi-web-access phân giải DNS trước khi gọi Firecrawl; trả địa chỉ công khai giả.
+  // SSRF guard của pi-web-access phân giải DNS trước khi tải trang đích; trả địa chỉ công khai giả.
   dns.promises.lookup = async (hostname, options) => {
-    if (hostname !== "api.firecrawl.dev") throw new Error(`Unexpected DNS lookup: ${hostname}`);
+    if (hostname !== "docs.example") throw new Error(`Unexpected DNS lookup: ${hostname}`);
     const address = { address: "104.18.20.1", family: 4 };
     return options?.all ? [address] : address;
   };
@@ -145,12 +146,24 @@ test("web_search dùng native search theo model hiện tại, GLM dùng Exa rồ
     assert.match(text, /\*\*Provider:\*\* exa/u);
     assert.match(text, /https:\/\/exa\.example\/pi/u);
 
-    // Exa lỗi tạm thời (5xx) thì chuyển sang Firecrawl.
+    // Exa lỗi tạm thời (5xx): không còn provider nào sau Exa, nên lỗi được báo lại và không host nào khác bị gọi.
     exaStatus = 503;
     text = await search("opencode-go", "glm-5.3-flash");
-    assert.deepEqual(requests.map((request) => request.url.origin + request.url.pathname), ["https://mcp.exa.ai/mcp", "https://api.firecrawl.dev/v2/search"]);
-    assert.equal(requests[1].headers.get("authorization"), "Bearer fixture-firecrawl-key");
-    assert.match(text, /\*\*Provider:\*\* firecrawl/u);
+    assert.deepEqual(requests.map((request) => request.url.origin + request.url.pathname), ["https://mcp.exa.ai/mcp"]);
+    assert.match(text, /Configured search routing exhausted:/u);
+    assert.match(text, /exa \[transient\]: Exa MCP error 503/u);
+    assert.doesNotMatch(text, /https:\/\/exa\.example\/pi/u, "không có kết quả nào khi Exa lỗi");
+    exaStatus = 200;
+
+    // fetch_content: tải thẳng trang đích rồi trích nội dung tại chỗ; không host nào khác được gọi.
+    const fetchTool = session.extensionRunner.getToolDefinition("fetch_content");
+    assert.ok(fetchTool, "pi-web-access phải đăng ký fetch_content");
+    requests.length = 0;
+    const fetched = await fetchTool.execute("wire", { url: "https://docs.example/guide" }, new AbortController().signal, undefined, session.extensionRunner.createContext());
+    text = fetched.content.filter((part) => part.type === "text").map((part) => part.text).join("\n");
+    assert.deepEqual(requests.map((request) => request.url.href), ["https://docs.example/guide"]);
+    assert.match(text, /Pi reads files, runs commands and edits code in your project\./u);
+    assert.doesNotMatch(text, /<article>|<p>/u, "nội dung đã được trích khỏi HTML");
     assert.deepEqual(errors, []);
     session.dispose();
   } finally {

@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync, execSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -15,9 +13,8 @@ function fixture(platform) {
   const home = platform === "win32" ? "C:\\Users\\Dev Example" : "/home/dev example";
   const root = p.join(home, "Pi Runtime");
   const agentDir = p.join(home, "Custom Agent");
-  const nodePath = platform === "win32" ? "C:\\Program Files\\nodejs\\node.exe" : "/opt/node/bin/node";
   const shellPath = platform === "win32" ? "C:\\Program Files\\Git\\bin\\bash.exe" : "/bin/bash";
-  const options = { root, agentDir, nodePath, platform, home, repoDir, shellPath, modelDefaults };
+  const options = { root, agentDir, platform, home, repoDir, shellPath, modelDefaults };
   const files = buildConfiguration(options);
   const read = (file) => {
     const found = files.find((entry) => entry.path === file);
@@ -44,9 +41,8 @@ for (const platform of ["darwin", "linux", "win32"]) {
         "anthropic/claude-opus-5-5": "high", "anthropic/claude-fable-5-1": "high", "anthropic/claude-sonnet-5-5": "high",
       });
       assert.equal(settings.shellPath, options.shellPath);
-      // Chỉ skill firecrawl gốc (nó dẫn tới các skill firecrawl-* cùng thư mục); pi-config không cài skill quy trình.
-      assert.deepEqual(settings.skills, [p.join(options.root, "sources", "firecrawl-cli-source", "skills", "firecrawl")]);
-      assert.ok(!settings.skills.some((entry) => entry.includes("mattpocock")));
+      // pi-config không cài skill nào: skill quy trình và skill của công cụ đều do người dùng tự thêm.
+      assert.deepEqual(settings.skills, []);
       assert.deepEqual(settings.extensions, [...["rose-pine-palette.ts", "pi-rewind", "claude-usage", "pi-auto-mode"]
         .map((entry) => p.join(options.root, "assets", "extensions", entry)), "-builtin:mcp", "-builtin:codemode", "-builtin:tool-search", "-builtin:llama.cpp"]);
       assert.equal(settings.doubleEscapeAction, "none");
@@ -108,7 +104,6 @@ for (const platform of ["darwin", "linux", "win32"]) {
       for (const file of [p.join(options.agentDir, "auth.json"), p.join(options.root, "secrets", "*.env"), p.join(options.home, ".codex", "auth.json")]) {
         assert.ok(deny.includes(`Path(${forward(file)})`), file);
       }
-      assert.ok(deny.includes("Bash(*firecrawl-key.cjs*)"));
       assert.ok(deny.includes("!Path(*.env.example)"));
       // Xoá đệ quy do pi-auto-mode hỏi (bypass) hoặc phân loại (auto), không chặn cứng theo một cách viết cờ.
       assert.ok(!deny.some((rule) => rule.startsWith("Bash(rm ")));
@@ -123,27 +118,24 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.deepEqual(json(p.join(profile.agentDir, "keybindings.json"))["tui.altScreen.search"], ["alt+s"]);
       // Follow-up giữ phím mặc định của Pi.
       assert.equal(json(p.join(profile.agentDir, "keybindings.json"))["app.message.followUp"], undefined);
-      const firecrawl = json(p.join(profile.agentDir, "web-search.json"));
-      // provider cố định sẽ bỏ qua searchRouting; native search theo model (Codex, Claude) đi trước, Firecrawl dự phòng.
-      assert.equal(firecrawl.provider, undefined);
-      assert.deepEqual(firecrawl.searchRouting.providers, ["openai", "anthropic", "exa", "firecrawl"]);
-      assert.equal(firecrawl.searchRouting.useCurrentModel, true);
-      assert.deepEqual(firecrawl.searchRouting.fallbackOn, ["network", "transient", "quota", "invalid-response", "unsupported"]);
-      assert.deepEqual(firecrawl.webSearch.allowedProviders, ["openai", "anthropic", "exa", "firecrawl"]);
-      assert.equal(firecrawl.anthropicSearch, undefined, "Model khác Claude không tìm bằng Claude nếu người dùng không bật");
-      assert.equal(firecrawl.exaApiKey, undefined, "Exa không cần key: dùng endpoint MCP miễn phí");
+      const web = json(p.join(profile.agentDir, "web-search.json"));
+      // provider cố định sẽ bỏ qua searchRouting; native search theo model (Codex, Claude) đi trước, Exa dự phòng.
+      assert.equal(web.provider, undefined);
+      assert.deepEqual(web.searchRouting.providers, ["openai", "anthropic", "exa"]);
+      assert.equal(web.searchRouting.useCurrentModel, true);
+      assert.deepEqual(web.searchRouting.fallbackOn, ["network", "transient", "quota", "invalid-response", "unsupported"]);
+      assert.deepEqual(web.webSearch.allowedProviders, ["openai", "anthropic", "exa"]);
+      assert.equal(web.anthropicSearch, undefined, "Model khác Claude không tìm bằng Claude nếu người dùng không bật");
+      assert.equal(web.exaApiKey, undefined, "Exa không cần key: dùng endpoint MCP miễn phí");
       assert.deepEqual(settings.permissions.ask, []);
-      assert.deepEqual(firecrawl.fetchRouting.providers, ["firecrawl"]);
+      // fetch_content theo mặc định của pi-web-access: tải thẳng trang đích, không qua dịch vụ trích xuất bên thứ ba.
+      assert.equal(web.fetchRouting, undefined);
       assert.ok(settings.permissions.allow.includes("web_search"));
-      assert.equal(firecrawl.allowBrowserCookies, undefined, "pi-web-access chỉ đọc cookie trình duyệt khi bật rõ (true)");
-      assert.match(firecrawl.firecrawlApiKey, /^!/u);
-      assert.ok(firecrawl.firecrawlApiKey.includes(options.nodePath));
-      assert.ok(firecrawl.firecrawlApiKey.includes(p.join(options.root, "bin", "firecrawl-key.cjs")));
-      const credentialRoot = platform === "darwin" ? p.join(options.home, "Library", "Application Support", "firecrawl-cli")
-        : platform === "win32" ? p.join(options.home, "AppData", "Roaming", "firecrawl-cli")
-          : p.join(options.home, ".config", "firecrawl-cli");
+      assert.equal(web.allowBrowserCookies, undefined, "pi-web-access chỉ đọc cookie trình duyệt khi bật rõ (true)");
+      // Không còn gì của Firecrawl trong cấu hình sinh ra: file, key, provider, skill, luật deny.
+      for (const file of files) assert.doesNotMatch(`${file.path}\n${file.content}`, /firecrawl/iu, file.path);
       // Thư mục bí mật: chặn cả chính thư mục (tar/cp -r/grep -r) và mọi cấp bên trong (vd ~/.aws/sso/cache).
-      for (const dir of [credentialRoot, p.join(options.home, ".ssh"), p.join(options.home, ".aws"), p.join(options.home, ".config", "gcloud"), p.join(options.root, "backups")]) {
+      for (const dir of [p.join(options.home, ".ssh"), p.join(options.home, ".aws"), p.join(options.home, ".config", "gcloud"), p.join(options.root, "backups")]) {
         assert.ok(deny.includes(`Path(${forward(dir)})`), dir);
         assert.ok(deny.includes(`Path(${forward(p.join(dir, "**"))})`), dir);
         assert.ok(!deny.includes(`Path(${forward(p.join(dir, "*"))})`), `${dir}: * chỉ khớp một cấp`);
@@ -199,45 +191,6 @@ for (const platform of ["darwin", "linux", "win32"]) {
   });
 }
 
-test("POSIX credential helper chạy đúng khi root chứa khoảng trắng, nháy đơn và shell metacharacters", { skip: process.platform === "win32" }, () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-config-quote-"));
-  try {
-    const root = path.join(dir, "Dev's runtime $(touch SHOULD_NOT_EXIST)");
-    fs.mkdirSync(path.join(root, "bin"), { recursive: true });
-    fs.writeFileSync(path.join(root, "bin", "firecrawl-key.cjs"), 'process.stdout.write("fixture-credential");\n');
-    const agentDir = path.join(dir, "Agent");
-    const generated = buildConfiguration({ root, agentDir, nodePath: process.execPath, platform: "linux", home: dir, repoDir, modelDefaults });
-    const config = JSON.parse(generated.find(({ path: file }) => file === path.join(agentDir, "web-search.json")).content);
-    const output = execFileSync("/bin/sh", ["-c", config.firecrawlApiKey.slice(1)], { cwd: dir, encoding: "utf8" });
-    assert.equal(output, "fixture-credential");
-    assert.equal(fs.existsSync(path.join(dir, "SHOULD_NOT_EXIST")), false);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("Windows không chấp nhận expansion characters nguy hiểm cho cmd credential helper", () => {
-  const { options } = fixture("win32");
-  for (const suffix of ["%TEMP%", 'bad"quote', "!TEMP!", "bad\nline"]) {
-    assert.throws(() => buildConfiguration({ ...options, root: `${options.root} ${suffix}` }), /Đường dẫn/u);
-  }
-});
-
-test("Windows credential helper chạy thật qua cmd với đường dẫn có khoảng trắng", { skip: process.platform !== "win32" }, () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-config-quote-"));
-  try {
-    const root = path.join(dir, "Runtime With Spaces & Symbol");
-    fs.mkdirSync(path.join(root, "bin"), { recursive: true });
-    fs.writeFileSync(path.join(root, "bin", "firecrawl-key.cjs"), 'process.stdout.write("fixture-credential");\n');
-    const agentDir = path.join(dir, "Agent");
-    const generated = buildConfiguration({ root, agentDir, nodePath: process.execPath, platform: "win32", home: dir, repoDir, modelDefaults });
-    const config = JSON.parse(generated.find(({ path: file }) => file === path.join(agentDir, "web-search.json")).content);
-    assert.equal(execSync(config.firecrawlApiKey.slice(1), { cwd: dir, encoding: "utf8", windowsHide: true }), "fixture-credential");
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 test("Đầu vào tương đối bị từ chối để không ghi nhầm workspace", () => {
   const { options } = fixture("linux");
   assert.throws(() => buildConfiguration({ ...options, agentDir: ".pi/agent" }), /agentDir phải là đường dẫn tuyệt đối/u);
@@ -245,7 +198,7 @@ test("Đầu vào tương đối bị từ chối để không ghi nhầm worksp
 
 test("model mặc định đi tới mọi file gốc (settings, file role, advisor); model phân loại không phải một vai", () => {
   const root = "/home/dev/pi", agentDir = "/home/dev/agent";
-  const files = buildConfiguration({ root, agentDir, nodePath: "/opt/node", platform: "linux", home: "/home/dev", repoDir, modelDefaults });
+  const files = buildConfiguration({ root, agentDir, platform: "linux", home: "/home/dev", repoDir, modelDefaults });
   const read = (name) => files.find((entry) => entry.path === path.posix.join(agentDir, name)).content;
   const settings = JSON.parse(read("settings.json"));
   assert.deepEqual([settings.defaultProvider, settings.defaultModel, settings.defaultThinkingLevel], ["anthropic", "claude-opus-5-5", "high"]);

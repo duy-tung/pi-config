@@ -15,7 +15,7 @@ test('Pi: Opus 5.5/high 1M mặc định, advisor Fable trong catalog, GPT (open
   process.env.PI_OFFLINE = '1';
   globalThis.fetch = () => { throw new Error('Unexpected network in offline model test'); };
   try {
-    const generated = buildConfiguration({root: temp, agentDir: path.join(temp, 'main'), nodePath: process.execPath, home: temp, modelDefaults});
+    const generated = buildConfiguration({root: temp, agentDir: path.join(temp, 'main'), home: temp, modelDefaults});
     {
       const runtimeName = 'current';
       const modules = path.join(root, `runtimes/${runtimeName}/node_modules`);

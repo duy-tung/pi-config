@@ -2,7 +2,7 @@
 
 [![Kiểm thử cài đặt](https://github.com/duy-tung/pi-config/actions/workflows/test.yml/badge.svg)](https://github.com/duy-tung/pi-config/actions/workflows/test.yml)
 
-Bộ cài **Pi 1.5.2** cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, native web search theo model (GPT, Claude) với Exa và Firecrawl dự phòng, quota Claude trong footer, permission kiểu Claude Code (manual, accept edits, auto mode và bypass) và giao diện Rosé Pine. Chỉ cài skill của công cụ (Firecrawl); không kèm bộ skill quy trình. Dependency, nguồn skills và bản vá được ghim để tái lập cấu hình.
+Bộ cài **Pi 1.5.2** cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, native web search theo model (GPT, Claude) với Exa dự phòng, quota Claude trong footer, permission kiểu Claude Code (manual, accept edits, auto mode và bypass) và giao diện Rosé Pine. Không kèm skill nào. Dependency và bản vá được ghim để tái lập cấu hình.
 
 ## Cài đặt
 
@@ -28,9 +28,8 @@ Chi tiết kiến trúc CPU, công cụ hệ thống và tùy chọn đường d
 
 1. Chạy `pi`, dùng `/login` và chọn **Anthropic** (gói Pro/Max), hoặc đặt `ANTHROPIC_API_KEY`. Mọi vai mặc định là Claude: parent và worker Opus 5.5, researcher Sonnet 5.5, reviewer và advisor Fable 5.1, bộ phân loại của auto mode Sonnet 5.5. Xem [docs/claude-setup.md](docs/claude-setup.md).
 2. Tuỳ chọn, khi muốn đặt một vai sang GPT: `/login` → **OpenAI** → **Sign in with ChatGPT** (provider `openai`, dùng gói ChatGPT qua Responses API của `api.openai.com`), rồi chọn model `openai/…` (vd `openai/gpt-6.1-sol`). Đăng nhập mở trình duyệt và nhận callback ở cổng 1455 (cổng Codex CLI cũng dùng; Pi báo lỗi nếu cổng bận); máy không có trình duyệt thì dán URL chuyển hướng cuối vào Pi. **OpenAI Codex (legacy)** (`openai-codex`) vẫn dùng được cho vai đã đặt sang nó. Model của OpenCode Go (vd GLM) cũng dùng được sau khi `/login` → **OpenCode Go** hoặc đặt `OPENCODE_API_KEY`.
-3. Chạy `firecrawl login --browser` để đăng nhập dịch vụ web.
 
-Một cấu hình Pi dùng auth của agent directory. Firecrawl dùng credential store của CLI theo hệ điều hành. Repo không chứa credential, token hay dữ liệu phiên của người dùng; không nhập key vào chat hoặc commit vào Git.
+Một cấu hình Pi dùng auth của agent directory. Repo không chứa credential, token hay dữ liệu phiên của người dùng; không nhập key vào chat hoặc commit vào Git.
 
 ## Một phiên Pi, các slash command
 
@@ -94,7 +93,7 @@ Agent có context riêng và không giới hạn số lượt; dừng agent bằ
 
 ## Công cụ và mặc định
 
-- Web: `web_search` dùng native search của model hiện tại: provider `openai` cho GPT (Astra, Sol) qua Sign in with ChatGPT hoặc OpenAI Codex (legacy), `anthropic` cho Claude (bản vá pi-web-access); model khác (vd GLM) dùng Exa (endpoint MCP miễn phí, không cần key) rồi Firecrawl; lỗi mạng, quota, phản hồi hỏng chuyển sang provider kế tiếp. `fetch_content`, `get_search_content` dùng Firecrawl và kho kết quả. Phiên mới hiện `web_enable` để model bật web tools. CLI và skills hỗ trợ workflow bổ sung. Chi tiết: [docs/claude-setup.md](docs/claude-setup.md).
+- Web: `web_search` dùng native search của model hiện tại: provider `openai` cho GPT (Astra, Sol) qua Sign in with ChatGPT hoặc OpenAI Codex (legacy), `anthropic` cho Claude (bản vá pi-web-access); model khác (vd GLM) dùng Exa (endpoint MCP miễn phí, không cần key); lỗi mạng, quota, phản hồi hỏng ở native search chuyển sang Exa. `fetch_content` tải thẳng trang đích và trích nội dung tại chỗ; pi-config không cấu hình dịch vụ trích xuất bên thứ ba nào (trang dựng bằng JavaScript có thể trả về ít nội dung); `get_search_content` đọc kho kết quả. Phiên mới hiện `web_enable` để model bật web tools. Chi tiết: [docs/claude-setup.md](docs/claude-setup.md).
 - MCP: không cài. MCP, codemode và `tool_search` dựng sẵn của Pi được tắt trong `extensions` của settings (`-builtin:mcp`, `-builtin:codemode`, `-builtin:tool-search`); provider llama.cpp dựng sẵn cũng tắt (`-builtin:llama.cpp`). Khi cần một server, bật MCP trong `pi config` (Built-in), thêm server bằng `pi mcp add` (ghi `<agent-dir>/mcp.json`) với `"exposure": "direct"`; mỗi tool là `mcp__<server>__<tool>` và đi qua cổng permission như tool khác.
 - Giao diện fullscreen (mặc định từ Pi 1.0): cuộn bằng chuột/trackpad trong Pi (số dòng mỗi nấc theo `fullscreenWheelScrollLines` của Pi, mặc định `auto`), tìm trong transcript bằng **Alt+S** (Ctrl+Shift+F là ô tìm của WezTerm), khi thoát in lại transcript. Muốn giữ scrollback bình thường của terminal thì đặt `"tuiMode": "regular"` trong `settings.json` (cài lại vẫn giữ).
 - Native compaction bật: reserve 16.384, giữ gần nhất 20.000 token. Với cửa sổ 1M, auto-compaction chạy rất muộn; xem context ở footer và chọn ranh giới pha quanh mép 150k.
@@ -122,8 +121,6 @@ Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều
 | `pi-advisor-flow` | 0.14.4 |
 | `pi-open-tui` | 0.4.4 |
 | `@pi-archimedes/image-paste` | 2.13.0 |
-| Firecrawl CLI | 1.29.0 |
-| Firecrawl skills | Commit trong [sources.lock.json](sources.lock.json) |
 
 Các manifest và lockfile nằm trong [manifests](manifests). pi-background-tasks có peer range chưa gồm Pi 1.5.2 nên được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json). Quy trình nâng phiên bản (vendor, lockfile, tính lại checksum bản vá): [docs/upgrade.md](docs/upgrade.md).
 
@@ -137,18 +134,20 @@ Installer chỉ quản lý bản cài có `install-state.json` phù hợp. Với
 node install.mjs --root /duong-dan/platform --agent-dir /duong-dan/agent --bin-dir /duong-dan/bin --no-path
 ```
 
-Role, subagents, advisor settings và cấu hình công cụ cùng nằm trong agent directory. Một runtime Pi duy nhất ở `runtimes/current`; Firecrawl CLI ở `tools/firecrawl`.
+Role, subagents, advisor settings và cấu hình công cụ cùng nằm trong agent directory. Một runtime Pi duy nhất ở `runtimes/current`.
 
 Khi chạy lại, installer dùng lockfile và checksum để kiểm tính nhất quán; runtime được cài lại khi lockfile hoặc kết quả bản vá đổi, để bản vá luôn áp lên file gốc. Bản runtime và nguồn cũ được chuyển vào `<root>/backups` trong lúc cài và xoá khi cài xong (muốn quay lại thì cài lại commit cũ của repo); 3 lần gỡ tài nguyên gần nhất được giữ lại, bản sao file cấu hình trước khi ghi đè giữ 20 bản mới nhất cho mỗi file.
 
 File JSON cấu hình trong agent directory, kể cả `settings.json` mà Pi ghi lại khi đổi model hay thinking, được gộp ba chiều với mặc định của lần cài trước (lưu ở `<root>/state/defaults`):
 - Giá trị bạn chưa đổi nhận mặc định mới; giá trị bạn đã đổi được giữ. Nếu mặc định mới cũng đổi chính giá trị đó, installer giữ của bạn và báo xung đột kèm mặc định mới.
-- Danh sách của `settings.json` (`permissions.allow/ask/deny`, `enabledModels`, `skills`, `themes`, `prompts`, `extensions`, `packages`) gộp theo từng mục: mục bạn thêm hoặc bỏ và loại trừ extension `-` được giữ, mục mặc định mới được thêm, `pi-auto-mode` luôn nạp sau cùng. Bộ skill riêng cài bằng `pi install <thư mục>` (vd `~/skills/work`) là mục `packages` của bạn nên cài lại vẫn giữ.
+- Danh sách của `settings.json` (`permissions.allow/ask/deny`, `enabledModels`, `skills`, `themes`, `prompts`, `extensions`, `packages`) gộp theo từng mục: mục bạn thêm hoặc bỏ và loại trừ extension `-` được giữ, mục mặc định mới được thêm, `pi-auto-mode` luôn nạp sau cùng. Hai danh sách provider của `web-search.json` (`webSearch.allowedProviders`, `searchRouting.providers`) cũng gộp theo từng mục, để provider mặc định mới bỏ rời cả hai danh sách dù bạn đã sửa một trong hai: thứ tự của bạn được giữ, provider mặc định mới thêm nằm cuối (ưu tiên thấp nhất), danh sách bạn chưa sửa nhận nguyên mặc định mới. pi-web-access không nạp khi một danh sách rỗng hoặc `searchRouting.providers` có provider ngoài `webSearch.allowedProviders`; `provider` cố định cũng phải nằm trong danh sách được phép. Nếu gộp như vậy làm file đang nạp được thành không nạp được (vd bạn chỉ định tuyến tới provider vừa bị bỏ), hoặc bản cài chưa lưu mặc định, installer giữ nguyên hai danh sách đang có trong file và báo xung đột. Bộ skill riêng cài bằng `pi install <thư mục>` (vd `~/skills/work`) là mục `packages` của bạn nên cài lại vẫn giữ.
 - Bản cài chưa lưu mặc định (trước khi có cơ chế này): file chưa sửa nhận mặc định mới như trước; file đã sửa lần đầu chỉ được thêm khóa và mục còn thiếu, mọi giá trị hiện có được giữ và giá trị khác mặc định mới được báo.
 - File role `agents/*.md` cũng được gộp: mỗi khóa frontmatter (`model`, `thinking`, `tools`...) là một giá trị, phần prompt là một giá trị. Sửa một dòng không làm file đứng yên; prompt mới vẫn vào được.
 - Installer in phần đã gộp và từng xung đột, backup file trước khi ghi lại; lần chạy không có gì mới thì không ghi gì.
 
 Model và thinking của từng vai nằm thẳng trong các file trên (`settings.json`, `advisor.json`, `agents/*.md`) và được gộp như mọi giá trị khác. `model-roles.json` của bản trước được chuyển vào backups ở lần cài đầu sau khi nâng cấp, giữ model đang chạy ([docs/models.md](docs/models.md#chuyển-từ-model-rolesjson)).
+
+Bản trước còn cài Firecrawl CLI và skill của nó. Lần cài đầu sau khi nâng cấp gỡ runtime và nguồn skill đó (vào backups rồi xoá khi cài xong, như runtime cũ), bỏ lệnh `firecrawl`, skill, luật deny, provider và key mặc định của nó khỏi cấu hình. Phần bạn đã sửa (vd `AGENTS.md` của agent directory, key bạn tự đặt) được giữ nguyên; installer liệt kê từng chỗ còn nhắc tới Firecrawl để bạn tự xoá. Thư mục credential của Firecrawl CLI không thuộc pi-config nên không bị đụng tới.
 
 File khác đã tùy chỉnh (`AGENTS.md`) được giữ và báo đường dẫn. Tài nguyên do installer quản lý, không còn được yêu cầu và chưa chỉnh sửa, được lưu vào backup; tài nguyên còn được cấu hình tham chiếu được giữ. Auth và file riêng của người dùng không thuộc danh sách tài nguyên được dọn.
 

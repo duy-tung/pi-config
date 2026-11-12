@@ -23,7 +23,7 @@ export function simulatedInstall(t, {full = false} = {}) {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-model-commands-'));
   t.after(() => fs.rmSync(temp, {recursive: true, force: true}));
   const root = path.join(temp, 'root'), agentDir = path.join(temp, 'agent');
-  const options = {root, agentDir, nodePath: process.execPath, home: temp, repoDir};
+  const options = {root, agentDir, home: temp, repoDir};
   const state = {agentDir, files: {}};
   if (full) {
     fs.cpSync(path.join(repoDir, 'assets'), path.join(root, 'assets'), {recursive: true});

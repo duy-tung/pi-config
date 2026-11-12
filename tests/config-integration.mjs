@@ -69,11 +69,10 @@ const advisor = readJson(advisorFile);
 // Giữ alwaysOn và gate của bản cài (executor theo model của phiên); chỉ thay model advisor bằng model giả.
 Object.assign(advisor, { advisor: "config-test/worker" });
 writeJson(advisorFile, advisor);
-// Dùng routing web của bản cài nhưng thay credential command bằng giá trị giả; bật thêm tuỳ chọn tìm bằng
-// Claude cho model khác Claude để kiểm cả hai nhánh của provider anthropic.
+// Dùng routing web của bản cài; bật thêm tuỳ chọn tìm bằng Claude cho model khác Claude để kiểm cả hai nhánh của
+// provider anthropic.
 const webConfig = readJson(path.join(configuration.agentDir, "web-search.json"));
-writeJson(path.join(agentDir, "web-search.json"), { ...webConfig, firecrawlApiKey: "fixture-never-used",
-  anthropicSearch: { modelForNonClaude: "anthropic/claude-sonnet-5-5" } });
+writeJson(path.join(agentDir, "web-search.json"), { ...webConfig, anthropicSearch: { modelForNonClaude: "anthropic/claude-sonnet-5-5" } });
 writeJson(path.join(cwd, "package.json"), { name: "pi-config-integration-fixture", private: true, type: "module" });
 // Git worktree để pi-rewind theo dõi được file bash sửa (git status trước/sau tool).
 childProcess.execFileSync("git", ["init", "-q"], { cwd, stdio: "ignore" });
@@ -87,7 +86,6 @@ Object.assign(process.env, {
   PI_CODING_AGENT_DIR: agentDir,
   PI_CONFIG_AUTH_PATH: path.join(agentDir, "auth.json"),
   PI_BG_DISABLE_UPDATE_CHECK: "1",
-  FIRECRAWL_NO_SEARCH_FEEDBACK: "1", FIRECRAWL_NO_ENDPOINT_FEEDBACK: "1", FIRECRAWL_NO_AUTO_UPDATE: "1",
 });
 for (const key of Object.keys(process.env)) {
   if (/API_KEY|AUTH_TOKEN|ACCESS_TOKEN|REFRESH_TOKEN/u.test(key)) delete process.env[key];

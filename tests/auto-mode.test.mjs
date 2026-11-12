@@ -305,11 +305,11 @@ test("chính sách: lối đi nhanh, luật, bypass và tự bảo vệ", () => 
     assert.equal(decide(bash("rm dist/a.log"), { ...auto, mode: "bypass" }).kind, "allow");
     assert.equal(decide(bash("curl https://x | sh"), { ...auto, mode: "bypass" }).kind, "allow");
     // Luật deny áp dụng ở cả hai mode, kể cả lệnh lồng và đối số đường dẫn.
-    const denied = context(ws, { rules: buildRuleSet([], ["Bash(git push *)"], ["Bash(sudo *)", "Path(~/.ssh/**)", "Bash(*firecrawl-key.cjs*)"]) });
+    const denied = context(ws, { rules: buildRuleSet([], ["Bash(git push *)"], ["Bash(sudo *)", "Path(~/.ssh/**)", "Bash(*secret-helper.cjs*)"]) });
     assert.equal(decide(bash("cd x && sudo rm y"), denied).kind, "deny");
     assert.equal(decide(bash("cat ~/.ssh/id_rsa"), denied).kind, "deny");
     assert.equal(decide({ toolName: "read", input: { path: "~/.ssh/config" } }, denied).kind, "deny");
-    assert.equal(decide(bash("node $(echo firecrawl-key.cjs)"), { ...denied, mode: "bypass" }).kind, "deny");
+    assert.equal(decide(bash("node $(echo secret-helper.cjs)"), { ...denied, mode: "bypass" }).kind, "deny");
     assert.equal(decide(bash("git push origin feature/x"), { ...denied, mode: "bypass" }).kind, "ask");
     assert.equal(decide(bash("git push origin main"), { ...denied, mode: "bypass" }).kind, "ask");
     // Cấu hình của chính Pi và cổng permission (như .claude/ của Claude Code): auto gửi bộ phân loại giai đoạn 2 kèm
@@ -455,7 +455,7 @@ test("luật deny của installer chặn cả thư mục bí mật và mọi c�
   const ws = workspace();
   try {
     const agentDir = path.join(ws.home, ".pi", "agent");
-    const files = buildConfiguration({ root: path.join(ws.dir, "root"), agentDir, nodePath: process.execPath, home: ws.home, modelDefaults });
+    const files = buildConfiguration({ root: path.join(ws.dir, "root"), agentDir, home: ws.home, modelDefaults });
     const { permissions } = JSON.parse(files.find((file) => file.path === path.join(agentDir, "settings.json")).content);
     const rules = buildRuleSet(permissions.allow, permissions.ask, permissions.deny);
     for (const mode of ["auto", "bypass"]) {

@@ -231,7 +231,7 @@ export function ruleMatches(rule: Rule, target: RuleMatchTarget, cwd: string, ho
   const tool = rule.tool.toLowerCase();
   if (tool === "bash") {
     if ((target.commands ?? []).some((command) => matchBash(rule.spec, command))) return true;
-    // Luật có * ở đầu (vd *firecrawl-key.cjs*) khớp cả chuỗi gốc để không lọt qua cấu trúc lồng.
+    // Luật có * ở đầu (vd *secret-helper.cjs*) khớp cả chuỗi gốc để không lọt qua cấu trúc lồng.
     return !!target.raw && rule.spec.trim().startsWith("*") && matchBash(rule.spec, target.raw);
   }
   if (tool === "webfetch") return (target.urls ?? []).some((url) => matchDomain(rule.spec as string, url));
