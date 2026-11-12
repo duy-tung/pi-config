@@ -40,7 +40,7 @@ Chạy `pi` để mở Claude Opus 5.5/high với toàn bộ công cụ. Các wo
 |---|---|
 | Shell job nền | `/bg --name "Dev server" npm run dev`, `/jobs`, `/logs`, `/kill` |
 | Ý kiến cố vấn | `/advisor-manual`, `/advisor-settings`, `/advisor-off`, `/advisor` |
-| Rewind code/hội thoại | `Esc Esc`, `/rewind` (`/checkpoint`, `/undo`), `/redo`; `/clear` mở phiên mới |
+| Rewind code/hội thoại | `Esc Esc`, `/rewind`, `/redo`; `/clear` mở phiên mới |
 | Permission | `Shift+Tab` (manual → accept edits → [bypass] → auto), `/permissions` (mode, model phân loại, lệnh bị chặn, luật, `test <lệnh>`), `/add-dir` |
 | Model và reasoning | `/model`, `/thinking`, `Alt+T` đổi mức thinking |
 | Công cụ và giao diện | `/agents`, `/usage`, `/claude-usage`, `/open-tui` |

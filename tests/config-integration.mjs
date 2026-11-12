@@ -219,11 +219,13 @@ async function check(name, fn) {
 }
 await check("single session exposes slash commands and only one model delegation system", async () => {
   const commands = session.extensionRunner.getRegisteredCommands().map(command => command.name);
-  for (const name of ["bg", "jobs", "logs", "kill", "advisor", "advisor-off", "rewind", "checkpoint", "undo", "redo", "clear", "permissions", "claude-usage", "agents"])
+  for (const name of ["bg", "jobs", "logs", "kill", "advisor", "advisor-off", "rewind", "redo", "clear", "permissions", "claude-usage", "agents"])
     assert.ok(commands.includes(name), `Missing /${name}`);
   // /permissions là menu duy nhất của cổng permission (gộp /auto-mode cũ). Model của vai đổi trong /agents, không có /models.
   assert.ok(!commands.includes("models"), "/models đã gỡ");
   assert.ok(!commands.includes("auto-mode"), "/auto-mode đã gộp vào /permissions");
+  // /rewind không còn alias: một lệnh cho một việc (Esc Esc mở cùng menu).
+  for (const alias of ["checkpoint", "undo"]) assert.ok(!commands.includes(alias), `/${alias} đã gỡ, dùng /rewind`);
   assert.equal(new Set(commands).size, commands.length);
   const tools = session.getAllTools().map(tool => tool.name);
   assert.ok(tools.includes("Agent"));
@@ -437,7 +439,7 @@ await check("rewind restores code and conversation like Claude Code; Redo in the
   assert.equal(read(fileA), "A2\n"); assert.equal(read(fileB), "B");
   assert.ok(sessionManager.getBranch().some((entry) => entry.id === userTwo.id));
   rewindAnswers.push("rewind-one", "Restore code");
-  await session.prompt("/undo");
+  await session.prompt("/rewind");
   assert.equal(read(fileA), null); assert.equal(read(fileB), null);
   assert.ok(sessionManager.getBranch().some((entry) => entry.id === userTwo.id), "Restore code giữ nguyên hội thoại");
   await session.prompt("/redo");

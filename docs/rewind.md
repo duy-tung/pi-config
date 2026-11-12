@@ -4,7 +4,7 @@
 
 ## Dùng
 
-- `Esc Esc` khi editor trống và agent rảnh, hoặc `/rewind` (alias `/checkpoint`, `/undo`).
+- `Esc Esc` khi editor trống và agent rảnh, hoặc `/rewind`.
 - Danh sách prompt trên nhánh hiện tại, cũ ở trên; dòng dưới mỗi prompt là thay đổi code trong lượt đó (`auth.ts +12 -3`, `3 files changed …`, `No code changes`). Prompt không có checkpoint hiện `⚠ No code restore`. Chọn `(current)` để đóng.
 - Sau khi chọn prompt: `Restore code and conversation`, `Restore conversation`, `Restore code`, `Summarize from here`, `Summarize up to here`, `Never mind`. Hai lựa chọn tóm tắt nhận thêm chỉ dẫn (`add context (optional)`). Màn hình xác nhận ghi rõ số dòng và file sẽ được khôi phục. Lúc ghi, pi-rewind lập lại kế hoạch và so với màn hình đó: code đã đổi trong lúc hộp thoại mở thì không ghi gì và báo `The code changed since the preview (…)`; mở lại `/rewind` để xem kế hoạch mới. Redo, Undo redo và `/redo` cũng vậy.
 - Hộp thoại là overlay neo đáy, rộng hết terminal (cả chế độ fullscreen mặc định của Pi lẫn chế độ thường) và không cao hơn terminal: terminal thấp thì bỏ dòng trống, chi tiết (các dòng sau của prompt, thời gian, cảnh báo bash) trước, luôn giữ mục đang chọn và dòng gợi ý phím.
