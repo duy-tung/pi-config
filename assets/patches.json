@@ -252,6 +252,22 @@
           "count": 1
         }
       ]
+    },
+    {
+      "package": "pi-advisor-flow",
+      "versions": {
+        "current": "0.14.4"
+      },
+      "file": "CHANGELOG.md",
+      "originalSha256": "b90e4f5846969855d29ed29c88bb5224f975957a408a28c201dd668c9f8ce71c",
+      "patchedSha256": "79b3a90fadcf1730bc2c833ae103716f46443cf4da96ae8cc080d6fc2e7730ef",
+      "edits": [
+        {
+          "before": "## [5.1.0] - 2026-09-04 [YANKED]\n\n### Release status\n\n- Published by mistake instead of `0.5.1`; withdrawn from npm and removed from Git, with `latest` restored to `0.5.0`.\n\n",
+          "after": "",
+          "count": 1
+        }
+      ]
     }
   ]
 }
