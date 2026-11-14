@@ -24,13 +24,12 @@ Nguồn bổ sung: [pi-background-tasks](https://github.com/ismailsaleekh/pi-bac
 
 `claude-usage` (`assets/extensions`) và provider `anthropic` của pi-web-access (`assets/patches/pi-web-access/anthropic-search.js`, installer chèn vào `dist/index.js` của pi-web-access) là mã riêng của pi-config (MIT). Tìm kiếm Claude dùng server tool `web_search_20250305` theo cách WebSearch của Claude Code (request phụ), với prompt viết riêng; trường của `/api/oauth/usage` và header `anthropic-ratelimit-unified-*` tham khảo Claude Code và [pi-usage-meters](https://github.com/Quigleybits/pi-usage-meters) (MIT), không chép mã.
 
-Sáu bản vá runtime: footer tối giản, quota Claude cạnh model, context kèm token/cửa sổ; chuyển lifecycle child session cho cổng permission (pi-auto-mode) và cho entry thư mục của package khớp tên package trong `extensions` của role; hiện kết quả subagent dạng Markdown khi mở rộng và thêm mục Model/Thinking vào menu agent của `/agents` (pi-subagents); giới hạn background vào shell jobs và viết gọn mô tả `bg_run` (job xong vẫn tự đánh thức model như upstream); giữ image-paste preview ở UI để ảnh không vào context hai lần; thêm provider `anthropic` (native search Claude) vào pi-web-access. Background attribution entrypoint không được nạp; Claude auth do pi-anthropic-auth quản lý. Mọi bản vá kiểm phiên bản và SHA256 source/kết quả. Các tác giả upstream không bảo trợ hoặc chứng nhận bản phân phối này.
+Bảy bản vá runtime: footer tối giản, quota Claude cạnh model, context kèm token/cửa sổ; chuyển lifecycle child session cho cổng permission (pi-auto-mode); hiện kết quả subagent dạng Markdown khi mở rộng và thêm mục Model/Thinking vào menu agent của `/agents` (pi-subagents); giới hạn background vào shell jobs và viết gọn mô tả `bg_run` (job xong vẫn tự đánh thức model như upstream); giữ image-paste preview ở UI để ảnh không vào context hai lần; thêm provider `anthropic` (native search Claude) vào pi-web-access; bỏ mục `5.1.0` của bản phát hành nhầm đã rút lại khỏi `CHANGELOG.md` của pi-advisor-flow (số của mục lớn hơn phiên bản đang cài nên Pi hiện lại nó trong "Extension Updates" ở mỗi phiên mới). Background attribution entrypoint không được nạp; Claude auth do pi-anthropic-auth quản lý. Mọi bản vá kiểm phiên bản và SHA256 source/kết quả. Các tác giả upstream không bảo trợ hoặc chứng nhận bản phân phối này.
 
 ## Dependency được tải khi cài đặt
 
-Các manifest `manifests/current`, `manifests/firecrawl` liệt kê phiên bản chính xác; `package-lock.json` ghi integrity và giấy phép dependency khi npm cung cấp metadata. Installer tải package trực tiếp từ registry npm, không tái cấp phép package của bên thứ ba. Override Axios 1.20.0 chỉ thuộc runtime Firecrawl CLI.
+Manifest `manifests/current` liệt kê phiên bản chính xác; `package-lock.json` ghi integrity và giấy phép dependency khi npm cung cấp metadata. Installer tải package trực tiếp từ registry npm, không tái cấp phép package của bên thứ ba.
 
-Các skill của [firecrawl/cli](https://github.com/firecrawl/cli) (ISC theo package manifest) được tải từ commit ghim cùng repository và thông tin giấy phép gốc.
 
 ## Màu giao diện
 

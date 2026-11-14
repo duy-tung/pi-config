@@ -14,23 +14,18 @@ if(action==='doctor'){
     if(result.status!==0){process.exitCode=result.status??1;break;}
   }
 }else{
-  if(!['main','firecrawl'].includes(action))throw new Error(`Lệnh không hợp lệ: ${action}`);
+  if(action!=='main')throw new Error(`Lệnh không hợp lệ: ${action}`);
   const modules=path.join(root,'runtimes','current','node_modules');
   const env={...process.env,
     PI_CODING_AGENT_DIR:state.agentDir,
     PI_BG_DISABLE_UPDATE_CHECK:'1',
-    FIRECRAWL_NO_SEARCH_FEEDBACK:'1', FIRECRAWL_NO_ENDPOINT_FEEDBACK:'1',
-    // Firecrawl CLI từ 1.29.0 tự cài bản mới vào ~/.firecrawl cho bản cài global. Bản cài này hiện không thuộc diện đó;
-    // tắt hẳn để việc ghim phiên bản theo lockfile không phụ thuộc cách CLI nhận diện kiểu cài.
-    FIRECRAWL_NO_AUTO_UPDATE:'1',
   };
   const parts=[path.dirname(state.nodePath),path.join(modules,'.bin')];
   if(state.shellPath){parts.push(path.dirname(state.shellPath),path.resolve(path.dirname(state.shellPath),'../cmd'));}
   const oldPath=env.PATH ?? env.Path ?? '';
   if(process.platform==='win32')for(const key of Object.keys(env))if(key.toLowerCase()==='path')delete env[key];
   env.PATH=[...new Set(parts),oldPath].join(path.delimiter);
-  const entry=action==='firecrawl'?path.join(root,'tools/firecrawl/node_modules/firecrawl-cli/dist/index.js'):
-    path.join(modules,'@earendil-works/pi-coding-agent/dist/cli.js');
+  const entry=path.join(modules,'@earendil-works/pi-coding-agent/dist/cli.js');
   const child=spawn(state.nodePath,[entry,...args],{env,stdio:'inherit',windowsHide:false});
   child.on('error',()=>{console.error('Không chạy được runtime; thử pi-doctor.');process.exitCode=1;});
   for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>{try{child.kill(signal);}catch{}});

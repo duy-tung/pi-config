@@ -69,11 +69,10 @@ const advisor = readJson(advisorFile);
 // Giữ alwaysOn và gate của bản cài (executor theo model của phiên); chỉ thay model advisor bằng model giả.
 Object.assign(advisor, { advisor: "config-test/worker" });
 writeJson(advisorFile, advisor);
-// Dùng routing web của bản cài nhưng thay credential command bằng giá trị giả; bật thêm tuỳ chọn tìm bằng
-// Claude cho model khác Claude để kiểm cả hai nhánh của provider anthropic.
+// Dùng routing web của bản cài; bật thêm tuỳ chọn tìm bằng Claude cho model khác Claude để kiểm cả hai nhánh của
+// provider anthropic.
 const webConfig = readJson(path.join(configuration.agentDir, "web-search.json"));
-writeJson(path.join(agentDir, "web-search.json"), { ...webConfig, firecrawlApiKey: "fixture-never-used",
-  anthropicSearch: { modelForNonClaude: "anthropic/claude-sonnet-5-5" } });
+writeJson(path.join(agentDir, "web-search.json"), { ...webConfig, anthropicSearch: { modelForNonClaude: "anthropic/claude-sonnet-5-5" } });
 writeJson(path.join(cwd, "package.json"), { name: "pi-config-integration-fixture", private: true, type: "module" });
 // Git worktree để pi-rewind theo dõi được file bash sửa (git status trước/sau tool).
 childProcess.execFileSync("git", ["init", "-q"], { cwd, stdio: "ignore" });
@@ -87,7 +86,6 @@ Object.assign(process.env, {
   PI_CODING_AGENT_DIR: agentDir,
   PI_CONFIG_AUTH_PATH: path.join(agentDir, "auth.json"),
   PI_BG_DISABLE_UPDATE_CHECK: "1",
-  FIRECRAWL_NO_SEARCH_FEEDBACK: "1", FIRECRAWL_NO_ENDPOINT_FEEDBACK: "1", FIRECRAWL_NO_AUTO_UPDATE: "1",
 });
 for (const key of Object.keys(process.env)) {
   if (/API_KEY|AUTH_TOKEN|ACCESS_TOKEN|REFRESH_TOKEN/u.test(key)) delete process.env[key];
@@ -219,11 +217,13 @@ async function check(name, fn) {
 }
 await check("single session exposes slash commands and only one model delegation system", async () => {
   const commands = session.extensionRunner.getRegisteredCommands().map(command => command.name);
-  for (const name of ["bg", "jobs", "logs", "kill", "advisor", "advisor-off", "rewind", "checkpoint", "undo", "redo", "clear", "permissions", "claude-usage", "agents"])
+  for (const name of ["bg", "jobs", "logs", "kill", "advisor", "advisor-off", "rewind", "redo", "clear", "permissions", "claude-usage", "agents"])
     assert.ok(commands.includes(name), `Missing /${name}`);
   // /permissions là menu duy nhất của cổng permission (gộp /auto-mode cũ). Model của vai đổi trong /agents, không có /models.
   assert.ok(!commands.includes("models"), "/models đã gỡ");
   assert.ok(!commands.includes("auto-mode"), "/auto-mode đã gộp vào /permissions");
+  // /rewind không còn alias: một lệnh cho một việc (Esc Esc mở cùng menu).
+  for (const alias of ["checkpoint", "undo"]) assert.ok(!commands.includes(alias), `/${alias} đã gỡ, dùng /rewind`);
   assert.equal(new Set(commands).size, commands.length);
   const tools = session.getAllTools().map(tool => tool.name);
   assert.ok(tools.includes("Agent"));
@@ -437,7 +437,7 @@ await check("rewind restores code and conversation like Claude Code; Redo in the
   assert.equal(read(fileA), "A2\n"); assert.equal(read(fileB), "B");
   assert.ok(sessionManager.getBranch().some((entry) => entry.id === userTwo.id));
   rewindAnswers.push("rewind-one", "Restore code");
-  await session.prompt("/undo");
+  await session.prompt("/rewind");
   assert.equal(read(fileA), null); assert.equal(read(fileB), null);
   assert.ok(sessionManager.getBranch().some((entry) => entry.id === userTwo.id), "Restore code giữ nguyên hội thoại");
   await session.prompt("/redo");

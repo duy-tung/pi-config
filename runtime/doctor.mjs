@@ -12,7 +12,7 @@ const read=file=>{
 };
 const state=read(path.join(root,'install-state.json'));
 const errors=[],warnings=[];
-for(const [label,relative] of Object.entries({current:'runtimes/current',firecrawl:'tools/firecrawl'})){
+for(const [label,relative] of Object.entries({current:'runtimes/current'})){
   const dir=path.join(root,relative),manifest=read(path.join(dir,'package.json'));
   for(const [pkg,version] of Object.entries(manifest.dependencies)){
     const metadata=path.join(dir,'node_modules',pkg,'package.json');
@@ -64,7 +64,6 @@ const auto=s.autoMode??{};
 // Model phân loại đặt trong /permissions → Classifier (autoMode.model của settings.json), không phải một vai.
 const classifier=`${typeof auto.model==='string'&&auto.model.trim()?auto.model.trim():'model của phiên'} (${auto.stage2Reasoning??'low'})`;
 console.log(`  auto mode: bộ phân loại LLM ${classifier} cho cả hai bước; đổi trong /permissions → Classifier`);
-for(const source of Object.keys(state.sources))if(!fs.existsSync(path.join(root,'sources',source)))errors.push(`Thiếu skills source: ${source}`);
 console.log('Đăng nhập bằng /login trong pi. Không kiểm tra token bằng mạng.');
 if(process.platform==='win32' && state.shellPath&&!fs.existsSync(state.shellPath))errors.push('Không tìm thấy Git Bash đã cấu hình');
 if(warnings.length)console.warn(warnings.join('\n'));

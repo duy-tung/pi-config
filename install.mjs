@@ -11,7 +11,7 @@ import {backupFile,defaultsFile,describeMerge,reconcileConfigFile,writeAtomic} f
 import {acquireInstallLock} from './runtime/install-lock.mjs';
 import {mergesConfig,reconcileResources} from './lib/resources.mjs';
 import {LEGACY_MODEL_ROLES,SUBAGENT_ROLES,checkCatalog,loadModelDefaults,rebaseModels} from './runtime/model-roles.mjs';
-import {run,download,npmCli,npmTimeout,readJson,writeJson,sha256,shellQuote,assertSafePath} from './lib/system.mjs';
+import {run,npmCli,npmTimeout,readJson,writeJson,sha256,shellQuote,assertSafePath} from './lib/system.mjs';
 
 const repoDir=path.dirname(fileURLToPath(import.meta.url));
 const argv=process.argv.slice(2);
@@ -125,29 +125,48 @@ function moveToBackups(dest,label){
   fs.mkdirSync(path.dirname(backup),{recursive:true});fs.renameSync(dest,backup);
   return backup;
 }
-async function installSource(source){
-  const dest=path.join(root,'sources',source.name);
-  if(previous?.sources[source.name]===source.sha256 && fs.existsSync(dest))return;
-  // Nguồn cũ chỉ được thay khi do installer cài (có trong state); thư mục lạ thì dừng.
-  if(fs.existsSync(dest) && !previous?.sources[source.name])throw new Error(`Nguồn skills đã tồn tại nhưng không do pi-config cài: ${source.name}`);
-  const archive=path.join(root,'.downloads',source.name+'.tar.gz');
-  await download(source.url,archive,source.sha256);
-  const stage=dest+'.stage';fs.rmSync(stage,{recursive:true,force:true});fs.mkdirSync(stage,{recursive:true});
-  try{await run(process.platform==='win32'?'tar.exe':'tar',['-xzf',archive,'--strip-components=1','-C',stage]);}
-  catch(error){fs.rmSync(stage,{recursive:true,force:true});throw error;}
-  if(fs.existsSync(dest))moveToBackups(dest,`source-${source.name}`);
-  fs.renameSync(stage,dest);state.sources[source.name]=source.sha256;writeJson(statePath,state);
-  fs.unlinkSync(archive);
+// Bản trước cài Firecrawl CLI (runtime riêng ở tools/firecrawl) và nguồn skill của nó (sources/, tải qua .downloads/).
+// Cả hai không còn thuộc pi-config: chuyển thư mục vào backups (xoá khi cài xong, như runtime cũ), bỏ khỏi state và bỏ
+// thư mục cha đã rỗng. retireRuntime trả true khi bản cài trước có runtime đó; runtime chỉ rời state sau khi danh sách
+// đó đã in, để lần cài bị ngắt giữa chừng vẫn in danh sách chỗ còn nhắc tới Firecrawl ở lần chạy lại.
+const removeEmpty=dir=>{try{fs.rmdirSync(dir);}catch{}};
+function retireRuntime(name,relative){
+  if(!Object.hasOwn(state.runtimes,name))return false;
+  const dest=path.join(root,relative);
+  if(fs.existsSync(dest))console.log(`Runtime ${name} không còn dùng: đã chuyển vào ${moveToBackups(dest,`runtime-${name}`)}`);
+  removeEmpty(path.dirname(dest));
+  return true;
 }
-// Nguồn đã cài nhưng không còn trong sources.lock.json: chuyển thư mục vào backups và bỏ khỏi state, để doctor
-// và lần cài sau không còn coi là nguồn đang dùng.
-function retireSources(names){
+function retireSources(){
   for(const name of Object.keys(state.sources)){
-    if(names.has(name))continue;
     const dest=path.join(root,'sources',name);
     if(fs.existsSync(dest))console.log(`Nguồn ${name} không còn dùng: đã chuyển vào ${moveToBackups(dest,`source-${name}`)}`);
     delete state.sources[name];writeJson(statePath,state);
   }
+  for(const name of ['sources','.downloads'])removeEmpty(path.join(root,name));
+}
+// Phần người dùng đã sửa được giữ nguyên khi cài lại, nên sau lần cài gỡ Firecrawl vẫn có thể còn nhắc tới nó (vd AGENTS.md
+// đã sửa còn hướng dẫn dùng CLI, key người dùng tự đặt). Chỉ trả vị trí (khóa JSON, số dòng), không trả giá trị:
+// firecrawlApiKey do người dùng đặt có thể là khóa thật.
+function firecrawlLeftovers(files){
+  const mentions=text=>/firecrawl/iu.test(text),found=[];
+  for(const {path:file} of files){
+    const text=fs.existsSync(file)?fs.readFileSync(file,'utf8'):'';
+    if(!mentions(text))continue;
+    const where=new Set();
+    const walk=(value,trail)=>{
+      if(typeof value==='string'){if(mentions(value))where.add(trail);}
+      else if(Array.isArray(value))for(const item of value)walk(item,trail);
+      else if(value&&typeof value==='object')for(const [key,item] of Object.entries(value)){
+        const next=trail?`${trail}.${key}`:key;
+        if(mentions(key))where.add(next);else walk(item,next);
+      }
+    };
+    try{if(path.extname(file)==='.json')walk(JSON.parse(text.replace(/^\uFEFF/u,'')),'');}catch{}
+    if(!where.size)where.add(`dòng ${text.split('\n').flatMap((line,index)=>mentions(line)?[index+1]:[]).join(', ')}`);
+    found.push(`  - ${file}: ${[...where].join(', ')}`);
+  }
+  return found;
 }
 // Launcher ghim đúng Node lúc cài (có thể là Node 24.15.0 sẵn có, vd của nvm): Node đó bị gỡ thì báo cách sửa.
 const missingNode=`pi-config: không thấy Node tại ${nodePath}. Chạy lại installer (install.sh hoặc install.ps1) để dùng Node đã ghim.`;
@@ -181,11 +200,9 @@ try{
   copyTree(path.join(repoDir,'assets'),path.join(root,'assets'));
   copyTree(path.join(repoDir,'vendor'),path.join(root,'vendor'));
   await installRuntime('current','runtimes/current');
-  await installRuntime('firecrawl','tools/firecrawl');
+  const retiredFirecrawl=retireRuntime('firecrawl','tools/firecrawl');
   await applyPatches({root});
-  const sources=readJson(path.join(repoDir,'sources.lock.json'));
-  for(const source of sources)await installSource(source);
-  retireSources(new Set(sources.map(source=>source.name)));
+  retireSources();
   for(const filename of fs.readdirSync(path.join(repoDir,'runtime'))){
     const source=path.join(repoDir,'runtime',filename);if(fs.statSync(source).isFile())managed(path.join(root,'bin',filename),fs.readFileSync(source));
   }
@@ -194,20 +211,23 @@ try{
   // Model sai tên thì pi-subagents lặng lẽ dùng model của parent: kiểm trong catalog của runtime trước khi ghi cấu hình.
   const catalog=await checkCatalog({modules:path.join(root,'runtimes','current','node_modules'),agentDir,roles:models});
   if(catalog.errors.length)throw new Error(`Model mặc định trong assets/configs/model-defaults.json không dùng được:\n- ${catalog.errors.join('\n- ')}`);
-  const files=buildConfiguration({root,agentDir,nodePath,platform:process.platform,home,repoDir,shellPath:state.shellPath,modelDefaults:models});
+  const files=buildConfiguration({root,agentDir,platform:process.platform,home,repoDir,shellPath:state.shellPath,modelDefaults:models});
   for(const file of files)(mergesConfig(file.path,{agentDir})?managedJson:managed)(file.path,file.content);
-  for(const [name,action] of Object.entries({'pi':'main','pi-doctor':'doctor','pi-test':'test','firecrawl':'firecrawl'}))launcher(name,action);
+  for(const [name,action] of Object.entries({'pi':'main','pi-doctor':'doctor','pi-test':'test'}))launcher(name,action);
   const auth=path.join(agentDir,'auth.json');
   if(!fs.existsSync(auth)){fs.mkdirSync(agentDir,{recursive:true,mode:0o700});fs.writeFileSync(auth,'{}\n',{mode:0o600});}
   await addPath();
   reconcileResources({root,agentDir,binDir,state,wanted});
+  const leftovers=retiredFirecrawl?firecrawlLeftovers(files):[];
   state.installedAt=new Date().toISOString();writeJson(statePath,state);
   const pruned=pruneBackups(root);
   if(pruned.length)console.log(`Đã xoá ${pruned.length} bản backup cũ (runtime, nguồn, tài nguyên, file cấu hình) trong ${path.join(root,'backups')}.`);
   console.log(`\nĐã cài Pi vào ${root}. Mở terminal mới rồi chạy pi.`);
-  console.log('Đăng nhập: pi → /login. Firecrawl: firecrawl login --browser.');
+  console.log('Đăng nhập: pi → /login.');
   if(preserved.length)console.log('Giữ nguyên các file đã được bạn tùy chỉnh:\n'+preserved.join('\n'));
   for(const entry of merged)console.log(describeMerge(entry).join('\n'));
+  if(leftovers.length)console.log(`pi-config đã gỡ Firecrawl (CLI, skill, cấu hình mặc định). Phần bạn đã sửa được giữ nguyên và còn nhắc tới Firecrawl; xoá nếu không còn dùng:\n${leftovers.join('\n')}`);
+  if(retiredFirecrawl){delete state.runtimes.firecrawl;writeJson(statePath,state);}
   if(catalog.notes.length)console.log(`Mức thinking model không hỗ trợ (Pi dùng mức gần nhất):\n  - ${catalog.notes.join('\n  - ')}`);
   await run(nodePath,[path.join(root,'bin/launch.mjs'),'doctor']);
 }finally{releaseLock();}

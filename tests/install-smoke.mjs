@@ -9,8 +9,8 @@ const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const temporary=fs.mkdtempSync(path.join(os.tmpdir(),'pi-config-smoke-'));
 const root=path.join(temporary,'platform with spaces'),agentDir=path.join(temporary,'agent'),binDir=path.join(temporary,'bin');
 const args=[path.join(repo,'install.mjs'),'--root',root,'--agent-dir',agentDir,'--bin-dir',binDir,'--no-path'];
-// Lần cài đầu chạy npm ci cho runtime và Firecrawl, mỗi lần tối đa npmTimeout() (registry chậm trên runner Windows).
-await run(process.execPath,args,{timeout:2*npmTimeout()+600000});
+// Lần cài đầu chạy npm ci cho runtime, tối đa npmTimeout() (registry chậm trên runner Windows).
+await run(process.execPath,args,{timeout:npmTimeout()+600000});
 await run(process.execPath,[path.join(root,'bin/launch.mjs'),'main','--version']);
 // Launcher trong bin-dir chạy được; Node ghim trong launcher bị gỡ thì báo cách sửa thay vì lỗi "not found".
 {
@@ -59,7 +59,7 @@ const typecheck=path.join(temporary,'typecheck');
 fs.cpSync(path.join(repo,'manifests','typecheck'),typecheck,{recursive:true});
 await run(process.execPath,[npmCli(),'ci','--ignore-scripts','--no-audit','--no-fund'],{cwd:typecheck,timeout:npmTimeout()});
 const tsc=path.join(typecheck,'node_modules','typescript','bin','tsc');
-await run(process.execPath,['--test',...['extensions-typecheck','models','glm-wire','native-search-wire','claude-effort-wire','auto-mode-wire','rewind-session','rewind-hooks','subagent-markdown','patched-typecheck','model-roles','agent-models'].map(name=>path.join(repo,`tests/${name}.test.mjs`))],{env:{...process.env,PI_CONFIG_TEST_ROOT:root,PI_CONFIG_TSC:tsc}});
+await run(process.execPath,['--test',...['extensions-typecheck','models','glm-wire','native-search-wire','claude-effort-wire','auto-mode-wire','rewind-session','rewind-hooks','subagent-markdown','patched-typecheck','model-roles','agent-models','extension-changelog'].map(name=>path.join(repo,`tests/${name}.test.mjs`))],{env:{...process.env,PI_CONFIG_TEST_ROOT:root,PI_CONFIG_TSC:tsc}});
 await run(process.execPath,[path.join(repo,'tests/config-integration.mjs'),root]);
 await run(process.execPath,[path.join(repo,'tests/agent-integration.mjs'),root]);
 // Cài lại gộp ba chiều file JSON cấu hình: base là mặc định lần cài trước, lưu riêng trong <root>/state/defaults.
@@ -102,6 +102,7 @@ function install(extra=[]){
   const result=spawnSync(process.execPath,[...args,...extra],{encoding:'utf8',maxBuffer:64*1024*1024,timeout:1800000});
   process.stdout.write(result.stdout ?? '');process.stderr.write(result.stderr ?? '');
   assert.equal(result.status,0,'Cài lại thất bại');
+  install.stderr=result.stderr ?? '';
   return result.stdout;
 }
 const reinstall=install();
@@ -152,8 +153,70 @@ writeJson(statePath,legacyState);
 writeJson(legacyPath,{preset:'claude',roles:{researcher:{model:'anthropic/claude-sonnet-5-5'},debugger:{thinking:'low'}}});
 const workerPath=path.join(agentDir,'agents','worker.md');
 fs.writeFileSync(workerPath,fs.readFileSync(workerPath,'utf8').replace(/^tools: .*$/mu,'tools: "read, grep, find, ls, bash"'));
+// Bản trước còn cài Firecrawl: runtime riêng ở tools/firecrawl, nguồn skill trong sources/, launcher `firecrawl`, helper
+// đọc khoá, skill và luật deny trong settings.json, provider và key trong web-search.json. Giả lập đúng bố cục đó (mặc
+// định cũ nằm ở cả base lẫn file đang dùng) rồi cài lại: mọi thứ phải được gỡ, không chỉ thôi cài mới. Người dùng đã
+// sửa ba chỗ: đổi thứ tự searchRouting.providers, tự đặt firecrawlApiKey, thêm ghi chú vào AGENTS.md (còn phần Firecrawl cũ).
+const oldTool=path.join(root,'tools','firecrawl'),oldSource=path.join(root,'sources','firecrawl-cli-source');
+fs.mkdirSync(path.join(oldTool,'node_modules','firecrawl-cli'),{recursive:true});
+fs.mkdirSync(path.join(oldSource,'skills','firecrawl'),{recursive:true});
+fs.mkdirSync(path.join(root,'.downloads'),{recursive:true});
+fs.writeFileSync(path.join(oldSource,'skills','firecrawl','SKILL.md'),'---\nname: firecrawl\ndescription: fixture\n---\n');
+const oldState=readJson(statePath);
+oldState.runtimes.firecrawl='fixture-hash';oldState.sources['firecrawl-cli-source']='fixture-sha';
+const oldLauncher=path.join(binDir,process.platform==='win32'?'firecrawl.cmd':'firecrawl'),oldHelper=path.join(root,'bin','firecrawl-key.cjs');
+for(const file of [oldLauncher,oldHelper]){fs.writeFileSync(file,'fixture\n');oldState.files[file]=sha256('fixture\n');}
+writeJson(statePath,oldState);
+const oldCredentials=path.join(temporary,'firecrawl-cli').replaceAll('\\','/');
+for(const file of [settingsPath,settingsBase]){
+  const value=readJson(file);
+  value.skills.push(path.join(oldSource,'skills','firecrawl'));
+  value.permissions.deny.push(`Path(${oldCredentials})`,`Path(${oldCredentials}/**)`,'Bash(*firecrawl-key.cjs*)');
+  writeJson(file,value);
+}
+const webPath=path.join(agentDir,'web-search.json');
+for(const file of [webPath,defaultsOf(webPath)]){
+  const value=readJson(file);
+  value.webSearch.allowedProviders.push('firecrawl');value.searchRouting.providers.push('firecrawl');
+  Object.assign(value,{fetchRouting:{providers:['firecrawl'],allowRemoteHostedProviders:true},firecrawlBaseUrl:'https://api.firecrawl.dev',firecrawlApiKey:'!fixture-helper',firecrawlFreshScrape:true});
+  writeJson(file,value);
+}
+{
+  const value=readJson(webPath);
+  value.searchRouting.providers=['anthropic','openai','exa','firecrawl'];value.firecrawlApiKey='fc-user-secret-value';
+  writeJson(webPath,value);
+}
+const agentsPath=path.join(agentDir,'AGENTS.md');
+fs.appendFileSync(agentsPath,'\nGhi chú riêng của người dùng.\n\n## Web: native search và Firecrawl\n\nDùng `firecrawl` CLI để scrape.\n');
+const agentsLines=fs.readFileSync(agentsPath,'utf8').split('\n');
 const migrated=install();
 assert.equal(fs.existsSync(legacyPath),false);
+assert.match(migrated,/Runtime firecrawl không còn dùng: đã chuyển vào /u);
+assert.match(migrated,/Nguồn firecrawl-cli-source không còn dùng: đã chuyển vào /u);
+// Thư mục cha đã rỗng của runtime, nguồn và file tải về cũng được bỏ.
+for(const gone of [oldTool,oldSource,oldLauncher,oldHelper,path.join(root,'tools'),path.join(root,'sources'),path.join(root,'.downloads')])assert.equal(fs.existsSync(gone),false,gone);
+{
+  const cleaned=readJson(statePath),web=readJson(webPath),current=readJson(settingsPath);
+  // Người dùng đã sửa searchRouting.providers: firecrawl vẫn rời cả hai danh sách (lệch nhau thì pi-web-access không nạp,
+  // pi-doctor báo lỗi và lần cài thất bại), thứ tự của người dùng được giữ.
+  assert.deepEqual([web.webSearch.allowedProviders,web.searchRouting.providers,web.fetchRouting],[['openai','anthropic','exa'],['anthropic','openai','exa'],undefined]);
+  assert.ok(migrated.includes('  - bỏ khỏi searchRouting.providers: firecrawl'),migrated);
+  // Key người dùng tự đặt và AGENTS.md đã sửa được giữ; installer chỉ ra chỗ còn nhắc tới Firecrawl, không in giá trị.
+  assert.equal(web.firecrawlApiKey,'fc-user-secret-value');
+  assert.deepEqual(fs.readFileSync(agentsPath,'utf8').split('\n'),agentsLines);
+  const mentioned=agentsLines.flatMap((line,index)=>/firecrawl/iu.test(line)?[index+1]:[]);
+  assert.ok(migrated.includes(`còn nhắc tới Firecrawl; xoá nếu không còn dùng:\n  - ${webPath}: firecrawlApiKey\n  - ${agentsPath}: dòng ${mentioned.join(', ')}\n`),migrated);
+  assert.ok(mentioned.length>=2&&!(migrated+install.stderr).includes('fc-user-secret-value'),migrated);
+  // Người dùng dọn hai chỗ đó: AGENTS.md về bản mới, bỏ key.
+  delete web.firecrawlApiKey;writeJson(webPath,web);
+  fs.copyFileSync(path.join(repo,'assets','AGENTS.md'),agentsPath);
+  assert.deepEqual([Object.hasOwn(cleaned.runtimes,'firecrawl'),cleaned.sources],[false,{}]);
+  assert.ok(![oldLauncher,oldHelper].some(file=>Object.hasOwn(cleaned.files,file)));
+  assert.deepEqual(current.skills,[]);
+  assert.doesNotMatch(JSON.stringify([current,web]),/firecrawl/iu);
+  // Luật deny người dùng tự thêm trước đó vẫn còn.
+  assert.ok(current.permissions.deny.includes('Path(~/notes/private/**)'));
+}
 assert.match(migrated,/Đã chuyển .*model-roles\.json vào .*: model giữ nguyên như đang chạy; giờ đổi bằng \/model \(phiên chính\), \/agents/u);
 const backedUp=fs.readdirSync(path.join(root,'backups'),{recursive:true}).filter(name=>path.basename(String(name))==='model-roles.json');
 assert.equal(backedUp.length,1,'model-roles.json nằm trong backups');
@@ -196,8 +259,8 @@ function snapshot(){
   for(const dir of [agentDir,path.join(root,'state','defaults'),path.join(root,'backups')])walk(dir);
   return files;
 }
-// Nguồn không còn trong sources.lock.json (mattpocock-skills của bản cài cũ): lần cài
-// sau chuyển thư mục vào backups và bỏ khỏi state.
+// Nguồn skill của bản cài cũ còn trong state (vd mattpocock-skills): lần cài sau chuyển thư mục vào backups và bỏ
+// khỏi state.
 const retiredSource=path.join(root,'sources','mattpocock-skills'),installState=path.join(root,'install-state.json');
 fs.mkdirSync(path.join(retiredSource,'skills','engineering','tdd'),{recursive:true});
 fs.writeFileSync(path.join(retiredSource,'skills','engineering','tdd','SKILL.md'),'---\nname: tdd\ndescription: old\n---\n');
@@ -212,12 +275,12 @@ const beforeThird=snapshot();
 const third=install();
 assert.deepEqual(snapshot(),beforeThird);
 assert.doesNotMatch(third,/Đã gộp|Chưa có mặc định|xung đột|Giữ phần bạn đã sửa|Giữ nguyên các file/u);
-const state=readJson(path.join(root,'install-state.json'));assert.deepEqual(Object.keys(state.sources).sort(),['firecrawl-cli-source']);
-// Không cài skill quy trình: Pi chỉ nạp skill Firecrawl.
+const state=readJson(path.join(root,'install-state.json'));assert.deepEqual(state.sources,{});
+// Không cài skill nào.
 assert.ok(!fs.existsSync(path.join(root,'assets','skills')));
-assert.ok(readJson(path.join(agentDir,'settings.json')).skills.every(entry=>entry.includes(path.join('sources','firecrawl-'))));
+assert.deepEqual(readJson(path.join(agentDir,'settings.json')).skills,[]);
 assert.equal(fs.existsSync(path.join(root,'.install.lock')),false);
-console.log('PASS: cài sạch, một runtime Pi, skill Firecrawl, auth/permission, type của bản vá; cài lại gộp mặc định mới, giữ tùy chỉnh và secret giả; chuyển model-roles.json cũ vào backups, giữ model đang chạy; pi-doctor báo model sai tên; bỏ nguồn skills cũ; lần cuối không đổi gì.');
+console.log('PASS: cài sạch, một runtime Pi, không skill, auth/permission, type của bản vá; cài lại gộp mặc định mới, giữ tùy chỉnh và secret giả; chuyển model-roles.json cũ vào backups, giữ model đang chạy; pi-doctor báo model sai tên; bỏ nguồn skills cũ; lần cuối không đổi gì.');
 console.log(`Fixture: ${root}`);
 if(process.env.GITHUB_ENV){
   fs.appendFileSync(process.env.GITHUB_ENV,`PI_CONFIG_SMOKE_ROOT=${root}\nPI_CONFIG_SMOKE_AGENT_DIR=${agentDir}\nPI_CONFIG_SMOKE_BIN_DIR=${binDir}\n`);

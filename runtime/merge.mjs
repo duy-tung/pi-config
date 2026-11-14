@@ -12,13 +12,55 @@ import {joinRole, splitRole} from './model-roles.mjs';
  */
 
 
-// Mảng dạng tập hợp của settings.json: gộp theo phần tử và giữ thứ tự của file hiện tại. Mảng khác là một giá trị.
-const SET_PATHS = new Set(['permissions.allow', 'permissions.ask', 'permissions.deny', 'enabledModels', 'skills', 'themes', 'prompts', 'extensions', 'packages']);
+// Mảng dạng tập hợp, theo tên file: gộp theo phần tử và giữ thứ tự của file hiện tại. Mảng khác là một giá trị.
+const SET_PATHS = {
+  'settings.json': {paths: new Set(['permissions.allow', 'permissions.ask', 'permissions.deny', 'enabledModels', 'skills', 'themes', 'prompts', 'extensions', 'packages'])},
+  // Hai danh sách provider của pi-web-access đi theo cặp (providerListsLoad). Gộp theo phần tử để provider mặc định mới
+  // bỏ thì rời cả hai danh sách, kể cả khi người dùng đã sửa một trong hai.
+  // ordered: thứ tự là thứ tự ưu tiên và danh sách là allowlist, nên danh sách chưa sửa nhận nguyên mặc định mới, còn
+  // khi chưa có base thì giữ danh sách hiện có thay vì cộng dồn (provider người dùng đã bỏ không tự quay lại).
+  // loads: file đang nạp được thì sau khi gộp hai danh sách vẫn phải nạp được (mergeConfig).
+  'web-search.json': {paths: new Set(['webSearch.allowedProviders', 'searchRouting.providers']), ordered: true, loads: providerListsLoad},
+};
+/** Các mảng dạng tập hợp của một file cấu hình (theo tên file); undefined khi file không có mảng nào như vậy. */
+export const setPathsOf = file => Object.hasOwn(SET_PATHS, path.basename(file)) ? SET_PATHS[path.basename(file)] : undefined;
 
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const own = (object, key) => isObject(object) && Object.hasOwn(object, key) ? object[key] : undefined;
 // Gán như thuộc tính riêng: khóa "__proto__" từ JSON không được đổi prototype.
 const assign = (object, key, value) => Object.defineProperty(object, key, {value, enumerable: true, writable: true, configurable: true});
+
+/**
+ * pi-web-access không nạp web-search.json (mất mọi web tool) khi một danh sách provider rỗng hoặc trùng mục, khi có
+ * searchRouting mà thiếu providers, hay khi searchRouting.providers hoặc provider cố định (provider/searchProvider) trỏ
+ * tới provider ngoài webSearch.allowedProviders. Nó so tên sau khi bỏ khoảng trắng và đổi về chữ thường; không có
+ * allowlist thì mọi provider đều được phép. Chỉ đọc phần liên quan tới các danh sách đó.
+ */
+function providerSelections(config) {
+  const normal = item => typeof item === 'string' ? item.trim().toLowerCase() : item;
+  const names = value => Array.isArray(value) && value.length > 0 && new Set(value.map(normal)).size === value.length ? value.map(normal) : undefined;
+  const webSearch = own(config, 'webSearch'), routing = own(config, 'searchRouting');
+  const restricted = isObject(webSearch) && Object.hasOwn(webSearch, 'allowedProviders');
+  const allowed = restricted ? names(webSearch.allowedProviders) : undefined;
+  const routed = routing === undefined ? [] : names(own(routing, 'providers'));
+  let valid = (!restricted || allowed !== undefined) && routed !== undefined;
+  const fixed = [];
+  for (const key of ['searchProvider', 'provider']) {
+    const value = own(config, key);
+    if (Array.isArray(value)) { const list = names(value); if (list) fixed.push(...list); else valid = false; }
+    else if (typeof value === 'string' && !['', 'auto', 'all'].includes(normal(value))) fixed.push(normal(value));
+  }
+  return {valid: valid && (!allowed || routed.every(name => allowed.includes(name))), allowed, fixed};
+}
+/**
+ * value nạp được hay không, xét theo file hiện tại: provider cố định chỉ tính khi allowlist của current đang cho phép
+ * nó (pi-web-access coi tên lạ là auto, và lỗi có sẵn của file không tính cho lần gộp).
+ */
+function providerListsLoad(value, current = value) {
+  const now = providerSelections(value), before = providerSelections(current);
+  const fixed = now.fixed.filter(name => !before.allowed || before.allowed.includes(name));
+  return now.valid && (!now.allowed || fixed.every(name => now.allowed.includes(name)));
+}
 
 export function deepEqual(a, b) {
   if (a === b) return true;
@@ -103,7 +145,15 @@ function mergeLeaf(path, base, next, current, context) {
 
 function mergeNode(path, base, next, current, context) {
   const setPath = path.join('.');
-  if (context.settings && SET_PATHS.has(setPath) && Array.isArray(next) && Array.isArray(current)) {
+  // Lượt gộp lại của mergeConfig: danh sách (hoặc object chứa nó) mà file hiện tại không có thì không thêm.
+  if (context.keepSets && current === undefined && [...context.sets.paths].some(item => item === setPath || item.startsWith(`${setPath}.`))) {
+    if (next !== undefined) context.conflicts.push({path, current, next});
+    return undefined;
+  }
+  if (context.sets?.paths.has(setPath) && Array.isArray(next) && Array.isArray(current)) {
+    // Lượt gộp lại của mergeConfig: giữ danh sách của người dùng, báo xung đột nếu khác mặc định mới.
+    if (context.keepSets) { if (!deepEqual(current, next)) context.conflicts.push({path, current, next}); return current; }
+    if (context.sets.ordered && (!Array.isArray(base) || deepEqual(current, base))) return mergeLeaf(path, base, next, current, context);
     return mergeSet(path, Array.isArray(base) ? base : undefined, next, current, context);
   }
   if (!isObject(next) || !isObject(current)) return mergeLeaf(path, base, next, current, context);
@@ -123,12 +173,18 @@ function mergeNode(path, base, next, current, context) {
 
 /**
  * base undefined: gộp cộng dồn cho bản cài trước khi có base (giữ mọi giá trị hiện có, thêm khóa và mục còn thiếu).
- * settings: áp các luật mảng tập hợp và thứ tự extension của settings.json.
+ * sets: các mảng dạng tập hợp của file (setPathsOf); settings: true là cách viết gọn cho settings.json, gồm cả luật
+ * thứ tự extension. sets.loads: các danh sách đó đi theo cặp; gộp cho ra file không nạp được từ một file đang nạp
+ * được (vd mọi provider người dùng định tuyến đều bị mặc định mới bỏ) thì gộp lại: giữ nguyên các danh sách đang có
+ * (danh sách file không có thì không thêm) và báo xung đột.
  */
-export function mergeConfig({base, next, current, settings = false}) {
-  const context = {settings, changes: [], conflicts: []};
-  const value = mergeNode([], base, next, current, context);
-  return {value, changes: context.changes, conflicts: context.conflicts};
+export function mergeConfig({base, next, current, settings = false, sets = settings ? SET_PATHS['settings.json'] : undefined}) {
+  const run = keepSets => {
+    const context = {sets, keepSets, changes: [], conflicts: []};
+    return {value: mergeNode([], base, next, current, context), changes: context.changes, conflicts: context.conflicts};
+  };
+  const merged = run(false);
+  return sets?.loads && !sets.loads(merged.value, current) && sets.loads(current) ? run(true) : merged;
 }
 
 const stringify = value => `${JSON.stringify(value, null, 2)}\n`;
@@ -162,7 +218,7 @@ export function reconcileRole({next, current, base, unedited = false}) {
  * unedited: file khớp checksum installer ghi lần trước, chỉ dùng khi chưa có base.
  * Trả content undefined khi giữ nguyên file; invalid khi file hiện tại không phải JSON.
  */
-export function reconcileJson({next, current, base, unedited = false, settings = false}) {
+export function reconcileJson({next, current, base, unedited = false, settings = false, sets = settings ? SET_PATHS['settings.json'] : undefined}) {
   const nextValue = JSON.parse(next);
   if (current === undefined) return {content: next, changes: [], conflicts: []};
   let currentValue, baseValue;
@@ -172,7 +228,7 @@ export function reconcileJson({next, current, base, unedited = false, settings =
   // File chưa sửa so với lần cài trước: nhận nguyên mặc định mới, như file installer tự quản lý.
   if (baseValue !== undefined && deepEqual(currentValue, baseValue)) return {content: next, changes: [], conflicts: []};
   if (baseValue === undefined && unedited) return {content: next, changes: [], conflicts: []};
-  const merged = mergeConfig({base: baseValue, next: nextValue, current: currentValue, settings});
+  const merged = mergeConfig({base: baseValue, next: nextValue, current: currentValue, sets});
   return {
     content: deepEqual(merged.value, currentValue) ? undefined : stringify(merged.value),
     changes: merged.changes, conflicts: merged.conflicts, additive: baseValue === undefined,
@@ -261,7 +317,7 @@ export function planConfigFile({root, file, content, recorded}) {
   const text = current?.toString('utf8');
   const plan = path.extname(file) === '.md'
     ? reconcileRole({next: content, current: text, base, unedited})
-    : reconcileJson({next: content, current: text, base, unedited, settings: path.basename(file) === 'settings.json'});
+    : reconcileJson({next: content, current: text, base, unedited, sets: setPathsOf(file)});
   if (plan.invalid) return kept('invalid');
   return {
     file, baseFile, content: plan.content, base: base === content ? undefined : content,

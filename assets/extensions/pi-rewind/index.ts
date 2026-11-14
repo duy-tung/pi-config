@@ -1080,8 +1080,6 @@ export default function piRewind(pi: ExtensionAPI) {
 
   const description = "Rewind the conversation and/or code to a previous point, or summarize from a selected message";
   pi.registerCommand("rewind", { description, handler: async (_args, ctx) => openRewind(ctx) });
-  pi.registerCommand("checkpoint", { description: "Alias for /rewind", handler: async (_args, ctx) => openRewind(ctx) });
-  pi.registerCommand("undo", { description: "Alias for /rewind", handler: async (_args, ctx) => openRewind(ctx) });
 
   pi.registerCommand("redo", {
     description: "Undo the last /rewind: bring back the code and conversation from before it (also in the /rewind menu)",
