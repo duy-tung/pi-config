@@ -19,7 +19,17 @@ Kiểm ngày 10/11/2026 bằng một phiên thật hai lượt (Opus 5.5, pi-ant
 - Bộ phân loại của auto mode là request một lượt nên không tạo thread (`disableContinuation` trong `lib/completion.ts`); body của nó giống hệt trước, chỉ header `anthropic-beta` có thêm beta của threads.
 - Tắt hẳn: tạo `~/.pi/agent/models.json` với `{ "providers": { "anthropic": { "compat": { "supportsMessageThreads": false } } } }`; khi đó request giống hệt Pi 1.5.0. Installer không sinh file này và giữ nguyên file bạn tự viết.
 
-Pi 1.5.1 cũng đổi mặc định `cacheWarming` sang `"idle"` (làm mới cache tới 30 phút sau khi agent dừng). pi-config vẫn đặt `"cacheWarming": "off"` nên không bị ảnh hưởng.
+## Giữ ấm prompt cache
+
+pi-config đặt `"cacheWarming": "idle"`, mặc định của Pi từ 1.5.1. Prompt cache của Anthropic hết hạn sau 5 phút không dùng; lượt kế tiếp khi đó ghi lại toàn bộ context với giá ghi cache thay vì giá đọc. Với `idle`:
+
+- Pi gửi lại request cuối với 1 token output khoảng 4,5 phút một lần khi phiên nghỉ, tối đa 30 phút sau khi agent dừng. Request này chỉ đọc cache và không vào hội thoại; usage của nó được cộng vào tổng của phiên.
+- Pi chỉ gửi khi ước tính có lợi (ít nhất 0,05 USD theo giá của model). Với context nhỏ nó tự dừng.
+- Request đi qua `ModelRuntime` nên qua shaping OAuth như lượt thường, và tính vào quota của gói Claude.
+
+Kiểm ngày 15/11/2026 bằng một phiên thật qua Claude OAuth (Pi 1.5.2, chế độ RPC, context khoảng 87 nghìn token): request giữ ấm chạy ở giây 273 và đọc đủ cache; lượt kế tiếp sau 6 phút 40 giây nghỉ đọc đủ cache và chỉ ghi 17 token.
+
+Nghỉ quá 30 phút thì cache vẫn mất. Đặt `PI_CACHE_RETENTION=long` (cache 1 giờ, giá ghi gấp 2 lần input) thì Pi không gửi request giữ ấm nào, vì lần làm mới kế tiếp rơi ngoài giới hạn 30 phút; hai cách chỉ chọn một. Tắt giữ ấm bằng `"cacheWarming": "off"` trong `settings.json`; cài lại giữ giá trị bạn đã đổi.
 
 ## Mức thinking (effort)
 

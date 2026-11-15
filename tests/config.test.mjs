@@ -184,7 +184,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.equal(advisor.advisorAgentsMdContext, false);
       } else assert.ok(!files.some(file => file.path === p.join(profile.agentDir,"advisor.json")));
       assert.ok(!files.some(file => /goal/u.test(p.basename(file.path))), "pi-goal-x đã gỡ");
-      assert.equal(json(p.join(profile.agentDir, "settings.json")).cacheWarming, "off");
+      assert.equal(json(p.join(profile.agentDir, "settings.json")).cacheWarming, "idle");
       if (profile.packages.includes("@tintinweb/pi-subagents")) assert.equal(json(p.join(profile.agentDir, "subagents.json")).fallbackSubagent, "none");
       else assert.ok(!files.some(file => file.path === p.join(profile.agentDir,"subagents.json")));
     }

@@ -6,7 +6,7 @@ Giao tiếp và tài liệu vận hành bằng tiếng Việt. Repo mô tả b�
 - Ghim phiên bản dependency và checksum bản vá. Chỉ đổi phiên bản hoặc phân vai theo phạm vi yêu cầu.
 - pi-config không cài skill nào; skill quy trình và skill của công cụ không thuộc repo này. Cổng permission theo hành vi của Claude Code; không thêm lớp chặn riêng chặt hơn Claude Code.
 - Shell jobs, rewind (pi-rewind) và advisor phải dùng được trong cùng phiên; background chỉ cung cấp shell jobs, model delegation dùng Agent. Giữ context riêng và quyền công cụ của từng role; model/thinking trong role được ưu tiên hơn tham số Agent.
-- Giữ cache warming và workflow tính phí tự động tắt trong cấu hình mặc định. Ngoại lệ đã chọn: advisor luôn bật cho parent, gọi khi lỗi lặp lại và trước khi báo xong, không giới hạn số lần mỗi phiên (lần gọi lỗi được thử lại một lần bằng Opus 5.5), không có gate cứng chặn phiên.
+- Giữ workflow tính phí tự động tắt trong cấu hình mặc định. Ngoại lệ đã chọn: cache warming ở mức `idle` (mặc định của Pi; request giữ ấm chỉ đọc cache, tối đa 30 phút sau khi agent dừng); advisor luôn bật cho parent, gọi khi lỗi lặp lại và trước khi báo xong, không giới hạn số lần mỗi phiên (lần gọi lỗi được thử lại một lần bằng Opus 5.5), không có gate cứng chặn phiên.
 - Repo không chứa credential, token, dữ liệu phiên, log riêng hoặc đường dẫn máy nguồn. Auth và tùy chỉnh người dùng phải được bảo toàn khi cài lại.
 - Installer phải idempotent, kiểm quyền sở hữu file bằng manifest/checksum và báo rõ file đã được người dùng sửa. Chỉ lưu trữ tài nguyên thuộc installer, chưa sửa và không còn được tham chiếu.
 - Dùng root, agent-dir và bin-dir tạm để kiểm thử; không chạy installer đè lên Pi đang dùng trên máy phát triển.
