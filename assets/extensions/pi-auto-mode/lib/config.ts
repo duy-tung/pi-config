@@ -9,8 +9,8 @@ import path from "node:path";
 export type PermissionMode = "manual" | "acceptEdits" | "auto" | "bypass";
 
 /**
- * Thứ tự Shift+Tab như Claude Code: manual → acceptEdits → bypass → auto → manual. Bypass chỉ có trong vòng khi phiên
- * được mở với bypass (cờ dòng lệnh hoặc defaultMode trong settings của người dùng).
+ * Thứ tự hiện trong /permissions → Mode, như vòng của Claude Code: manual → acceptEdits → bypass → auto. Bypass chỉ có
+ * trong danh sách khi phiên được mở với bypass (cờ dòng lệnh hoặc defaultMode trong settings của người dùng).
  */
 export const MODES: PermissionMode[] = ["manual", "acceptEdits", "bypass", "auto"];
 
@@ -20,11 +20,6 @@ export function availableModes(bypassAvailable: boolean): PermissionMode[] {
 
 /** Mode hỏi người dùng thay cho bộ phân loại (không gọi model nào để duyệt). */
 export const prompts = (mode: PermissionMode): boolean => mode === "manual" || mode === "acceptEdits";
-
-export function nextMode(mode: PermissionMode, bypassAvailable = false): PermissionMode {
-  const modes = availableModes(bypassAvailable || mode === "bypass");
-  return modes[(modes.indexOf(mode) + 1) % modes.length];
-}
 
 export interface AutoModeConfig {
   enabled: boolean;

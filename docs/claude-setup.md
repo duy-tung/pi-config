@@ -33,7 +33,7 @@ Nghỉ quá 30 phút thì cache vẫn mất. Đặt `PI_CACHE_RETENTION=long` (c
 
 ## Mức thinking (effort)
 
-Opus 5.5 không tắt được thinking; `/thinking` (Alt+T) đổi effort `low`…`max`. Pi ghim `output_config.effort` của request ở `low` (từ Pi 1.5.0; theo chú thích trong pi-ai, mức này thuộc prompt được cache nên cố định, và để thấp vì tổ chức có thể đặt trần effort) và gửi effort theo lượt bằng một system message rỗng chỉ có `output_config`; từ 3.3.2, pi-anthropic-auth giữ message đó khi shape request OAuth, nên mức `/thinking` của phiên có hiệu lực mà không cần bản vá (`tests/claude-effort-wire.test.mjs` kiểm điều này). Đổi mức thinking giữa phiên làm mất prompt cache một lần. Với API key, request không qua shaping và giữ cơ chế gốc của Pi.
+Opus 5.5 không tắt được thinking; `/thinking` (Shift+Tab hoặc Alt+T) đổi effort `low`…`max`. Pi ghim `output_config.effort` của request ở `low` (từ Pi 1.5.0; theo chú thích trong pi-ai, mức này thuộc prompt được cache nên cố định, và để thấp vì tổ chức có thể đặt trần effort) và gửi effort theo lượt bằng một system message rỗng chỉ có `output_config`; từ 3.3.2, pi-anthropic-auth giữ message đó khi shape request OAuth, nên mức `/thinking` của phiên có hiệu lực mà không cần bản vá (`tests/claude-effort-wire.test.mjs` kiểm điều này). Đổi mức thinking giữa phiên làm mất prompt cache một lần. Với API key, request không qua shaping và giữ cơ chế gốc của Pi.
 
 ## Quota trong footer và `/claude-usage`
 

@@ -40,8 +40,8 @@ Chạy `pi` để mở Claude Opus 5.5/high với toàn bộ công cụ. Các wo
 | Shell job nền | `/bg --name "Dev server" npm run dev`, `/jobs`, `/logs`, `/kill` |
 | Ý kiến cố vấn | `/advisor-manual`, `/advisor-settings`, `/advisor-off`, `/advisor` |
 | Rewind code/hội thoại | `Esc Esc`, `/rewind`, `/redo`; `/clear` mở phiên mới |
-| Permission | `Shift+Tab` (manual → accept edits → [bypass] → auto), `/permissions` (mode, model phân loại, lệnh bị chặn, luật, `test <lệnh>`), `/add-dir` |
-| Model và reasoning | `/model`, `/thinking`, `Alt+T` đổi mức thinking |
+| Permission | `/permissions` (đổi mode manual / accept edits / auto / [bypass], model phân loại, lệnh bị chặn, luật, `test <lệnh>`), `/add-dir` |
+| Model và reasoning | `/model`, `/thinking`, `Shift+Tab` (hoặc `Alt+T`) đổi mức thinking |
 | Công cụ và giao diện | `/agents`, `/usage`, `/claude-usage`, `/open-tui` |
 
 Advisor (pi-advisor-flow) luôn bật khi mở phiên: executor là model của phiên (mặc định Opus/high), advisor là Fable 5.1/high.
@@ -63,7 +63,7 @@ Permission (`pi-auto-mode`, extension của repo) có bốn mode như Claude Cod
 
 **Manual** (mode default của Claude Code) quyết định như auto nhưng hỏi bạn thay cho bộ phân loại, kể cả khi sửa file và đọc ngoài workspace (cho đọc cả thư mục tới hết phiên); không gọi model nào, không có UI thì chặn. Hộp hỏi có Yes; Yes, and don't ask again (lệnh shell lưu luật theo tiền tố cho repo, dùng chung mọi worktree, ngoài repo; sửa file thì chuyển sang accept edits); Yes, and switch to auto mode (lệnh shell); No (dừng lượt); No, and tell Pi what to do differently. **Accept edits** như manual nhưng sửa file và `mkdir`/`touch`/`rm`/`rmdir`/`mv`/`cp`/`sed -i` trong workspace chạy ngay.
 
-**Bypass** như Claude Code: chỉ có khi mở Pi bằng `--dangerously-skip-permissions` (hoặc `--permission-mode bypass`, `--allow-dangerously-skip-permissions`); chạy mọi thứ trừ luật deny và ask. `rm` vào `/`, `~` hay thư mục làm việc thì hỏi bạn trước, ở auto và bypass có đếm ngược 2 phút. Không có lớp chặn riêng cho git phá huỷ: auto để bộ phân loại xét, manual hỏi, bypass chạy. `Shift+Tab` đổi mode; `/add-dir` thêm thư mục làm việc. `/permissions` là menu duy nhất: đổi mode, model phân loại, xem trạng thái, duyệt lại lệnh bị chặn, xem luật và chạy thử một lệnh. Chi tiết: [docs/auto-mode.md](docs/auto-mode.md).
+**Bypass** như Claude Code: chỉ có khi mở Pi bằng `--dangerously-skip-permissions` (hoặc `--permission-mode bypass`, `--allow-dangerously-skip-permissions`); chạy mọi thứ trừ luật deny và ask. `rm` vào `/`, `~` hay thư mục làm việc thì hỏi bạn trước, ở auto và bypass có đếm ngược 2 phút. Không có lớp chặn riêng cho git phá huỷ: auto để bộ phân loại xét, manual hỏi, bypass chạy. Mode đổi trong `/permissions` (không có phím tắt; `Shift+Tab` là phím đổi mức thinking của Pi); `/add-dir` thêm thư mục làm việc. `/permissions` là menu duy nhất: đổi mode, model phân loại, xem trạng thái, duyệt lại lệnh bị chặn, xem luật và chạy thử một lệnh. Chi tiết: [docs/auto-mode.md](docs/auto-mode.md).
 
 Mọi model dùng context của catalog Pi (Opus 5.5 1M). Theme Rosé Pine Moon.
 

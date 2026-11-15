@@ -169,6 +169,22 @@ test('web-search.json provider lists merge element-wise through the installer; w
   assert.deepEqual([additive.written,additive.additive,readJson(file)],[false,true,config(['exa'],['exa'])]);
   assert.deepEqual(additive.conflicts.map(conflict=>conflict.path.join('.')),['webSearch.allowedProviders','searchRouting.providers']);
 });
+test('keybindings.json: Shift+Tab returns to thinking on upgrade; a key the user rebound is kept',t=>{
+  const f=fixture(t),file=path.join(f.agentDir,'keybindings.json');
+  const version=keys=>JSON.stringify({'app.clipboard.pasteImage':[],'app.thinking.cycle':keys,'tui.altScreen.search':['alt+s']},null,2)+'\n';
+  // Bản cài cũ chưa sửa: mảng phím là một giá trị, nhận mặc định mới.
+  reconcileConfigFile({root:f.root,file,content:version(['alt+t'])});
+  const upgraded=reconcileConfigFile({root:f.root,file,content:version(['shift+tab','alt+t'])});
+  assert.deepEqual(readJson(file)['app.thinking.cycle'],['shift+tab','alt+t']);
+  assert.deepEqual(upgraded.conflicts,[]);
+  // Người dùng đã tự gán phím khác: giữ của họ và báo xung đột.
+  const g=fixture(t),own=path.join(g.agentDir,'keybindings.json');
+  reconcileConfigFile({root:g.root,file:own,content:version(['alt+t'])});
+  writeJson(own,{...readJson(own),'app.thinking.cycle':['ctrl+y']});
+  const kept=reconcileConfigFile({root:g.root,file:own,content:version(['shift+tab','alt+t'])});
+  assert.deepEqual(readJson(own)['app.thinking.cycle'],['ctrl+y']);
+  assert.deepEqual(kept.conflicts.map(conflict=>conflict.path.join('.')),['app.thinking.cycle']);
+});
 test('managed JSON that is invalid or was never written by the installer is kept untouched; symlinks are refused',t=>{
   const f=fixture(t),file=path.join(f.agentDir,'mcp.json');
   fs.mkdirSync(f.agentDir,{recursive:true});fs.writeFileSync(file,'{"mcpServers": ');
