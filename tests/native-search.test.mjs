@@ -26,7 +26,7 @@ test("native search chỉ nhận Claude trên endpoint Anthropic chính thức",
   assert.equal(supportsNativeSearch({ ...claude, baseUrl: "https://gateway.example/anthropic" }), false);
   assert.equal(supportsNativeSearch({ ...claude, baseUrl: "http://api.anthropic.com" }), false);
   assert.equal(supportsNativeSearch({ ...claude, provider: "opencode-go" }), false);
-  assert.equal(supportsNativeSearch({ provider: "openai-codex", api: "openai-codex-responses", id: "gpt-6-astra", baseUrl: "https://chatgpt.com/backend-api" }), false);
+  assert.equal(supportsNativeSearch(glm), false);
   assert.equal(supportsNativeSearch(undefined), false);
 });
 

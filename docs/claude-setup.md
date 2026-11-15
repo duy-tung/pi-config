@@ -2,9 +2,9 @@
 
 ## Đăng nhập và model
 
-Parent mặc định là **Claude Opus 5.5/high** (`anthropic/claude-opus-5-5`, context 1M của catalog). Chạy `pi`, dùng `/login` và chọn **Anthropic** để đăng nhập gói Claude Pro/Max (OAuth), hoặc cung cấp `ANTHROPIC_API_KEY`. Vòng `Ctrl+P` gồm model của các vai (Opus 5.5, Fable 5.1, Sonnet 5.5); muốn dùng GPT thì `/login` → **OpenAI** → **Sign in with ChatGPT** (xem [README](../README.md#đăng-nhập-dịch-vụ)).
+Parent mặc định là **Claude Opus 5.5/high** (`anthropic/claude-opus-5-5`, context 1M của catalog). Chạy `pi`, dùng `/login` và chọn **Anthropic** để đăng nhập gói Claude Pro/Max (OAuth), hoặc cung cấp `ANTHROPIC_API_KEY`. Vòng `Ctrl+P` gồm model của các vai (Opus 5.5, Fable 5.1, Sonnet 5.5).
 
-Tài liệu Claude Code ghi OAuth của gói Pro/Max dành cho Claude Code và ứng dụng native của Anthropic, và Anthropic có thể thực thi giới hạn này không báo trước. Nếu Claude không dùng được, chọn model khác bằng `/model`; role của Agent mặc định cũng là Claude, đổi trong `/agents`. Bộ phân loại của auto mode chạy Claude Sonnet 5.5 qua cùng đăng nhập; khi Sonnet 5.5 lỗi, nó dùng model của phiên, nên sau khi đổi `/model` sang model GPT (vd `openai/gpt-6.1-sol` qua Sign in with ChatGPT) thì auto mode duyệt được tiếp.
+Tài liệu Claude Code ghi OAuth của gói Pro/Max dành cho Claude Code và ứng dụng native của Anthropic, và Anthropic có thể thực thi giới hạn này không báo trước. Nếu Claude không dùng được, chọn model khác bằng `/model`; role của Agent mặc định cũng là Claude, đổi trong `/agents`. Bộ phân loại của auto mode chạy Claude Sonnet 5.5 qua cùng đăng nhập; khi Sonnet 5.5 lỗi, nó dùng model của phiên, nên sau khi đổi `/model` sang model của provider khác (vd GLM của OpenCode Go) thì auto mode duyệt được tiếp.
 
 `@gotgenes/pi-anthropic-auth` 3.4.4 shape request OAuth (billing header, system prompt) cho mọi request đi qua provider `anthropic`, và tự thử lại khi Anthropic yêu cầu phiên bản Claude Code mới hơn. pi-config tắt cảnh báo extra usage lúc khởi động của Pi (`warnings.anthropicExtraUsage: false`), vì phiên chính, compaction và extension gọi qua `ctx.modelRegistry.streamSimple()` đều đi qua shaping; extension gọi thẳng `compat.streamSimple` của pi-ai thì không, và request đó có thể bị tính vào extra usage. Bật lại trong `/settings` → Warnings.
 
@@ -19,7 +19,17 @@ Kiểm ngày 10/11/2026 bằng một phiên thật hai lượt (Opus 5.5, pi-ant
 - Bộ phân loại của auto mode là request một lượt nên không tạo thread (`disableContinuation` trong `lib/completion.ts`); body của nó giống hệt trước, chỉ header `anthropic-beta` có thêm beta của threads.
 - Tắt hẳn: tạo `~/.pi/agent/models.json` với `{ "providers": { "anthropic": { "compat": { "supportsMessageThreads": false } } } }`; khi đó request giống hệt Pi 1.5.0. Installer không sinh file này và giữ nguyên file bạn tự viết.
 
-Pi 1.5.1 cũng đổi mặc định `cacheWarming` sang `"idle"` (làm mới cache tới 30 phút sau khi agent dừng). pi-config vẫn đặt `"cacheWarming": "off"` nên không bị ảnh hưởng.
+## Giữ ấm prompt cache
+
+pi-config đặt `"cacheWarming": "idle"`, mặc định của Pi từ 1.5.1. Prompt cache của Anthropic hết hạn sau 5 phút không dùng; lượt kế tiếp khi đó ghi lại toàn bộ context với giá ghi cache thay vì giá đọc. Với `idle`:
+
+- Pi gửi lại request cuối với 1 token output khoảng 4,5 phút một lần khi phiên nghỉ, tối đa 30 phút sau khi agent dừng. Request này chỉ đọc cache và không vào hội thoại; usage của nó được cộng vào tổng của phiên.
+- Pi chỉ gửi khi ước tính có lợi (ít nhất 0,05 USD theo giá của model). Với context nhỏ nó tự dừng.
+- Request đi qua `ModelRuntime` nên qua shaping OAuth như lượt thường, và tính vào quota của gói Claude.
+
+Kiểm ngày 15/11/2026 bằng một phiên thật qua Claude OAuth (Pi 1.5.2, chế độ RPC, context khoảng 87 nghìn token): request giữ ấm chạy ở giây 273 và đọc đủ cache; lượt kế tiếp sau 6 phút 40 giây nghỉ đọc đủ cache và chỉ ghi 17 token.
+
+Nghỉ quá 30 phút thì cache vẫn mất. Đặt `PI_CACHE_RETENTION=long` (cache 1 giờ, giá ghi gấp 2 lần input) thì Pi không gửi request giữ ấm nào, vì lần làm mới kế tiếp rơi ngoài giới hạn 30 phút; hai cách chỉ chọn một. Tắt giữ ấm bằng `"cacheWarming": "off"` trong `settings.json`; cài lại giữ giá trị bạn đã đổi.
 
 ## Mức thinking (effort)
 
@@ -39,11 +49,10 @@ pi-config có extension `claude-usage`:
 
 ## Native web search
 
-`web_search` (pi-web-access 0.47.0) định tuyến `["openai", "anthropic", "exa"]` với `useCurrentModel: true`:
+`web_search` (pi-web-access 0.47.0) định tuyến `["anthropic", "exa"]` với `useCurrentModel: true`:
 
 | Model hiện tại | Cách tìm |
 |---|---|
-| GPT trên endpoint chính thức (Astra, Sol): `openai` qua Sign in with ChatGPT, hoặc `openai-codex` | `openai`: hosted `web_search` của Responses API (`api.openai.com` hoặc endpoint Codex), dùng chính model và token đã đăng nhập |
 | Claude của provider `anthropic` trên `api.anthropic.com` | `anthropic`: server tool `web_search_20250305` của Anthropic, tối đa 5 lượt tìm mỗi lần gọi |
 | Model khác (GLM, gateway, Claude qua provider khác) | Exa (endpoint MCP miễn phí, không cần key; đặt `EXA_API_KEY` để dùng API có key) |
 
@@ -57,11 +66,11 @@ Muốn phiên chạy model khác (ví dụ researcher GLM) cũng tìm bằng Cla
 
 Model phải là Claude chính thức và đã đăng nhập Anthropic; phiên đang dùng Claude vẫn tìm bằng chính model đó.
 
-Lỗi mạng, lỗi tạm thời, quota, phản hồi không hợp lệ hoặc tài khoản không hỗ trợ web search chuyển sang Exa; Exa lỗi thì lỗi được báo lại, không còn provider nào sau nó. Lỗi xác thực và request sai được báo lại. `webSearch.allowedProviders` chỉ cho phép `openai`, `anthropic` và `exa`. `fetch_content` theo thứ tự mặc định của pi-web-access (không khai báo `fetchRouting`): tải thẳng trang đích và trích nội dung tại chỗ. pi-config không cấu hình dịch vụ trích xuất nào, nên không trang nào được gửi qua bên thứ ba và trang dựng bằng JavaScript có thể trả về ít nội dung; bước dự phòng Firecrawl hoặc crawl4ai của thứ tự đó chỉ chạy khi bạn tự đặt base URL của chúng (`firecrawlBaseUrl`/`FIRECRAWL_BASE_URL`, `crawl4aiBaseUrl`/`CRAWL4AI_BASE_URL`), dịch vụ hosted như Jina chỉ khi bạn bật `fetchRouting.allowRemoteHostedProviders`. Phiên mới chỉ hiện `web_enable`; model gọi tool này để bật các web tool.
+Lỗi mạng, lỗi tạm thời, quota, phản hồi không hợp lệ hoặc tài khoản không hỗ trợ web search chuyển sang Exa; Exa lỗi thì lỗi được báo lại, không còn provider nào sau nó. Lỗi xác thực và request sai được báo lại. `webSearch.allowedProviders` chỉ cho phép `anthropic` và `exa`. `fetch_content` theo thứ tự mặc định của pi-web-access (không khai báo `fetchRouting`): tải thẳng trang đích và trích nội dung tại chỗ. pi-config không cấu hình dịch vụ trích xuất nào, nên không trang nào được gửi qua bên thứ ba và trang dựng bằng JavaScript có thể trả về ít nội dung; bước dự phòng Firecrawl hoặc crawl4ai của thứ tự đó chỉ chạy khi bạn tự đặt base URL của chúng (`firecrawlBaseUrl`/`FIRECRAWL_BASE_URL`, `crawl4aiBaseUrl`/`CRAWL4AI_BASE_URL`), dịch vụ hosted như Jina chỉ khi bạn bật `fetchRouting.allowRemoteHostedProviders`. Phiên mới chỉ hiện `web_enable`; model gọi tool này để bật các web tool.
 
 ## Chi phí và giới hạn
 
-- Gói Claude hoặc ChatGPT tính lượt tìm vào quota của gói. Với API key, Anthropic tính phí mỗi lượt tìm cộng token của kết quả.
+- Gói Claude tính lượt tìm vào quota của gói. Với API key, Anthropic tính phí mỗi lượt tìm cộng token của kết quả.
 - Request phụ không nằm trong token/cost của footer; kết quả web chỉ vào context qua tool result.
 - `pause_turn` từ Anthropic trả kết quả hiện có kèm ghi chú chưa đầy đủ.
 - Kiểm thử: `tests/native-search.test.mjs`, `tests/patches.test.mjs`, `tests/claude-usage.test.mjs` (unit), `tests/native-search-wire.test.mjs`, `tests/claude-effort-wire.test.mjs` và `tests/config-integration.mjs` (runtime đã cài, fetch giả, credential giả).

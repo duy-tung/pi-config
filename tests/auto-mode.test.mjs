@@ -711,7 +711,7 @@ test("bộ phân loại: hai giai đoạn, fail closed", async () => {
   r = run([new Error("503 overloaded"), "<block>no</block>"]);
   assert.deepEqual(await r.promise, { kind: "allow", stage: 1 });
   // Model phân loại hết quota: chuyển sang model của phiên; lỗi khác (vd 400) thì không.
-  const limited = async () => { throw new Error("Codex error: The usage limit has been reached"); };
+  const limited = async () => { throw new Error("The usage limit has been reached"); };
   const switched = await classifyWithFallback({ systemPrompt: "S", blocks: [], complete: limited, timeoutMs: 5_000 }, async () => "<block>no</block>");
   assert.deepEqual(switched.result, { kind: "allow", stage: 1 });
   assert.equal(switched.fellBack, true);
@@ -942,9 +942,9 @@ test("/permissions: tham số test <lệnh> và gợi ý tham số", () => {
 
 test("model phân loại: chỉ đổi autoMode.model/stage2Reasoning trong settings.json, giữ phần còn lại và quyền file", () => {
   const original = `${JSON.stringify({ theme: "rose-pine-moon", autoMode: { model: "anthropic/claude-sonnet-5-5", stage2Reasoning: "low", log: true, stateDir: "/s" }, permissions: { deny: ["x"] } }, null, 2)}\n`;
-  const next = withClassifier(original, "openai-codex/gpt-6-astra", "high");
+  const next = withClassifier(original, "anthropic/claude-haiku-5-5", "high");
   assert.deepEqual(JSON.parse(next), {
-    theme: "rose-pine-moon", autoMode: { model: "openai-codex/gpt-6-astra", stage2Reasoning: "high", log: true, stateDir: "/s" },
+    theme: "rose-pine-moon", autoMode: { model: "anthropic/claude-haiku-5-5", stage2Reasoning: "high", log: true, stateDir: "/s" },
     permissions: { deny: ["x"] },
   });
   assert.deepEqual(Object.keys(JSON.parse(next)), ["theme", "autoMode", "permissions"], "giữ thứ tự khóa");
@@ -1009,7 +1009,7 @@ test("cấu hình: đọc settings người dùng, bỏ qua giá trị sai", () 
     fs.mkdirSync(agentDir, { recursive: true });
     fs.writeFileSync(path.join(agentDir, "settings.json"), JSON.stringify({
       permissions: { defaultMode: "bypassPermissions", deny: ["Bash(sudo *)", 3], disableBypassPermissionsMode: "disable" },
-      autoMode: { model: "openai-codex/gpt-6.1-sol", timeoutMs: 10, environment: ["x"] },
+      autoMode: { model: "opencode-go/glm-5.3", timeoutMs: 10, environment: ["x"] },
       skills: ["~/skills", 3, ""],
     }));
     const config = loadConfig(agentDir, {});
@@ -1018,7 +1018,7 @@ test("cấu hình: đọc settings người dùng, bỏ qua giá trị sai", () 
     assert.deepEqual(config.deny, ["Bash(sudo *)"]);
     assert.equal(config.timeoutMs, 60_000);
     assert.deepEqual(config.environment, ["x"]);
-    assert.equal(config.model, "openai-codex/gpt-6.1-sol");
+    assert.equal(config.model, "opencode-go/glm-5.3");
     assert.deepEqual(config.skills, ["~/skills"]);
     assert.equal(loadConfig(agentDir, { PI_AUTO_MODE_DISABLE: "1" }).enabled, false);
     for (const [value, mode] of [["default", "manual"], ["manual", "manual"], ["acceptEdits", "acceptEdits"], ["plan", "auto"]]) {

@@ -71,20 +71,21 @@ test('mảng thường là một giá trị; mảng tập hợp chỉ áp dụng
 test('web-search.json: hai danh sách provider gộp theo phần tử, nên provider mặc định mới bỏ rời cả hai dù người dùng đã sửa một danh sách', () => {
   const web = (base, next, current) => mergeConfig({base, next, current, sets: setPathsOf('/agent/web-search.json')});
   const lists = (allowed, providers) => ({webSearch: {allowedProviders: allowed}, searchRouting: {providers, useCurrentModel: true}});
-  const base = lists(['openai', 'anthropic', 'exa', 'firecrawl'], ['openai', 'anthropic', 'exa', 'firecrawl']);
-  const next = lists(['openai', 'anthropic', 'exa'], ['openai', 'anthropic', 'exa']);
-  // Người dùng chỉ đổi thứ tự searchRouting.providers: giữ thứ tự đó, firecrawl rời cả hai danh sách (pi-web-access
+  // Mặc định cũ còn provider openai, mặc định mới đã bỏ.
+  const base = lists(['openai', 'anthropic', 'exa'], ['openai', 'anthropic', 'exa']);
+  const next = lists(['anthropic', 'exa'], ['anthropic', 'exa']);
+  // Người dùng chỉ đổi thứ tự searchRouting.providers: giữ thứ tự đó, openai rời cả hai danh sách (pi-web-access
   // không nạp khi searchRouting.providers có provider ngoài webSearch.allowedProviders).
-  const reordered = web(base, next, lists(base.webSearch.allowedProviders, ['anthropic', 'openai', 'exa', 'firecrawl']));
-  assert.deepEqual(reordered.value, lists(['openai', 'anthropic', 'exa'], ['anthropic', 'openai', 'exa']));
+  const reordered = web(base, next, lists(base.webSearch.allowedProviders, ['exa', 'anthropic', 'openai']));
+  assert.deepEqual(reordered.value, lists(['anthropic', 'exa'], ['exa', 'anthropic']));
   assert.deepEqual(reordered.conflicts, []);
   assert.deepEqual(reordered.changes.map(change => [change.path.join('.'), change.type]), [['webSearch.allowedProviders', 'set'], ['searchRouting.providers', 'items']]);
   // Provider người dùng tự thêm vào cả hai danh sách được giữ; provider người dùng đã bỏ vẫn bỏ.
-  const custom = web(base, next, lists(['openai', 'anthropic', 'exa', 'firecrawl', 'brave'], ['brave', 'exa', 'firecrawl']));
-  assert.deepEqual(custom.value, lists(['openai', 'anthropic', 'exa', 'brave'], ['brave', 'exa']));
+  const custom = web(base, next, lists(['openai', 'anthropic', 'exa', 'brave'], ['brave', 'exa', 'openai']));
+  assert.deepEqual(custom.value, lists(['anthropic', 'exa', 'brave'], ['brave', 'exa']));
   // Danh sách chưa sửa nhận nguyên mặc định mới, đúng thứ tự (thứ tự là thứ tự ưu tiên), dù phần khác của file đã sửa.
-  const inserted = web(lists(['openai', 'exa'], ['openai', 'exa']), next, {...lists(['openai', 'exa'], ['openai', 'exa']), workflow: 'mine'});
-  assert.deepEqual(inserted.value.searchRouting.providers, ['openai', 'anthropic', 'exa']);
+  const inserted = web(lists(['exa'], ['exa']), next, {...lists(['exa'], ['exa']), workflow: 'mine'});
+  assert.deepEqual(inserted.value.searchRouting.providers, ['anthropic', 'exa']);
   // Hai danh sách đi theo cặp: pi-web-access không nạp khi một danh sách rỗng, trùng mục (không phân biệt hoa thường)
   // hoặc searchRouting.providers có provider ngoài webSearch.allowedProviders. Gộp theo phần tử cho ra cặp như vậy
   // từ một cặp đang nạp được thì giữ nguyên cả hai danh sách của người dùng và báo xung đột.
@@ -97,50 +98,50 @@ test('web-search.json: hai danh sách provider gộp theo phần tử, nên prov
       {path: ['searchRouting', 'providers'], current: providers, next: to.searchRouting.providers},
     ]);
   };
-  kept(['firecrawl'], ['firecrawl']); // mọi provider người dùng giữ đều bị mặc định mới bỏ: cả hai danh sách sẽ rỗng
-  kept(['exa', 'firecrawl'], ['firecrawl']); // định tuyến sẽ rỗng trong khi allowlist còn exa
+  kept(['openai'], ['openai']); // mọi provider người dùng giữ đều bị mặc định mới bỏ: cả hai danh sách sẽ rỗng
+  kept(['exa', 'openai'], ['openai']); // định tuyến sẽ rỗng trong khi allowlist còn exa
   // Mặc định mới thu hẹp allowlist trong khi người dùng định tuyến tới đúng provider bị bỏ.
   kept(['brave', 'exa'], ['brave'], [lists(['exa', 'brave'], ['exa']), lists(['exa'], ['exa'])]);
   // Chưa có base: giữ danh sách hiện có, không cộng dồn (provider người dùng đã bỏ khỏi allowlist không tự quay lại,
   // tên viết hoa không thành mục trùng).
   kept(['exa'], ['exa'], [undefined, next]);
-  kept(['OpenAI', 'Exa'], ['Exa'], [undefined, next]);
+  kept(['Anthropic', 'Exa'], ['Exa'], [undefined, next]);
   // Provider cố định (provider/searchProvider) cũng phải nằm trong allowlist: gộp làm nó rơi ra ngoài thì giữ hai danh sách.
   for (const key of ['provider', 'searchProvider']) {
-    const fixed = web(base, next, {...lists(['exa', 'firecrawl'], ['exa', 'firecrawl']), [key]: ' Firecrawl '});
-    assert.deepEqual(fixed.value, {...lists(['exa', 'firecrawl'], ['exa', 'firecrawl']), [key]: ' Firecrawl '});
+    const fixed = web(base, next, {...lists(['exa', 'openai'], ['exa', 'openai']), [key]: ' OpenAI '});
+    assert.deepEqual(fixed.value, {...lists(['exa', 'openai'], ['exa', 'openai']), [key]: ' OpenAI '});
     assert.deepEqual(fixed.conflicts.map(conflict => conflict.path.join('.')), ['webSearch.allowedProviders', 'searchRouting.providers']);
     // Danh sách chưa sửa cũng được giữ khi provider cố định cần nó.
-    const pinned = web(base, next, {...structuredClone(base), [key]: 'firecrawl'});
-    assert.deepEqual(pinned.value, {...base, [key]: 'firecrawl'});
+    const pinned = web(base, next, {...structuredClone(base), [key]: 'openai'});
+    assert.deepEqual(pinned.value, {...base, [key]: 'openai'});
     // auto/all không trỏ tới provider nào; provider cố định còn trong allowlist thì gộp như thường.
     for (const value of ['auto', 'ALL', 'exa']) {
-      const free = web(base, next, {...lists(base.webSearch.allowedProviders, ['exa', 'firecrawl', 'openai']), [key]: value});
-      assert.deepEqual([free.value, free.conflicts], [{...lists(['openai', 'anthropic', 'exa'], ['exa', 'openai']), [key]: value}, []]);
+      const free = web(base, next, {...lists(base.webSearch.allowedProviders, ['exa', 'openai', 'anthropic']), [key]: value});
+      assert.deepEqual([free.value, free.conflicts], [{...lists(['anthropic', 'exa'], ['exa', 'anthropic']), [key]: value}, []]);
     }
   }
   // Tên provider cố định mà allowlist hiện tại không có (pi-web-access coi tên lạ là auto) không tắt phép giữ danh sách.
-  const unknown = web(base, next, {...lists(base.webSearch.allowedProviders, ['firecrawl']), provider: 'unknown-name'});
-  assert.deepEqual(unknown.value, {...lists(base.webSearch.allowedProviders, ['firecrawl']), provider: 'unknown-name'});
+  const unknown = web(base, next, {...lists(base.webSearch.allowedProviders, ['openai']), provider: 'unknown-name'});
+  assert.deepEqual(unknown.value, {...lists(base.webSearch.allowedProviders, ['openai']), provider: 'unknown-name'});
   // Chưa có base và file thiếu hẳn một danh sách (người dùng bỏ allowlist, hoặc bỏ searchRouting để dùng auto): danh sách
   // mặc định chỉ được thêm khi file vẫn nạp được; không thì giữ file như đang có và báo xung đột.
-  const routing = {searchRouting: {providers: ['exa', 'firecrawl'], useCurrentModel: true}};
+  const routing = {searchRouting: {providers: ['exa', 'openai'], useCurrentModel: true}};
   const open = web(undefined, next, routing);
   assert.deepEqual(open.value, routing);
-  assert.deepEqual(open.conflicts.map(conflict => [conflict.path.join('.'), conflict.current]), [['searchRouting.providers', ['exa', 'firecrawl']], ['webSearch', undefined]]);
+  assert.deepEqual(open.conflicts.map(conflict => [conflict.path.join('.'), conflict.current]), [['searchRouting.providers', ['exa', 'openai']], ['webSearch', undefined]]);
   const narrow = web(undefined, next, {webSearch: {allowedProviders: ['exa']}});
   assert.deepEqual(narrow.value, {webSearch: {allowedProviders: ['exa']}});
   assert.deepEqual(narrow.conflicts.map(conflict => conflict.path.join('.')), ['webSearch.allowedProviders', 'searchRouting']);
   const fits = web(undefined, next, {searchRouting: {providers: ['exa'], useCurrentModel: true}});
   assert.deepEqual(fits.value, {searchRouting: {providers: ['exa'], useCurrentModel: true}, webSearch: next.webSearch});
   // Lần cài sau (base đã là mặc định mới): không ghi, không báo lại.
-  const settled = web(next, next, lists(['exa', 'firecrawl'], ['firecrawl']));
-  assert.deepEqual([settled.value, settled.changes, settled.conflicts], [lists(['exa', 'firecrawl'], ['firecrawl']), [], []]);
+  const settled = web(next, next, lists(['exa', 'openai'], ['openai']));
+  assert.deepEqual([settled.value, settled.changes, settled.conflicts], [lists(['exa', 'openai'], ['openai']), [], []]);
   // Tên viết hoa của người dùng được giữ và vẫn khớp khi so danh sách.
-  const cased = web(base, next, lists(['OpenAI', 'anthropic', 'exa', 'firecrawl'], base.searchRouting.providers));
-  assert.deepEqual([cased.value, cased.conflicts], [lists(['OpenAI', 'anthropic', 'exa'], ['openai', 'anthropic', 'exa']), []]);
+  const cased = web(base, next, lists(['openai', 'Anthropic', 'exa'], base.searchRouting.providers));
+  assert.deepEqual([cased.value, cased.conflicts], [lists(['Anthropic', 'exa'], ['anthropic', 'exa']), []]);
   // Cặp hiện tại vốn không nạp được (người dùng để định tuyến rỗng): gộp như thường, không che lỗi sẵn có.
-  assert.deepEqual(web(base, next, lists(base.webSearch.allowedProviders, [])).value, lists(['openai', 'anthropic', 'exa'], []));
+  assert.deepEqual(web(base, next, lists(base.webSearch.allowedProviders, [])).value, lists(['anthropic', 'exa'], []));
   // Cùng khóa đó trong file khác vẫn là một giá trị.
   assert.deepEqual(setPathsOf('/agent/open-tui.json'), undefined);
   assert.ok(setPathsOf('/agent/settings.json').paths.has('permissions.deny'));
@@ -181,17 +182,17 @@ test('chưa có base: giữ mọi giá trị hiện có, thêm khóa và mục c
     extensions: ['/r/palette.ts', '/r/claude-usage', '/r/pi-auto-mode'], rewind: {retentionDays: 30},
   };
   const current = {
-    defaultModel: 'gpt-6.1-sol', compaction: {enabled: true},
+    defaultModel: 'glm-5.3', compaction: {enabled: true},
     permissions: {deny: ['Path(~/.ssh/*)', 'Bash(sudo *)', 'Path(~/mine)']},
     extensions: ['-/r/palette.ts', '/r/palette.ts', '/r/pi-auto-mode', '/home/u/x.ts'],
   };
   const result = merge(undefined, next, current);
   assert.deepEqual(result.value, {
-    defaultModel: 'gpt-6.1-sol', compaction: {enabled: true, keepRecentTokens: 20000},
+    defaultModel: 'glm-5.3', compaction: {enabled: true, keepRecentTokens: 20000},
     permissions: {deny: ['Path(~/.ssh/*)', 'Bash(sudo *)', 'Path(~/mine)', 'Path(~/.ssh)', 'Path(~/.ssh/**)'], ask: ['Edit(x)']},
     extensions: ['-/r/palette.ts', '/r/palette.ts', '/home/u/x.ts', '/r/claude-usage', '/r/pi-auto-mode'], rewind: {retentionDays: 30},
   });
-  assert.deepEqual(result.conflicts, [{path: ['defaultModel'], current: 'gpt-6.1-sol', next: 'claude-opus-5-5'}]);
+  assert.deepEqual(result.conflicts, [{path: ['defaultModel'], current: 'glm-5.3', next: 'claude-opus-5-5'}]);
   const plan = reconcileJson({next: json(next), current: json(current), settings: true});
   assert.equal(plan.additive, true);
   assert.deepEqual(JSON.parse(plan.content), result.value);
@@ -234,13 +235,13 @@ test('chạy lại khi không có gì đổi thì không ghi và không báo', (
 
 test('báo cáo tiếng Việt liệt kê phần đã gộp và từng xung đột', () => {
   const base = {searchRouting: {fallbackOn: ['network', 'quota']}, compaction: {keepRecentTokens: 10000}, gone: 1};
-  const next = {searchRouting: {fallbackOn: ['network', 'transient', 'quota']}, compaction: {keepRecentTokens: 20000}, modelThinkingLevels: {'openai/x': 'max'}};
+  const next = {searchRouting: {fallbackOn: ['network', 'transient', 'quota']}, compaction: {keepRecentTokens: 20000}, modelThinkingLevels: {'opencode-go/x': 'max'}};
   const current = {searchRouting: {fallbackOn: ['quota']}, compaction: {keepRecentTokens: 10000}, gone: 2};
   const lines = describeMerge({file: '/agent/web-search.json', ...merge(base, next, current, false)});
   assert.deepEqual(lines, [
     'Đã gộp mặc định mới vào /agent/web-search.json, giữ phần bạn đã sửa:',
     '  - compaction.keepRecentTokens: 10000 → 20000',
-    '  - thêm modelThinkingLevels = {"openai/x":"max"}',
+    '  - thêm modelThinkingLevels = {"opencode-go/x":"max"}',
     '  - xung đột: giữ giá trị của bạn cho searchRouting.fallbackOn; mặc định mới là ["network","transient","quota"]',
     '  - xung đột: giữ giá trị của bạn cho gone; mặc định mới đã bỏ khóa này',
   ]);
@@ -256,7 +257,7 @@ test('khóa "__proto__" trong JSON không đổi prototype của kết quả', (
   assert.equal({}.polluted, undefined);
 });
 
-const role = ({model = 'openai-codex/gpt-6.1-sol', thinking = 'max', tools = '"read, bash"', prompt = 'Prompt v1.'} = {}) =>
+const role = ({model = 'opencode-go/glm-5.3', thinking = 'max', tools = '"read, bash"', prompt = 'Prompt v1.'} = {}) =>
   `---\nname: worker\ndescription: Viết code.\nmodel: ${model}\nthinking: ${thinking}\ntools: ${tools}\n---\n\n${prompt}\n`;
 
 test('file role: sửa dòng model không giữ cả file; prompt và khóa khác của bản mới vẫn vào', () => {
@@ -268,7 +269,7 @@ test('file role: sửa dòng model không giữ cả file; prompt và khóa khá
   assert.deepEqual(plan.conflicts, []);
   assert.deepEqual(describeMerge({file: 'agents/worker.md', ...plan}), [
     'Đã gộp mặc định mới vào agents/worker.md, giữ phần bạn đã sửa:',
-    '  - model: "openai-codex/gpt-6.1-sol" → "anthropic/claude-opus-5-5"',
+    '  - model: "opencode-go/glm-5.3" → "anthropic/claude-opus-5-5"',
     '  - cập nhật phần prompt theo bản mới',
   ]);
   // Người dùng sửa prompt, bản mới cũng đổi prompt: giữ prompt của người dùng và báo; khóa khác vẫn gộp.

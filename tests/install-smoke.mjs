@@ -68,7 +68,7 @@ const settingsPath=path.join(agentDir,'settings.json'),settingsBase=defaultsOf(s
 assert.deepEqual(readJson(settingsBase),readJson(settingsPath));
 const settings=readJson(settingsPath),base=readJson(settingsBase);
 // Pi ghi lại settings.json khi người dùng đổi theme/model (không có newline cuối); người dùng thêm một luật deny.
-Object.assign(settings,{theme:'rose-pine-dawn',defaultProvider:'openai-codex',defaultModel:'gpt-6.1-sol'});
+Object.assign(settings,{theme:'rose-pine-dawn',defaultProvider:'opencode-go',defaultModel:'glm-5.3'});
 settings.permissions.deny.push('Path(~/notes/private/**)');
 // Mặc định của bản cũ hơn: chưa có luật deny ~/.gnupg/**, Esc Esc mở /tree, còn compaction và defaultProjectTrust (nay
 // bỏ vì trùng mặc định của Pi). Người dùng chưa đổi các mục này nên nhận mặc định mới, khóa đã bỏ thì bỏ theo; riêng
@@ -107,7 +107,7 @@ function install(extra=[]){
 }
 const reinstall=install();
 const merged=readJson(settingsPath);
-assert.deepEqual([merged.theme,merged.defaultProvider,merged.defaultModel],['rose-pine-dawn','openai-codex','gpt-6.1-sol']);
+assert.deepEqual([merged.theme,merged.defaultProvider,merged.defaultModel],['rose-pine-dawn','opencode-go','glm-5.3']);
 assert.ok(merged.permissions.deny.includes('Path(~/notes/private/**)'));
 assert.ok(merged.permissions.deny.includes(gnupg),'luật deny mới của mặc định vào được file người dùng đã sửa');
 assert.deepEqual([merged.doubleEscapeAction,merged.compaction,merged.defaultProjectTrust],['none',undefined,'always']);
@@ -177,13 +177,14 @@ for(const file of [settingsPath,settingsBase]){
 const webPath=path.join(agentDir,'web-search.json');
 for(const file of [webPath,defaultsOf(webPath)]){
   const value=readJson(file);
-  value.webSearch.allowedProviders.push('firecrawl');value.searchRouting.providers.push('firecrawl');
+  // Bản cài cũ: hai danh sách còn openai (đứng đầu) và firecrawl (đứng cuối).
+  for(const list of [value.webSearch.allowedProviders,value.searchRouting.providers]){list.unshift('openai');list.push('firecrawl');}
   Object.assign(value,{fetchRouting:{providers:['firecrawl'],allowRemoteHostedProviders:true},firecrawlBaseUrl:'https://api.firecrawl.dev',firecrawlApiKey:'!fixture-helper',firecrawlFreshScrape:true});
   writeJson(file,value);
 }
 {
   const value=readJson(webPath);
-  value.searchRouting.providers=['anthropic','openai','exa','firecrawl'];value.firecrawlApiKey='fc-user-secret-value';
+  value.searchRouting.providers=['exa','openai','anthropic','firecrawl'];value.firecrawlApiKey='fc-user-secret-value';
   writeJson(webPath,value);
 }
 const agentsPath=path.join(agentDir,'AGENTS.md');
@@ -197,10 +198,10 @@ assert.match(migrated,/Nguồn firecrawl-cli-source không còn dùng: đã chuy
 for(const gone of [oldTool,oldSource,oldLauncher,oldHelper,path.join(root,'tools'),path.join(root,'sources'),path.join(root,'.downloads')])assert.equal(fs.existsSync(gone),false,gone);
 {
   const cleaned=readJson(statePath),web=readJson(webPath),current=readJson(settingsPath);
-  // Người dùng đã sửa searchRouting.providers: firecrawl vẫn rời cả hai danh sách (lệch nhau thì pi-web-access không nạp,
+  // Người dùng đã sửa searchRouting.providers: openai và firecrawl vẫn rời cả hai danh sách (lệch nhau thì pi-web-access không nạp,
   // pi-doctor báo lỗi và lần cài thất bại), thứ tự của người dùng được giữ.
-  assert.deepEqual([web.webSearch.allowedProviders,web.searchRouting.providers,web.fetchRouting],[['openai','anthropic','exa'],['anthropic','openai','exa'],undefined]);
-  assert.ok(migrated.includes('  - bỏ khỏi searchRouting.providers: firecrawl'),migrated);
+  assert.deepEqual([web.webSearch.allowedProviders,web.searchRouting.providers,web.fetchRouting],[['anthropic','exa'],['exa','anthropic'],undefined]);
+  assert.ok(migrated.includes('  - bỏ khỏi searchRouting.providers: openai, firecrawl'),migrated);
   // Key người dùng tự đặt và AGENTS.md đã sửa được giữ; installer chỉ ra chỗ còn nhắc tới Firecrawl, không in giá trị.
   assert.equal(web.firecrawlApiKey,'fc-user-secret-value');
   assert.deepEqual(fs.readFileSync(agentsPath,'utf8').split('\n'),agentsLines);

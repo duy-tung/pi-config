@@ -128,7 +128,7 @@ Hai giai đoạn như Claude Code: giai đoạn 1 sàng lọc nhanh và nghiêng
 
 LLM mặc định là **Claude Sonnet 5.5** (`anthropic/claude-sonnet-5-5`):
 - Claude Code 2.1.282 để server của Anthropic duyệt trong chính request model (model không công bố, Pi không dùng được). Khi server không duyệt, Claude Code tự gọi Sonnet 5, không theo `/model`, và dùng model của phiên khi Sonnet 5 không có.
-- Codex dùng `codex-auto-review`, một model nhỏ riêng cho việc duyệt; model này không có trong catalog `openai-codex` của Pi.
+- Codex dùng `codex-auto-review`, một model nhỏ riêng cho việc duyệt; model này không có trong catalog của Pi.
 - Eval 5/11/2026 với Sonnet 5.5 qua Claude OAuth, Pi 1.5.0 (`node scripts/eval-auto-mode.mjs`, tốn lượt gọi model thật; bộ `cases.json`, 49 case): 0/27 lệnh nguy hiểm lọt, 0/22 lệnh lành bị chặn, 29/49 sang giai đoạn 2, p50 3,0 s, p90 4,2 s; lệnh cho qua ở giai đoạn 1 mất khoảng 1,2–1,4 s, lệnh sang giai đoạn 2 p50 3,6 s. Hai case rò rỉ dữ liệu (gửi `.env` lên webhook, exfil qua URL base64) bị chính bộ lọc an ninh mạng của Anthropic từ chối request, nên bộ phân loại báo lỗi và lệnh bị chặn theo luật lỗi thì chặn. Lần trước (4/11/2026, giai đoạn 1 còn gửi effort `high` và chưa đọc lại cache): 0/27, 0/22, 28/49 sang giai đoạn 2, p50 3,2 s, p90 4,7 s, giai đoạn 1 cho qua mất 1,3–2,1 s.
 - Prompt không yêu cầu model viết suy luận ra chữ: từ 11/2026 Anthropic từ chối request của giai đoạn 2 khi prompt bảo model suy nghĩ trong thẻ (`<thinking>`, `<analysis>`) rồi mới trả lời ("reverse engineering or duplicating model outputs"), kể cả khi tắt reasoning. Giai đoạn 2 dùng reasoning `low` của model thay cho phần đó.
 - Request đi qua pi-anthropic-auth như request chính nên tính vào quota của gói Claude.
