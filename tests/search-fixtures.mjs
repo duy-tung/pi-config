@@ -24,20 +24,6 @@ export function anthropicSearchEvents({ model = "claude-sonnet-5", stopReason = 
   ];
 }
 
-export function codexSearchEvents(model) {
-  const message = { type: "message", id: "msg_fixture", role: "assistant", status: "completed", content: [
-    { type: "output_text", text: "Pi is a minimal coding agent.", annotations: [{ type: "url_citation", url: "https://code.example/pi?utm_source=openai", title: "Pi source", start_index: 0, end_index: 28 }] },
-  ] };
-  const search = { type: "web_search_call", id: "ws_fixture", status: "completed", action: { type: "search", query: "pi coding agent", sources: [{ type: "url", url: "https://pi.example/docs" }] } };
-  return [
-    { type: "response.created", response: { id: "resp_fixture", model, status: "in_progress", output: [] } },
-    { type: "response.web_search_call.completed", item_id: "ws_fixture", output_index: 0 },
-    { type: "response.output_item.done", output_index: 0, item: search },
-    { type: "response.output_item.done", output_index: 1, item: message },
-    { type: "response.completed", response: { id: "resp_fixture", model, status: "completed", output: [search, message] } },
-  ];
-}
-
 export const unifiedHeaders = (now = Date.now()) => ({
   "anthropic-ratelimit-unified-status": "allowed",
   "anthropic-ratelimit-unified-5h-utilization": "0.23",

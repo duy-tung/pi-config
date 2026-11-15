@@ -2,7 +2,7 @@
 
 [![Kiểm thử cài đặt](https://github.com/duy-tung/pi-config/actions/workflows/test.yml/badge.svg)](https://github.com/duy-tung/pi-config/actions/workflows/test.yml)
 
-Bộ cài **Pi 1.5.2** cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, native web search theo model (GPT, Claude) với Exa dự phòng, quota Claude trong footer, permission kiểu Claude Code (manual, accept edits, auto mode và bypass) và giao diện Rosé Pine. Không kèm skill nào. Dependency và bản vá được ghim để tái lập cấu hình.
+Bộ cài **Pi 1.5.2** cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, native web search của Claude với Exa dự phòng, quota Claude trong footer, permission kiểu Claude Code (manual, accept edits, auto mode và bypass) và giao diện Rosé Pine. Không kèm skill nào. Dependency và bản vá được ghim để tái lập cấu hình.
 
 ## Cài đặt
 
@@ -27,7 +27,7 @@ Chi tiết kiến trúc CPU, công cụ hệ thống và tùy chọn đường d
 ## Đăng nhập dịch vụ
 
 1. Chạy `pi`, dùng `/login` và chọn **Anthropic** (gói Pro/Max), hoặc đặt `ANTHROPIC_API_KEY`. Mọi vai mặc định là Claude: parent và worker Opus 5.5, researcher Sonnet 5.5, reviewer và advisor Fable 5.1, bộ phân loại của auto mode Sonnet 5.5. Xem [docs/claude-setup.md](docs/claude-setup.md).
-2. Tuỳ chọn, khi muốn đặt một vai sang GPT: `/login` → **OpenAI** → **Sign in with ChatGPT** (provider `openai`, dùng gói ChatGPT qua Responses API của `api.openai.com`), rồi chọn model `openai/…` (vd `openai/gpt-6.1-sol`). Đăng nhập mở trình duyệt và nhận callback ở cổng 1455 (cổng Codex CLI cũng dùng; Pi báo lỗi nếu cổng bận); máy không có trình duyệt thì dán URL chuyển hướng cuối vào Pi. **OpenAI Codex (legacy)** (`openai-codex`) vẫn dùng được cho vai đã đặt sang nó. Model của OpenCode Go (vd GLM) cũng dùng được sau khi `/login` → **OpenCode Go** hoặc đặt `OPENCODE_API_KEY`.
+2. Tuỳ chọn: model của OpenCode Go (vd GLM) dùng được sau khi `/login` → **OpenCode Go** hoặc đặt `OPENCODE_API_KEY`.
 
 Một cấu hình Pi dùng auth của agent directory. Repo không chứa credential, token hay dữ liệu phiên của người dùng; không nhập key vào chat hoặc commit vào Git.
 
@@ -65,7 +65,7 @@ Permission (`pi-auto-mode`, extension của repo) có bốn mode như Claude Cod
 
 **Bypass** như Claude Code: chỉ có khi mở Pi bằng `--dangerously-skip-permissions` (hoặc `--permission-mode bypass`, `--allow-dangerously-skip-permissions`); chạy mọi thứ trừ luật deny và ask. `rm` vào `/`, `~` hay thư mục làm việc thì hỏi bạn trước, ở auto và bypass có đếm ngược 2 phút. Không có lớp chặn riêng cho git phá huỷ: auto để bộ phân loại xét, manual hỏi, bypass chạy. `Shift+Tab` đổi mode; `/add-dir` thêm thư mục làm việc. `/permissions` là menu duy nhất: đổi mode, model phân loại, xem trạng thái, duyệt lại lệnh bị chặn, xem luật và chạy thử một lệnh. Chi tiết: [docs/auto-mode.md](docs/auto-mode.md).
 
-Mọi model dùng context của catalog Pi (Opus 5.5 1M; `openai/…` qua Sign in with ChatGPT 272K); `openai-codex` (legacy) không còn override riêng. Theme Rosé Pine Moon.
+Mọi model dùng context của catalog Pi (Opus 5.5 1M). Theme Rosé Pine Moon.
 
 ## Agent
 
@@ -79,7 +79,7 @@ Pi dùng `Agent` của **@tintinweb/pi-subagents**:
 
 Parent Claude Opus 5.5/high giữ thiết kế, quyết định quan trọng và nghiệm thu cuối. Reviewer dùng Fable 5.1, khác model với worker.
 
-Bảng trên là cấu hình mặc định. Đổi model và thinking bằng giao diện có sẵn: phiên chính bằng `/model`, researcher/worker/reviewer trong `/agents` → Agent types → chọn vai → Model/Thinking, advisor bằng `/advisor-models`. Muốn một vai dùng GPT hay GLM thì đăng nhập provider đó rồi đổi tại đây. Cài lại giữ giá trị bạn đã đổi. Xem [docs/models.md](docs/models.md). Model phân loại của auto mode (mặc định Claude Sonnet 5.5/low) không phải một vai: đổi trong `/permissions` → Classifier.
+Bảng trên là cấu hình mặc định. Đổi model và thinking bằng giao diện có sẵn: phiên chính bằng `/model`, researcher/worker/reviewer trong `/agents` → Agent types → chọn vai → Model/Thinking, advisor bằng `/advisor-models`. Muốn một vai dùng GLM thì đăng nhập OpenCode Go rồi đổi tại đây. Cài lại giữ giá trị bạn đã đổi. Xem [docs/models.md](docs/models.md). Model phân loại của auto mode (mặc định Claude Sonnet 5.5/low) không phải một vai: đổi trong `/permissions` → Classifier.
 
 ```text
 @researcher Tìm luồng xử lý timeout và báo file/dòng.
@@ -93,7 +93,7 @@ Agent có context riêng và không giới hạn số lượt; dừng agent bằ
 
 ## Công cụ và mặc định
 
-- Web: `web_search` dùng native search của model hiện tại: provider `openai` cho GPT (Astra, Sol) qua Sign in with ChatGPT hoặc OpenAI Codex (legacy), `anthropic` cho Claude (bản vá pi-web-access); model khác (vd GLM) dùng Exa (endpoint MCP miễn phí, không cần key); lỗi mạng, quota, phản hồi hỏng ở native search chuyển sang Exa. `fetch_content` tải thẳng trang đích và trích nội dung tại chỗ; pi-config không cấu hình dịch vụ trích xuất bên thứ ba nào (trang dựng bằng JavaScript có thể trả về ít nội dung); `get_search_content` đọc kho kết quả. Phiên mới hiện `web_enable` để model bật web tools. Chi tiết: [docs/claude-setup.md](docs/claude-setup.md).
+- Web: `web_search` dùng native search của Claude khi model hiện tại là Claude (provider `anthropic`, bản vá pi-web-access); model khác (vd GLM) dùng Exa (endpoint MCP miễn phí, không cần key); lỗi mạng, quota, phản hồi hỏng ở native search chuyển sang Exa. `fetch_content` tải thẳng trang đích và trích nội dung tại chỗ; pi-config không cấu hình dịch vụ trích xuất bên thứ ba nào (trang dựng bằng JavaScript có thể trả về ít nội dung); `get_search_content` đọc kho kết quả. Phiên mới hiện `web_enable` để model bật web tools. Chi tiết: [docs/claude-setup.md](docs/claude-setup.md).
 - MCP: không cài. MCP, codemode và `tool_search` dựng sẵn của Pi được tắt trong `extensions` của settings (`-builtin:mcp`, `-builtin:codemode`, `-builtin:tool-search`); provider llama.cpp dựng sẵn cũng tắt (`-builtin:llama.cpp`). Khi cần một server, bật MCP trong `pi config` (Built-in), thêm server bằng `pi mcp add` (ghi `<agent-dir>/mcp.json`) với `"exposure": "direct"`; mỗi tool là `mcp__<server>__<tool>` và đi qua cổng permission như tool khác.
 - Giao diện fullscreen (mặc định từ Pi 1.0): cuộn bằng chuột/trackpad trong Pi (số dòng mỗi nấc theo `fullscreenWheelScrollLines` của Pi, mặc định `auto`), tìm trong transcript bằng **Alt+S** (Ctrl+Shift+F là ô tìm của WezTerm), khi thoát in lại transcript. Muốn giữ scrollback bình thường của terminal thì đặt `"tuiMode": "regular"` trong `settings.json` (cài lại vẫn giữ).
 - Native compaction bật: reserve 16.384, giữ gần nhất 20.000 token. Với cửa sổ 1M, auto-compaction chạy rất muộn; xem context ở footer và chọn ranh giới pha quanh mép 150k.

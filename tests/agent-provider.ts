@@ -1,14 +1,10 @@
 import * as ai from "@earendil-works/pi-ai";
 
 // Test transport only. No SDK HTTP provider or live credential is used.
-// openai-codex và openai giữ api/baseUrl thật (Codex, Responses API của Sign in with ChatGPT); request vẫn chỉ đi qua
-// streamSimple giả.
-const codex = { api: "openai-codex-responses", baseUrl: "https://chatgpt.com/backend-api" };
-const chatgpt = { api: "openai-responses", baseUrl: "https://api.openai.com/v1" };
 export default function (pi) {
-  for (const [provider,ids,wire] of [["config-test",["parent"]],["openai-codex",["gpt-6.1-sol","gpt-6-astra","gpt-6-sol"],codex],["openai",["gpt-6.1-sol"],chatgpt],["opencode-go",["glm-5.3-flash"]]]) pi.registerProvider(provider, {
-    api: wire?.api ?? "anthropic-messages",
-    baseUrl: wire?.baseUrl ?? "http://127.0.0.1:9",
+  for (const [provider,ids] of [["config-test",["parent"]],["opencode-go",["glm-5.3-flash","glm-5.3","kimi-k3"]]]) pi.registerProvider(provider, {
+    api: "anthropic-messages",
+    baseUrl: "http://127.0.0.1:9",
     apiKey: "local-fixture-no-network",
     models: ids.map((id) => ({
       id, name: id, reasoning: true, thinkingLevelMap: { off: null, minimal: null, low: 'low', medium: null, high: 'high', xhigh: null, max: 'max' }, input: ["text"],

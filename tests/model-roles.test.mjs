@@ -49,18 +49,18 @@ test('giá trị cho từng file gốc: phiên chính, advisor không đặt thi
 });
 
 test('frontmatter của file role: đặt model/thinking, giữ phần còn lại, thêm khi thiếu, CRLF', () => {
-  const text = role('openai-codex/gpt-6.1-sol', 'max');
-  assert.equal(setRoleModel(text, {model: 'openai-codex/gpt-6.1-sol', thinking: 'max'}), text);
+  const text = role('opencode-go/glm-5.3', 'max');
+  assert.equal(setRoleModel(text, {model: 'opencode-go/glm-5.3', thinking: 'max'}), text);
   assert.equal(setRoleModel(text, {model: 'anthropic/claude-opus-5-5', thinking: 'high'}), role('anthropic/claude-opus-5-5', 'high'));
   const bare = '---\nname: worker\ndescription: Viết code.\ntools: "read, bash"\n---\n\nPrompt của role.\n';
-  assert.equal(setRoleModel(bare, {model: 'openai-codex/gpt-6.1-sol', thinking: 'max'}), text);
-  assert.equal(setRoleModel(text.replaceAll('\n', '\r\n'), {model: 'openai-codex/gpt-6.1-sol', thinking: 'max'}), text);
+  assert.equal(setRoleModel(bare, {model: 'opencode-go/glm-5.3', thinking: 'max'}), text);
+  assert.equal(setRoleModel(text.replaceAll('\n', '\r\n'), {model: 'opencode-go/glm-5.3', thinking: 'max'}), text);
   // Dòng đã có (kể cả do người dùng dời chỗ) được sửa tại chỗ; dòng còn thiếu thêm ngay sau dòng kia.
-  const moved = '---\nname: worker\ntools: read\nmodel: openai-codex/gpt-6.1-sol\n---\nPrompt.\n';
+  const moved = '---\nname: worker\ntools: read\nmodel: opencode-go/glm-5.3\n---\nPrompt.\n';
   assert.equal(setRoleModel(moved, {model: 'anthropic/claude-opus-5-5', thinking: 'high'}),
     '---\nname: worker\ntools: read\nmodel: anthropic/claude-opus-5-5\nthinking: high\n---\nPrompt.\n');
-  assert.deepEqual(roleModel(text), {model: 'openai-codex/gpt-6.1-sol', thinking: 'max'});
-  assert.deepEqual(splitRole(text).fields, {name: 'worker', description: 'Viết code.', model: 'openai-codex/gpt-6.1-sol', thinking: 'max', tools: '"read, bash"'});
+  assert.deepEqual(roleModel(text), {model: 'opencode-go/glm-5.3', thinking: 'max'});
+  assert.deepEqual(splitRole(text).fields, {name: 'worker', description: 'Viết code.', model: 'opencode-go/glm-5.3', thinking: 'max', tools: '"read, bash"'});
   for (const bad of ['Không có frontmatter', '---\nname: a\n  tiếp dòng\n---\n', '---\nname: a\nname: b\n---\n']) {
     assert.equal(splitRole(bad), undefined);
     assert.throws(() => setRoleModel(bad, {model: 'a/b', thinking: 'high'}), /frontmatter/u);
@@ -94,33 +94,33 @@ test('giá trị đang có hiệu lực theo file gốc: phiên chính theo sett
 });
 
 test('chuyển đổi model-roles.json: base mới mang model mặc định thuần, giữ phần còn lại của base', () => {
-  const overridden = nativeValues(withRoles({main: {thinking: 'xhigh'}, reviewer: {model: 'openai-codex/gpt-6-astra'}, advisor: {model: 'openai-codex/gpt-6-astra'}}));
+  const overridden = nativeValues(withRoles({main: {thinking: 'xhigh'}, reviewer: {model: 'anthropic/claude-haiku-5-5'}, advisor: {model: 'anthropic/claude-haiku-5-5'}}));
   // Base của bản trước: advisor có executorEffort, settings có khóa khác.
   const settings = JSON.stringify({theme: 'rose-pine-moon', ...overridden.settings}, null, 2);
   const advisor = JSON.stringify({alwaysOn: true, ...overridden.advisor, executorEffort: 'xhigh'}, null, 2);
   const pure = nativeValues(defaults);
   assert.deepEqual(JSON.parse(rebaseModels('settings', settings, defaults)), {theme: 'rose-pine-moon', ...pure.settings});
   assert.deepEqual(JSON.parse(rebaseModels('advisor', advisor, defaults)), {alwaysOn: true, ...pure.advisor, executorEffort: 'xhigh'});
-  assert.equal(rebaseModels('reviewer', role('openai-codex/gpt-6-astra', 'high'), defaults), role('anthropic/claude-fable-5-1', 'high'));
+  assert.equal(rebaseModels('reviewer', role('anthropic/claude-haiku-5-5', 'high'), defaults), role('anthropic/claude-fable-5-1', 'high'));
   assert.throws(() => rebaseModels('reviewer', 'không có frontmatter', defaults), /frontmatter/u);
 });
 
 const root = process.env.PI_CONFIG_TEST_ROOT;
-test('catalog của runtime: mặc định và model Codex/GLM hợp lệ, model sai tên là lỗi kèm chỗ đổi, mức thinking bị hạ là ghi chú, không ghi file', {skip: !root}, async t => {
+test('catalog của runtime: mặc định và model khác mặc định hợp lệ, model sai tên là lỗi kèm chỗ đổi, mức thinking bị hạ là ghi chú, không ghi file', {skip: !root}, async t => {
   const modules = path.join(root, 'runtimes', 'current', 'node_modules');
   const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-model-catalog-'));
   t.after(() => fs.rmSync(agentDir, {recursive: true, force: true}));
   const others = withRoles({
-    researcher: {model: 'opencode-go/glm-5.3-flash', thinking: 'max'}, worker: {model: 'openai-codex/gpt-6.1-sol', thinking: 'max'},
-    reviewer: {model: 'openai-codex/gpt-6-astra'}, advisor: {model: 'openai-codex/gpt-6-astra'},
+    researcher: {model: 'opencode-go/glm-5.3-flash', thinking: 'max'}, worker: {model: 'opencode-go/glm-5.3', thinking: 'max'},
+    reviewer: {model: 'anthropic/claude-haiku-5-5'}, advisor: {model: 'anthropic/claude-haiku-5-5'},
   });
-  for (const [name, roles] of [['mặc định', defaults], ['Codex và GLM', others]]) {
+  for (const [name, roles] of [['mặc định', defaults], ['khác mặc định', others]]) {
     assert.deepEqual(await checkCatalog({modules, agentDir, roles}), {errors: [], notes: []}, name);
   }
-  const roles = withRoles({reviewer: {model: 'openai-codex/gpt-6-astr'}, researcher: {model: 'opencode-go/glm-5.3-flash', thinking: 'medium'}});
+  const roles = withRoles({reviewer: {model: 'anthropic/claude-haiku-5-55'}, researcher: {model: 'opencode-go/glm-5.3-flash', thinking: 'medium'}});
   roles.reviewer.file = 'agents/reviewer.md';
   assert.deepEqual(await checkCatalog({modules, agentDir, roles}), {
-    errors: ['reviewer: không có model openai-codex/gpt-6-astr trong catalog của Pi (theo agents/reviewer.md; đổi bằng /agents); kiểm tên provider/id, hoặc khai báo model trong models.json'],
+    errors: ['reviewer: không có model anthropic/claude-haiku-5-55 trong catalog của Pi (theo agents/reviewer.md; đổi bằng /agents); kiểm tên provider/id, hoặc khai báo model trong models.json'],
     notes: ['researcher: opencode-go/glm-5.3-flash không hỗ trợ thinking medium; Pi dùng high'],
   });
   // Model tự khai báo trong models.json của agent dir là hợp lệ.

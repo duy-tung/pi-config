@@ -32,13 +32,13 @@ test('model đổi trong file gốc (/agents, /model, /advisor-models) được 
   // /agents đổi model và thinking của worker; người dùng sửa tools của reviewer; /model + Ctrl+S lưu Sonnet vào
   // settings.json; /advisor-models ghim executor và đổi model của advisor.
   const worker = f.file('agents/worker.md'), reviewer = f.file('agents/reviewer.md');
-  fs.writeFileSync(worker, fs.readFileSync(worker, 'utf8').replace(/^model: .*\nthinking: .*$/mu, 'model: openai-codex/gpt-6.1-sol\nthinking: max'));
+  fs.writeFileSync(worker, fs.readFileSync(worker, 'utf8').replace(/^model: .*\nthinking: .*$/mu, 'model: opencode-go/glm-5.3\nthinking: max'));
   fs.writeFileSync(reviewer, fs.readFileSync(reviewer, 'utf8').replace(/^tools: .*$/mu, 'tools: "read, bash"'));
   const settings = readJson(f.file('settings.json'));
   Object.assign(settings, {defaultModel: 'claude-sonnet-5-5'});
   fs.writeFileSync(f.file('settings.json'), JSON.stringify(settings));
   const advisor = readJson(f.file('advisor.json'));
-  Object.assign(advisor, {executor: 'anthropic/claude-sonnet-5-5', advisor: 'openai-codex/gpt-6-astra'});
+  Object.assign(advisor, {executor: 'anthropic/claude-sonnet-5-5', advisor: 'anthropic/claude-haiku-5-5'});
   fs.writeFileSync(f.file('advisor.json'), JSON.stringify(advisor, null, 2));
   // Bản phát hành mới đổi model mặc định của worker, reviewer và researcher.
   const next = withRoles({
@@ -46,13 +46,13 @@ test('model đổi trong file gốc (/agents, /model, /advisor-models) được 
   });
   const plans = reinstall(f, next);
   // worker: người dùng đã đổi cả model lẫn thinking, mặc định mới đổi model: giữ của người dùng, báo xung đột.
-  assert.match(frontmatter(f, 'worker'), /^model: openai-codex\/gpt-6\.1-sol\nthinking: max$/mu);
-  assert.deepEqual(plans[worker].conflicts.map(item => [item.path, item.current, item.next]), [[['model'], 'openai-codex/gpt-6.1-sol', 'anthropic/claude-opus-5-6']]);
+  assert.match(frontmatter(f, 'worker'), /^model: opencode-go\/glm-5\.3\nthinking: max$/mu);
+  assert.deepEqual(plans[worker].conflicts.map(item => [item.path, item.current, item.next]), [[['model'], 'opencode-go/glm-5.3', 'anthropic/claude-opus-5-6']]);
   // reviewer chỉ sửa tools, researcher không sửa gì: nhận model mới.
   assert.match(frontmatter(f, 'reviewer'), /^model: anthropic\/claude-fable-5-2\nthinking: high\ntools: "read, bash"$/mu);
   assert.match(frontmatter(f, 'researcher'), /^model: anthropic\/claude-sonnet-5-6\nthinking: high$/mu);
   assert.equal(readJson(f.file('settings.json')).defaultModel, 'claude-sonnet-5-5');
-  assert.deepEqual([readJson(f.file('advisor.json')).executor, readJson(f.file('advisor.json')).advisor], ['anthropic/claude-sonnet-5-5', 'openai-codex/gpt-6-astra']);
+  assert.deepEqual([readJson(f.file('advisor.json')).executor, readJson(f.file('advisor.json')).advisor], ['anthropic/claude-sonnet-5-5', 'anthropic/claude-haiku-5-5']);
   // Cài lại lần nữa với cùng mặc định: không file, base hay checksum nào cần ghi.
   const state = f.state();
   for (const {path: file, content} of buildConfiguration({...f.options, modelDefaults: next})) {
@@ -63,10 +63,10 @@ test('model đổi trong file gốc (/agents, /model, /advisor-models) được 
 });
 
 test('chuyển đổi model-roles.json: ghi đè đang nằm trong file gốc được giữ ở lần cài này và các lần sau', t => {
-  // Bản trước: installer sinh file gốc và base từ mặc định + ghi đè (reviewer, advisor dùng Astra; main xhigh) và ghi
+  // Bản trước: installer sinh file gốc và base từ mặc định + ghi đè (reviewer, advisor dùng Haiku 5.5; main xhigh) và ghi
   // checksum của base đó. Người dùng chưa sửa gì trong file gốc nên file gốc khớp checksum ("chưa sửa").
   const f = install(t);
-  const old = withRoles({reviewer: {model: 'openai-codex/gpt-6-astra'}, advisor: {model: 'openai-codex/gpt-6-astra'}, main: {thinking: 'xhigh'}});
+  const old = withRoles({reviewer: {model: 'anthropic/claude-haiku-5-5'}, advisor: {model: 'anthropic/claude-haiku-5-5'}, main: {thinking: 'xhigh'}});
   const kinds = [['settings', 'settings.json'], ['advisor', 'advisor.json'], ...SUBAGENT_ROLES.map(role => [role, `agents/${role}.md`])];
   const state = f.state();
   for (const [kind, name] of kinds) {
@@ -95,24 +95,24 @@ test('chuyển đổi model-roles.json: ghi đè đang nằm trong file gốc đ
   }
   fs.writeFileSync(f.statePath, JSON.stringify(migrated));
   const plans = reinstall(f);
-  assert.match(frontmatter(f, 'reviewer'), /^model: openai-codex\/gpt-6-astra\nthinking: high$/mu);
+  assert.match(frontmatter(f, 'reviewer'), /^model: anthropic\/claude-haiku-5-5\nthinking: high$/mu);
   assert.match(frontmatter(f, 'worker'), /^model: anthropic\/claude-opus-5-5\nthinking: high$/mu);
   const advisor = readJson(f.file('advisor.json'));
-  assert.deepEqual([advisor.executor, advisor.advisor, advisor.executorEffort], [undefined, 'openai-codex/gpt-6-astra', undefined]);
+  assert.deepEqual([advisor.executor, advisor.advisor, advisor.executorEffort], [undefined, 'anthropic/claude-haiku-5-5', undefined]);
   const settings = readJson(f.file('settings.json'));
   assert.deepEqual([settings.defaultModel, settings.defaultThinkingLevel], ['claude-opus-5-5', 'xhigh']);
-  assert.ok(settings.enabledModels.includes('openai-codex/gpt-6-astra'), 'model người dùng đã chọn vẫn trong Ctrl+P');
+  assert.ok(settings.enabledModels.includes('anthropic/claude-haiku-5-5'), 'model người dùng đã chọn vẫn trong Ctrl+P');
   assert.ok(Object.values(plans).every(plan => !plan.conflicts.length), 'không xung đột');
   // Lần cài sau: base là mặc định mới, ghi đè vẫn là giá trị người dùng đã chọn.
   reinstall(f);
-  assert.match(frontmatter(f, 'reviewer'), /^model: openai-codex\/gpt-6-astra$/mu);
-  assert.equal(readJson(f.file('advisor.json')).advisor, 'openai-codex/gpt-6-astra');
+  assert.match(frontmatter(f, 'reviewer'), /^model: anthropic\/claude-haiku-5-5$/mu);
+  assert.equal(readJson(f.file('advisor.json')).advisor, 'anthropic/claude-haiku-5-5');
 });
 
 test('model phân loại đổi trong /permissions: cài lại giữ giá trị của người dùng; mặc định mới khác thì báo xung đột', t => {
   const f = install(t);
   const settingsFile = f.file('settings.json');
-  saveClassifier(settingsFile, 'openai-codex/gpt-6-astra', 'medium');
+  saveClassifier(settingsFile, 'anthropic/claude-haiku-5-5', 'medium');
   const plan = (edit = value => value) => {
     const entry = buildConfiguration({...f.options, modelDefaults}).find(item => item.path === settingsFile);
     const content = `${JSON.stringify(edit(JSON.parse(entry.content)), null, 2)}\n`;
@@ -122,10 +122,10 @@ test('model phân loại đổi trong /permissions: cài lại giữ giá trị 
   const same = plan();
   assert.deepEqual(same.conflicts, []);
   const kept = JSON.parse(same.content ?? fs.readFileSync(settingsFile, 'utf8')).autoMode;
-  assert.deepEqual([kept.model, kept.stage2Reasoning], ['openai-codex/gpt-6-astra', 'medium']);
+  assert.deepEqual([kept.model, kept.stage2Reasoning], ['anthropic/claude-haiku-5-5', 'medium']);
   assert.equal(kept.jev, undefined, 'installer không còn ghi autoMode.jev');
   // Mặc định mới của installer đổi model phân loại: giữ của người dùng, báo xung đột kèm mặc định mới.
   const moved = plan(value => ({...value, autoMode: {...value.autoMode, model: 'anthropic/claude-opus-5-5'}}));
-  assert.equal(JSON.parse(moved.content ?? fs.readFileSync(settingsFile, 'utf8')).autoMode.model, 'openai-codex/gpt-6-astra');
-  assert.deepEqual(moved.conflicts.map(item => [item.path, item.current, item.next]), [[['autoMode', 'model'], 'openai-codex/gpt-6-astra', 'anthropic/claude-opus-5-5']]);
+  assert.equal(JSON.parse(moved.content ?? fs.readFileSync(settingsFile, 'utf8')).autoMode.model, 'anthropic/claude-haiku-5-5');
+  assert.deepEqual(moved.conflicts.map(item => [item.path, item.current, item.next]), [[['autoMode', 'model'], 'anthropic/claude-haiku-5-5', 'anthropic/claude-opus-5-5']]);
 });

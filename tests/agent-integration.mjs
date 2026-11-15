@@ -32,15 +32,15 @@ for (const dir of [agentDir, cwd]) fs.mkdirSync(dir, { recursive: true });
 for (const name of ["settings.json", "keybindings.json", "advisor.json", "subagents.json", "open-tui.json"]) {
   if (fs.existsSync(path.join(configuration.agentDir, name))) fs.copyFileSync(path.join(configuration.agentDir, name), path.join(agentDir, name));
 }
-// Kiểm cơ chế của bản cài với các vai đặt sang model của provider giả (GLM, GPT-6.1 Sol, GPT-6 Astra như khi người dùng
+// Kiểm cơ chế của bản cài với các vai đặt sang model của provider giả (GLM, Kimi của OpenCode Go như khi người dùng
 // chọn chúng), dù mặc định và file gốc dùng Claude; model/thinking thật được pi-doctor kiểm trong catalog của Pi.
 const modelRoles = await import(pathToFileURL(path.join(installRoot, "bin", "model-roles.mjs")).href);
 const defaults = modelRoles.nativeValues({
   ...modelRoles.loadModelDefaults(installRoot),
   researcher: { model: "opencode-go/glm-5.3-flash", thinking: "max" },
-  worker: { model: "openai-codex/gpt-6.1-sol", thinking: "max" },
-  reviewer: { model: "openai-codex/gpt-6-astra", thinking: "high" },
-  advisor: { model: "openai-codex/gpt-6-astra", thinking: "high" },
+  worker: { model: "opencode-go/glm-5.3", thinking: "max" },
+  reviewer: { model: "opencode-go/kimi-k3", thinking: "high" },
+  advisor: { model: "opencode-go/kimi-k3", thinking: "high" },
 });
 const modelId = (ref) => modelRoles.parseModelRef(ref).id;
 fs.mkdirSync(path.join(agentDir, "agents"));
@@ -53,8 +53,7 @@ settings.autoMode = { ...settings.autoMode, model: "config-test/parent", stateDi
 Object.assign(settings, {
   defaultProvider: "config-test", defaultModel: "parent", defaultThinkingLevel: "off",
   // Model của phiên chính (đứng đầu danh sách) thay bằng model giả của parent.
-  // GPT-6.1 Sol để kiểm vai đặt sang GPT, không phụ thuộc vào model mặc định của worker.
-  enabledModels: ["config-test/parent", ...defaults.settings.enabledModels.slice(1), "openai-codex/gpt-6.1-sol"], modelThinkingLevels: defaults.settings.modelThinkingLevels,
+  enabledModels: ["config-test/parent", ...defaults.settings.enabledModels.slice(1)], modelThinkingLevels: defaults.settings.modelThinkingLevels,
   // Cổng permission của bản cài nạp sau provider giả.
   extensions: [fileURLToPath(new URL("./agent-provider.ts", import.meta.url)),
     ...(settings.extensions ?? []).filter((entry) => typeof entry === "string" && entry.replaceAll("\\", "/").endsWith("/pi-auto-mode"))],
@@ -183,11 +182,11 @@ await check('native delegation tools and three task roles are available',async()
   assert.deepEqual(fs.readdirSync(path.join(agentDir,'agents')).sort(),['researcher.md','reviewer.md','worker.md']);
 });
 await check('researcher uses GLM/max and separate context',async()=>{
-  const out=await run('sol',invocation('sol'),[[tool('read',{path:'safe.txt'})],final('CHILD_OK')]);
+  const out=await run('glm',invocation('glm'),[[tool('read',{path:'safe.txt'})],final('CHILD_OK')]);
   assert.equal(out[0]?.isError,false,JSON.stringify(out));
-  const child=control.seen.filter(x=>x.key==='child_sol');assert.ok(child.length>0);
+  const child=control.seen.filter(x=>x.key==='child_glm');assert.ok(child.length>0);
   assert.ok(child.every(x=>x.model==='glm-5.3-flash'&&x.options.reasoning==='max'));
-  assert.ok(!JSON.stringify(child).includes('CASE:parent_sol'));
+  assert.ok(!JSON.stringify(child).includes('CASE:parent_glm'));
   assert.match(JSON.stringify(child.at(-1).messages),/SAFE_CONTENT/);
 });
 const configured=Object.fromEntries(modelRoles.SUBAGENT_ROLES.map(role=>[role,[modelId(defaults.subagents[role].model),defaults.subagents[role].thinking]]));
@@ -195,7 +194,7 @@ for(const role of ['researcher','worker','reviewer']) {
   await check(`native ${role} keeps its configured model/effort despite conflicting tool parameters`,async()=>{
     const id='configured-'+role;
     const [expectedModel,expectedEffort]=configured[role];
-    const opposite=role==='researcher'?'openai-codex/gpt-6.1-sol':'opencode-go/glm-5.3-flash';
+    const opposite=role==='researcher'?'opencode-go/glm-5.3':'opencode-go/glm-5.3-flash';
     const out=await run(id,invocation(id,{subagent_type:role,model:opposite,thinking:'off',inherit_context:true,isolated:true,max_turns:999}));
     assert.equal(out[0]?.isError,false,JSON.stringify(out));
     const seen=control.seen.filter(x=>x.key==='child_'+id);
@@ -213,25 +212,6 @@ await check('researcher gets pi-web-access tools from its role and reads code wi
   for(const name of ['read','grep','find','ls','bash'])assert.ok(reader[0].tools.includes(name),JSON.stringify(reader[0].tools));
   for(const name of ['write','edit'])assert.ok(!reader[0].tools.includes(name),JSON.stringify(reader[0].tools));
   assert.ok(reader.at(-1).messages.some(m=>m.role==='toolResult'&&!m.isError&&JSON.stringify(m.content).includes('SAFE_CONTENT')),'researcher đọc được code');
-});
-await check('a role set to GPT reaches its provider (openai via Sign in with ChatGPT, openai-codex legacy) without service_tier',async()=>{
-  // Vai tạm dùng GPT-6.1 Sol (như khi người dùng đặt worker sang model này): pi-subagents đọc lại file role mỗi lần gọi.
-  const temporary=[['sol61','openai-codex/gpt-6.1-sol'],['chatgpt','openai/gpt-6.1-sol']].map(([name,model])=>{
-    const file=path.join(agentDir,'agents',`${name}.md`);
-    fs.writeFileSync(file,fs.readFileSync(path.join(agentDir,'agents','worker.md'),'utf8').replace(/^name: .*$/mu,`name: ${name}`).replace(/^model: .*$/mu,`model: ${model}`));
-    return file;
-  });
-  try{
-    for(const [role,model,provider] of [['worker'],['reviewer'],['researcher'],['sol61','gpt-6.1-sol','openai-codex'],['chatgpt','gpt-6.1-sol','openai']]){
-      const id='gpt-'+role;
-      const out=await run(id,invocation(id,{subagent_type:role}));
-      assert.equal(out[0]?.isError,false,JSON.stringify(out));
-      const seen=control.seen.filter(x=>x.key==='child_'+id);assert.ok(seen.length>0);
-      if(model)assert.ok(seen.every(x=>x.model===model),`${role}: ${JSON.stringify(seen.map(x=>x.model))}`);
-      if(provider)assert.ok(seen.every(x=>x.provider===provider),`${role}: ${JSON.stringify(seen.map(x=>x.provider))}`);
-      assert.ok(seen.every(x=>x.payload?.service_tier===undefined),`${role}: ${JSON.stringify(seen.map(x=>x.payload))}`);
-    }
-  }finally{for(const file of temporary)fs.rmSync(file,{force:true});}
 });
 await check('worker has no turn limit',async()=>{
   const steps=Array.from({length:16},()=>[tool('read',{path:'safe.txt'})]);
@@ -259,7 +239,7 @@ await check('researcher and reviewer cannot write files',async()=>{
     assert.ok(!control.seen.filter(x=>x.key==='child_'+id)[0].tools.includes('write'),role);
   }
 });
-await check('Sol worker retains permission gate even when isolated=true was requested',async()=>{
+await check('worker retains permission gate even when isolated=true was requested',async()=>{
   const out=await run('permission',invocation('permission',{subagent_type:'worker',isolated:true}),
     [[tool('read',{path:'.env'})],[tool('bash',{command:'printf native-agent-permission-ok > gate-proof.txt',timeout:10})],final('CHECKED')]);
   assert.equal(out[0]?.isError,false,JSON.stringify(out));
@@ -270,7 +250,7 @@ await check('Sol worker retains permission gate even when isolated=true was requ
   const reviewed=control.seen.filter(x=>x.key==='classifier').map(x=>JSON.stringify(x.messages));
   assert.ok(reviewed.some(text=>text.includes('gate-proof.txt')&&text.includes('delegated_task')),'Child phải qua bộ phân loại của pi-auto-mode');
 });
-await check('Sol worker can make an authorized file edit',async()=>{
+await check('worker can make an authorized file edit',async()=>{
   const out=await run('write',invocation('write',{subagent_type:'worker'}),[[tool('write',{path:'result.txt',content:'NATIVE_WRITE_OK'})],final('DONE')]);
   assert.equal(out[0]?.isError,false,JSON.stringify(out));
   assert.equal(fs.readFileSync(path.join(cwd,'result.txt'),'utf8'),'NATIVE_WRITE_OK');
@@ -304,7 +284,7 @@ async function turnIn(target, key, steps) {
 const turn=(key,steps)=>turnIn(session,key,steps);
 // Phần đầu request (system prompt và khai báo tool trước user message đầu tiên): đổi phần này thì mất prompt cache.
 const head=entry=>{const first=entry.messages.findIndex(m=>m.role==='user');return JSON.stringify([entry.systemPrompt??null,entry.messages.slice(0,first<0?0:first)]);};
-await check('advisor Astra/high is always on for the parent and a consultation keeps the system prompt',async()=>{
+await check('advisor (high) is always on for the parent and a consultation keeps the system prompt',async()=>{
   assert.ok(session.getActiveToolNames().includes('ask_advisor'),'alwaysOn phải bật advisor khi mở phiên');
   // Không ghim executor: đổi model của phiên (setModel như /model) không ghi gì vào advisor.json.
   assert.equal(readJson(advisorFile).executor,undefined);

@@ -19,7 +19,7 @@ test("header quota Claude: tỷ lệ thành phần trăm, reset epoch giây", ()
   assert.equal(parseUnifiedHeaders({ "Anthropic-Ratelimit-Unified-Status": "rejected" }, now).status, "rejected");
 });
 
-test("footer giống Codex: phần trăm còn lại và đếm ngược", () => {
+test("footer: phần trăm còn lại và đếm ngược", () => {
   const snapshot = parseUnifiedHeaders(unifiedHeaders(now), now);
   assert.equal(formatStatus(snapshot, now), "claude 77% ↻ 2h10m 59% ↻ 4d3h");
   assert.equal(formatStatus(snapshot, now + 3 * 3600 * 1000), "claude 100% 5h 59% ↻ 4d");
@@ -129,7 +129,7 @@ test("claude-usage tự đọc quota khi phiên có UI dùng Claude, dừng khi 
   await advance(POLL_MS);
   assert.equal(requests.length, 8);
   // Chuyển sang model khác Claude thì dừng; quay lại Claude khi dữ liệu còn mới thì chưa đọc.
-  handlers.model_select({ model: { provider: "openai-codex", id: "gpt-6-sol" } }, context({ model: { provider: "openai-codex" } }));
+  handlers.model_select({ model: { provider: "opencode-go", id: "glm-5.3" } }, context({ model: { provider: "opencode-go" } }));
   assert.equal(statuses.at(-1), undefined);
   await advance(3 * MAX_POLL_MS);
   assert.equal(requests.length, 8);

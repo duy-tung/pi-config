@@ -11,7 +11,7 @@ import {linkRuntime, readJson, simulatedInstall} from './install-fixture.mjs';
 const testRoot = process.env.PI_CONFIG_TEST_ROOT;
 test('/agents và /permissions trong phiên Pi thật: Model/Thinking của agent ghi frontmatter; mode và model phân loại áp ngay', {skip: !testRoot, timeout: 120000}, async t => {
   // Bản cài giả có extension như installer; runtime (đã vá) nối từ bản cài thật. Chỉ nạp pi-subagents và pi-auto-mode,
-  // model của các vai giữ như installer sinh. Chỉ Claude có key giả: Codex và OpenCode Go chưa đăng nhập.
+  // model của các vai giữ như installer sinh. Chỉ Claude có key giả: OpenCode Go chưa đăng nhập.
   const f = simulatedInstall(t, {full: true});
   const unlink = linkRuntime(f.root, testRoot);
   const settingsPath = f.file('settings.json');

@@ -8,7 +8,7 @@ import {buildConfiguration} from '../lib/config.mjs';
 import {modelDefaults} from './install-fixture.mjs';
 
 const root = process.env.PI_CONFIG_TEST_ROOT;
-test('Pi: Opus 5.5/high 1M mặc định, advisor Fable trong catalog, GPT (openai và openai-codex) theo context của catalog, payload khi được chọn', {skip: !root}, async () => {
+test('Pi: Opus 5.5/high 1M mặc định, advisor Fable trong catalog', {skip: !root}, async () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-models-'));
   const savedOffline = process.env.PI_OFFLINE;
   const savedFetch = globalThis.fetch;
@@ -22,8 +22,6 @@ test('Pi: Opus 5.5/high 1M mặc định, advisor Fable trong catalog, GPT (open
       const load = (relative) => import(pathToFileURL(path.join(modules, relative)).href);
       const {ModelRuntime, SettingsManager, createAgentSession, SessionManager, DefaultResourceLoader} = await load('@earendil-works/pi-coding-agent/dist/index.js');
       const {getSupportedThinkingLevels} = await load('@earendil-works/pi-ai/dist/models.js');
-      const {streamSimple} = await load('@earendil-works/pi-ai/dist/api/openai-codex-responses.js');
-      const {streamSimple: streamResponses} = await load('@earendil-works/pi-ai/dist/api/openai-responses.js');
       const agentDir = path.join(temp, 'main');
       fs.mkdirSync(agentDir, {recursive: true});
       const get = (name) => JSON.parse(generated.find(x => x.path === path.join(agentDir, name)).content);
@@ -32,14 +30,9 @@ test('Pi: Opus 5.5/high 1M mặc định, advisor Fable trong catalog, GPT (open
       assert.ok(!generated.some(x => x.path === path.join(agentDir, 'models.json')));
       const modelsPath = path.join(agentDir, 'models.json');
       const authPath = path.join(agentDir, 'auth.json');
-      const jwt = `fixture.${Buffer.from(JSON.stringify({'https://api.openai.com/auth': {chatgpt_account_id: 'fixture'}})).toString('base64url')}.fixture`;
       const expires = Date.now() + 3600000;
       fs.writeFileSync(authPath, JSON.stringify({
         anthropic: {type: 'oauth', access: 'sk-ant-oat01-synthetic-fixture', refresh: 'fixture-refresh', expires},
-        'openai-codex': {type: 'oauth', access: jwt, refresh: 'fixture-refresh', expires},
-        // Credential mà /login openai → Sign in with ChatGPT lưu: token dùng thẳng với api.openai.com, kèm client và scope.
-        openai: {type: 'oauth', access: 'fixture-chatgpt-token', refresh: 'fixture-refresh', expires, clientId: 'fixture-client',
-          scopes: ['openid', 'offline_access', 'chatgpt.tokens.use.direct']},
       }));
       const runtime = await ModelRuntime.create({authPath, modelsPath, refreshOnCreate: false, allowModelNetwork: false});
       assert.equal(runtime.getError(), undefined);
@@ -50,12 +43,6 @@ test('Pi: Opus 5.5/high 1M mặc định, advisor Fable trong catalog, GPT (open
       assert.equal(model.maxTokens, 128000);
       assert.equal(model.api, 'anthropic-messages');
       assert.ok(getSupportedThinkingLevels(model).includes(settings.defaultThinkingLevel));
-      // GPT không là mặc định của vai nào; khi người dùng chọn, openai (Sign in with ChatGPT) và openai-codex (legacy)
-      // đều dùng cửa sổ của catalog Pi (openai-codex/gpt-6.1-sol từ Pi 1.4.0 và gpt-6.1-terra từ 1.5.0 có 500K).
-      for (const id of ['gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-sol', 'gpt-6-astra']) {
-        assert.equal(runtime.getModel('openai-codex', id).contextWindow, id.startsWith('gpt-6.1-') ? 500000 : 272000, `openai-codex/${id}`);
-        assert.equal(runtime.getModel('openai', id).contextWindow, 272000, `openai/${id}`);
-      }
       for (const [ref, level] of Object.entries(settings.modelThinkingLevels)) {
         const [provider, id] = ref.split('/');
         assert.ok(getSupportedThinkingLevels(runtime.getModel(provider, id)).includes(level), ref);
@@ -74,33 +61,6 @@ test('Pi: Opus 5.5/high 1M mặc định, advisor Fable trong catalog, GPT (open
       const advisorModel = runtime.getModel(advisorProvider, advisorId);
       assert.deepEqual([advisorModel.provider, advisorModel.id], ['anthropic', 'claude-fable-5-1']);
       assert.ok(getSupportedThinkingLevels(advisorModel).includes(advisorConfig.advisorEffort));
-      // Khi một vai được đổi sang Codex: payload mang đúng model và mức reasoning.
-      const astra = runtime.getModel('openai-codex', 'gpt-6-astra');
-      let captured;
-      const response = await streamSimple(astra, {messages: [{role: 'user', content: 'Offline fixture', timestamp: 1}]}, {
-        apiKey: jwt, reasoning: 'high', transport: 'sse',
-        onPayload(payload) { captured = payload; throw new Error('OFFLINE_CAPTURE'); },
-      }).result();
-      assert.equal(captured.model, 'gpt-6-astra');
-      assert.equal(captured.reasoning.effort, 'high');
-      assert.match(response.errorMessage, /OFFLINE_CAPTURE/);
-      // Sign in with ChatGPT: model GPT có sẵn sau /login openai, request đi Responses API của api.openai.com
-      // bằng token đã lưu; Pi bỏ các trường token ChatGPT không nhận.
-      const available = (await runtime.getAvailable('openai')).map(item => `${item.provider}/${item.id}`);
-      for (const id of ['gpt-6.1-sol', 'gpt-6-astra']) assert.ok(available.includes(`openai/${id}`), `openai/${id} phải dùng được sau Sign in with ChatGPT`);
-      const sol = runtime.getModel('openai', 'gpt-6.1-sol');
-      assert.deepEqual([sol.api, sol.baseUrl], ['openai-responses', 'https://api.openai.com/v1']);
-      assert.ok(runtime.isUsingOAuth('openai') && runtime.isUsingSubscription('openai'));
-      const auth = await runtime.getAuth(sol);
-      assert.deepEqual([auth.auth.apiKey, auth.source], ['fixture-chatgpt-token', 'OAuth']);
-      captured = undefined;
-      const native = await streamResponses(sol, {messages: [{role: 'user', content: 'Offline fixture', timestamp: 1}]}, {
-        apiKey: auth.auth.apiKey, reasoning: 'max', maxTokens: 64000,
-        onPayload(payload) { captured = payload; throw new Error('OFFLINE_CAPTURE'); },
-      }).result();
-      assert.deepEqual([captured.model, captured.reasoning.effort, captured.store, captured.stream], ['gpt-6.1-sol', 'max', false, true]);
-      assert.deepEqual([captured.max_output_tokens, captured.prompt_cache_retention], [undefined, undefined]);
-      assert.match(native.errorMessage, /OFFLINE_CAPTURE/);
     }
   } finally {
     globalThis.fetch = savedFetch;

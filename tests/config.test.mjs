@@ -51,7 +51,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       const manifest = JSON.parse(fs.readFileSync(path.join(repoDir, "manifests", "current", "package.json"), "utf8"));
       assert.equal(settings.lastChangelogVersion, manifest.dependencies["@earendil-works/pi-coding-agent"]);
       assert.ok(settings.packages.every((entry) => (typeof entry === "string" ? entry : entry.source).startsWith(p.join(options.root, "runtimes", profile.runtime, "node_modules"))));
-      // Mọi model dùng context của catalog Pi; openai-codex (legacy) không còn override 872K. Message threads theo mặc định của Pi.
+      // Mọi model dùng context của catalog Pi (không sinh models.json). Message threads theo mặc định của Pi.
       assert.ok(!files.some((file) => file.path === p.join(profile.agentDir, "models.json")));
       assert.deepEqual(settings.enabledModels, ["anthropic/claude-opus-5-5", "anthropic/claude-fable-5-1", "anthropic/claude-sonnet-5-5"]);
       if (name === "main") {
@@ -119,12 +119,12 @@ for (const platform of ["darwin", "linux", "win32"]) {
       // Follow-up giữ phím mặc định của Pi.
       assert.equal(json(p.join(profile.agentDir, "keybindings.json"))["app.message.followUp"], undefined);
       const web = json(p.join(profile.agentDir, "web-search.json"));
-      // provider cố định sẽ bỏ qua searchRouting; native search theo model (Codex, Claude) đi trước, Exa dự phòng.
+      // provider cố định sẽ bỏ qua searchRouting; native search của Claude đi trước, Exa dự phòng.
       assert.equal(web.provider, undefined);
-      assert.deepEqual(web.searchRouting.providers, ["openai", "anthropic", "exa"]);
+      assert.deepEqual(web.searchRouting.providers, ["anthropic", "exa"]);
       assert.equal(web.searchRouting.useCurrentModel, true);
       assert.deepEqual(web.searchRouting.fallbackOn, ["network", "transient", "quota", "invalid-response", "unsupported"]);
-      assert.deepEqual(web.webSearch.allowedProviders, ["openai", "anthropic", "exa"]);
+      assert.deepEqual(web.webSearch.allowedProviders, ["anthropic", "exa"]);
       assert.equal(web.anthropicSearch, undefined, "Model khác Claude không tìm bằng Claude nếu người dùng không bật");
       assert.equal(web.exaApiKey, undefined, "Exa không cần key: dùng endpoint MCP miễn phí");
       assert.deepEqual(settings.permissions.ask, []);
