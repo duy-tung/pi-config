@@ -1,5 +1,4 @@
 {
-  "maxConcurrent": 4,
   "maxConcurrentForeground": 2,
   "graceTurns": 2,
   "disableDefaultAgents": true,

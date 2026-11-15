@@ -75,7 +75,8 @@ for (const platform of ["darwin", "linux", "win32"]) {
         assert.equal(JSON.parse(field("extensions")).includes("pi-web-access"), role === "researcher", role);
       }
       const subagents = json(p.join(profile.agentDir, "subagents.json"));
-      assert.deepEqual([subagents.maxConcurrent, subagents.maxConcurrentForeground], [4, 2]);
+      // Agent nền theo mặc định của pi-subagents (10); chỉ giới hạn worker foreground vì chúng ghi chung một cây làm việc.
+      assert.deepEqual([subagents.maxConcurrent, subagents.maxConcurrentForeground], [undefined, 2]);
       // Model của vai ghim trong file role, đổi bằng /agents; không giới hạn theo enabledModels (Ctrl+P của phiên chính).
       assert.equal(subagents.scopeModels, undefined);
       // Mặc định của pi-subagents: không giới hạn lượt, chạy nền, nhớ agent giữa các lần gọi.
