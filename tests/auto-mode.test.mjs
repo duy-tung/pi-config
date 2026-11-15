@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { classify, classifyWithFallback } from "../assets/extensions/pi-auto-mode/lib/classifier.ts";
 import { parsePermissionsArgs, permissionsCompletions, TEST_USAGE } from "../assets/extensions/pi-auto-mode/lib/command.ts";
 import {
-  availableModes, loadConfig, MODES, nextMode, parseMode, prompts, saveClassifier, spliceDefaults, withBlockedOutsideReads, withClassifier,
+  availableModes, loadConfig, MODES, parseMode, prompts, saveClassifier, spliceDefaults, withBlockedOutsideReads, withClassifier,
 } from "../assets/extensions/pi-auto-mode/lib/config.ts";
 import { answerOf, manualApproval, manualOptions, manualTitle } from "../assets/extensions/pi-auto-mode/lib/manual.ts";
 import { MANUAL_DECLINED, MANUAL_NO_APPROVER, manualDeclinedWith, modeInstructions } from "../assets/extensions/pi-auto-mode/lib/messages.ts";
@@ -765,12 +765,9 @@ test("giới hạn chặn 3 liên tiếp / 20 tổng và duyệt một lần", (
   assert.equal(state.consumeApproval(key), false);
 });
 
-test("mode: bốn mode như Claude Code, Shift+Tab xoay vòng manual → acceptEdits → [bypass] → auto", () => {
+test("mode: bốn mode như Claude Code, bypass chỉ chọn được khi phiên mở với bypass", () => {
   assert.deepEqual(MODES, ["manual", "acceptEdits", "bypass", "auto"]);
-  // Bypass chỉ có trong vòng khi phiên được mở với bypass; đang ở bypass thì vẫn đi tiếp được.
-  assert.deepEqual(MODES.map((mode) => nextMode(mode, true)), ["acceptEdits", "bypass", "auto", "manual"]);
-  assert.deepEqual(["manual", "acceptEdits", "auto"].map((mode) => nextMode(mode)), ["acceptEdits", "auto", "manual"]);
-  assert.equal(nextMode("bypass"), "auto");
+  assert.deepEqual(availableModes(true), MODES);
   assert.deepEqual(availableModes(false), ["manual", "acceptEdits", "auto"]);
   assert.deepEqual(MODES.map(prompts), [true, true, false, false]);
   for (const [value, mode] of [["manual", "manual"], [" default ", "manual"], ["acceptEdits", "acceptEdits"], ["auto", "auto"], ["bypass", "bypass"], ["bypassPermissions", "bypass"]]) {

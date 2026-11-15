@@ -8,7 +8,7 @@ import { type ExtensionAPI, type ExtensionContext, getAgentDir, getPackageDir, p
 import { classifyWithFallback, type ClassifierResult, type Complete } from "./lib/classifier.ts";
 import { completionRequest, completionText } from "./lib/completion.ts";
 import {
-  availableModes, loadConfig, nextMode, parseMode, type PermissionMode, prompts, readState, saveClassifier, saveSettings, withBlockedOutsideReads,
+  availableModes, loadConfig, parseMode, type PermissionMode, prompts, readState, saveClassifier, saveSettings, withBlockedOutsideReads,
   writeState,
 } from "./lib/config.ts";
 import { parsePermissionsArgs, permissionsCompletions } from "./lib/command.ts";
@@ -72,7 +72,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
   let state = new PermissionState();
 
   let mode: PermissionMode = "auto";
-  /** Bypass có trong vòng Shift+Tab: phiên mở bằng bypass (cờ hoặc defaultMode) hoặc --allow-dangerously-skip-permissions. */
+  /** Bypass chọn được trong /permissions → Mode: phiên mở bằng bypass (cờ hoặc defaultMode) hoặc --allow-dangerously-skip-permissions. */
   let bypassAvailable = false;
   let sessionId = "";
   /** Thư mục làm việc của phiên, cho luật lưu theo project khi không có ctx (trạng thái của /permissions). */
@@ -92,7 +92,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
   });
   pi.registerFlag("dangerously-skip-permissions", { type: "boolean", description: "Start in bypass permissions mode (no permission checks)" });
   pi.registerFlag("allow-dangerously-skip-permissions", {
-    type: "boolean", description: "Add bypass permissions mode to the Shift+Tab cycle without starting in it",
+    type: "boolean", description: "Make bypass permissions mode selectable in /permissions without starting in it",
   });
   pi.registerFlag("add-dir", {
     type: "string", description: `Additional working directory for this session (several: separate with "${path.delimiter}")`,
@@ -112,7 +112,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
     ctx.ui.setWidget(WIDGET, (tui, theme) => {
       widgetTui = tui as { requestRender?: () => void };
       return {
-        render: () => [`${theme.fg(MODE_COLORS[mode], MODE_LABELS[mode])}${theme.fg("dim", " (shift+tab to cycle)")}`],
+        render: () => [`${theme.fg(MODE_COLORS[mode], MODE_LABELS[mode])}${theme.fg("dim", " (/permissions to change)")}`],
         invalidate() {},
       };
     }, { placement: "belowEditor" });
@@ -153,24 +153,6 @@ export default function piAutoMode(pi: ExtensionAPI) {
     if (next === "bypass" && !await canEnterBypass(ctx, false, `No, keep ${mode} mode`)) return false;
     setMode(next);
     return true;
-  }
-
-  /**
-   * Shift+Tab như Claude Code: manual → acceptEdits → bypass (khi có) → auto → manual. Bypass bị tắt thì bỏ qua; từ
-   * chối cảnh báo thì sang auto.
-   */
-  async function cycle(ctx: ExtensionContext): Promise<void> {
-    if (child) return;
-    const next = nextMode(mode, bypassAvailable);
-    if (next !== "bypass") {
-      setMode(next);
-      return;
-    }
-    if (bypassBlocked()) {
-      setMode("auto");
-      return;
-    }
-    setMode(await canEnterBypass(ctx, false, "No, switch to auto mode") ? "bypass" : "auto");
   }
 
   function log(entry: Record<string, unknown>): void {
@@ -671,7 +653,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
     // Không bao giờ khôi phục bypass từ phiên cũ; chỉ cờ dòng lệnh hoặc settings người dùng.
     const flagBypass = pi.getFlag("dangerously-skip-permissions") === true;
     const wanted = flagBypass ? "bypass" : parseMode(pi.getFlag("permission-mode")) ?? config.defaultMode;
-    // Như Claude Code: bypass chỉ có trong vòng Shift+Tab khi phiên được mở với bypass (kể cả khi từ chối cảnh báo).
+    // Như Claude Code: bypass chỉ chọn được giữa phiên khi phiên được mở với bypass (kể cả khi từ chối cảnh báo).
     bypassAvailable = wanted === "bypass" || pi.getFlag("allow-dangerously-skip-permissions") === true;
     const added = pi.getFlag("add-dir");
     if (typeof added === "string") {
@@ -708,9 +690,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
   // Phím tắt và lệnh
   // ---------------------------------------------------------------------------
 
-  // Shift+Tab như Claude Code; bộ cài chuyển mức thinking của Pi sang Alt+T. Nếu keybindings.json vẫn gán
-  // Shift+Tab cho thinking, Pi bỏ phím này của extension (kèm chẩn đoán) và mode đổi bằng /permissions.
-  pi.registerShortcut("shift+tab" as never, { description: "Switch permission mode (manual → accept edits → [bypass] → auto)", handler: (ctx) => cycle(ctx) });
+  // Không có phím tắt đổi mode: Shift+Tab giữ chức năng gốc của Pi (đổi mức thinking); mode đổi trong /permissions → Mode.
 
   function modelLabel(): string {
     return `${config.model ?? "session model"} · ${config.stage2Reasoning}`;
@@ -939,7 +919,7 @@ export default function piAutoMode(pi: ExtensionAPI) {
           if (child) return;
           const modes = availableModes(bypassAvailable || currentMode() === "bypass");
           const labels = modes.map((item) => `${MODE_LABELS[item]}${item === currentMode() ? " (current)" : ""}`);
-          const picked = await ctx.ui.select(`Permission mode (Shift+Tab cycles ${modes.map((item) => MODE_LABELS[item].replace(/^\S+ | on$/gu, "")).join(" → ")})`, labels);
+          const picked = await ctx.ui.select("Permission mode", labels);
           if (picked) await switchMode(ctx, modes[labels.indexOf(picked)]);
           return;
         }

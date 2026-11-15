@@ -92,4 +92,4 @@ export const BYPASS_WARNING = [
   "By proceeding, you accept all responsibility for actions taken in Bypass Permissions mode.",
 ].join("\n");
 
-export const AUTO_NOTICE ="Auto mode lets Pi handle permission prompts automatically: a classifier checks each risky tool call before it runs. Actions it judges safe run; risky ones are blocked and Pi tries another approach. It can make mistakes, so prefer isolated environments for sensitive work. Shift+Tab switches mode; /permissions shows recent denials.";
+export const AUTO_NOTICE ="Auto mode lets Pi handle permission prompts automatically: a classifier checks each risky tool call before it runs. Actions it judges safe run; risky ones are blocked and Pi tries another approach. It can make mistakes, so prefer isolated environments for sensitive work. /permissions switches mode and shows recent denials.";

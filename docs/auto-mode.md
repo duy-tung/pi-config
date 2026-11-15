@@ -11,9 +11,9 @@
 
 ## Dùng
 
-- `Shift+Tab` đổi mode theo vòng manual → accept edits → bypass → auto → manual, như Claude Code. Bypass chỉ có trong vòng (và trong `/permissions` → Mode) khi phiên được mở với bypass: `--dangerously-skip-permissions`, `--permission-mode bypass`, `permissions.defaultMode: "bypass"` trong settings của bạn, hoặc `--allow-dangerously-skip-permissions` (có bypass trong vòng nhưng không bắt đầu ở đó). Lần đầu vào bypass hiện cảnh báo cần đồng ý; lựa chọn được nhớ, từ chối thì sang auto. Bypass bị bỏ qua khi chạy bằng root (trừ `IS_SANDBOX=1`) hoặc khi `permissions.disableBypassPermissionsMode` là `"disable"`.
+- Mode đổi trong `/permissions` → Mode (manual, accept edits, auto, bypass). Khác Claude Code, không có phím tắt xoay vòng mode: `Shift+Tab` giữ chức năng gốc của Pi là đổi mức thinking. Bypass chỉ có trong danh sách khi phiên được mở với bypass: `--dangerously-skip-permissions`, `--permission-mode bypass`, `permissions.defaultMode: "bypass"` trong settings của bạn, hoặc `--allow-dangerously-skip-permissions` (chọn được bypass trong `/permissions` nhưng không bắt đầu ở đó). Lần đầu vào bypass hiện cảnh báo cần đồng ý; lựa chọn được nhớ, từ chối thì sang auto. Bypass bị bỏ qua khi chạy bằng root (trừ `IS_SANDBOX=1`) hoặc khi `permissions.disableBypassPermissionsMode` là `"disable"`.
 - `/add-dir <thư mục>` (như Claude Code) thêm thư mục làm việc: đọc tự do, sửa theo mode. Chọn **Yes, for this session** hoặc **Yes, and remember this directory** (lưu cho repo như luật "don't ask again"; bỏ trong `/permissions` → Rules → Saved for this project). Không đối số thì liệt kê thư mục làm việc. Khi mở: `pi --add-dir <thư mục>` (nhiều thư mục: nối bằng `:`, Windows `;`).
-- Mức thinking chuyển sang `Alt+T` (như Option+T của Claude Code; trên macOS terminal cần gửi Option như Alt — WezTerm mặc định với Option trái) hoặc `/thinking`.
+- Mức thinking đổi bằng `Shift+Tab` (mặc định của Pi), `Alt+T` (như Option+T của Claude Code; trên macOS terminal cần gửi Option như Alt — WezTerm mặc định với Option trái) hoặc `/thinking`.
 - `/permissions` là menu duy nhất của cổng permission (thay `/auto-mode` cũ):
 
   ```

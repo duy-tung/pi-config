@@ -114,7 +114,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
       assert.ok(settings.extensions.filter((entry) => !entry.startsWith("-")).at(-1).endsWith("pi-auto-mode"), "pi-auto-mode phải nạp sau cùng");
       assert.ok(!settings.packages.some((entry) => String(entry?.source ?? entry).includes("pi-permission-system")));
       assert.ok(!files.some((file) => file.path.includes("pi-permission-system")));
-      assert.deepEqual(json(p.join(profile.agentDir, "keybindings.json"))["app.thinking.cycle"], ["alt+t"]);
+      assert.deepEqual(json(p.join(profile.agentDir, "keybindings.json"))["app.thinking.cycle"], ["shift+tab", "alt+t"]);
       assert.deepEqual(json(p.join(profile.agentDir, "keybindings.json"))["tui.altScreen.search"], ["alt+s"]);
       // Follow-up giữ phím mặc định của Pi.
       assert.equal(json(p.join(profile.agentDir, "keybindings.json"))["app.message.followUp"], undefined);
