@@ -218,7 +218,7 @@
       },
       "file": "dist/index.js",
       "originalSha256": "4efbd85de02258433ba83bb6d7417f57ea198e3873dfc45b77273a023705730b",
-      "patchedSha256": "c88356e3052f32f053e4f01efc224b3fbbd6d4f55a59154f8db9da8a7142932a",
+      "patchedSha256": "5865cac9ee32b5919b54067c20a2a53b98c17a75d7f03554ba0060ffd895757d",
       "edits": [
         {
           "before": "var RESOLVED_SEARCH_PROVIDERS = [\"openai\", \"brave\", ",
@@ -249,6 +249,31 @@
         {
           "before": "    openai: allowedProviders.has(\"openai\") && await isOpenAISearchAvailable(ctx),",
           "after": "    openai: allowedProviders.has(\"openai\") && await isOpenAISearchAvailable(ctx),\n    anthropic: allowedProviders.has(\"anthropic\") && piConfigAnthropicSearch.available(ctx, getSearchConfig().anthropicSearch),",
+          "count": 1
+        },
+        {
+          "before": "    FETCH_PROVIDERS = [\"http\", \"firecrawl\", \"crawl4ai\", \"jina\", ",
+          "after": "    FETCH_PROVIDERS = [\"http\", \"anthropic\", \"firecrawl\", \"crawl4ai\", \"jina\", ",
+          "count": 1
+        },
+        {
+          "before": "  let exaError = null;\n",
+          "after": "  let exaError = null;\n  let piConfigAnthropicFetchError = null;\n",
+          "count": 1
+        },
+        {
+          "before": "    if (provider === \"firecrawl\") {\n      try {\n        if (isFirecrawlAvailable()) {\n          const ssrf = loadSsrfConfig();",
+          "after": "    if (provider === \"anthropic\") {\n      try {\n        const piConfigFetchConfig = getSearchConfig().anthropicSearch;\n        if (piConfigAnthropicSearch.fetchAvailable(options?.extensionContext, piConfigFetchConfig)) {\n          const anthropicResult = await piConfigAnthropicSearch.fetchPage(url, { signal }, options.extensionContext, piConfigFetchConfig);\n          if (anthropicResult) return withDeclaredLinks(anthropicResult);\n        }\n      } catch (err) {\n        if (isAbortError6(err)) return abortedResult(url);\n        piConfigAnthropicFetchError = errorMessage37(err);\n        if (isConfigParseError(err)) return parseErrorResult(piConfigAnthropicFetchError);\n      }\n      continue;\n    }\n    if (provider === \"firecrawl\") {\n      try {\n        if (isFirecrawlAvailable()) {\n          const ssrf = loadSsrfConfig();",
+          "count": 1
+        },
+        {
+          "before": "    ...exaError ? [`Exa fallback failed: ${exaError}`] : [],",
+          "after": "    ...piConfigAnthropicFetchError ? [`Anthropic web fetch failed: ${piConfigAnthropicFetchError}`] : [],\n    ...exaError ? [`Exa fallback failed: ${exaError}`] : [],",
+          "count": 1
+        },
+        {
+          "before": "      const fetchResults = await fetchAllContent2(urlList, signal, fetchOptions(requestOptions, options.proxy));",
+          "after": "      const fetchResults = await fetchAllContent2(urlList, signal, { ...fetchOptions(requestOptions, options.proxy), extensionContext: ctx });",
           "count": 1
         }
       ]

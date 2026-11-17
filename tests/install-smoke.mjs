@@ -184,7 +184,7 @@ for(const file of [webPath,defaultsOf(webPath)]){
 }
 {
   const value=readJson(webPath);
-  value.searchRouting.providers=['exa','openai','anthropic','firecrawl'];value.firecrawlApiKey='fc-user-secret-value';
+  value.searchRouting.providers=['firecrawl','anthropic','openai'];value.firecrawlApiKey='fc-user-secret-value';
   writeJson(webPath,value);
 }
 const agentsPath=path.join(agentDir,'AGENTS.md');
@@ -200,8 +200,8 @@ for(const gone of [oldTool,oldSource,oldLauncher,oldHelper,path.join(root,'tools
   const cleaned=readJson(statePath),web=readJson(webPath),current=readJson(settingsPath);
   // Người dùng đã sửa searchRouting.providers: openai và firecrawl vẫn rời cả hai danh sách (lệch nhau thì pi-web-access không nạp,
   // pi-doctor báo lỗi và lần cài thất bại), thứ tự của người dùng được giữ.
-  assert.deepEqual([web.webSearch.allowedProviders,web.searchRouting.providers,web.fetchRouting],[['anthropic','exa'],['exa','anthropic'],undefined]);
-  assert.ok(migrated.includes('  - bỏ khỏi searchRouting.providers: openai, firecrawl'),migrated);
+  assert.deepEqual([web.webSearch.allowedProviders,web.searchRouting.providers,web.fetchRouting],[['anthropic'],['anthropic'],{providers:['http','anthropic']}]);
+  assert.ok(migrated.includes('  - bỏ khỏi searchRouting.providers: firecrawl, openai'),migrated);
   // Key người dùng tự đặt và AGENTS.md đã sửa được giữ; installer chỉ ra chỗ còn nhắc tới Firecrawl, không in giá trị.
   assert.equal(web.firecrawlApiKey,'fc-user-secret-value');
   assert.deepEqual(fs.readFileSync(agentsPath,'utf8').split('\n'),agentsLines);
