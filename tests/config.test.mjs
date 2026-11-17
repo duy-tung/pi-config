@@ -120,17 +120,20 @@ for (const platform of ["darwin", "linux", "win32"]) {
       // Follow-up giữ phím mặc định của Pi.
       assert.equal(json(p.join(profile.agentDir, "keybindings.json"))["app.message.followUp"], undefined);
       const web = json(p.join(profile.agentDir, "web-search.json"));
-      // provider cố định sẽ bỏ qua searchRouting; native search của Claude đi trước, Exa dự phòng.
+      // provider cố định sẽ bỏ qua searchRouting; chỉ native search của Claude, không có provider dự phòng.
       assert.equal(web.provider, undefined);
-      assert.deepEqual(web.searchRouting.providers, ["anthropic", "exa"]);
+      assert.deepEqual(web.searchRouting.providers, ["anthropic"]);
       assert.equal(web.searchRouting.useCurrentModel, true);
       assert.deepEqual(web.searchRouting.fallbackOn, ["network", "transient", "quota", "invalid-response", "unsupported"]);
-      assert.deepEqual(web.webSearch.allowedProviders, ["anthropic", "exa"]);
-      assert.equal(web.anthropicSearch, undefined, "Model khác Claude không tìm bằng Claude nếu người dùng không bật");
-      assert.equal(web.exaApiKey, undefined, "Exa không cần key: dùng endpoint MCP miễn phí");
+      assert.deepEqual(web.webSearch.allowedProviders, ["anthropic"]);
+      assert.equal(web.anthropicSearch.modelForNonClaude, undefined, "Model khác Claude không tìm bằng Claude nếu người dùng không bật");
+      assert.equal(web.exaApiKey, undefined);
+      // fetch_content: tải thẳng trước, web_fetch của Claude (Haiku 5.5) khi tải thẳng lỗi.
+      assert.deepEqual(web.fetchRouting, { providers: ["http", "anthropic"] });
+      assert.deepEqual(web.anthropicSearch, { fetchModel: "anthropic/claude-haiku-5-5" });
       assert.deepEqual(settings.permissions.ask, []);
-      // fetch_content theo mặc định của pi-web-access: tải thẳng trang đích, không qua dịch vụ trích xuất bên thứ ba.
-      assert.equal(web.fetchRouting, undefined);
+      // Không dịch vụ trích xuất hosted nào của bên thứ ba được bật.
+      assert.equal(web.fetchRouting.allowRemoteHostedProviders, undefined);
       assert.ok(settings.permissions.allow.includes("web_search"));
       assert.equal(web.allowBrowserCookies, undefined, "pi-web-access chỉ đọc cookie trình duyệt khi bật rõ (true)");
       // Không còn gì của Firecrawl trong cấu hình sinh ra: file, key, provider, skill, luật deny.

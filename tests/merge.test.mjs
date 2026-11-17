@@ -84,6 +84,10 @@ test('web-search.json: hai danh sách provider gộp theo phần tử, nên prov
   const custom = web(base, next, lists(['openai', 'anthropic', 'exa', 'brave'], ['brave', 'exa', 'openai']));
   assert.deepEqual(custom.value, lists(['anthropic', 'exa', 'brave'], ['brave', 'exa']));
   // Danh sách chưa sửa nhận nguyên mặc định mới, đúng thứ tự (thứ tự là thứ tự ưu tiên), dù phần khác của file đã sửa.
+  // Mặc định bỏ exa (chỉ còn native search): file chưa sửa và file đã đổi thứ tự đều còn mỗi anthropic.
+  const nativeOnly = lists(['anthropic'], ['anthropic']);
+  assert.deepEqual(web(next, nativeOnly, next).value, nativeOnly);
+  assert.deepEqual(web(next, nativeOnly, lists(next.webSearch.allowedProviders, ['exa', 'anthropic'])).value, nativeOnly);
   const inserted = web(lists(['exa'], ['exa']), next, {...lists(['exa'], ['exa']), workflow: 'mine'});
   assert.deepEqual(inserted.value.searchRouting.providers, ['anthropic', 'exa']);
   // Hai danh sách đi theo cặp: pi-web-access không nạp khi một danh sách rỗng, trùng mục (không phân biệt hoa thường)

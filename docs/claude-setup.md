@@ -49,12 +49,12 @@ pi-config có extension `claude-usage`:
 
 ## Native web search
 
-`web_search` (pi-web-access 0.47.0) định tuyến `["anthropic", "exa"]` với `useCurrentModel: true`:
+`web_search` (pi-web-access 0.47.0) định tuyến `["anthropic"]` với `useCurrentModel: true`, không có provider dự phòng:
 
 | Model hiện tại | Cách tìm |
 |---|---|
-| Claude của provider `anthropic` trên `api.anthropic.com` | `anthropic`: server tool `web_search_20250305` của Anthropic, tối đa 5 lượt tìm mỗi lần gọi |
-| Model khác (GLM, gateway, Claude qua provider khác) | Exa (endpoint MCP miễn phí, không cần key; đặt `EXA_API_KEY` để dùng API có key) |
+| Claude của provider `anthropic` trên `api.anthropic.com` | `anthropic`: server tool `web_search_20260209` của Anthropic, gọi thẳng (`allowed_callers: ["direct"]`), tối đa 5 lượt tìm mỗi lần gọi |
+| Model khác (GLM, gateway, Claude qua provider khác) | Không tìm được: `web_search` báo không có provider nào dùng được. Đặt `anthropicSearch.modelForNonClaude` (bên dưới) để tìm bằng Claude |
 
 `anthropic` là provider do bản vá pi-web-access thêm vào. Mã nằm ở [assets/patches/pi-web-access/anthropic-search.js](../assets/patches/pi-web-access/anthropic-search.js); installer chèn nguyên file vào `dist/index.js` và kiểm SHA256 kết quả ([assets/patches.json](../assets/patches.json)). Tìm kiếm Claude là một request phụ theo cách WebSearch của Claude Code (prompt viết riêng), đi qua transport Anthropic của Pi nên dùng cùng auth và shaping OAuth. Model không tắt được thinking (Opus 5.x, Fable) tìm với effort `low`; model khác tắt thinking. Nguồn và trích dẫn được đọc từ luồng SSE rồi trả về như kết quả pi-web-access (`**Provider:** anthropic`).
 
@@ -66,7 +66,22 @@ Muốn phiên chạy model khác (ví dụ researcher GLM) cũng tìm bằng Cla
 
 Model phải là Claude chính thức và đã đăng nhập Anthropic; phiên đang dùng Claude vẫn tìm bằng chính model đó.
 
-Lỗi mạng, lỗi tạm thời, quota, phản hồi không hợp lệ hoặc tài khoản không hỗ trợ web search chuyển sang Exa; Exa lỗi thì lỗi được báo lại, không còn provider nào sau nó. Lỗi xác thực và request sai được báo lại. `webSearch.allowedProviders` chỉ cho phép `anthropic` và `exa`. `fetch_content` theo thứ tự mặc định của pi-web-access (không khai báo `fetchRouting`): tải thẳng trang đích và trích nội dung tại chỗ. pi-config không cấu hình dịch vụ trích xuất nào, nên không trang nào được gửi qua bên thứ ba và trang dựng bằng JavaScript có thể trả về ít nội dung; bước dự phòng Firecrawl hoặc crawl4ai của thứ tự đó chỉ chạy khi bạn tự đặt base URL của chúng (`firecrawlBaseUrl`/`FIRECRAWL_BASE_URL`, `crawl4aiBaseUrl`/`CRAWL4AI_BASE_URL`), dịch vụ hosted như Jina chỉ khi bạn bật `fetchRouting.allowRemoteHostedProviders`. Phiên mới chỉ hiện `web_enable`; model gọi tool này để bật các web tool.
+Mọi lỗi của native search (mạng, lỗi tạm thời, quota, phản hồi không hợp lệ, tài khoản không hỗ trợ web search, lỗi xác thực, request sai) được báo lại cho agent; truy vấn không được gửi cho provider nào khác. `webSearch.allowedProviders` chỉ cho phép `anthropic`. Muốn có dự phòng (ví dụ Exa, endpoint MCP miễn phí không cần key), thêm tên provider vào cả `webSearch.allowedProviders` và `searchRouting.providers`; cài lại giữ mục bạn thêm.
+
+Bản `_20260209` mặc định chỉ cho model gọi `web_search` từ code execution để tự lọc kết quả. Lần thử thật ngày 2026-11-17 qua đăng nhập gói Claude: với mặc định đó (Sonnet 5.5), code execution trả `too_many_requests` và không lượt tìm nào chạy; khi cho gọi thẳng (Mythos 5.2), tìm kiếm chạy bình thường. Vì vậy pi-config đặt `allowed_callers: ["direct"]`: dùng bản tool mới nhưng không có bước tự lọc.
+
+## Native web fetch
+
+`fetch_content` theo `fetchRouting.providers: ["http", "anthropic"]`:
+
+| Bước | Khi nào chạy |
+|---|---|
+| `http` | Luôn chạy trước: Pi tải thẳng trang đích và trích nội dung tại chỗ, không qua bên thứ ba |
+| `anthropic` | Khi tải thẳng lỗi (ví dụ 403 vì trang chặn máy bạn) và có model Claude dùng được: server tool `web_fetch_20260209` của Anthropic, gọi thẳng, một lần, tối đa 50.000 token nội dung |
+
+`anthropic` ở đây là provider fetch do cùng bản vá thêm vào. Request phụ chạy bằng `anthropicSearch.fetchModel` (mặc định `anthropic/claude-haiku-5-5`; model đó không dùng được thì theo model của phiên). Vì `fetchModel` là một model Claude cố định, bước này chạy cả khi phiên dùng model khác, miễn là đã đăng nhập Anthropic; bỏ khoá `fetchModel` thì chỉ phiên Claude mới dùng `web_fetch`. Model chỉ gọi tool rồi trả lời "done"; nội dung trang lấy nguyên từ kết quả tool. Lần thử thật ngày 2026-11-17 (Haiku 5.5, một trang nhỏ): 1,5 giây, 2.500 token input.
+
+Giới hạn của `web_fetch`: không chạy JavaScript, không nhận URL dài hơn 250 ký tự, Anthropic từ chối một số domain, và PDF trả về dạng base64 mà provider này không chuyển thành văn bản. Các trường hợp đó được báo lại cùng lỗi của bước tải thẳng. Trang tải bằng `web_fetch` tính token hai lần: trong request phụ, rồi trong context của phiên khi kết quả trả về. Các lời gọi nội bộ của pi-web-access (trang tải kèm `web_search`) không dùng bước này. Không dịch vụ trích xuất nào khác nằm trong thứ tự; muốn dùng một dịch vụ tự host (ví dụ crawl4ai), thêm tên provider vào `fetchRouting.providers` và đặt base URL của nó.
 
 ## Chi phí và giới hạn
 

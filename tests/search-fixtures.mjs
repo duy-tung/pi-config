@@ -24,6 +24,27 @@ export function anthropicSearchEvents({ model = "claude-sonnet-5", stopReason = 
   ];
 }
 
+/** Luồng SSE của web_fetch gọi thẳng: result là trang văn bản, PDF (base64) hoặc lỗi trong block (HTTP 200). */
+export function anthropicFetchEvents({ model = "claude-sonnet-5", url = "https://docs.example/guide", result = "text" } = {}) {
+  const start = (index, block) => ({ type: "content_block_start", index, content_block: block });
+  const delta = (index, value) => ({ type: "content_block_delta", index, delta: value });
+  const stop = (index) => ({ type: "content_block_stop", index });
+  const content = result === "text"
+    ? { type: "web_fetch_result", url, retrieved_at: "2026-11-17T00:00:00Z", content: { type: "document", title: "Pi guide (native)", source: { type: "text", media_type: "text/plain", data: "Pi guide fetched by Anthropic.\nPi reads files and runs commands." } } }
+    : result === "pdf"
+      ? { type: "web_fetch_result", url, retrieved_at: "2026-11-17T00:00:00Z", content: { type: "document", source: { type: "base64", media_type: "application/pdf", data: "JVBERi0xLjQK" } } }
+      : { type: "web_fetch_tool_result_error", error_code: result };
+  return [
+    { type: "message_start", message: { id: "msg_fixture", type: "message", role: "assistant", model, content: [], stop_reason: null, usage: { input_tokens: 12, output_tokens: 1 } } },
+    start(0, { type: "server_tool_use", id: "srvtoolu_fetch", name: "web_fetch", input: {} }),
+    delta(0, { type: "input_json_delta", partial_json: JSON.stringify({ url }) }), stop(0),
+    start(1, { type: "web_fetch_tool_result", tool_use_id: "srvtoolu_fetch", content }), stop(1),
+    start(2, { type: "text", text: "" }), delta(2, { type: "text_delta", text: "done" }), stop(2),
+    { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 3, server_tool_use: { web_fetch_requests: 1 } } },
+    { type: "message_stop" },
+  ];
+}
+
 export const unifiedHeaders = (now = Date.now()) => ({
   "anthropic-ratelimit-unified-status": "allowed",
   "anthropic-ratelimit-unified-5h-utilization": "0.23",

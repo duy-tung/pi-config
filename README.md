@@ -2,7 +2,7 @@
 
 [![Kiểm thử cài đặt](https://github.com/duy-tung/pi-config/actions/workflows/test.yml/badge.svg)](https://github.com/duy-tung/pi-config/actions/workflows/test.yml)
 
-Bộ cài **Pi 1.5.2** cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, native web search của Claude với Exa dự phòng, quota Claude trong footer, permission kiểu Claude Code (manual, accept edits, auto mode và bypass) và giao diện Rosé Pine. Không kèm skill nào. Dependency và bản vá được ghim để tái lập cấu hình.
+Bộ cài **Pi 1.5.2** cho **macOS, Linux và Windows**: model theo vai trò, context riêng cho agent, native web search của Claude (không gửi truy vấn cho bên thứ ba), quota Claude trong footer, permission kiểu Claude Code (manual, accept edits, auto mode và bypass) và giao diện Rosé Pine. Không kèm skill nào. Dependency và bản vá được ghim để tái lập cấu hình.
 
 ## Cài đặt
 
@@ -93,7 +93,7 @@ Agent có context riêng và không giới hạn số lượt; dừng agent bằ
 
 ## Công cụ và mặc định
 
-- Web: `web_search` dùng native search của Claude khi model hiện tại là Claude (provider `anthropic`, bản vá pi-web-access); model khác (vd GLM) dùng Exa (endpoint MCP miễn phí, không cần key); lỗi mạng, quota, phản hồi hỏng ở native search chuyển sang Exa. `fetch_content` tải thẳng trang đích và trích nội dung tại chỗ; pi-config không cấu hình dịch vụ trích xuất bên thứ ba nào (trang dựng bằng JavaScript có thể trả về ít nội dung); `get_search_content` đọc kho kết quả. Phiên mới hiện `web_enable` để model bật web tools. Chi tiết: [docs/claude-setup.md](docs/claude-setup.md).
+- Web: `web_search` dùng native search của Claude khi model hiện tại là Claude (provider `anthropic`, bản vá pi-web-access); không có provider dự phòng: model khác không tìm được, và lỗi của native search được báo lại cho agent. `fetch_content` tải thẳng trang đích và trích nội dung tại chỗ; khi tải thẳng lỗi (ví dụ trang chặn máy bạn) thì dùng `web_fetch` của Claude qua một request phụ bằng Haiku 5.5. pi-config không cấu hình dịch vụ trích xuất bên thứ ba nào (trang dựng bằng JavaScript có thể trả về ít nội dung); `get_search_content` đọc kho kết quả. Phiên mới hiện `web_enable` để model bật web tools. Chi tiết: [docs/claude-setup.md](docs/claude-setup.md).
 - MCP: không cài. MCP, codemode và `tool_search` dựng sẵn của Pi được tắt trong `extensions` của settings (`-builtin:mcp`, `-builtin:codemode`, `-builtin:tool-search`); provider llama.cpp dựng sẵn cũng tắt (`-builtin:llama.cpp`). Khi cần một server, bật MCP trong `pi config` (Built-in), thêm server bằng `pi mcp add` (ghi `<agent-dir>/mcp.json`) với `"exposure": "direct"`; mỗi tool là `mcp__<server>__<tool>` và đi qua cổng permission như tool khác.
 - Giao diện fullscreen (mặc định từ Pi 1.0): cuộn bằng chuột/trackpad trong Pi (số dòng mỗi nấc theo `fullscreenWheelScrollLines` của Pi, mặc định `auto`), tìm trong transcript bằng **Alt+S** (Ctrl+Shift+F là ô tìm của WezTerm), khi thoát in lại transcript. Muốn giữ scrollback bình thường của terminal thì đặt `"tuiMode": "regular"` trong `settings.json` (cài lại vẫn giữ).
 - Native compaction bật: reserve 16.384, giữ gần nhất 20.000 token. Với cửa sổ 1M, auto-compaction chạy rất muộn; xem context ở footer và chọn ranh giới pha quanh mép 150k.

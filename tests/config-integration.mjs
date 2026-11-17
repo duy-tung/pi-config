@@ -264,7 +264,7 @@ await check("Claude: web_search provider anthropic, quota footer from headers an
       const text = await search();
       assert.equal(searchRequests.length, 1, `${model.id}: ${text.slice(0, 300)}`);
       assert.equal(searchRequests[0].body.model, "claude-sonnet-5-5");
-      assert.deepEqual(searchRequests[0].body.tools, [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }]);
+      assert.deepEqual(searchRequests[0].body.tools, [{ type: "web_search_20260209", name: "web_search", max_uses: 5, allowed_callers: ["direct"] }]);
       assert.match(searchRequests[0].body.system[0].text, /^x-anthropic-billing-header:/u, "pi-anthropic-auth phải shape request tìm kiếm");
       assert.match(text, /\*\*Provider:\*\* anthropic/u);
       assert.match(text, /https:\/\/code\.example\/pi/u);

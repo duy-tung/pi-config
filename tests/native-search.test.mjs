@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
-import { anthropicSearchEvents, sse } from "./search-fixtures.mjs";
+import { anthropicFetchEvents, anthropicSearchEvents, sse } from "./search-fixtures.mjs";
 
 // File nguồn mà bản vá pi-web-access chèn vào dist/index.js; nạp như trong bundle (một biến duy nhất).
 const source = fs.readFileSync(new URL("../assets/patches/pi-web-access/anthropic-search.js", import.meta.url), "utf8");
@@ -9,6 +9,7 @@ const api = new Function(`${source}\nreturn piConfigAnthropicSearch;`)();
 const {
   buildPrompt, buildWebSearchTool, SearchStreamCollector, searchError, searchModel, searchReasoning,
   shapeSearchPayload, supportsNativeSearch, toSearchResponse,
+  buildFetchPrompt, buildWebFetchTool, fetchModel, toFetchResult,
 } = api.internals;
 
 const claude = { provider: "anthropic", api: "anthropic-messages", id: "claude-sonnet-5", baseUrl: "https://api.anthropic.com", thinkingLevelMap: { xhigh: "xhigh" } };
@@ -18,7 +19,7 @@ const stream = (text) => new Response(text).body;
 test("file chèn vào bundle chỉ khai báo một tên cấp cao và không import/export", () => {
   const topLevel = source.split(/\r?\n/u).filter((line) => /^(?:var|let|const|function|async|class|import|export)\b/u.test(line));
   assert.deepEqual(topLevel, ["var piConfigAnthropicSearch = (() => {"]);
-  assert.deepEqual(Object.keys(api).sort(), ["available", "configEntry", "internals", "search"]);
+  assert.deepEqual(Object.keys(api).sort(), ["available", "configEntry", "fetchAvailable", "fetchPage", "internals", "search"]);
 });
 
 test("native search chỉ nhận Claude trên endpoint Anthropic chính thức", () => {
@@ -60,8 +61,8 @@ test("anthropicSearch.modelForNonClaude: kiểm cấu hình, model khác Claude 
   assert.equal(api.available(undefined, config), false);
 });
 
-test("request dùng web_search_20250305, lọc domain và prompt tìm kiếm riêng", () => {
-  assert.deepEqual(buildWebSearchTool(), { type: "web_search_20250305", name: "web_search", max_uses: 5 });
+test("request dùng web_search_20260209 gọi thẳng, lọc domain và prompt tìm kiếm riêng", () => {
+  assert.deepEqual(buildWebSearchTool(), { type: "web_search_20260209", name: "web_search", max_uses: 5, allowed_callers: ["direct"] });
   assert.deepEqual(buildWebSearchTool({ domainFilter: ["https://Docs.Example.com/path", "-spam.example", "bad"] }).allowed_domains, ["docs.example.com"]);
   const blocked = buildWebSearchTool({ domainFilter: ["-spam.example", "-spam.example"] });
   assert.deepEqual(blocked.blocked_domains, ["spam.example"]);
@@ -72,7 +73,7 @@ test("request dùng web_search_20250305, lọc domain và prompt tìm kiếm ri�
   assert.match(systemPrompt, /past week/u);
   assert.match(systemPrompt, /around 20 distinct sources/u);
   const payload = shapeSearchPayload({ model: "claude-sonnet-5", tools: [{ name: "web_search", type: "old" }, { name: "read" }] }, buildWebSearchTool());
-  assert.deepEqual(payload.tools.map((tool) => tool.type ?? tool.name), ["read", "web_search_20250305"]);
+  assert.deepEqual(payload.tools.map((tool) => tool.type ?? tool.name), ["read", "web_search_20260209"]);
   assert.equal(payload.output_config, undefined);
   assert.deepEqual(shapeSearchPayload({ output_config: { effort: "high" } }, buildWebSearchTool()).output_config, { effort: "low" });
   assert.equal(shapeSearchPayload("raw", buildWebSearchTool()), "raw");
@@ -139,7 +140,7 @@ test("search: payload qua transport của Pi, fetch được tách để đọc 
       },
     };
     const result = await api.search("pi", { domainFilter: ["pi.example"] }, { model: claude, modelRegistry: registry }, undefined);
-    assert.deepEqual(calls[0].body.tools, [{ type: "web_search_20250305", name: "web_search", max_uses: 5, allowed_domains: ["pi.example"] }]);
+    assert.deepEqual(calls[0].body.tools, [{ type: "web_search_20260209", name: "web_search", max_uses: 5, allowed_callers: ["direct"], allowed_domains: ["pi.example"] }]);
     assert.equal(result.answer, "Pi is a minimal coding agent with extensions.");
     assert.equal(result.results[0].url, "https://code.example/pi");
     // Phiên GLM có modelForNonClaude: request dùng model Claude được chỉ định.
@@ -152,6 +153,67 @@ test("search: payload qua transport của Pi, fetch được tách để đọc 
     globalThis.fetch = async () => new Response("{}", { status: 429 });
     await assert.rejects(api.search("pi", {}, { model: claude, modelRegistry: failing }), /API error 429: Rate limited/u);
     await assert.rejects(api.search("pi", {}, { model: glm, modelRegistry: failing }), /not an official Claude model/u);
+  } finally {
+    globalThis.fetch = savedFetch;
+  }
+});
+
+test("fetch: web_fetch gọi thẳng, một lần, có trần token; model theo fetchModel rồi tới model tìm kiếm", () => {
+  assert.deepEqual(buildWebFetchTool(), { type: "web_fetch_20260209", name: "web_fetch", max_uses: 1, max_content_tokens: 50000, allowed_callers: ["direct"] });
+  assert.equal(buildFetchPrompt("https://docs.example/guide").prompt, "Fetch this URL: https://docs.example/guide");
+  const haiku = { ...claude, id: "claude-haiku-5-5" };
+  const registry = { find: (_provider, id) => (id === haiku.id ? haiku : undefined), hasConfiguredAuth: () => true, streamSimple() {} };
+  assert.equal(fetchModel({ model: claude, modelRegistry: registry }, { fetchModel: "anthropic/claude-haiku-5-5" }), haiku);
+  assert.equal(fetchModel({ model: claude, modelRegistry: registry }, { fetchModel: "anthropic/missing" }), claude, "fetchModel không dùng được thì theo model của phiên");
+  assert.equal(fetchModel({ model: glm, modelRegistry: registry }, {}), undefined);
+  assert.deepEqual(api.configEntry({ anthropicSearch: { fetchModel: "anthropic/claude-haiku-5-5" } }), { anthropicSearch: { fetchModel: "anthropic/claude-haiku-5-5" } });
+  assert.throws(() => api.configEntry({ anthropicSearch: { fetchModel: "haiku" } }), /fetchModel in web-search\.json must look like/u);
+  // Không có ctx (lời gọi nội bộ của pi-web-access) hoặc không có model Claude: provider bị bỏ qua, không ném lỗi.
+  assert.equal(api.fetchAvailable(undefined, {}), false);
+  assert.equal(api.fetchAvailable({ model: glm, modelRegistry: registry }, {}), false);
+  assert.equal(api.fetchAvailable({ model: claude, modelRegistry: registry }, {}), true);
+});
+
+test("fetch: đọc trang từ web_fetch_tool_result; PDF, lỗi trong block và URL quá dài để provider kế tiếp xử lý", async () => {
+  const collect = async (result) => {
+    const collector = new SearchStreamCollector();
+    await collector.consume(stream(sse(anthropicFetchEvents({ result }))));
+    return collector.page();
+  };
+  assert.deepEqual(toFetchResult("https://docs.example/guide", await collect("text")), {
+    url: "https://docs.example/guide", title: "Pi guide (native)", content: "Pi guide fetched by Anthropic.\nPi reads files and runs commands.", error: null,
+  });
+  assert.throws(() => toFetchResult("u", undefined), /returned no web_fetch result/u);
+  const pdf = await collect("pdf");
+  assert.throws(() => toFetchResult("u", pdf), /returned application\/pdf content/u);
+  const blocked = await collect("url_not_allowed");
+  assert.throws(() => toFetchResult("u", blocked), /web fetch error: url_not_allowed/u);
+
+  const savedFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push(JSON.parse(init.body));
+    return new Response(sse(anthropicFetchEvents()), { headers: { "content-type": "text/event-stream" } });
+  };
+  try {
+    const registry = { find: () => undefined, streamSimple: (model, context, options) => ({ async result() {
+      assert.equal(context.messages[0].content, "Fetch this URL: https://docs.example/guide");
+      const response = await options.fetch("https://api.anthropic.com/v1/messages", { method: "POST", body: JSON.stringify(options.onPayload({ model: model.id, tools: [{ name: "web_fetch", type: "old" }] })) });
+      await response.text();
+      return { stopReason: "stop", content: [{ type: "text", text: "done" }] };
+    } }) };
+    const ctx = { model: claude, modelRegistry: registry };
+    const page = await api.fetchPage("https://docs.example/guide", {}, ctx, {});
+    assert.equal(page.content, "Pi guide fetched by Anthropic.\nPi reads files and runs commands.");
+    assert.deepEqual(calls[0].tools, [buildWebFetchTool()]);
+    await assert.rejects(api.fetchPage(`https://docs.example/${"a".repeat(250)}`, {}, ctx, {}), /URLs longer than 250 characters/u);
+    assert.equal(calls.length, 1, "URL quá dài không gửi request");
+    const failing = { find: () => undefined, streamSimple: (_model, _context, options) => ({ async result() {
+      await options.fetch("https://api.anthropic.com/v1/messages", { method: "POST", body: "{}" });
+      return { stopReason: "error", errorMessage: '400 {"type":"error","error":{"message":"Web fetch is not enabled"}}' };
+    } }) };
+    globalThis.fetch = async () => new Response("{}", { status: 400 });
+    await assert.rejects(api.fetchPage("https://docs.example/guide", {}, { model: claude, modelRegistry: failing }, {}), /web fetch API error 400: Web fetch is not enabled/u);
   } finally {
     globalThis.fetch = savedFetch;
   }
