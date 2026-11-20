@@ -16,7 +16,7 @@ test('/agents và /permissions trong phiên Pi thật: Model/Thinking của agen
   const unlink = linkRuntime(f.root, testRoot);
   const settingsPath = f.file('settings.json');
   const settings = readJson(settingsPath);
-  settings.packages = settings.packages.filter(entry => typeof entry === 'string' && entry.replaceAll('\\', '/').endsWith('/@tintinweb/pi-subagents'));
+  settings.packages = settings.packages.filter(entry => (typeof entry === 'string' ? entry : entry.source).replaceAll('\\', '/').endsWith('/@tintinweb/pi-subagents'));
   assert.equal(settings.packages.length, 1);
   settings.extensions = [path.join(f.root, 'assets', 'extensions', 'pi-auto-mode')];
   fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));

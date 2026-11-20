@@ -4,7 +4,7 @@ Mọi thứ cài vào runtime đều ghim: phiên bản trong `manifests/current
 
 ## 1. Manifest
 
-Sửa phiên bản trong `manifests/current/package.json` (`dependencies` và, với package vendor, `piPlatform.localPackages.<tên>`: `version`, `source`, `upstreamTarball`, `upstreamIntegrity` lấy từ `npm view <tên>@<phiên bản> dist.integrity`). Tên tarball vendor mang phiên bản Pi mà nó mở peer range, vd `pi-background-tasks-2.6.10-pi152.tgz`; đổi Pi thì đổi hậu tố và đường dẫn `file:` trong `dependencies`.
+Sửa phiên bản trong `manifests/current/package.json` (`dependencies` và, với package vendor, `piPlatform.localPackages.<tên>`: `version`, `source`, `upstreamTarball`, `upstreamIntegrity` lấy từ `npm view <tên>@<phiên bản> dist.integrity`). Tên tarball vendor mang phiên bản Pi mà nó mở peer range, vd `pi-background-tasks-2.6.10-pi160.tgz`; đổi Pi thì đổi hậu tố và đường dẫn `file:` trong `dependencies`.
 
 ## 2. Tarball vendor
 
@@ -28,7 +28,7 @@ cp "$tmp/manifests/current/package-lock.json" manifests/current/
 
 Đọc diff của lockfile: chỉ các package định nâng và dependency của chúng được đổi.
 
-`overrides` trong manifest ép dependency gián tiếp lên bản đã vá khi package cha còn ghim bản có lỗ hổng. Runtime hiện không cần override: Pi 1.5.2 tự ghim `undici` 8.12.3 và `minimatch` 11.0.3, và lockfile giữ `zod` 4.6.7. Sau khi nâng, chạy `npm audit --package-lock-only --prefix manifests/current`; upstream đã kéo một dependency lên tới hoặc quá bản ghim thì bỏ override đó.
+`overrides` trong manifest ép dependency gián tiếp lên bản đã vá khi package cha còn ghim bản có lỗ hổng. Runtime hiện không cần override: Pi 1.6.0 tự ghim `undici` 8.12.4 và `minimatch` 11.0.3, và lockfile giữ `zod` 4.6.7. Sau khi nâng, chạy `npm audit --package-lock-only --prefix manifests/current`; upstream đã kéo một dependency lên tới hoặc quá bản ghim thì bỏ override đó.
 
 ## 4. Bản vá
 
@@ -43,7 +43,7 @@ node scripts/rehash-patches.mjs --write  # ghi phiên bản và checksum mới v
 
 - `npm run check`, `npm test` (gồm `patched-typecheck`: bản vá không thêm lỗi kiểu), `npm run smoke` (cài thật với provider giả).
 - Rà breaking change trong CHANGELOG của Pi và từng package: API extension, tên tool, sự kiện, cấu hình mặc định.
-- Rà thay đổi dạng request tới Anthropic (`pi-ai/dist/api/anthropic-messages.js`): pi-anthropic-auth shape request qua `onPayload`, nên phần Pi sửa sau bước đó (vd message threads bỏ `system` ở lượt sau) không còn shaping. `tests/claude-effort-wire.test.mjs` kiểm ba lượt liên tiếp; thay đổi như vậy cần một phiên thật vài lượt (xem header `anthropic-ratelimit-unified-*`) trước khi để mặc định.
+- Rà thay đổi dạng request tới Anthropic (`pi-ai/dist/api/anthropic-messages.js`): pi-anthropic-auth shape request qua `onPayload`, nên phần Pi sửa sau bước đó (vd message threads bỏ `system` ở lượt sau) không còn shaping; từ 3.6.0 pi-anthropic-auth gắn lại billing header cho lượt đó ở tầng transport. `tests/claude-effort-wire.test.mjs` kiểm ba lượt liên tiếp; thay đổi như vậy cần một phiên thật vài lượt (xem header `anthropic-ratelimit-unified-*`) trước khi để mặc định.
 - Changelog của package: Pi hiện mọi mục có số lớn hơn phiên bản đã xem rồi ghi lại phiên bản đang cài, nên một mục đánh số cao hơn phiên bản đang cài sẽ hiện ở mọi phiên mới. `tests/extension-changelog.test.mjs` (chạy trong smoke) bắt trường hợp này; sửa bằng một bản vá bỏ mục đó, như với pi-advisor-flow.
 - Cập nhật bảng phiên bản và đoạn về vendor trong README; `THIRD_PARTY_NOTICES.md` khi thêm/bỏ package hoặc vendor; `AGENTS.md` của repo và `docs/` khi hành vi đổi.
 - Đẩy nhánh và chờ CI xanh trên Ubuntu và macOS.

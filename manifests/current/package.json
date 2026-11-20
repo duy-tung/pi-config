@@ -4,29 +4,29 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@earendil-works/pi-agent-core": "1.5.2",
-    "@earendil-works/pi-ai": "1.5.2",
-    "@earendil-works/pi-coding-agent": "1.5.2",
-    "@earendil-works/pi-tui": "1.5.2",
-    "@gotgenes/pi-anthropic-auth": "3.4.4",
+    "@earendil-works/pi-agent-core": "1.6.0",
+    "@earendil-works/pi-ai": "1.6.0",
+    "@earendil-works/pi-coding-agent": "1.6.0",
+    "@earendil-works/pi-tui": "1.6.0",
+    "@gotgenes/pi-anthropic-auth": "3.6.0",
     "@juicesharp/rpiv-ask-user-question": "2.15.0",
     "@juicesharp/rpiv-todo": "2.15.0",
-    "@tintinweb/pi-subagents": "0.23.2",
-    "pi-advisor-flow": "0.14.4",
-    "pi-open-tui": "0.4.4",
-    "pi-web-access": "0.47.0",
-    "pi-background-tasks": "file:../../vendor/pi-background-tasks-2.6.10-pi152.tgz",
-    "@pi-archimedes/image-paste": "2.13.0"
+    "@tintinweb/pi-subagents": "0.26.2",
+    "pi-advisor-flow": "0.17.0",
+    "pi-open-tui": "0.4.7",
+    "pi-web-access": "0.48.0",
+    "pi-background-tasks": "file:../../vendor/pi-background-tasks-2.6.10-pi160.tgz",
+    "@pi-archimedes/image-paste": "2.14.0"
   },
   "piPlatform": {
     "localPackages": {
       "pi-background-tasks": {
         "version": "2.6.10",
-        "source": "../../vendor/pi-background-tasks-2.6.10-pi152.tgz",
-        "sha256": "f79c961090bc9cc9d9bccb6988359f4e0d0d831cfd6d608a324e85f80a968c91",
+        "source": "../../vendor/pi-background-tasks-2.6.10-pi160.tgz",
+        "sha256": "f76d1ac7ebe97af0b84db0267fa5c0708e5454451c0fb40785b5168f4ff325ef",
         "upstreamIntegrity": "sha512-ank/oCRst44FVCr4zwDvedzAxpf+Ttmm4XwB9SfKFJtvFWWX9T2YC+g2pWCdQnbGy/4X+BgoSr6YFCW+fWuhSw==",
         "upstreamTarball": "https://registry.npmjs.org/pi-background-tasks/-/pi-background-tasks-2.6.10.tgz",
-        "reason": "Peer metadata adds exactly Pi 1.5.2; runtime changes are tracked separately in assets/patches.json."
+        "reason": "Peer metadata adds exactly Pi 1.6.0; runtime changes are tracked separately in assets/patches.json."
       }
     }
   }

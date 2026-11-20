@@ -1,6 +1,6 @@
 # Agent theo công việc
 
-Pi dùng tool `Agent` của `@tintinweb/pi-subagents` 0.23.2. Parent Claude Opus 5.5/high phân tích yêu cầu, chốt thiết kế, chia việc và nghiệm thu.
+Pi dùng tool `Agent` của `@tintinweb/pi-subagents` 0.26.2. Parent Claude Opus 5.5/high phân tích yêu cầu, chốt thiết kế, chia việc và nghiệm thu.
 
 | Role | Model/effort (mặc định) | Quyền và trách nhiệm |
 |---|---|---|
@@ -34,6 +34,8 @@ Role dùng `inherit_context:false`, `prompt_mode:replace`, `isolated:false` và 
 Role không giới hạn số lượt (`max_turns: 0` trong file role, `defaultMaxTurns: 0`); giá trị trong role thắng tham số `max_turns` của tool. Agent chạy tới khi xong; dừng bằng `/agents` → chọn agent → `x` hai lần (Esc dừng lời gọi foreground đang chờ). Parent theo dõi và dùng `steer_subagent` khi agent lạc hướng.
 
 `backgroundByDefault:true`: researcher và reviewer chạy nền, lời gọi `Agent` trả ID ngay, thông báo completion mở lượt mới cho parent kèm trích đoạn kết quả; `get_subagent_result` lấy toàn văn. Agent xong được báo ở ranh giới kế tiếp của parent, không chờ các agent khác; các agent xong trong lúc parent đang chạy tool tới cùng một tin trước lần gọi model kế tiếp. Worker ghim `run_in_background: false` nên luôn chạy foreground và trả kết quả ngay trong tool call; parent không đổi được. Background tối đa 10 agent (mặc định của pi-subagents 0.23.2, pi-config không đặt `maxConcurrent`; đổi trong `/agents` → Settings), foreground tối đa 2 (`maxConcurrentForeground`, vì các worker ghi chung một cây làm việc); vượt giới hạn thì xếp hàng. Giới hạn chỉ quyết định bao nhiêu agent chạy cùng lúc, không giảm tổng token. Nhiều lời gọi `Agent` foreground trong cùng một lượt chạy song song; các phiên Pi quản lý pool riêng.
+
+pi-subagents từ 0.26.0 kèm skill `workflow-authoring` (tài liệu viết script cho `SubagentWorkflow`). pi-config tắt workflow (`workflowsEnabled: false`) nên không nạp skill này: mục `packages` của pi-subagents và pi-advisor-flow trong `settings.json` có `skills: []`. Từ 0.26.1, agent được resume giữ model và thinking của lần chạy trước; đổi trong `/agents` → Model/Thinking có hiệu lực ở lần chạy mới.
 
 Researcher nạp `pi-web-access`. Package này khai extension là thư mục `./dist`; bản vá pi-subagents cho entry thư mục khớp tên package, nếu không `extensions`/`ext:pi-web-access` của role không nạp được web tools.
 
