@@ -5,6 +5,8 @@
  * - GET /api/oauth/usage (endpoint Claude Code dùng cho /usage, chưa công bố) trả utilization
  *   theo phần trăm và resets_at ISO. Gọi khi người dùng chạy /claude-usage, và định kỳ khi phiên
  *   có UI đang dùng Claude mà dữ liệu cũ hơn POLL_MS (xem pollDueIn).
+ * - Giới hạn tuần theo model (ví dụ "Fable") chỉ thấy trong /api/oauth/usage: header mà extension
+ *   này đọc không mang số đó, nên khi gói có giới hạn loại này thì endpoint được đọc đều theo POLL_MS.
  */
 
 export const USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
@@ -12,6 +14,11 @@ export const USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 export const POLL_MS = 15 * 60_000;
 /** Khoảng chờ tối đa sau khi Anthropic trả 429. */
 export const MAX_POLL_MS = 60 * 60_000;
+/** Số giới hạn tuần theo model hiện ở footer. */
+const FOOTER_SCOPED_MAX = 2;
+const FOOTER_LABEL_MAX = 12;
+/** Hai mốc reset lệch nhau không quá chừng này giây thì coi là một (footer không lặp lại đếm ngược). */
+const SAME_RESET_SECONDS = 60;
 
 export interface QuotaWindow {
   /** Phần trăm đã dùng, 0..100. */
@@ -20,10 +27,20 @@ export interface QuotaWindow {
   resetsAt?: number;
 }
 
+/** Giới hạn tuần riêng cho một model, ví dụ "Fable"; `label` là tên Anthropic trả về. */
+export interface ScopedLimit {
+  label: string;
+  window: QuotaWindow;
+}
+
 export interface QuotaSnapshot {
   capturedAt: number;
   fiveHour?: QuotaWindow;
   sevenDay?: QuotaWindow;
+  /** Giới hạn tuần theo model của lần đọc /api/oauth/usage gần nhất; mảng rỗng khi gói không có. */
+  scoped?: ScopedLimit[];
+  /** Thời điểm đọc được /api/oauth/usage gần nhất; header không đổi giá trị này. */
+  reportAt?: number;
   /** allowed | allowed_warning | rejected */
   status?: string;
   claim?: string;
@@ -96,10 +113,17 @@ export function parseUnifiedHeaders(headers: Record<string, unknown> | undefined
   return fiveHour || sevenDay || status ? snapshot : undefined;
 }
 
-/** Thời gian chờ tới lần đọc /api/oauth/usage kế tiếp: 0 khi chưa có dữ liệu hoặc dữ liệu đã cũ hơn POLL_MS. */
+/**
+ * Thời gian chờ tới lần đọc /api/oauth/usage kế tiếp: 0 khi chưa có dữ liệu hoặc dữ liệu đã cũ hơn POLL_MS.
+ * Header mới làm lùi lần đọc, với hai ngoại lệ:
+ * - chưa đọc được endpoint lần nào (chưa biết gói có giới hạn theo model hay không) thì header không làm lùi;
+ * - gói có giới hạn tuần theo model: số đó chỉ endpoint có, nên tính từ lần đọc endpoint.
+ */
 export function pollDueIn(snapshot: QuotaSnapshot | undefined, now = Date.now()): number {
-  if (!snapshot || !Number.isFinite(snapshot.capturedAt)) return 0;
-  return Math.min(POLL_MS, Math.max(0, snapshot.capturedAt + POLL_MS - now));
+  if (!snapshot || snapshot.reportAt === undefined) return 0;
+  const since = snapshot.scoped?.length ? snapshot.reportAt : snapshot.capturedAt;
+  if (!Number.isFinite(since)) return 0;
+  return Math.min(POLL_MS, Math.max(0, since + POLL_MS - now));
 }
 
 /** Retry-After (số giây hoặc HTTP-date) đổi ra ms; giá trị không hợp lệ trả undefined. */
@@ -146,13 +170,30 @@ function remaining(window: QuotaWindow | undefined, now: number): { left: number
   return { left: Math.round(percent(100 - window.usedPercent)), countdown: formatCountdown(window.resetsAt, now) };
 }
 
-/** Footer theo kiểu Codex của pi-usage: phần trăm còn lại, ↻ đếm ngược tới reset. */
+function footerLabel(label: string): string {
+  return label.toLowerCase().replace(/\s+/gu, "-").slice(0, FOOTER_LABEL_MAX).replace(/-+$/u, "");
+}
+
+/**
+ * Footer theo kiểu Codex của pi-usage: phần trăm còn lại, ↻ đếm ngược tới reset.
+ * Sau phiên 5 giờ và tuần là giới hạn tuần theo model, kèm tên, ví dụ `fable 92%`;
+ * đếm ngược chỉ hiện khi mốc reset khác mốc của tuần.
+ */
 export function formatStatus(snapshot: QuotaSnapshot | undefined, now = Date.now()): string | undefined {
   if (!snapshot) return undefined;
   const parts = ["claude"];
   for (const [window, label] of [[snapshot.fiveHour, "5h"], [snapshot.sevenDay, "wk"]] as const) {
     const value = remaining(window, now);
     if (value) parts.push(`${value.left}% ${value.countdown ? `↻ ${value.countdown}` : label}`);
+  }
+  const weekReset = snapshot.sevenDay?.resetsAt;
+  for (const entry of (snapshot.scoped ?? []).slice(0, FOOTER_SCOPED_MAX)) {
+    const value = remaining(entry.window, now);
+    const label = footerLabel(entry.label);
+    if (!value || !label) continue;
+    const reset = entry.window.resetsAt;
+    const sameReset = reset !== undefined && weekReset !== undefined && Math.abs(reset - weekReset) <= SAME_RESET_SECONDS;
+    parts.push(`${label} ${value.left}%${value.countdown && !sameReset ? ` ↻ ${value.countdown}` : ""}`);
   }
   if (snapshot.overageInUse) parts.push("extra");
   else if (snapshot.status === "rejected") parts.push("limit");
@@ -188,14 +229,20 @@ function money(amount: unknown, exponent: unknown): string | undefined {
 export function normalizeUsagePayload(payload: unknown, now = Date.now()): UsageReport {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("Phản hồi quota không hợp lệ");
   const data = payload as Record<string, unknown>;
-  const snapshot: QuotaSnapshot = { capturedAt: now };
+  const snapshot: QuotaSnapshot = { capturedAt: now, reportAt: now, scoped: [] };
   const fiveHour = usageWindow(data.five_hour);
   const sevenDay = usageWindow(data.seven_day);
   if (fiveHour) snapshot.fiveHour = fiveHour;
   if (sevenDay) snapshot.sevenDay = sevenDay;
   const weekly: UsageReport["weekly"] = [];
-  const addWeekly = (label: string | undefined, window: QuotaWindow | undefined) => {
-    if (label && window && !weekly.some((entry) => entry.label.toLowerCase() === label.toLowerCase())) weekly.push({ label, window });
+  const addWeekly = (label: string | undefined, window: QuotaWindow | undefined): boolean => {
+    if (!label || !window || weekly.some((entry) => entry.label.toLowerCase() === label.toLowerCase())) return false;
+    weekly.push({ label, window });
+    return true;
+  };
+  /** Giới hạn theo model cũng vào footer; "OAuth apps" không phải model nên chỉ có trong báo cáo. */
+  const addModel = (label: string | undefined, window: QuotaWindow | undefined) => {
+    if (addWeekly(label, window)) snapshot.scoped!.push({ label: label!, window: window! });
   };
   if (Array.isArray(data.limits)) {
     for (const limit of data.limits.slice(0, 10)) {
@@ -203,11 +250,11 @@ export function normalizeUsagePayload(payload: unknown, now = Date.now()): Usage
       const record = limit as Record<string, unknown>;
       if (record.kind !== "weekly_scoped" && record.group !== "weekly") continue;
       const scope = record.scope as { model?: { display_name?: unknown } } | undefined;
-      addWeekly(text(scope?.model?.display_name, 40), usageWindow(record, "percent"));
+      addModel(text(scope?.model?.display_name, 40), usageWindow(record, "percent"));
     }
   }
-  addWeekly("Opus", usageWindow(data.seven_day_opus));
-  addWeekly("Sonnet", usageWindow(data.seven_day_sonnet));
+  addModel("Opus", usageWindow(data.seven_day_opus));
+  addModel("Sonnet", usageWindow(data.seven_day_sonnet));
   addWeekly("OAuth apps", usageWindow(data.seven_day_oauth_apps));
   const report: UsageReport = { snapshot, weekly };
   const extra = data.extra_usage && typeof data.extra_usage === "object" ? data.extra_usage as Record<string, unknown> : undefined;
@@ -247,7 +294,8 @@ export function formatReport(report: UsageReport | undefined, snapshot: QuotaSna
     lines.push(`Phiên 5 giờ: ${describeWindow(windows.fiveHour, now)}`);
     lines.push(`Tuần: ${describeWindow(windows.sevenDay, now)}`);
   }
-  for (const entry of report?.weekly ?? []) lines.push(`Tuần (${entry.label}): ${describeWindow(entry.window, now)}`);
+  // Không đọc được endpoint thì dùng giới hạn theo model của lần đọc trước.
+  for (const entry of report?.weekly ?? snapshot?.scoped ?? []) lines.push(`Tuần (${entry.label}): ${describeWindow(entry.window, now)}`);
   if (report?.extra) {
     const amount = report.extra.used !== undefined
       ? ` · đã dùng ${[report.extra.currency, report.extra.used].filter(Boolean).join(" ")}${report.extra.limit !== undefined ? `/${report.extra.limit}` : ""}`
