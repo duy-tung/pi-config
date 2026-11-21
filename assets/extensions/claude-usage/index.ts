@@ -51,6 +51,7 @@ type Poll = { ctx: ExtensionContext; timer?: ReturnType<typeof setTimeout>; busy
  * - Footer cập nhật từ header anthropic-ratelimit-unified-* của chính các phản hồi Claude.
  * - Phiên có UI đang dùng Claude (có đăng nhập OAuth) đọc /api/oauth/usage khi bắt đầu hoặc khi chuyển
  *   sang Claude, rồi 15 phút một lần nếu không có header mới hơn; bị 429 thì giãn dần tới 60 phút.
+ *   Gói có giới hạn tuần theo model (ví dụ "Fable") thì đọc đều 15 phút một lần, vì số đó chỉ endpoint có.
  *   Agent con và chế độ print không có footer nên không đọc.
  * Status key riêng "claude-usage" tránh tranh chấp với key "usage" của extension quota khác.
  */
@@ -90,7 +91,7 @@ export default function claudeUsage(pi: ExtensionAPI) {
     state.timer = setTimeout(() => void refresh(state), delay);
     state.timer.unref?.();
   };
-  /** Đọc lại khi dữ liệu (header hoặc lần đọc trước) đã cũ hơn POLL_MS; lỗi thì giữ dữ liệu cũ. */
+  /** Đọc lại khi dữ liệu đã cũ hơn POLL_MS (pollDueIn quyết định tính từ header hay từ lần đọc trước); lỗi thì giữ dữ liệu cũ. */
   const refresh = async (state: Poll) => {
     state.timer = undefined;
     if (poll !== state || state.busy) return;
@@ -146,7 +147,7 @@ export default function claudeUsage(pi: ExtensionAPI) {
   });
 
   pi.registerCommand("claude-usage", {
-    description: "Xem quota Claude: phiên 5 giờ, tuần, extra usage",
+    description: "Xem quota Claude: phiên 5 giờ, tuần, tuần theo model, extra usage",
     handler: async (args, ctx) => {
       if (args.trim()) {
         ctx.ui.notify("/claude-usage không nhận tham số.", "warning");

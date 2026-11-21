@@ -40,12 +40,15 @@ Opus 5.5 không tắt được thinking; `/thinking` (Shift+Tab hoặc Alt+T) đ
 pi-config có extension `claude-usage`:
 
 - Footer hiển thị phần trăm **còn lại** của phiên 5 giờ và của tuần, kèm đếm ngược tới reset, ví dụ `77% ↻ 2h10m 59% ↻ 4d3h`. `extra` nghĩa là request đang dùng extra usage; `limit` nghĩa là đã chạm giới hạn gói.
+  - Gói có giới hạn tuần riêng cho một model (trang Usage của Claude ghi là "Fable only") thì footer thêm tên và phần trăm còn lại của giới hạn đó, ví dụ `59% ↻ 4d3h fable 92%`. Tên lấy từ Anthropic; đếm ngược chỉ hiện khi mốc reset khác mốc của tuần. Footer hiện tối đa 2 giới hạn loại này; `/claude-usage` in đủ.
+  - Tài khoản không có giới hạn phiên 5 giờ thì footer chỉ còn phần tuần.
 - Footer cập nhật từ header `anthropic-ratelimit-unified-*` của chính các phản hồi Claude qua OAuth, không tốn request. Footer ẩn khi chuyển sang model khác.
 - Ngoài ra extension tự đọc `GET https://api.anthropic.com/api/oauth/usage` (endpoint Claude Code dùng, chưa công bố) bằng token OAuth khi mở phiên hoặc chuyển sang Claude, nên footer có số liệu ngay, không chờ phản hồi Claude đầu tiên.
   - Sau đó đọc lại 15 phút một lần, nhưng chỉ khi header gần nhất đã cũ hơn 15 phút: lúc đang làm việc, header đủ dùng nên hầu như không có request thêm.
+  - Ngoại lệ: khi gói có giới hạn tuần theo model, endpoint được đọc đều 15 phút một lần kể cả lúc đang làm việc (thêm tối đa 4 request mỗi giờ cho mỗi phiên có UI). Lý do: các header mà extension đọc (`5h`, `7d`) không mang số của giới hạn này, nên không đọc endpoint thì số ở footer đứng yên từ lúc mở phiên.
   - Endpoint trả 429 thì khoảng chờ tăng lên 30 rồi 60 phút (theo `Retry-After` nếu có, tối đa 60 phút) và footer giữ số liệu cũ; đọc được thì về lại 15 phút.
   - Chỉ phiên có UI (TUI, RPC) mới đọc. Agent con, chế độ print, model khác Claude và đăng nhập bằng API key (không có quota gói) thì không.
-- `/claude-usage` đọc endpoint đó ngay khi gọi và in thêm giới hạn tuần theo model và extra usage. Nếu endpoint trả 429, lệnh dùng dữ liệu gần nhất.
+- `/claude-usage` đọc endpoint đó ngay khi gọi và in thêm giới hạn tuần theo model và extra usage. Nếu endpoint trả 429, lệnh dùng dữ liệu gần nhất, gồm cả giới hạn theo model của lần đọc trước.
 
 ## Native web search
 
