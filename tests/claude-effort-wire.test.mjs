@@ -60,7 +60,10 @@ test("Opus 5.5 qua OAuth gửi đúng mức thinking của phiên", { skip: !roo
         assert.ok(body.tools?.length > 0, "Lượt đầu gửi đủ tools");
       } else {
         assert.deepEqual(body.thread, { type: "continue", previous_message_id: "msg_fixture" });
-        assert.deepEqual([body.system, body.tools], [undefined, undefined], "Lượt continue không gửi lại system và tools");
+        // Pi bỏ system và tools ở lượt continue; pi-anthropic-auth (từ 3.6.0) gắn lại riêng billing header ở tầng transport.
+        assert.equal(body.system?.length, 1, "Lượt continue chỉ mang một khối system");
+        assert.match(body.system[0].text, /^x-anthropic-billing-header:/u, "Lượt continue phải mang billing header");
+        assert.equal(body.tools, undefined, "Lượt continue không gửi lại tools");
         assert.deepEqual(body.messages.map((message) => message.role), ["user", "system"], "Lượt continue chỉ gửi tin nhắn mới");
       }
       assert.equal(body.thinking.type, "adaptive");

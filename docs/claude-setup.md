@@ -6,13 +6,15 @@ Parent mặc định là **Claude Opus 5.5/high** (`anthropic/claude-opus-5-5`, 
 
 Tài liệu Claude Code ghi OAuth của gói Pro/Max dành cho Claude Code và ứng dụng native của Anthropic, và Anthropic có thể thực thi giới hạn này không báo trước. Nếu Claude không dùng được, chọn model khác bằng `/model`; role của Agent mặc định cũng là Claude, đổi trong `/agents`. Bộ phân loại của auto mode chạy Claude Sonnet 5.5 qua cùng đăng nhập; khi Sonnet 5.5 lỗi, nó dùng model của phiên, nên sau khi đổi `/model` sang model của provider khác (vd GLM của OpenCode Go) thì auto mode duyệt được tiếp.
 
-`@gotgenes/pi-anthropic-auth` 3.4.4 shape request OAuth (billing header, system prompt) cho mọi request đi qua provider `anthropic`, và tự thử lại khi Anthropic yêu cầu phiên bản Claude Code mới hơn. pi-config tắt cảnh báo extra usage lúc khởi động của Pi (`warnings.anthropicExtraUsage: false`), vì phiên chính, compaction và extension gọi qua `ctx.modelRegistry.streamSimple()` đều đi qua shaping; extension gọi thẳng `compat.streamSimple` của pi-ai thì không, và request đó có thể bị tính vào extra usage. Bật lại trong `/settings` → Warnings.
+`@gotgenes/pi-anthropic-auth` 3.6.0 shape request OAuth (billing header, system prompt) cho mọi request đi qua provider `anthropic`, và tự thử lại khi Anthropic yêu cầu phiên bản Claude Code mới hơn. pi-config tắt cảnh báo extra usage lúc khởi động của Pi (`warnings.anthropicExtraUsage: false`), vì phiên chính, compaction và extension gọi qua `ctx.modelRegistry.streamSimple()` đều đi qua shaping; extension gọi thẳng `compat.streamSimple` của pi-ai thì không, và request đó có thể bị tính vào extra usage. Bật lại trong `/settings` → Warnings.
 
 ## Message threads
 
-Pi 1.5.1 bật message threads cho provider `anthropic` trên `api.anthropic.com`, và pi-config giữ mặc định đó. Request đầu của phiên là request đầy đủ đã qua shaping OAuth, kèm `thread: {type: "create"}`. Các lượt sau chỉ gửi tin nhắn mới kèm `thread: {type: "continue"}` và bỏ `system`, `tools`: server giữ bản của lượt đầu, nên billing header không nằm trong body của các lượt đó.
+Pi bật message threads cho mọi provider có `baseUrl` trên `api.anthropic.com` (từ 1.5.1 cho provider `anthropic`, từ 1.6.0 cho cả provider khác trên host đó), và pi-config giữ mặc định đó. Request đầu của phiên là request đầy đủ đã qua shaping OAuth, kèm `thread: {type: "create"}`. Các lượt sau chỉ gửi tin nhắn mới kèm `thread: {type: "continue"}`; Pi bỏ `system` và `tools` vì server giữ bản của lượt đầu.
 
-Kiểm ngày 10/11/2026 bằng một phiên thật hai lượt (Opus 5.5, pi-anthropic-auth 3.4.4): lượt `continue` trả 200 ngay lần đầu, model nhớ nội dung lượt trước, và header `anthropic-ratelimit-unified-*` giống hệt lượt đầy đủ (cùng `representative-claim`, extra usage đang bị từ chối ở cấp tổ chức mà request vẫn qua). Tức là lượt `continue` được chấp nhận và tính vào gói; phép thử không cho biết quota được tính nặng hay nhẹ hơn.
+Từ pi-anthropic-auth 3.6.0, mỗi lượt `continue` mang lại billing header trong `system`, là khối duy nhất ở đó (theo upstream, đây là dạng Claude Code gửi và Anthropic chấp nhận vì khối này nằm ngoài fingerprint của thread). Với bản 3.4.4 trước đó, lượt `continue` không có billing header trong body.
+
+Lần pi-config tự kiểm gần nhất là với dạng cũ, ngày 10/11/2026, bằng một phiên thật hai lượt (Opus 5.5, pi-anthropic-auth 3.4.4): lượt `continue` trả 200 ngay lần đầu, model nhớ nội dung lượt trước, và header `anthropic-ratelimit-unified-*` giống hệt lượt đầy đủ (cùng `representative-claim`, extra usage đang bị từ chối ở cấp tổ chức mà request vẫn qua). Tức là lượt `continue` được chấp nhận và tính vào gói; phép thử không cho biết quota được tính nặng hay nhẹ hơn.
 
 - Khi `system` hay `tools` đổi (đổi model, compaction, pi-anthropic-auth đổi phiên bản trong billing header), Pi tự mở thread mới bằng một request đầy đủ.
 - Server từ chối trường `thread` thì Pi gửi lại request đầy đủ và tắt threads cho phiên đó.
@@ -52,7 +54,7 @@ pi-config có extension `claude-usage`:
 
 ## Native web search
 
-`web_search` (pi-web-access 0.47.0) định tuyến `["anthropic"]` với `useCurrentModel: true`, không có provider dự phòng:
+`web_search` (pi-web-access 0.48.0) định tuyến `["anthropic"]` với `useCurrentModel: true`, không có provider dự phòng:
 
 | Model hiện tại | Cách tìm |
 |---|---|

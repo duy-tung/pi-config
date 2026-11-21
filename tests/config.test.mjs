@@ -87,7 +87,10 @@ for (const platform of ["darwin", "linux", "win32"]) {
       }
       assert.equal(profile.packages.includes("@tintinweb/pi-subagents"), name === "main");
       assert.equal(profile.packages.includes("pi-background-tasks"), true);
-      assert.deepEqual(settings.packages.find(entry=>typeof entry === "object").extensions,["dist/extensions/background-tasks.js"]);
+      const filtered = Object.fromEntries(settings.packages.filter(entry=>typeof entry === "object").map(({source, ...rest})=>[p.basename(source), rest]));
+      assert.deepEqual(filtered, profile.packages.includes("@tintinweb/pi-subagents")
+        ? {"pi-subagents": {skills: []}, "pi-background-tasks": {extensions: ["dist/extensions/background-tasks.js"]}, "pi-advisor-flow": {skills: []}}
+        : {"pi-background-tasks": {extensions: ["dist/extensions/background-tasks.js"]}, "pi-advisor-flow": {skills: []}});
       assert.equal(profile.packages.includes("pi-advisor-flow"), name === "main");
       assert.equal(profile.packages.includes("pi-workspace-history"), false);
     }

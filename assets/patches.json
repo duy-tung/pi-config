@@ -4,7 +4,7 @@
     {
       "package": "pi-open-tui",
       "versions": {
-        "current": "0.4.4"
+        "current": "0.4.7"
       },
       "file": "extensions/open-tui/footer.ts",
       "originalSha256": "8e455eae50b6ebabd881b3a8df9d0f6c696945cc693f7733cc342947b01b8a31",
@@ -75,15 +75,15 @@
     {
       "package": "@tintinweb/pi-subagents",
       "versions": {
-        "current": "0.23.2"
+        "current": "0.26.2"
       },
       "file": "src/agent-runner.ts",
-      "originalSha256": "ab78003a7734ca430eaefc32a5fa1c83ecb87aea909588aa918a1aa0ddd4f2f5",
-      "patchedSha256": "fa87c1a39049c74e4fe54b8abba54b5e317d7ef46e0e30f42b8665825b56067a",
+      "originalSha256": "9d94d3a6074b26e8a021d4e85353ac2bb7e5e489c66815a32e33360c94787dc4",
+      "patchedSha256": "810723f6098df46feed2cab4c5f3c9c1104e1091245a0c8a1089c3abe756574b",
       "edits": [
         {
-          "before": "  const { session } = await runInChildSessionContext(() => createAgentSession(sessionOpts));",
-          "after": "  const { session } = await runInChildSessionContext(() => createAgentSession(sessionOpts));\n\n  // Local integration: announce before binding so permission gates know the parent.\n  const childIdentity = { sessionId: session.sessionId, parentSessionId: ctx.sessionManager?.getSessionId() };\n  const originalDispose = session.dispose.bind(session);\n  let childDisposed = false;\n  session.dispose = () => {\n    if (childDisposed) return;\n    childDisposed = true;\n    try {\n      originalDispose();\n    } finally {\n      options.pi.events.emit(\"subagents:child:disposed\", { sessionId: session.sessionId });\n    }\n  };\n  options.pi.events.emit(\"subagents:child:session-created\", childIdentity);",
+          "before": "  const { session, modelFallbackMessage } = await runInChildSessionContext(() => createAgentSession(sessionOpts));",
+          "after": "  const { session, modelFallbackMessage } = await runInChildSessionContext(() => createAgentSession(sessionOpts));\n\n  // Local integration: announce before binding so permission gates know the parent.\n  const childIdentity = { sessionId: session.sessionId, parentSessionId: ctx.sessionManager?.getSessionId() };\n  const originalDispose = session.dispose.bind(session);\n  let childDisposed = false;\n  session.dispose = () => {\n    if (childDisposed) return;\n    childDisposed = true;\n    try {\n      originalDispose();\n    } finally {\n      options.pi.events.emit(\"subagents:child:disposed\", { sessionId: session.sessionId });\n    }\n  };\n  options.pi.events.emit(\"subagents:child:session-created\", childIdentity);",
           "count": 1
         },
         {
@@ -101,20 +101,20 @@
     {
       "package": "@tintinweb/pi-subagents",
       "versions": {
-        "current": "0.23.2"
+        "current": "0.26.2"
       },
       "file": "src/index.ts",
-      "originalSha256": "85118e4adab9476e138bf610bec6fda2ccbbfa9897984c8e4eb2146809c8df7c",
-      "patchedSha256": "948d067160293ac67f0ec77d0aa807e52c5bd32b88469b8587509af1c97ed64d",
+      "originalSha256": "c164a34daf294a16a28732be5c1a181a51104464539233f8c70717745f17c39e",
+      "patchedSha256": "b41ecbd2c5fa1a410d4ab0b44921d1a12b81074be9207bf0b5a6b6612b8fb4a0",
       "edits": [
         {
-          "before": "import { type AgentSession, defineTool, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext, getAgentDir, getSettingsListTheme } from \"@earendil-works/pi-coding-agent\";",
-          "after": "import { type Api, getSupportedThinkingLevels, type Model } from \"@earendil-works/pi-ai\";\nimport { type AgentSession, defineTool, DynamicBorder, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext, getAgentDir, getMarkdownTheme, getSelectListTheme, getSettingsListTheme, keyHint } from \"@earendil-works/pi-coding-agent\";",
+          "before": "import { type AgentSession, defineTool, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext, getAgentDir } from \"@earendil-works/pi-coding-agent\";\n",
+          "after": "import { type AgentSession, defineTool, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext, getAgentDir, getMarkdownTheme, keyHint } from \"@earendil-works/pi-coding-agent\";\n",
           "count": 1
         },
         {
-          "before": "import { Container, isKeyRelease, Key, matchesKey, type ScrollViewScrollbar, type SettingItem, SettingsList, Spacer, Text } from \"@earendil-works/pi-tui\";",
-          "after": "import { Container, type Focusable, fuzzyFilter, getKeybindings, Input, isKeyRelease, Key, Markdown, matchesKey, type ScrollViewScrollbar, type SelectItem, SelectList, type SettingItem, SettingsList, Spacer, stripTerminalSequences, Text } from \"@earendil-works/pi-tui\";",
+          "before": "import { Container, isKeyRelease, matchesKey, type ScrollViewScrollbar, type SettingItem, Text } from \"@earendil-works/pi-tui\";\n",
+          "after": "import { Container, isKeyRelease, Markdown, matchesKey, type ScrollViewScrollbar, type SettingItem, stripTerminalSequences, Text } from \"@earendil-works/pi-tui\";\n",
           "count": 1
         },
         {
@@ -156,10 +156,31 @@
           "before": "    execute: async (_toolCallId, params, signal, _onUpdate, ctx) => {\n",
           "after": "    // Local integration: expanded, a finished agent's output renders as Markdown; every other view keeps Pi's plain 10-line fallback.\n    renderResult(result, { expanded }, theme, renderContext) {\n      const text = stripTerminalSequences(result.content[0]?.type === \"text\" ? result.content[0].text : \"\").replace(/[\\u0000-\\u0008\\u000b-\\u001f\\ufff9-\\ufffb]/g, \"\");\n      const plain = (s: string) => new Text(s.split(\"\\n\").map((l) => theme.fg(\"toolOutput\", l)).join(\"\\n\"), 0, 0);\n      const bodyAt = text.indexOf(\"\\n\\n\") + 2;\n      if (expanded && !renderContext.isError && bodyAt > 1 && !/^Type: .*\\| Status: (?:running|error)\\b/m.test(text.slice(0, bodyAt))) {\n        const convAt = text.indexOf(\"\\n\\n--- Agent Conversation ---\\n\", bodyAt);\n        const box = new Container();\n        box.addChild(plain(text.slice(0, bodyAt - 1)));\n        box.addChild(new Markdown(text.slice(bodyAt, convAt < 0 ? undefined : convAt), 0, 0, getMarkdownTheme(), { color: (t: string) => theme.fg(\"toolOutput\", t) }));\n        if (convAt >= 0) box.addChild(plain(text.slice(convAt + 1)));\n        return box;\n      }\n      const lines = text.split(\"\\n\");\n      const more = expanded ? 0 : Math.max(0, lines.length - 10);\n      const hint = more ? `${theme.fg(\"muted\", `\\n... (${more} more lines,`)} ${keyHint(\"app.tools.expand\", \"to expand\")}${theme.fg(\"muted\", \")\")}` : \"\";\n      return new Text(lines.slice(0, lines.length - more).map((l) => theme.fg(\"toolOutput\", l)).join(\"\\n\") + hint, 0, 0);\n    },\n    execute: async (_toolCallId, params, signal, _onUpdate, ctx) => {\n",
           "count": 1
+        }
+      ]
+    },
+    {
+      "package": "@tintinweb/pi-subagents",
+      "versions": {
+        "current": "0.26.2"
+      },
+      "file": "src/ui/agents-menu.ts",
+      "originalSha256": "719cfdd17607442e727842715c690c615fd9f9e2531f9b8ac3c073836a8763fb",
+      "patchedSha256": "ed8e6d07a5a5d220c153e452c5a4fe03d769efac8fe63ecdb977324728ba8eb3",
+      "edits": [
+        {
+          "before": "import { type ExtensionAPI, type ExtensionCommandContext, getSettingsListTheme } from \"@earendil-works/pi-coding-agent\";\nimport { Container, type SettingItem, SettingsList, Spacer, Text } from \"@earendil-works/pi-tui\";\n",
+          "after": "import { type Api, getSupportedThinkingLevels, type Model } from \"@earendil-works/pi-ai\";\nimport { DynamicBorder, type ExtensionAPI, type ExtensionCommandContext, getSelectListTheme, getSettingsListTheme } from \"@earendil-works/pi-coding-agent\";\nimport { Container, type Focusable, fuzzyFilter, getKeybindings, Input, type SelectItem, SelectList, type SettingItem, SettingsList, Spacer, Text } from \"@earendil-works/pi-tui\";\n",
+          "count": 1
         },
         {
-          "before": "import { escapeXml } from \"./xml.js\";\n",
-          "after": "import { escapeXml } from \"./xml.js\";\n\n// Local integration: /agents → an agent → Model / Thinking. The model list filters as you type (the catalog is longer\n// than a screen), current model first, then logged-in providers; a pick rewrites only the model/thinking lines.\nconst AGENT_THINKING_LEVELS = [\"off\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"];\n\nclass AgentModelPicker extends Container implements Focusable {\n  private readonly input = new Input();\n  private readonly holder = new Container();\n  private list!: SelectList;\n  private isFocused = false;\n\n  constructor(private readonly items: SelectItem[], title: string, theme: Theme, private readonly done: (value: string | undefined) => void) {\n    super();\n    this.addChild(new DynamicBorder());\n    this.addChild(new Text(theme.fg(\"accent\", theme.bold(title)), 1, 0));\n    this.addChild(this.input);\n    this.addChild(this.holder);\n    this.addChild(new Text(theme.fg(\"dim\", \"type to filter · ↑↓ move · Enter select · Esc cancel\"), 1, 0));\n    this.addChild(new DynamicBorder());\n    this.build(\"\");\n  }\n\n  get focused(): boolean {\n    return this.isFocused;\n  }\n\n  set focused(value: boolean) {\n    this.isFocused = value;\n    this.input.focused = value;\n  }\n\n  private build(query: string): void {\n    const shown = query ? fuzzyFilter(this.items, query, (item) => `${item.value} ${item.description ?? \"\"}`) : this.items;\n    this.list = new SelectList(shown, 12, getSelectListTheme());\n    this.list.onSelect = (item) => this.done(item.value);\n    this.list.onCancel = () => this.done(undefined);\n    this.holder.clear();\n    this.holder.addChild(this.list);\n  }\n\n  handleInput(data: string): void {\n    const keys = getKeybindings();\n    if ([\"tui.select.up\", \"tui.select.down\", \"tui.select.confirm\", \"tui.select.cancel\"].some((key) => keys.matches(data, key as never))) {\n      this.list.handleInput(data);\n      return;\n    }\n    const before = this.input.getValue();\n    this.input.handleInput(data);\n    if (this.input.getValue() !== before) this.build(this.input.getValue());\n  }\n}\n\n/** Set the given frontmatter lines (appending missing ones), keeping every other line and the file's line endings. */\nfunction setAgentFrontmatter(content: string, fields: Record<string, string>): string | undefined {\n  const match = /^(\\uFEFF?---[ \\t]*\\r?\\n)([\\s\\S]*?)(\\r?\\n---[ \\t]*(?:\\r?\\n|$))/.exec(content);\n  if (!match) return undefined;\n  const lines = match[2].split(/\\r?\\n/);\n  for (const [key, value] of Object.entries(fields)) {\n    const at = lines.findIndex((line) => line.startsWith(`${key}:`));\n    if (at >= 0) lines[at] = `${key}: ${value}`;\n    else lines.push(`${key}: ${value}`);\n  }\n  return match[1] + lines.join(match[1].endsWith(\"\\r\\n\") ? \"\\r\\n\" : \"\\n\") + match[3] + content.slice(match[0].length);\n}\n",
+          "before": "import { formatDuration, getDisplayName } from \"./agent-widget.js\";\n",
+          "after": "import { formatDuration, getDisplayName, type Theme } from \"./agent-widget.js\";\n",
+          "count": 1
+        },
+        {
+          "before": "import { showWorkflowsMenu, type WorkflowMenuDeps } from \"./workflow-menu.js\";\n",
+          "after": "import { showWorkflowsMenu, type WorkflowMenuDeps } from \"./workflow-menu.js\";\n\n// Local integration: /agents → an agent → Model / Thinking. The model list filters as you type (the catalog is longer\n// than a screen), current model first, then logged-in providers; a pick rewrites only the model/thinking lines.\nconst AGENT_THINKING_LEVELS = [\"off\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"];\n\nclass AgentModelPicker extends Container implements Focusable {\n  private readonly input = new Input();\n  private readonly holder = new Container();\n  private list!: SelectList;\n  private isFocused = false;\n\n  constructor(private readonly items: SelectItem[], title: string, theme: Theme, private readonly done: (value: string | undefined) => void) {\n    super();\n    this.addChild(new DynamicBorder());\n    this.addChild(new Text(theme.fg(\"accent\", theme.bold(title)), 1, 0));\n    this.addChild(this.input);\n    this.addChild(this.holder);\n    this.addChild(new Text(theme.fg(\"dim\", \"type to filter · ↑↓ move · Enter select · Esc cancel\"), 1, 0));\n    this.addChild(new DynamicBorder());\n    this.build(\"\");\n  }\n\n  get focused(): boolean {\n    return this.isFocused;\n  }\n\n  set focused(value: boolean) {\n    this.isFocused = value;\n    this.input.focused = value;\n  }\n\n  private build(query: string): void {\n    const shown = query ? fuzzyFilter(this.items, query, (item) => `${item.value} ${item.description ?? \"\"}`) : this.items;\n    this.list = new SelectList(shown, 12, getSelectListTheme());\n    this.list.onSelect = (item) => this.done(item.value);\n    this.list.onCancel = () => this.done(undefined);\n    this.holder.clear();\n    this.holder.addChild(this.list);\n  }\n\n  handleInput(data: string): void {\n    const keys = getKeybindings();\n    if ([\"tui.select.up\", \"tui.select.down\", \"tui.select.confirm\", \"tui.select.cancel\"].some((key) => keys.matches(data, key as never))) {\n      this.list.handleInput(data);\n      return;\n    }\n    const before = this.input.getValue();\n    this.input.handleInput(data);\n    if (this.input.getValue() !== before) this.build(this.input.getValue());\n  }\n}\n\n/** Set the given frontmatter lines (appending missing ones), keeping every other line and the file's line endings. */\nfunction setAgentFrontmatter(content: string, fields: Record<string, string>): string | undefined {\n  const match = /^(\\uFEFF?---[ \\t]*\\r?\\n)([\\s\\S]*?)(\\r?\\n---[ \\t]*(?:\\r?\\n|$))/.exec(content);\n  if (!match) return undefined;\n  const lines = match[2].split(/\\r?\\n/);\n  for (const [key, value] of Object.entries(fields)) {\n    const at = lines.findIndex((line) => line.startsWith(`${key}:`));\n    if (at >= 0) lines[at] = `${key}: ${value}`;\n    else lines.push(`${key}: ${value}`);\n  }\n  return match[1] + lines.join(match[1].endsWith(\"\\r\\n\") ? \"\\r\\n\" : \"\\n\") + match[3] + content.slice(match[0].length);\n}\n",
           "count": 1
         },
         {
@@ -198,7 +219,7 @@
     {
       "package": "@pi-archimedes/image-paste",
       "versions": {
-        "current": "2.13.0"
+        "current": "2.14.0"
       },
       "file": "src/preview.ts",
       "originalSha256": "9a8e227847c3c215810c19ff7324a6889723fd1870653151aa9e3bf704234978",
@@ -214,11 +235,11 @@
     {
       "package": "pi-web-access",
       "versions": {
-        "current": "0.47.0"
+        "current": "0.48.0"
       },
       "file": "dist/index.js",
-      "originalSha256": "4efbd85de02258433ba83bb6d7417f57ea198e3873dfc45b77273a023705730b",
-      "patchedSha256": "5865cac9ee32b5919b54067c20a2a53b98c17a75d7f03554ba0060ffd895757d",
+      "originalSha256": "825dff2ba25684d767d54285ac71ed0838490d8f84862527377476741dd9363f",
+      "patchedSha256": "a14757a5ed48374307fb198b4cb79a52fecef01149522a111e3f9947b390c3a1",
       "edits": [
         {
           "before": "var RESOLVED_SEARCH_PROVIDERS = [\"openai\", \"brave\", ",
@@ -274,22 +295,6 @@
         {
           "before": "      const fetchResults = await fetchAllContent2(urlList, signal, fetchOptions(requestOptions, options.proxy));",
           "after": "      const fetchResults = await fetchAllContent2(urlList, signal, { ...fetchOptions(requestOptions, options.proxy), extensionContext: ctx });",
-          "count": 1
-        }
-      ]
-    },
-    {
-      "package": "pi-advisor-flow",
-      "versions": {
-        "current": "0.14.4"
-      },
-      "file": "CHANGELOG.md",
-      "originalSha256": "b90e4f5846969855d29ed29c88bb5224f975957a408a28c201dd668c9f8ce71c",
-      "patchedSha256": "79b3a90fadcf1730bc2c833ae103716f46443cf4da96ae8cc080d6fc2e7730ef",
-      "edits": [
-        {
-          "before": "## [5.1.0] - 2026-09-04 [YANKED]\n\n### Release status\n\n- Published by mistake instead of `0.5.1`; withdrawn from npm and removed from Git, with `latest` restored to `0.5.0`.\n\n",
-          "after": "",
           "count": 1
         }
       ]
