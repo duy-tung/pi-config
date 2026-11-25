@@ -11,12 +11,12 @@
     "@gotgenes/pi-anthropic-auth": "3.6.0",
     "@juicesharp/rpiv-ask-user-question": "2.15.0",
     "@juicesharp/rpiv-todo": "2.15.0",
-    "@tintinweb/pi-subagents": "0.26.2",
+    "@tintinweb/pi-subagents": "0.26.3",
     "pi-advisor-flow": "0.17.0",
     "pi-open-tui": "0.4.7",
     "pi-web-access": "0.48.0",
     "pi-background-tasks": "file:../../vendor/pi-background-tasks-2.6.10-pi160.tgz",
-    "@pi-archimedes/image-paste": "2.14.0"
+    "@pi-archimedes/image-paste": "2.15.0"
   },
   "piPlatform": {
     "localPackages": {

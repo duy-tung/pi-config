@@ -114,14 +114,14 @@ Auto mode là lớp duyệt bằng model, không thay thế sandbox hệ điều
 | Thành phần | Phiên bản |
 |---|---|
 | Pi (`@earendil-works/pi-coding-agent`, `pi-ai`, `pi-agent-core`, `pi-tui`) | 1.6.0 |
-| `@tintinweb/pi-subagents` | 0.26.2 |
+| `@tintinweb/pi-subagents` | 0.26.3 |
 | `@gotgenes/pi-anthropic-auth` | 3.6.0 |
 | `pi-web-access` | 0.48.0 |
 | `@juicesharp/rpiv-ask-user-question`, `rpiv-todo` | 2.15.0 |
 | `pi-background-tasks` | 2.6.10 |
 | `pi-advisor-flow` | 0.17.0 |
 | `pi-open-tui` | 0.4.7 |
-| `@pi-archimedes/image-paste` | 2.14.0 |
+| `@pi-archimedes/image-paste` | 2.15.0 |
 
 Các manifest và lockfile nằm trong [manifests](manifests). pi-background-tasks có peer range chưa gồm Pi 1.6.0 nên được đóng gói lại, chỉ bổ sung đúng phiên bản này vào metadata; source/integrity upstream và SHA256 tarball nằm trong manifest. Đây là cấu hình tương thích được kiểm thử bởi pi-config, không phải tuyên bố hỗ trợ của upstream. Bản vá tương thích có source hash, kết quả hash và điều kiện phiên bản tại [assets/patches.json](assets/patches.json). Quy trình nâng phiên bản (vendor, lockfile, tính lại checksum bản vá): [docs/upgrade.md](docs/upgrade.md).
 
