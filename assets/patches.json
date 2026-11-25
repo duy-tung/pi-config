@@ -75,11 +75,11 @@
     {
       "package": "@tintinweb/pi-subagents",
       "versions": {
-        "current": "0.26.2"
+        "current": "0.26.3"
       },
       "file": "src/agent-runner.ts",
-      "originalSha256": "9d94d3a6074b26e8a021d4e85353ac2bb7e5e489c66815a32e33360c94787dc4",
-      "patchedSha256": "810723f6098df46feed2cab4c5f3c9c1104e1091245a0c8a1089c3abe756574b",
+      "originalSha256": "ac33f63ae7f7978365ff17d96de2b9b9d328c9625a58c2b60529cd50ad37505f",
+      "patchedSha256": "9a48290594545ff152a30d956636b717e6bacc41f4a1d93309bfa6642fa59a61",
       "edits": [
         {
           "before": "  const { session, modelFallbackMessage } = await runInChildSessionContext(() => createAgentSession(sessionOpts));",
@@ -101,11 +101,11 @@
     {
       "package": "@tintinweb/pi-subagents",
       "versions": {
-        "current": "0.26.2"
+        "current": "0.26.3"
       },
       "file": "src/index.ts",
-      "originalSha256": "c164a34daf294a16a28732be5c1a181a51104464539233f8c70717745f17c39e",
-      "patchedSha256": "b41ecbd2c5fa1a410d4ab0b44921d1a12b81074be9207bf0b5a6b6612b8fb4a0",
+      "originalSha256": "dccb729d4dd177de4ba4a91dfb2d1b4d1d69e90cf8ac7ded8ef022e158cf520b",
+      "patchedSha256": "e869a51575629b002109b3859dca0e6ad7634b30c455256fee1d3b1ec89505c3",
       "edits": [
         {
           "before": "import { type AgentSession, defineTool, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext, getAgentDir } from \"@earendil-works/pi-coding-agent\";\n",
@@ -162,7 +162,7 @@
     {
       "package": "@tintinweb/pi-subagents",
       "versions": {
-        "current": "0.26.2"
+        "current": "0.26.3"
       },
       "file": "src/ui/agents-menu.ts",
       "originalSha256": "719cfdd17607442e727842715c690c615fd9f9e2531f9b8ac3c073836a8763fb",
@@ -219,7 +219,7 @@
     {
       "package": "@pi-archimedes/image-paste",
       "versions": {
-        "current": "2.14.0"
+        "current": "2.15.0"
       },
       "file": "src/preview.ts",
       "originalSha256": "9a8e227847c3c215810c19ff7324a6889723fd1870653151aa9e3bf704234978",
